@@ -1,0 +1,60 @@
+version: "3"
+
+tasks:
+  build:
+    env:
+      CGO_ENABLED: "0"
+    cmds:
+      - go build ./cmd/pandalibrary
+
+  lint:
+    cmds:
+      - go vet ./...
+      - staticcheck ./...
+
+  test:
+    cmds:
+      - go test ./...
+
+  sqlc:
+    cmds:
+      - sqlc generate
+
+  sqlc:check:
+    cmds:
+      - sqlc diff
+
+  migrate:status:
+    cmds:
+      - go run ./cmd/pandalibrary migrate status
+
+  migrate:up:
+    cmds:
+      - go run ./cmd/pandalibrary migrate up
+
+  migrate:down-to:
+    cmds:
+      - go run ./cmd/pandalibrary migrate down-to {{.VERSION}}
+
+  migrate:new:
+    cmds:
+      - go run ./cmd/pandalibrary migrate new {{.NAME}}
+
+  migrate:sum:
+    cmds:
+      - go run ./cmd/pandalibrary migrate sum
+
+  web:check:
+    desc: Check SvelteKit and TypeScript
+    cmds:
+      - pnpm --dir web check
+
+  web:test:
+    desc: Run frontend unit tests
+    cmds:
+      - pnpm --dir web test
+
+  web:build:
+    desc: Build the static web application
+    cmds:
+      - pnpm --dir web build
