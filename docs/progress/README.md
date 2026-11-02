@@ -14,7 +14,7 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 2 | F2 | Database and migration runner | F1 | [F2-db-migrations.md](../prompts/F2-db-migrations.md) | Review | | Full lint/test wait for F3 web build assets |
 | 2 | F3 | Web scaffold | F1 | [F3-web-scaffold.md](../prompts/F3-web-scaffold.md) | Done | | Static fallback embedded; F4 must route SPA paths to it |
 | 2 | X1 | Extraction core, EPUB, covers | F1 | [X1-extraction-epub-covers.md](../prompts/X1-extraction-epub-covers.md) | Review | | Full lint blocked by unrelated F2 diagnostics |
-| 3 | F4 🔒 | Server skeleton | F2, F3 | — | Not started | | |
+| 3 | F4 🔒 | Server skeleton | F2, F3 | [F4-server-skeleton.md](../prompts/F4-server-skeleton.md) | Done | `master` | Server, health, SPA, middleware, and shutdown; F2/X1 remain in review |
 | 4 | A1 🔒 | Auth vertical slice | F4 | — | Not started | | |
 | 5 | C1 🔒 | Catalog core | A1 | — | Not started | | |
 | 6 | R1 | Reading and sync API | C1 | — | Not started | | |
@@ -42,6 +42,18 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-02 — F4 — Implemented configuration, migration-gated startup, the chi router,
+  healthcheck, embedded SPA, trusted-proxy/security middleware, and scheduler lifecycle.
+  The SPA fallback needs an inline SvelteKit bootstrap, so the server uses an HTML
+  tokenizer and a fresh CSP nonce per response; the architecture now records this.
+  `task web:build`, `task build`, `task lint`, `task test`, and `task sqlc:check` pass;
+  focused Linux race tests and live CLI/browser checks pass. A1 can add `httpapi.Mount`
+  callbacks, apply the supplied cookie-protection middleware, and use the resolved
+  client IP/scheme helpers; app wiring owns startup and shutdown.
+- 2026-11-02 — F4 — Started on `master` at the user's request. The existing Go lint and
+  test tasks pass with the F3 web assets built.
+- 2026-11-02 — F4 — Drafted the server-skeleton prompt from the accepted plan and the
+  current F2/F3 interfaces. Implementation remains gated on step 2 being fully merged.
 - 2026-11-02 — F1 — Merged `task/f1` into master after F2, F3 and X1 had landed with
   their own minimal Go plumbing. Kept the F2 CLI (real `migrate` commands) and tests,
   module requirements, and the F3 CI web steps; added F1's package docs, editor/ignore

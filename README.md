@@ -3,8 +3,8 @@
 Self-hosted ebook library: a single Go binary with an embedded SvelteKit PWA, SQLite,
 OPDS 1.2, KOReader sync, and EPUB/MOBI/AZW3/FB2/CBZ/PDF readers in the browser.
 
-Status: the Go foundation is in place and the web scaffold is implemented; product features
-have not started yet. See
+Status: the database, embedded web scaffold, and server foundation are in place; product
+features have not started yet. See
 [docs/progress](docs/progress/README.md).
 
 - [docs/](docs/README.md): architecture, decisions (ADRs), plans, prompts, progress
@@ -26,14 +26,47 @@ Ensure the directory from `go env GOBIN`, or the `bin` directory under the first
 `go env GOPATH` entry when `GOBIN` is unset, is on your `PATH`. From the repository root:
 
 ```sh
+task web:build
 task build
 task lint
 task test
 ```
 
 The build produces `pandalibrary` (`pandalibrary.exe` on Windows) with CGO disabled.
-The default `serve` command, `healthcheck`, `user create`, and `user reset-password` are
-stubs: each reports that it is not implemented and exits unsuccessfully.
+`user create` and `user reset-password` remain unimplemented and exit unsuccessfully.
+
+### Running the server
+
+The default command is `serve`; its flags can also be used without the subcommand. For
+example:
+
+```powershell
+.\pandalibrary.exe serve --data-dir .\data --listen 127.0.0.1:8080
+.\pandalibrary.exe healthcheck --listen 127.0.0.1:8080
+```
+
+On Unix, use `./pandalibrary` instead. The healthcheck probes the local `/healthz`
+endpoint and exits non-zero if it is unavailable or unhealthy. When `serve` uses a
+non-default `--listen` flag, pass the same flag to `healthcheck` or set `PANDA_LISTEN`
+for both commands. The server applies migrations before opening the listener. It serves
+the embedded SPA; product API, authentication, and import features are not implemented.
+
+Server flags override their corresponding environment variables:
+
+| Environment variable | Serve flag | Default |
+|---|---|---|
+| `PANDA_DATA_DIR` | `--data-dir` | `/data` |
+| `PANDA_LISTEN` | `--listen` | `:8080` |
+| `PANDA_DROP_DIR` | `--drop-dir` | `<data-dir>/drop` |
+| `PANDA_BASE_URL` | `--base-url` | unset |
+| `PANDA_TRUSTED_PROXIES` | `--trusted-proxies` | unset |
+| `PANDA_MAX_UPLOAD_MB` | `--max-upload-mb` | `1024` |
+| `PANDA_LOG_LEVEL` | `--log-level` | `info` |
+
+Trusted proxies are a comma-separated list of CIDRs; only configure proxies that sanitize
+forwarded headers. The drop directory is created at startup, but no watcher runs yet.
+`PANDA_BASE_URL` supplies a trusted public origin for future cookie-authenticated routes.
+Use `pandalibrary serve --help` for flag details.
 
 ### Database
 

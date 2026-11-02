@@ -1,8 +1,9 @@
 # PandaLibrary — Architecture
 
-Status: design (pre-scaffold). The database design is in [database.md](./database.md), the
-migration process in [migrations.md](./migrations.md), and the initial migration in
-[00001_init.sql](../../internal/db/migrations/00001_init.sql). Decisions are recorded in
+Status: accepted design, implementation in progress. The database design is in
+[database.md](./database.md), the migration process in [migrations.md](./migrations.md),
+and the initial migration in [00001_init.sql](../../internal/db/migrations/00001_init.sql).
+Decisions are recorded in
 [../decisions](../decisions/README.md); the task breakdown is in
 [../plans](../plans/README.md). This document is self-contained so a new session can
 continue from it without prior chat context.
@@ -237,7 +238,11 @@ check that the username matches. `kind` keeps OPDS and KOReader credentials sepa
 
 **Untrusted content:**
 
-- *SPA CSP:* `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`.
+- *SPA CSP:* `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-<per-response>'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`.
+  The embedded SvelteKit fallback has an inline bootstrap script. The server assigns a
+  fresh nonce to its script tags and CSP on every response, with `Cache-Control: no-store`;
+  other responses omit the nonce. This permits the bootstrap without allowing arbitrary
+  inline scripts.
   foliate-js renders book sections in `blob:` iframes, which inherit this CSP, so scripts
   inside EPUBs are blocked. Verify this during the reader milestone.
 - *Notes and descriptions:* Markdown is rendered to HTML in the browser and passed through

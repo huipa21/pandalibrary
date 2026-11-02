@@ -3,12 +3,19 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"syscall"
 
+	"pandalibrary/internal/app"
+	"pandalibrary/internal/config"
 	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/migrations"
 )
@@ -21,15 +28,14 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) error {
-	if len(args) == 0 {
-		return notImplemented("serve")
+	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		return runServe(args, stderr)
 	}
 	switch args[0] {
-	case "serve", "healthcheck":
-		if len(args) != 1 {
-			return fmt.Errorf("usage: pandalibrary %s", args[0])
-		}
-		return notImplemented(args[0])
+	case "serve":
+		return runServe(args[1:], stderr)
+	case "healthcheck":
+		return runHealthcheck(args[1:], stderr)
 	case "user":
 		if len(args) != 2 || (args[1] != "create" && args[1] != "reset-password") {
 			return errors.New("usage: pandalibrary user create|reset-password")
@@ -40,6 +46,31 @@ func run(args []string, stdout, stderr io.Writer) error {
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func runServe(args []string, stderr io.Writer) error {
+	cfg, err := config.Parse(args, stderr)
+	if errors.Is(err, flag.ErrHelp) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	logger := slog.New(slog.NewJSONHandler(stderr, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return app.Run(ctx, cfg, logger)
+}
+
+func runHealthcheck(args []string, stderr io.Writer) error {
+	listen, err := config.ParseHealthcheckListen(args, stderr)
+	if errors.Is(err, flag.ErrHelp) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return app.Healthcheck(context.Background(), listen)
 }
 
 func runMigrate(args []string, stdout io.Writer) (returnErr error) {
