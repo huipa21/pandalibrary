@@ -16,7 +16,7 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 2 | X1 | Extraction core, EPUB, covers | F1 | [X1-extraction-epub-covers.md](../prompts/X1-extraction-epub-covers.md) | Review | | Full lint blocked by unrelated F2 diagnostics |
 | 3 | F4 🔒 | Server skeleton | F2, F3 | [F4-server-skeleton.md](../prompts/F4-server-skeleton.md) | Done | `master` | Server, health, SPA, middleware, and shutdown; F2/X1 remain in review |
 | 4 | A1 🔒 | Auth vertical slice | F4 | [A1-auth-vertical-slice.md](../prompts/A1-auth-vertical-slice.md) | Done | `master` | Auth setup, sessions, app passwords, CLI, and web flows; checks pass |
-| 5 | C1 🔒 | Catalog core | A1 | — | Not started | | |
+| 5 | C1 🔒 | Catalog core | A1 | [C1-catalog-core.md](../prompts/C1-catalog-core.md) | Done | `master` | Catalog, ACLs, metadata, media, and FTS; F2/X1 remain in review |
 | 6 | R1 | Reading and sync API | C1 | — | Not started | | |
 | 6 | W1 | Library UI | C1 | — | Not started | | |
 | 6 | X2 | PDF and CBZ extractors | X1 | — | Not started | | |
@@ -42,6 +42,14 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-03 — C1 — Implemented the visibility-filtered catalog, library ACLs, metadata
+  and FTS transactions, and authorized file/cover serving. `task sqlc:check`, `task
+  build`, `task lint`, and time-bounded `task test` pass; F2/X1 remain in review.
+- 2026-11-03 — C1 — Started implementing the catalog core in the current `master`
+  worktree at the user's request.
+- 2026-11-02 — C1 — Drafted the catalog-core prompt from the accepted plan and merged
+  auth, server, database, and cover interfaces. Awaiting review; implementation has not
+  started.
 - 2026-11-02 — A1 — Started implementing the authentication vertical slice on `master`.
 - 2026-11-02 — A1 — Implemented the authentication vertical slice: setup, sessions,
   profile and app-password APIs, secure user CLI commands, and bilingual web flows.

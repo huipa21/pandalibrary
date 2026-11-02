@@ -191,7 +191,7 @@ keyset cursors (`?cursor=…&limit=…`).
 | `/api/v1/auth/*` | none / session | `POST login`, `POST logout`, `GET me` |
 | `/api/v1/setup` | none / setup token | `GET` first-run status; `POST` creates the first admin only while `users` is empty |
 | `/api/v1/libraries`, `/books`, `/authors`, `/series`, `/tags`, `/shelves` | session | Catalog browse/filter/sort; writes admin-only (shelves: owner or admin) |
-| `/api/v1/books/{id}/files/{fileId}` | session | Stream the file (`http.ServeContent`: Range, ETag = sha256, immutable caching) |
+| `/api/v1/books/{id}/files/{fileId}` | session | Stream the file (Range and SHA-256 ETag; immutable caching only for hash-versioned URLs) |
 | `/api/v1/books/{id}/cover?w=400` | session | Cover/thumbnail; `PUT` uploads a cover (admin; pdf.js-rendered PDF covers) |
 | `/api/v1/uploads` | admin | Multipart streaming upload → import job; `POST /books/{id}/files` adds a format |
 | `/api/v1/imports` | admin | Import job list/status |
@@ -210,6 +210,57 @@ keyset cursors (`?cursor=…&limit=…`).
 | `/kosync/*` | KOReader headers (kosync app password) | KOReader sync (§8) |
 | `/healthz` | none | Liveness (DB ping) |
 | everything else | none | Embedded SPA; unknown paths → `index.html`; `/_app/immutable/*` cached for 1 year |
+
+### Catalog contract (C1)
+
+C1 implements the library, book, author, series, tag, file, cover, and library-access /
+hide-list routes above; the other domains remain later tasks. Lists return
+`{"items":[...],"next_cursor":"..."}` with `next_cursor: null` at the end. The default
+page size is 50, the maximum is 100, and cursors are bound to the viewer, list, sort and
+filters. Book filters are `library_id`, `author_id`, `series_id`, and `tag_id`; `sort`
+is `title` (default), `added`, or `series` (requires `series_id`). Title is ordered by
+`(sort_title, id)`, added by `(created_at, id)` descending, and series by index
+ascending, nulls last, then ID. Invalid or mismatched cursors and filters return 400.
+
+Single responses use named objects such as `{"book":{...}}` or `{"library":{...}}`.
+Timestamps are UTC RFC 3339 strings. Libraries expose `id`, `name`, `slug`,
+`created_at`, and `updated_at`. Authors, series, and tags expose `id`, `name`, and
+`visible_book_count`; a series description is included when present.
+
+Books expose `id`, `library_id`, `title`, `sort_title`, nullable `subtitle`,
+`description`, `language`, `publisher`, `published_date`, `page_count`, `cover_url`,
+`cover_source`, and `series`, plus `created_at` and `updated_at`. Their `authors`,
+`tags`, `identifiers`, `files`, and `field_sources` are arrays even when empty:
+
+- Authors contain `id`, `name`, `role`, and `position`; series contains `id`, `name`,
+  and nullable `index`; tags contain `id` and `name`; identifiers contain `scheme` and
+  `value`.
+- Files contain `id`, `format`, `size_bytes`, and `download_url` with `?v=<sha256>`.
+  Field sources contain `field`, `source`, nullable `source_ref` and `chosen_by`, and
+  `chosen_at`.
+
+All book-derived reads, including entity counts and media, apply the predicate in
+[database.md §5](./database.md#5-visibility-predicate-must-appear-in-every-catalog-read):
+admins bypass library grants, not their own hide list. Invisible and nonexistent books
+both return 404. Admin-only ACL lists expose IDs and grant/hide metadata, not book
+metadata, so an admin can remove their own hide entry. Library and ACL mutations and
+book PATCH/DELETE are admin-only and return JSON; unsafe session requests require
+cookie-origin protection. Book PATCH distinguishes absent fields from nulls, replaces
+supplied association arrays, records manual provenance, and updates FTS transactionally.
+
+Bare file URLs and cover URLs use `private, no-cache`, `Vary: Cookie`, and strong ETags;
+they omit date validators because an ID can be reused or a cover replaced within the
+same second. Only a file URL whose `v` matches the current SHA-256 uses private immutable
+caching. File and cover reads authorize before returning content or 304. Covers support
+full JPEG and `?w=400` variants; admin PUT accepts a raw JPEG/PNG/GIF/WebP body up to
+20 MiB and optional `source=upload|pdfjs`.
+
+For downstream domains, construct a trusted `catalog.Viewer` from authentication and
+reuse `catalog.Service` reads and `CheckVisible`; do not derive identity from request
+parameters. I1 can reuse `catalog.SortTitle` and `blobstore.BookPath`, and call
+`search.IndexBook` within its own write transaction after updating metadata. S1 and other
+new book-derived queries must apply the same SQL predicate and extend the visibility
+test harness. Blob cleanup and general book-file publication remain I1/J1 work.
 
 Middleware order: request ID → structured logging (slog) → panic recovery → real IP (only from
 trusted proxies) → security headers → body size limit → `http.CrossOriginProtection`

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"pandalibrary/internal/auth"
+	"pandalibrary/internal/blobstore"
+	"pandalibrary/internal/catalog"
 	"pandalibrary/internal/config"
 	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/migrations"
@@ -85,6 +87,14 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if token := authentication.InitialSetupToken(); token != "" {
 		logger.Warn("initial administrator setup is required", "setup_token", token)
 	}
+	blobs, err := blobstore.New(cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("configure blob storage: %w", err)
+	}
+	catalogService, err := catalog.NewService(databases.Writer, databases.Reader, blobs)
+	if err != nil {
+		return nil, fmt.Errorf("configure catalog: %w", err)
+	}
 	app := &application{
 		databases: databases,
 		scheduler: scheduler,
@@ -93,7 +103,10 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	app.handler, err = httpapi.NewRouter(httpapi.RouterOptions{
 		Database: databases.Reader, Ready: app.ready.Load, Assets: assets, Logger: logger,
 		TrustedProxies: cfg.TrustedProxies, MaxBodyBytes: cfg.MaxUploadBytes, BaseURL: cfg.BaseURL,
-		Mounts: []httpapi.Mount{httpapi.AuthMount(authentication, logger)},
+		Mounts: []httpapi.Mount{
+			httpapi.AuthMount(authentication, logger),
+			httpapi.CatalogMount(catalogService, authentication, logger),
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure HTTP router: %w", err)

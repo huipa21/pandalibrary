@@ -28,3 +28,4 @@ Prompts are kept after completion as a record of what was asked.
 | X1 | [X1-extraction-epub-covers.md](./X1-extraction-epub-covers.md) | Review |
 | F4 | [F4-server-skeleton.md](./F4-server-skeleton.md) | Done |
 | A1 | [A1-auth-vertical-slice.md](./A1-auth-vertical-slice.md) | Done |
+| C1 | [C1-catalog-core.md](./C1-catalog-core.md) | Done |
