@@ -1,8 +1,11 @@
 /pandalibrary
 /pandalibrary.exe
+*.test
+*.test.exe
 /coverage.out
 /coverage.html
+/.task/
+/data/
 *.db
 *.db-shm
 *.db-wal
-/.task/

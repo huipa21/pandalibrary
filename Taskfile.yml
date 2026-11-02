@@ -2,17 +2,19 @@ version: "3"
 
 tasks:
   build:
-    env:
-      CGO_ENABLED: "0"
+    desc: Build the PandaLibrary command without CGO
     cmds:
-      - go build ./cmd/pandalibrary
+      # Task's inline assignment overrides an inherited CGO_ENABLED on every platform.
+      - CGO_ENABLED=0 go build ./cmd/pandalibrary
 
   lint:
+    desc: Run Go's vet checks and staticcheck
     cmds:
       - go vet ./...
       - staticcheck ./...
 
   test:
+    desc: Run Go tests
     cmds:
       - go test ./...
 

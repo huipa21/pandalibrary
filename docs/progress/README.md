@@ -10,7 +10,7 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 
 | Step | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
-| 1 | F1 🔒 | Repository scaffold | — | [F1-repo-scaffold.md](../prompts/F1-repo-scaffold.md) | Prompt drafted | | |
+| 1 | F1 🔒 | Repository scaffold | — | [F1-repo-scaffold.md](../prompts/F1-repo-scaffold.md) | Done | `task/f1` | Merged into master after F2/F3/X1 |
 | 2 | F2 | Database and migration runner | F1 | [F2-db-migrations.md](../prompts/F2-db-migrations.md) | Review | | Full lint/test wait for F3 web build assets |
 | 2 | F3 | Web scaffold | F1 | [F3-web-scaffold.md](../prompts/F3-web-scaffold.md) | Done | | Static fallback embedded; F4 must route SPA paths to it |
 | 2 | X1 | Extraction core, EPUB, covers | F1 | [X1-extraction-epub-covers.md](../prompts/X1-extraction-epub-covers.md) | Review | | Full lint blocked by unrelated F2 diagnostics |
@@ -42,11 +42,24 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-02 — F1 — Merged `task/f1` into master after F2, F3 and X1 had landed with
+  their own minimal Go plumbing. Kept the F2 CLI (real `migrate` commands) and tests,
+  module requirements, and the F3 CI web steps; added F1's package docs, editor/ignore
+  rules, Task descriptions with the inline CGO override, and pinned tool versions.
 - 2026-11-02 — F3 — Added the SvelteKit SPA scaffold, Tailwind/shadcn setup, English and
   Chinese Paraglide messages, typed API client/navigation foundation, Playwright config,
   Vitest coverage, and Go embed package. Frontend check/test/build and `go test ./...`
   pass; CI builds web assets in each independent job. The generated fallback is ready for
   F4 to serve on client-side routes.
+- 2026-11-02 — F1 — Completed the Go 1.27 scaffold with explicit failing CLI stubs,
+  subprocess dispatch/exit tests, documented internal packages, portable Task targets,
+  baseline editor/ignore settings, and Go-only CI with pinned Task/staticcheck tools.
+  `task build`, `task lint`, and `task test` passed on Windows and Linux; actionlint
+  passed. The hosted workflow awaits a push (no remote configured). No runtime
+  dependencies, migration changes, web files, or design changes were introduced.
+  F2/F3/F4 retain ownership of database, web, and server implementation; merge F1
+  before starting step 2.
+- 2026-11-02 — F1 — Started the repository scaffold on `task/f1`.
 - 2026-11-02 — F1 — Prompt drafted; awaiting review before starting the scaffold.
 - 2026-11-02 — F2 — Implemented the SQLite writer/reader pools, migration runner, checksum
   verification, sqlc generation, operator commands, and migration tests. `task build`,
