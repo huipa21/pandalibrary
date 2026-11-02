@@ -23,3 +23,6 @@ Prompts are kept after completion as a record of what was asked.
 | Task | Prompt | Status |
 |---|---|---|
 | F1 | [F1-repo-scaffold.md](./F1-repo-scaffold.md) | Draft |
+| F2 | [F2-db-migrations.md](./F2-db-migrations.md) | Review |
+| F3 | [F3-web-scaffold.md](./F3-web-scaffold.md) | Done |
+| X1 | [X1-extraction-epub-covers.md](./X1-extraction-epub-covers.md) | Review |
