@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,10 +58,52 @@ func TestStartupMigratesAndCreatesRuntimeDirectories(t *testing.T) {
 	if err != nil || version != 1 || !app.ready.Load() {
 		t.Fatalf("migration version = %d, readiness = %v, error = %v", version, app.ready.Load(), err)
 	}
+	setupResponse := httptest.NewRecorder()
+	app.handler.ServeHTTP(setupResponse, httptest.NewRequest(http.MethodGet, "/api/v1/setup", nil))
+	if setupResponse.Code != http.StatusOK || !strings.Contains(setupResponse.Body.String(), `"required":true`) {
+		t.Fatalf("first-run auth route = %d %s", setupResponse.Code, setupResponse.Body.String())
+	}
 	for _, directory := range []string{"files", "covers", "tmp", "backups", "drop"} {
 		if info, err := os.Stat(filepath.Join(cfg.DataDir, directory)); err != nil || !info.IsDir() {
 			t.Fatalf("runtime directory %s: %v", directory, err)
 		}
+	}
+}
+
+func TestSetupTokenIsLoggedOnlyWhileFirstRunIsRequired(t *testing.T) {
+	cfg := testConfig(t)
+	var firstRunLogs bytes.Buffer
+	firstRunLogger := slog.New(slog.NewTextHandler(&firstRunLogs, nil))
+	app, err := newApplication(context.Background(), cfg, firstRunLogger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(firstRunLogs.String(), "setup_token=") {
+		t.Fatal("first-run startup did not log its setup token")
+	}
+	if _, err := app.databases.Writer.ExecContext(context.Background(), `
+		INSERT INTO users (username, display_name, password_hash, role, locale, created_at, updated_at)
+		VALUES ('admin', 'Admin', 'test-hash', 'admin', 'en', 1, 1)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var configuredLogs bytes.Buffer
+	configuredLogger := slog.New(slog.NewTextHandler(&configuredLogs, nil))
+	app, err = newApplication(context.Background(), cfg, configuredLogger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := app.close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if strings.Contains(configuredLogs.String(), "setup_token=") {
+		t.Fatal("startup logged a setup token after an account already existed")
 	}
 }
 

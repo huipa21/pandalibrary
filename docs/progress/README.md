@@ -15,7 +15,7 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 2 | F3 | Web scaffold | F1 | [F3-web-scaffold.md](../prompts/F3-web-scaffold.md) | Done | | Static fallback embedded; F4 must route SPA paths to it |
 | 2 | X1 | Extraction core, EPUB, covers | F1 | [X1-extraction-epub-covers.md](../prompts/X1-extraction-epub-covers.md) | Review | | Full lint blocked by unrelated F2 diagnostics |
 | 3 | F4 🔒 | Server skeleton | F2, F3 | [F4-server-skeleton.md](../prompts/F4-server-skeleton.md) | Done | `master` | Server, health, SPA, middleware, and shutdown; F2/X1 remain in review |
-| 4 | A1 🔒 | Auth vertical slice | F4 | — | Not started | | |
+| 4 | A1 🔒 | Auth vertical slice | F4 | [A1-auth-vertical-slice.md](../prompts/A1-auth-vertical-slice.md) | Done | `master` | Auth setup, sessions, app passwords, CLI, and web flows; checks pass |
 | 5 | C1 🔒 | Catalog core | A1 | — | Not started | | |
 | 6 | R1 | Reading and sync API | C1 | — | Not started | | |
 | 6 | W1 | Library UI | C1 | — | Not started | | |
@@ -42,6 +42,14 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-02 — A1 — Started implementing the authentication vertical slice on `master`.
+- 2026-11-02 — A1 — Implemented the authentication vertical slice: setup, sessions,
+  profile and app-password APIs, secure user CLI commands, and bilingual web flows.
+  Go tests/build, sqlc checks, web checks/tests/build, lint, and isolated Playwright
+  setup/login/app-password flows pass.
+- 2026-11-02 — A1 — Drafted the authentication vertical-slice prompt from the accepted
+  plan and the merged F4/F3/F2 interfaces. Prompt is ready for review; implementation has
+  not started.
 - 2026-11-02 — F4 — Implemented configuration, migration-gated startup, the chi router,
   healthcheck, embedded SPA, trusted-proxy/security middleware, and scheduler lifecycle.
   The SPA fallback needs an inline SvelteKit bootstrap, so the server uses an HTML

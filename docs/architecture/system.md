@@ -189,7 +189,7 @@ keyset cursors (`?cursor=…&limit=…`).
 | Prefix | Auth | Purpose |
 |---|---|---|
 | `/api/v1/auth/*` | none / session | `POST login`, `POST logout`, `GET me` |
-| `/api/v1/setup` | setup token | First-run admin creation (only while `users` is empty) |
+| `/api/v1/setup` | none / setup token | `GET` first-run status; `POST` creates the first admin only while `users` is empty |
 | `/api/v1/libraries`, `/books`, `/authors`, `/series`, `/tags`, `/shelves` | session | Catalog browse/filter/sort; writes admin-only (shelves: owner or admin) |
 | `/api/v1/books/{id}/files/{fileId}` | session | Stream the file (`http.ServeContent`: Range, ETag = sha256, immutable caching) |
 | `/api/v1/books/{id}/cover?w=400` | session | Cover/thumbnail; `PUT` uploads a cover (admin; pdf.js-rendered PDF covers) |
@@ -200,6 +200,7 @@ keyset cursors (`?cursor=…&limit=…`).
 | `/api/v1/search?q=` | session | Books; `/api/v1/search/annotations?q=` for the user's own highlights/notes |
 | `/api/v1/me/books/{id}` | session | Status, rating, progress, highlights, notes |
 | `/api/v1/sync/pull`, `/api/v1/sync/push` | session | PWA offline sync (§10) |
+| `/api/v1/me/profile` | session | Read/update the current user's display name and locale |
 | `/api/v1/me/app-passwords` | session | Create (secret shown once), list, revoke |
 | `/api/v1/me/settings` | session | Synced reader/UI settings |
 | `/api/v1/stats/*` | session | Dashboard aggregates |
@@ -220,7 +221,8 @@ setup, kosync/opds auth failures).
 **Passwords:** argon2id with RFC 9106 second recommended parameters (t=3, m=64 MiB, p=4,
 16-byte salt, 32-byte key), PHC string. Rehash on login when the parameters change. A
 semaphore of 2 limits concurrent hashing, since each hash uses 64 MiB. Unknown usernames
-still hash against a dummy hash so response timing does not reveal which usernames exist.
+still run a dummy Argon2id hash so response timing does not reveal which usernames exist.
+Passwords must contain at least 12 UTF-8 bytes and may not exceed 1024 bytes.
 
 **Sessions:** 32 random bytes in base64url, stored in the cookie `pl_session`; the database
 keeps only `sha256(token)`. The cookie is `HttpOnly`, `SameSite=Lax`, `Path=/` and `Secure`
@@ -233,8 +235,16 @@ their password deletes their sessions.
 label and records `last_used_at`. The lookup is by the hash, which is unique, followed by a
 check that the username matches. `kind` keeps OPDS and KOReader credentials separate.
 
-**First run:** while `users` is empty, the server logs a one-time setup token, and
-`/api/v1/setup` requires it. `pandalibrary user create --admin` is the CLI alternative.
+**First run:** while `users` is empty, the server logs a random 32-byte base64url setup
+token and `POST /api/v1/setup` requires it. The token is invalidated on restart; successful
+setup creates an administrator and a browser session. `GET /api/v1/setup` reports whether
+setup is still required. `pandalibrary user create --username <name> --admin` is the CLI
+alternative; `user reset-password --username <name>` replaces a password and revokes
+sessions. Both commands prompt for passwords without echo.
+
+**Rate limits:** login and setup allow five attempts per resolved client IP in a
+10-minute window. The in-memory limiter has a bounded 4096-client table and returns 429
+when a client exceeds the limit.
 
 **Untrusted content:**
 

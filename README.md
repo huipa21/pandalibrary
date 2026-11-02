@@ -33,7 +33,13 @@ task test
 ```
 
 The build produces `pandalibrary` (`pandalibrary.exe` on Windows) with CGO disabled.
-`user create` and `user reset-password` remain unimplemented and exit unsuccessfully.
+Create users or reset a password through the CLI; passwords are entered interactively
+without echo and are never accepted as command-line arguments:
+
+```powershell
+.\pandalibrary.exe user create --username admin --admin
+.\pandalibrary.exe user reset-password --username admin
+```
 
 ### Running the server
 
@@ -48,8 +54,10 @@ example:
 On Unix, use `./pandalibrary` instead. The healthcheck probes the local `/healthz`
 endpoint and exits non-zero if it is unavailable or unhealthy. When `serve` uses a
 non-default `--listen` flag, pass the same flag to `healthcheck` or set `PANDA_LISTEN`
-for both commands. The server applies migrations before opening the listener. It serves
-the embedded SPA; product API, authentication, and import features are not implemented.
+for both commands. The server applies migrations before opening the listener. On first
+run, it logs a one-time setup token; open `/setup` in the embedded SPA and enter that token
+to create the initial administrator. The browser then uses cookie-backed login. Catalog
+and import features are not implemented yet.
 
 Server flags override their corresponding environment variables:
 
@@ -65,8 +73,9 @@ Server flags override their corresponding environment variables:
 
 Trusted proxies are a comma-separated list of CIDRs; only configure proxies that sanitize
 forwarded headers. The drop directory is created at startup, but no watcher runs yet.
-`PANDA_BASE_URL` supplies a trusted public origin for future cookie-authenticated routes.
-Use `pandalibrary serve --help` for flag details.
+`PANDA_BASE_URL` supplies the trusted public origin for cookie-origin checks and enables
+the `Secure` attribute on session cookies when it uses HTTPS. Use
+`pandalibrary serve --help` for flag details.
 
 ### Database
 

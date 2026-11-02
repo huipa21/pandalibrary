@@ -27,3 +27,4 @@ Prompts are kept after completion as a record of what was asked.
 | F3 | [F3-web-scaffold.md](./F3-web-scaffold.md) | Done |
 | X1 | [X1-extraction-epub-covers.md](./X1-extraction-epub-covers.md) | Review |
 | F4 | [F4-server-skeleton.md](./F4-server-skeleton.md) | Done |
+| A1 | [A1-auth-vertical-slice.md](./A1-auth-vertical-slice.md) | Done |

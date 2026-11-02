@@ -15,9 +15,12 @@ import (
 	"syscall"
 
 	"pandalibrary/internal/app"
+	"pandalibrary/internal/auth"
 	"pandalibrary/internal/config"
 	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/migrations"
+
+	"golang.org/x/term"
 )
 
 func main() {
@@ -37,10 +40,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	case "healthcheck":
 		return runHealthcheck(args[1:], stderr)
 	case "user":
-		if len(args) != 2 || (args[1] != "create" && args[1] != "reset-password") {
-			return errors.New("usage: pandalibrary user create|reset-password")
-		}
-		return notImplemented("user " + args[1])
+		return runUser(args[1:], stdout, stderr)
 	case "migrate":
 		return runMigrate(args[1:], stdout)
 	default:
@@ -71,6 +71,121 @@ func runHealthcheck(args []string, stderr io.Writer) error {
 		return err
 	}
 	return app.Healthcheck(context.Background(), listen)
+}
+
+type passwordPrompt func(string) (string, error)
+
+func runUser(args []string, stdout, stderr io.Writer) error {
+	return runUserWithPrompt(args, stdout, stderr, readPasswordFromTerminal)
+}
+
+func runUserWithPrompt(args []string, stdout, stderr io.Writer, prompt passwordPrompt) (returnErr error) {
+	if len(args) == 0 {
+		return errors.New("usage: pandalibrary user create|reset-password")
+	}
+	command := args[0]
+	if command != "create" && command != "reset-password" {
+		return fmt.Errorf("unknown user command %q", command)
+	}
+	flags := flag.NewFlagSet("user "+command, flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	username := flags.String("username", "", "username to create or reset")
+	admin := flags.Bool("admin", false, "create an administrator")
+	if err := flags.Parse(args[1:]); errors.Is(err, flag.ErrHelp) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return fmt.Errorf("unexpected user arguments: %s", strings.Join(flags.Args(), " "))
+	}
+	if *username == "" {
+		return errors.New("user command requires --username")
+	}
+	if command == "reset-password" && *admin {
+		return errors.New("--admin is only valid with user create")
+	}
+
+	password, err := prompt("New password")
+	if err != nil {
+		return err
+	}
+	confirmationPrompt := "Confirm password"
+	if command == "reset-password" {
+		confirmationPrompt = "Confirm new password"
+	}
+	confirmation, err := prompt(confirmationPrompt)
+	if err != nil {
+		return err
+	}
+	if password != confirmation {
+		return errors.New("passwords do not match")
+	}
+
+	ctx := context.Background()
+	databases, err := db.Open(ctx, databasePath())
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer func() {
+		if err := databases.Close(); err != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("close database: %w", err))
+		}
+	}()
+	migrationRunner, err := migrations.NewRunner(
+		databases.Writer, databasePath(), migrations.Files(), migrations.DefaultOptions(),
+	)
+	if err != nil {
+		return fmt.Errorf("configure migrations: %w", err)
+	}
+	if err := migrationRunner.Run(ctx); err != nil {
+		return fmt.Errorf("run migrations: %w", err)
+	}
+	service, err := auth.NewService(ctx, databases.Writer, databases.Reader, false)
+	if err != nil {
+		return fmt.Errorf("configure authentication: %w", err)
+	}
+	if command == "reset-password" {
+		if err := service.ResetPassword(ctx, *username, password); err != nil {
+			return fmt.Errorf("reset password: %w", err)
+		}
+		_, err := fmt.Fprintf(stdout, "Password reset for %s.\n", strings.TrimSpace(*username))
+		return err
+	}
+	role := "user"
+	if *admin {
+		role = "admin"
+	}
+	user, err := service.CreateUser(ctx, auth.CreateUserInput{
+		Username: *username, Password: password, Role: role, Locale: "en",
+	})
+	if err != nil {
+		return fmt.Errorf("create user: %w", err)
+	}
+	_, err = fmt.Fprintf(stdout, "Created %s user %s (id %d).\n", user.Role, user.Username, user.ID)
+	return err
+}
+
+func readPasswordFromTerminal(prompt string) (string, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return "", errors.New("secure password input requires an interactive terminal")
+	}
+	if _, err := fmt.Fprintf(os.Stderr, "%s: ", prompt); err != nil {
+		return "", err
+	}
+	password, err := term.ReadPassword(int(os.Stdin.Fd()))
+	_, writeErr := fmt.Fprintln(os.Stderr)
+	if err != nil {
+		clear(password)
+		return "", fmt.Errorf("read password securely: %w", err)
+	}
+	if writeErr != nil {
+		clear(password)
+		return "", writeErr
+	}
+	result := string(password)
+	clear(password)
+	return result, nil
 }
 
 func runMigrate(args []string, stdout io.Writer) (returnErr error) {
@@ -162,8 +277,4 @@ func databasePath() string {
 		dataDir = "/data"
 	}
 	return filepath.Join(dataDir, "pandalibrary.db")
-}
-
-func notImplemented(command string) error {
-	return fmt.Errorf("%s is not implemented", command)
 }

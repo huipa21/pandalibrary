@@ -1,2 +1,2 @@
-// Package auth is reserved for authentication and authorization.
+// Package auth implements password, browser-session, and app-password authentication.
 package auth
