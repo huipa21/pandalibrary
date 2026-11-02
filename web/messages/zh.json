@@ -1,0 +1,8 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"common.app_name": "PandaLibrary",
+	"common.language_english": "英语",
+	"common.language_chinese": "中文",
+	"home.title": "你的家庭书库",
+	"home.description": "PandaLibrary 网页应用已准备好加入首批功能。"
+}

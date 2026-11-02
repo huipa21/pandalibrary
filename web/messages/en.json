@@ -1,0 +1,8 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"common.app_name": "PandaLibrary",
+	"common.language_english": "English",
+	"common.language_chinese": "Chinese",
+	"home.title": "Your library, together",
+	"home.description": "The PandaLibrary web app is ready for its first features."
+}

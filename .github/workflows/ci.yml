@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+      - name: Build embedded web assets
+        run: pnpm --dir web build
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Add Go tools to PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+      - name: Build
+        run: task build
+      - name: Lint
+        run: task lint
+      - name: Test
+        run: task test
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Check
+        working-directory: web
+        run: pnpm check
+      - name: Test
+        working-directory: web
+        run: pnpm test
+      - name: Build
+        working-directory: web
+        run: pnpm build
