@@ -1,0 +1,10 @@
+/pandalibrary
+/pandalibrary.exe
+*.test
+*.test.exe
+/coverage.out
+/.task/
+/data/
+/pandalibrary.db
+/pandalibrary.db-shm
+/pandalibrary.db-wal

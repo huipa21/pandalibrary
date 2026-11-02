@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Add Go tools to PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+      - name: Build
+        run: task build
+      - name: Lint
+        run: task lint
+      - name: Test
+        run: task test

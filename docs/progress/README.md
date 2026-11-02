@@ -10,7 +10,7 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 
 | Step | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
-| 1 | F1 🔒 | Repository scaffold | — | [F1-repo-scaffold.md](../prompts/F1-repo-scaffold.md) | Prompt drafted | | |
+| 1 | F1 🔒 | Repository scaffold | — | [F1-repo-scaffold.md](../prompts/F1-repo-scaffold.md) | Done | `task/f1` | Build, lint, test passed on Windows and Linux |
 | 2 | F2 | Database and migration runner | F1 | — | Not started | | |
 | 2 | F3 | Web scaffold | F1 | — | Not started | | |
 | 2 | X1 | Extraction core, EPUB, covers | F1 | — | Not started | | |
@@ -42,6 +42,15 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-02 — F1 — Completed the Go 1.27 scaffold with explicit failing CLI stubs,
+  subprocess dispatch/exit tests, documented internal packages, portable Task targets,
+  baseline editor/ignore settings, and Go-only CI with pinned Task/staticcheck tools.
+  `task build`, `task lint`, and `task test` passed on Windows and Linux; actionlint
+  passed. The hosted workflow awaits a push (no remote configured). No runtime
+  dependencies, migration changes, web files, or design changes were introduced.
+  F2/F3/F4 retain ownership of database, web, and server implementation; merge F1
+  before starting step 2.
+- 2026-11-02 — F1 — Started the repository scaffold on `task/f1`.
 - 2026-11-02 — F1 — Prompt drafted; awaiting review before starting the scaffold.
 - 2026-11-02 — docs — Open questions settled (all recommendations accepted). ADR-0001, 0003
   and 0004 accepted. Plan reorganised into 11 numbered steps of at most 4 parallel

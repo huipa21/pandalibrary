@@ -1,6 +1,6 @@
 # F1: Repository scaffold
 
-- Status: Draft
+- Status: Done
 - Plan entry: [implementation-plan.md](../plans/implementation-plan.md) § F1
 - Depends on (merged): none
 - Can run in parallel with: none — serial gate
@@ -92,16 +92,20 @@ database, web client, server, and application behavior.
 
 ## Acceptance criteria
 
-- [ ] `go.mod` and all scaffold packages compile without CGO.
-- [ ] `cmd/pandalibrary` builds and each declared stub fails explicitly instead of
+- [x] `go.mod` and all scaffold packages compile without CGO.
+- [x] `cmd/pandalibrary` builds and each declared stub fails explicitly instead of
   returning success for unimplemented behavior; dispatch and error behavior are tested.
-- [ ] `task build`, `task lint`, and `task test` pass from the repository root.
-- [ ] The GitHub Actions Go job runs those same three tasks successfully.
-- [ ] `staticcheck` and `go vet` cover all Go packages; no broad lint suppressions are
+- [x] `task build`, `task lint`, and `task test` pass from the repository root.
+- [x] The GitHub Actions Go job runs those same three tasks successfully.
+- [x] `staticcheck` and `go vet` cover all Go packages; no broad lint suppressions are
   added to make the skeleton pass.
-- [ ] No migration or web files are added or changed.
-- [ ] Update this prompt's status and F1's row and log entry in
+- [x] No migration or web files are added or changed.
+- [x] Update this prompt's status and F1's row and log entry in
   [progress/README.md](../progress/README.md) when implementation is complete.
+
+Validation: all three tasks passed on Windows and under Linux using the CI-pinned
+tools and Go 1.27.0; the workflow passed actionlint. A hosted GitHub Actions run
+remains to be observed after pushing (no remote is configured).
 
 ## Validation commands
 
