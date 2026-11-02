@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+         xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
+  <metadata>
+    <dc:title id="main-title">EPUB Three</dc:title>
+    <meta refines="#main-title" property="title-type">main</meta>
+    <dc:title id="sub-title">Modern Metadata</dc:title>
+    <meta refines="#sub-title" property="title-type">subtitle</meta>
+    <dc:creator id="creator">C. Author</dc:creator>
+    <meta refines="#creator" property="role">aut</meta>
+    <meta refines="#creator" property="file-as">Author, C.</meta>
+    <dc:language>fr</dc:language>
+    <dc:identifier>urn:isbn:0-306-40615-2</dc:identifier>
+    <dc:subject>Reference</dc:subject>
+    <meta property="page-count">350</meta>
+    <meta id="series" property="belongs-to-collection">Collection Series</meta>
+    <meta refines="#series" property="collection-type">series</meta>
+    <meta refines="#series" property="group-position">1.25</meta>
+  </metadata>
+  <manifest>
+    <item id="cover" href="cover.png" media-type="image/png" properties="cover-image"/>
+  </manifest>
+  <spine/>
+</package>

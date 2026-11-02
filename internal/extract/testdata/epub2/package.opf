@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf"
+         xmlns:dc="http://purl.org/dc/elements/1.1/"
+         xmlns:opf="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata>
+    <dc:title id="title">The Fixture Book</dc:title>
+    <dc:title>A Subtitle</dc:title>
+    <dc:creator id="author" opf:role="aut" opf:file-as="Example, Ada">Ada Example</dc:creator>
+    <dc:creator id="translator">B. Translator</dc:creator>
+    <meta name="role" content="trl" refines="#translator"/>
+    <dc:language>en</dc:language>
+    <dc:publisher>Example Press</dc:publisher>
+    <dc:date>2024-06-01</dc:date>
+    <dc:description>A fixture description.</dc:description>
+    <dc:identifier id="isbn" opf:scheme="ISBN">978-0-306-40615-7</dc:identifier>
+    <dc:subject>Fiction</dc:subject>
+    <meta name="cover" content="cover-image"/>
+    <meta name="calibre:series" content="Example Series"/>
+    <meta name="calibre:series_index" content="2.5"/>
+  </metadata>
+  <manifest>
+    <item id="cover-image" href="cover.png" media-type="image/png"/>
+  </manifest>
+  <spine/>
+</package>
