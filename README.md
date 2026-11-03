@@ -66,6 +66,7 @@ Server flags override their corresponding environment variables:
 | `PANDA_DATA_DIR` | `--data-dir` | `/data` |
 | `PANDA_LISTEN` | `--listen` | `:8080` |
 | `PANDA_DROP_DIR` | `--drop-dir` | `<data-dir>/drop` |
+| `PANDA_DROP_POLL` | `--drop-poll` | `0` (disabled) |
 | `PANDA_BASE_URL` | `--base-url` | unset |
 | `PANDA_TRUSTED_PROXIES` | `--trusted-proxies` | unset |
 | `PANDA_MAX_UPLOAD_MB` | `--max-upload-mb` | `1024` |
@@ -105,3 +106,28 @@ are intentionally separate from `pnpm test`.
 
 The Go `webui` package embeds `web/build`. On a fresh checkout, build the web app before
 running Go build, lint, or test tasks; CI builds the assets independently in its Go job.
+
+## Importing books (I1)
+
+The importer is now implemented; the foundation-only status notes above predate I1.
+Administrators can send a multipart `library_id` and one `file` to
+`POST /api/v1/uploads`, or one `file` to `POST /api/v1/books/{id}/files` to attach
+another format. Both return `202` with a durable import job. Poll
+`GET /api/v1/imports?limit=50` for job outcomes and duplicate book references.
+
+Files placed in the configured drop directory are imported after their size and mtime
+remain stable for three seconds. Root files require `server_settings.default_library_id`;
+`drop/<library-slug>/` targets that library. Hidden files, symlinks, unknown folders,
+and `.part`, `.crdownload`, and `.tmp` files are ignored. Successful sources are removed
+after commit, duplicates move to `.duplicates/`, and failures move to `.failed/` with a
+bounded error sidecar.
+
+fsnotify and a startup scan are enabled by default. For network mounts with unreliable
+notifications, set `PANDA_DROP_POLL=5s` or pass `--drop-poll 5s`. The value is `0` to
+disable polling, or a Go duration of at least `1s`. Polling supplements notifications
+and also provides a fallback when fsnotify cannot initialize.
+
+EPUB, PDF, MOBI, AZW3, UTF-8 FB2 without a BOM, FBZ, and CBZ are registered. Plain FB2
+with a UTF-8 BOM or Windows-1251 encoding remains blocked by the known sniffer issue;
+FBZ extraction is unaffected. See [the I1 hand-off](docs/prompts/I1-importer.md) for
+the API contract and restart-spool lifecycle used by maintenance and admin UI work.

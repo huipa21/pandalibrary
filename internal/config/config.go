@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const bytesPerMiB = 1024 * 1024
@@ -23,6 +24,7 @@ type Config struct {
 	DataDir        string
 	Listen         string
 	DropDir        string
+	DropPoll       time.Duration
 	BaseURL        *url.URL
 	TrustedProxies []netip.Prefix
 	MaxUploadBytes int64
@@ -36,6 +38,7 @@ func Parse(args []string, output io.Writer) (Config, error) {
 	dataDir := flags.String("data-dir", envOr("PANDA_DATA_DIR", "/data"), "runtime data directory")
 	listen := flags.String("listen", envOr("PANDA_LISTEN", ":8080"), "HTTP listen address")
 	dropDir := flags.String("drop-dir", os.Getenv("PANDA_DROP_DIR"), "import drop directory")
+	dropPoll := flags.String("drop-poll", envOr("PANDA_DROP_POLL", "0"), "drop polling fallback interval (0 disables; otherwise at least 1s)")
 	baseURL := flags.String("base-url", os.Getenv("PANDA_BASE_URL"), "public base URL")
 	proxies := flags.String("trusted-proxies", os.Getenv("PANDA_TRUSTED_PROXIES"), "comma-separated trusted proxy CIDRs")
 	maxUpload := flags.String("max-upload-mb", envOr("PANDA_MAX_UPLOAD_MB", "1024"), "maximum request body in MiB")
@@ -54,6 +57,10 @@ func Parse(args []string, output io.Writer) (Config, error) {
 	}
 	if *dropDir == "" {
 		*dropDir = filepath.Join(*dataDir, "drop")
+	}
+	pollInterval, err := time.ParseDuration(*dropPoll)
+	if err != nil || pollInterval < 0 || pollInterval > 0 && pollInterval < time.Second {
+		return Config{}, errors.New("invalid drop polling interval: expected 0 or a duration of at least 1s")
 	}
 	publicURL, err := parseBaseURL(*baseURL)
 	if err != nil {
@@ -75,6 +82,7 @@ func Parse(args []string, output io.Writer) (Config, error) {
 		DataDir:        *dataDir,
 		Listen:         *listen,
 		DropDir:        *dropDir,
+		DropPoll:       pollInterval,
 		BaseURL:        publicURL,
 		TrustedProxies: trustedProxies,
 		MaxUploadBytes: uploadMiB * bytesPerMiB,

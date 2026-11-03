@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func clearEnvironment(t *testing.T) {
@@ -13,6 +14,7 @@ func clearEnvironment(t *testing.T) {
 	for _, key := range []string{
 		"PANDA_DATA_DIR", "PANDA_LISTEN", "PANDA_DROP_DIR", "PANDA_BASE_URL",
 		"PANDA_TRUSTED_PROXIES", "PANDA_MAX_UPLOAD_MB", "PANDA_LOG_LEVEL",
+		"PANDA_DROP_POLL",
 	} {
 		t.Setenv(key, "")
 	}
@@ -93,5 +95,27 @@ func TestParseHealthcheckListen(t *testing.T) {
 	}
 	if _, err := ParseHealthcheckListen([]string{"extra"}, io.Discard); err == nil {
 		t.Fatal("unexpected argument accepted")
+	}
+}
+
+func TestDropPollDefaultsValidationAndOverrides(t *testing.T) {
+	clearEnvironment(t)
+	cfg, err := Parse(nil, io.Discard)
+	if err != nil || cfg.DropPoll != 0 {
+		t.Fatalf("default poll %v %v", cfg.DropPoll, err)
+	}
+	t.Setenv("PANDA_DROP_POLL", "5s")
+	cfg, err = Parse(nil, io.Discard)
+	if err != nil || cfg.DropPoll != 5*time.Second {
+		t.Fatalf("environment poll %v %v", cfg.DropPoll, err)
+	}
+	cfg, err = Parse([]string{"--drop-poll", "1m"}, io.Discard)
+	if err != nil || cfg.DropPoll != time.Minute {
+		t.Fatalf("flag poll %v %v", cfg.DropPoll, err)
+	}
+	for _, value := range []string{"-1s", "100ms", "bad", "5", "999999999999h"} {
+		if _, err := Parse([]string{"--drop-poll", value}, io.Discard); err == nil {
+			t.Errorf("accepted polling interval %q", value)
+		}
 	}
 }

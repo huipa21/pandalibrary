@@ -20,8 +20,10 @@ import (
 	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/migrations"
 	"pandalibrary/internal/httpapi"
+	"pandalibrary/internal/importer"
 	"pandalibrary/internal/jobs"
 	"pandalibrary/internal/reading"
+	"pandalibrary/internal/search"
 	webui "pandalibrary/web"
 )
 
@@ -31,6 +33,7 @@ type application struct {
 	databases *db.DB
 	handler   http.Handler
 	scheduler *jobs.Scheduler
+	importer  *importer.Service
 	ready     atomic.Bool
 	logger    *slog.Logger
 }
@@ -100,9 +103,21 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure reading: %w", err)
 	}
+	searchService, err := search.NewService(databases.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("configure search: %w", err)
+	}
+	importService, err := importer.New(importer.Options{
+		Writer: databases.Writer, Reader: databases.Reader, Blobs: blobs, Catalog: catalogService,
+		DataDir: cfg.DataDir, DropDir: cfg.DropDir, MaxBytes: cfg.MaxUploadBytes, DropPoll: cfg.DropPoll, Logger: logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure importer: %w", err)
+	}
 	app := &application{
 		databases: databases,
 		scheduler: scheduler,
+		importer:  importService,
 		logger:    logger,
 	}
 	app.handler, err = httpapi.NewRouter(httpapi.RouterOptions{
@@ -112,6 +127,9 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.AuthMount(authentication, logger),
 			httpapi.CatalogMount(catalogService, authentication, logger),
 			httpapi.ReadingMount(readingService, authentication, logger),
+			httpapi.SearchMount(searchService, authentication, logger),
+			httpapi.ImportMount(importService, catalogService, authentication, logger),
+			httpapi.ShelfMount(catalogService, authentication, logger),
 		},
 	})
 	if err != nil {
@@ -123,6 +141,11 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 
 func (a *application) close() error {
 	a.ready.Store(false)
+	stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := a.importer.Stop(stopCtx); err != nil {
+		return fmt.Errorf("stop importer before closing database: %w", err)
+	}
 	if err := a.databases.Close(); err != nil {
 		return fmt.Errorf("close application database: %w", err)
 	}
@@ -158,6 +181,11 @@ func (a *application) serve(ctx context.Context, listener net.Listener) error {
 	if err := a.scheduler.Start(ctx); err != nil {
 		return errors.Join(fmt.Errorf("start scheduler: %w", err), listener.Close())
 	}
+	if err := a.importer.Start(ctx); err != nil {
+		stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		return errors.Join(fmt.Errorf("start importer: %w", err), a.scheduler.Stop(stopCtx), listener.Close())
+	}
 	server := &http.Server{
 		Handler:           a.handler,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -189,6 +217,9 @@ func (a *application) serve(ctx context.Context, listener net.Listener) error {
 		serveErr = <-serveResult
 	}
 	stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	if err := a.importer.Stop(stopCtx); err != nil {
+		stopErr = errors.Join(stopErr, err)
+	}
 	if err := a.scheduler.Stop(stopCtx); err != nil {
 		stopErr = errors.Join(stopErr, err)
 	}

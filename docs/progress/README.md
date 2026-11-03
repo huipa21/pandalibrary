@@ -21,10 +21,10 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 6 | W1 | Library UI | C1 | [W1-library-ui.md](../prompts/W1-library-ui.md) | Done | `master` | Bilingual catalog browsing, filters, keyset paging and details; frontend checks and browser tests pass |
 | 6 | X2 | PDF and CBZ extractors | X1 | [X2-pdf-cbz-extractors.md](../prompts/X2-pdf-cbz-extractors.md) | Done | `master` | PDF/CBZ registration and fixture tests; pdfcpu v0.16.4 |
 | 6 | X3 | MOBI/AZW3 and FB2 extractors | X1 | [X3-mobi-fb2-extractors.md](../prompts/X3-mobi-fb2-extractors.md) | Blocked (X1 FB2 sniffing) | `master` | Plain CP1251 and BOM FB2 cannot reach the registered extractor |
-| 7 | W2 | Reader UI | R1, W1 | — | Not started | | |
-| 7 | I1 | Importer | C1, X1 | — | Not started | | |
-| 7 | S1 | Search | C1 | — | Not started | | |
-| 7 | SH1 | Shelves | C1 | — | Not started | | |
+| 7 | W2 | Reader UI | R1, W1 | [W2-reader-ui.md](../prompts/W2-reader-ui.md) | Done | `master` | Seven-format bilingual reader, R1 progress/annotations/settings/sessions, isolated book content; frontend checks and browser tests pass |
+| 7 | I1 | Importer | C1, X1 | [I1-importer.md](../prompts/I1-importer.md) | Done | `master` | Durable uploads/drop imports, two workers, recovery, formats/FTS/covers; required Go gates pass; X1/X3 BOM/CP1251 plain-FB2 blocker unchanged |
+| 7 | S1 | Search | C1 | [S1-search.md](../prompts/S1-search.md) | Done | `master` | Authenticated FTS/short-query search with visibility and query-bound pagination; checks pass |
+| 7 | SH1 | Shelves | C1 | [SH1-shelves.md](../prompts/SH1-shelves.md) | Done | `master` | Private/shared shelves, visibility-filtered manual ordering, and paged APIs; checks pass |
 | 8 | W3 | Offline PWA | W2 | — | Not started | | |
 | 8 | K1 | KOReader sync | R1, I1 | — | Not started | | Needs a real device test |
 | 8 | M1 | Metadata providers | C1, X1 | — | Not started | | |
@@ -42,6 +42,38 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-03 — W2 — Implemented the seven-format browser reader and reader-owned chooser,
+  accessible English/Chinese controls, R1 progress restore/debounced saves, highlights,
+  sanitized CodeMirror Markdown notes, settings, and active reading sessions with explicit
+  retry. Foliate sections are sanitized and receive a script-denying CSP; direct Blob
+  capture avoids weakening the host CSP for intermediate blob fetches. PDF.js assets are
+  bundled same-origin. `pnpm --dir web check`, `test` (30 tests), `build`, and the full
+  Playwright suite (16 tests, isolated port 4193) pass. Generated fixtures exercise all
+  seven formats including genuine KF8/AZW3; the malicious EPUB covers inline/external
+  same-origin scripts and event handlers. No offline/PWA work was added; W3 constraints
+  and in-memory-only retry behavior are recorded in the W2 prompt.
+
+- 2026-11-03 — I1 — Implemented streaming administrator uploads, add-format and bounded
+  job history; safe content-addressed book writes with one-pass SHA-256/KOReader hashes;
+  two durable SQLite-backed workers, transactional catalog/FTS writes, concurrent dedupe,
+  cover publication, restart manifests, and graceful cancellation. Added fsnotify startup
+  and live scans, three-second stability checks, per-library drop routing, optional
+  `PANDA_DROP_POLL`, and safe duplicate/failure outcomes. `task sqlc:check`, `task build`,
+  `task lint`, and `task test` pass. API/lifecycle and J1 spool-retention contracts are in
+  the I1 prompt. X1/X3 Windows-1251 and BOM plain-FB2 sniffing remains an explicit
+  follow-up; extractor/sniffer code and migrations were not changed.
+
+- 2026-11-03 — S1 — Implemented visibility-filtered trigram and short-query book search,
+  deterministic ranked pagination, and an authenticated API. Added SQLite, catalog
+  visibility, application-mount and HTTP tests; `task sqlc:check`, `task build`,
+  `task lint`, and `task test` pass. The prompt records the W4/O1 result and cursor contract.
+- 2026-11-03 — SH1 — Implemented private/shared shelves, transactional manual ordering and
+  viewer-filtered counts and book pagination. Added authorization, visibility, concurrency,
+  rollback, and HTTP tests; `task sqlc:check`, `task build`, `task lint`, and `task test`
+  pass. No migration was needed; the prompt records the O1/W4 response and cursor contract.
+- 2026-11-03 — docs — Drafted the Step 7 prompts (W2, I1, S1, SH1) from the accepted plan,
+  current architecture, and merged R1/C1/extractor interfaces. I1 explicitly records the
+  known X3 plain-FB2 sniffing blocker; prompts await review.
 - 2026-11-03 — X3 — Implemented MOBI/AZW3 and FB2/FBZ extractors with DRM detection,
   bounded metadata/covers, generated fixtures, and registration tests. `task build`,
   `task lint`, and `task test` pass. Plain FB2 registry dispatch for Windows-1251 and

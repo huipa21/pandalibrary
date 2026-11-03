@@ -33,3 +33,7 @@ Prompts are kept after completion as a record of what was asked.
 | W1 | [W1-library-ui.md](./W1-library-ui.md) | Draft |
 | X2 | [X2-pdf-cbz-extractors.md](./X2-pdf-cbz-extractors.md) | Done |
 | X3 | [X3-mobi-fb2-extractors.md](./X3-mobi-fb2-extractors.md) | Blocked (X1 FB2 sniffing) |
+| W2 | [W2-reader-ui.md](./W2-reader-ui.md) | Draft |
+| I1 | [I1-importer.md](./I1-importer.md) | Draft |
+| S1 | [S1-search.md](./S1-search.md) | Done |
+| SH1 | [SH1-shelves.md](./SH1-shelves.md) | Done |
