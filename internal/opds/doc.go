@@ -1,2 +1,2 @@
-// Package opds is reserved for the OPDS catalog protocol adapter.
+// Package opds serves the HTTP Basic-authenticated OPDS 1.2 Atom catalog at /opds.
 package opds

@@ -1,2 +1,2 @@
-// Package stats is reserved for reading statistics.
+// Package stats aggregates visible reading history using bundled IANA timezones.
 package stats

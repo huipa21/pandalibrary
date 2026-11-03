@@ -29,10 +29,10 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 8 | K1 | KOReader sync | R1, I1 | [K1-koreader-sync.md](../prompts/K1-koreader-sync.md) | Done | `master` | Protocol/bridge/session tests pass; no device available, safe XPointer fallback enabled; all required Go gates pass |
 | 8 | M1 | Metadata providers | C1, X1 | [M1-metadata-providers.md](../prompts/M1-metadata-providers.md) | Done | `master` | Four bounded/cached providers, admin config, atomic per-field apply/provenance and safe covers; Go gates pass |
 | 8 | J1 | Maintenance jobs | I1, R1 | [J1-maintenance-jobs.md](../prompts/J1-maintenance-jobs.md) | Done | `master` | Bounded maintenance/admin controls, verified retained backups, safe orphan sweep; all required Go gates pass |
-| 9 | ST1 | Stats API | R1 | — | Not started | | |
-| 9 | E1 | Notes export | R1 | — | Not started | | |
-| 9 | O1 | OPDS | S1, SH1 | — | Not started | | |
-| 9 | W4 | Search and shelves UI | S1, SH1, W1 | — | Not started | | |
+| 9 | ST1 | Stats API | R1 | [ST1-stats-api.md](../prompts/ST1-stats-api.md) | Done | `master` | Authenticated, bounded timezone-aware SQL aggregates; DST, streaks, visibility, limits and HTTP failure tests; all required Go gates pass |
+| 9 | E1 | Notes export | R1 | [E1-notes-export.md](../prompts/E1-notes-export.md) | Done | `master` | Authenticated Markdown/ZIP export; visibility, ordering, YAML, filename, and HTTP coverage; Go gates pass |
+| 9 | O1 | OPDS | S1, SH1 | [O1-opds.md](../prompts/O1-opds.md) | Done | `master` | Basic-auth OPDS 1.2 navigation/acquisition feeds, OpenSearch, 50-entry paging, visibility on every feed/download; schema-rule and r2-opds-js client checks; all required Go gates pass |
+| 9 | W4 | Search and shelves UI | S1, SH1, W1 | [W4-search-shelves-ui.md](../prompts/W4-search-shelves-ui.md) | Done | `master` | Bilingual shell/page search with opaque cursors, shelf list/detail/CRUD/membership UI, library shelf links; check, 73 unit and 24 browser tests pass |
 | 10 | W7 | Stats, notes and export UI | ST1, E1, W2 | — | Not started | | |
 | 10 | W5 | Admin UI | I1, M1, W1, J1 | — | Not started | | |
 | 10 | W6 | Metadata merge UI | M1, W1 | — | Not started | | |
@@ -41,6 +41,50 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-03 — W4 — Added the app-shell search box and `/search` page over S1 (query in
+  the URL, cursors passed back verbatim, pagination reset on query change, 400s treated
+  as a restart prompt), plus `/shelves` and `/shelves/{id}` over SH1: listing, private
+  creation (shared only offered to admins), rename/description editing with explicit
+  null clearing, confirmed deletion that keeps books, search-to-add and remove members,
+  and stale-cursor restart. Book detail gains "Add to shelf"; W1's `BookCard` gains an
+  optional `actions` snippet. The library books API has no shelf filter, so the library
+  page links to shelf pages instead of client-filtering. A shared rune-based
+  `CursorPager` drops superseded responses and never duplicates a pending request.
+  `pnpm --dir web check`, `test` (73), `build`, and `test:e2e --workers=2` (24) pass.
+
+- 2026-11-03 — E1 — Implemented authenticated `GET /api/v1/me/notes/export` for 1–100
+  distinct visible books. Single-book Markdown and multi-book ZIP exports include safe
+  Obsidian frontmatter, ordered live annotations, no-store attachment headers, and
+  collision-safe cross-platform filenames. Batched read-only sqlc queries enforce user
+  ownership and visibility; response generation is bounded. Golden, ZIP, HTTP, and app
+  mount tests pass; `task sqlc:check`, `task build`, `task lint`, and `task test` pass.
+
+- 2026-11-03 — O1 — Implemented the `/opds` OPDS 1.2 catalog: HTTP Basic with OPDS app
+  passwords only (rate-limited failures, 401 challenge), navigation feeds for libraries,
+  authors, series, tags and shelves, acquisition feeds for recent, search, each entity,
+  shelves, reading and want-to-read, an OpenSearch description, and authorized
+  download/cover routes. Feeds reuse catalog/search/shelf services and opaque cursors
+  (50 per page, `rel=next`); status lists use a viewer-bound keyset query. Links come
+  only from the trusted base URL. No Java/Python RELAX NG tool was available, so tests
+  check every feed against a Go port of the official `opds.rnc` rules; feeds also parse
+  in Thorium's `r2-opds-js` 1.0.47. KOReader manual check remains a follow-up.
+  `task build`, `task lint`, and `task test` pass; no migration.
+
+- 2026-11-03 — ST1 — Implemented authenticated `GET /api/v1/stats` with bundled IANA
+  timezone data, inclusive zero-filled daily/monthly buckets, current-status finished
+  counts, all-history positive-day streaks, and deterministically ordered per-book
+  totals/authors. All aggregates use current access-plus-hide rules, including admins,
+  and a consistent reader transaction; SQL aggregates sessions without loading raw
+  history. Enforced strict parameters, 366 dates, 1000 books, and bounded query work.
+  Real-SQLite and HTTP regressions cover DST, midnight gaps/overlaps, skipped dates,
+  fractional/historical offsets, leap-year intervals, visibility, limits and failures.
+  `task sqlc:check`, `task build`, `task lint`, and `task test` pass. W7's stable DTO
+  and error/limit contracts are recorded in the ST1 prompt; no migration or reader
+  behavior changes.
+
+- 2026-11-03 — docs — Drafted Step 9 prompts ST1, E1, O1, and W4 from the accepted plan,
+  current architecture, and merged R1/S1/SH1/W1 contracts. Prompts await review.
 
 - 2026-11-03 — M1 review — Restricted the NeoDB private-address exception to the exact
   request origin on every hop. Added regression tests for direct and redirected requests

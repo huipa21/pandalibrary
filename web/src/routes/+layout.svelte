@@ -6,6 +6,7 @@
 	import { locales, localizeHref, setLocale, type Locale } from '#lib/paraglide/runtime.js';
 	import { ApiError, api } from '#lib/api/client.js';
 	import { navigation } from '#lib/nav.js';
+	import SearchBox from '#lib/search/SearchBox.svelte';
 	import { activateOffline, deactivateOffline, offlineStatus, rememberedViewer, syncNow } from '#lib/sync/client.js';
 	import { withSessionLock } from '#lib/sync/engine.js';
 	import './layout.css';
@@ -117,6 +118,7 @@
 			<a class="font-semibold tracking-tight" href="/">{m['common.app_name']()}</a>
 			<div class="flex flex-wrap items-center gap-4 sm:gap-6">
 				{#if viewer}
+					{#if page.url.pathname !== '/search'}<SearchBox />{/if}
 					<nav aria-label={m['auth.navigation.label']()} class="flex flex-wrap gap-3 text-sm sm:gap-4">
 						{#each navigation as item (item.id)}
 							<a

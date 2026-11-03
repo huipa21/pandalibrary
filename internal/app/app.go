@@ -19,13 +19,16 @@ import (
 	"pandalibrary/internal/config"
 	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/migrations"
+	notesexport "pandalibrary/internal/export"
 	"pandalibrary/internal/httpapi"
 	"pandalibrary/internal/importer"
 	"pandalibrary/internal/jobs"
 	"pandalibrary/internal/kosync"
 	"pandalibrary/internal/metadata"
+	"pandalibrary/internal/opds"
 	"pandalibrary/internal/reading"
 	"pandalibrary/internal/search"
+	"pandalibrary/internal/stats"
 	webui "pandalibrary/web"
 )
 
@@ -125,6 +128,10 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure reading: %w", err)
 	}
+	exportService, err := notesexport.NewService(databases.Writer, databases.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("configure notes export: %w", err)
+	}
 	kosyncService, err := kosync.NewService(databases.Writer, databases.Reader, readingService, kosync.Options{})
 	if err != nil {
 		return nil, fmt.Errorf("configure KOReader sync: %w", err)
@@ -132,6 +139,17 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	searchService, err := search.NewService(databases.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("configure search: %w", err)
+	}
+	statsService, err := stats.NewService(databases.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("configure stats: %w", err)
+	}
+	opdsMount, err := opds.NewMount(opds.Options{
+		Catalog: catalogService, Search: searchService, Auth: authentication,
+		Reader: databases.Reader, BaseURL: cfg.BaseURL, Logger: logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure OPDS: %w", err)
 	}
 	importService, err := importer.New(importer.Options{
 		Writer: databases.Writer, Reader: databases.Reader, Blobs: blobs, Catalog: catalogService,
@@ -155,11 +173,14 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.CatalogMount(catalogService, authentication, logger),
 			httpapi.MetadataMount(metadataService, authentication, logger),
 			httpapi.ReadingMount(readingService, authentication, logger),
+			httpapi.ExportMount(exportService, authentication, logger),
 			httpapi.SearchMount(searchService, authentication, logger),
 			httpapi.ImportMount(importService, catalogService, authentication, logger),
 			httpapi.ShelfMount(catalogService, authentication, logger),
 			httpapi.KOSyncMount(kosyncService, authentication, logger),
 			httpapi.MaintenanceMount(maintenance, authentication, logger),
+			httpapi.StatsMount(statsService, authentication, logger),
+			opdsMount,
 		},
 	})
 	if err != nil {

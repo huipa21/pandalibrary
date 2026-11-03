@@ -1,8 +1,9 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { Book } from './types.js';
 
-	let { book, mode = 'grid' }: { book: Book; mode?: 'grid' | 'list' } = $props();
+	let { book, mode = 'grid', actions }: { book: Book; mode?: 'grid' | 'list'; actions?: Snippet } = $props();
 </script>
 
 <li
@@ -33,6 +34,7 @@
 					<a class="underline-offset-4 hover:underline" href={`/series/${book.series.id}`}>{book.series.name}</a>
 				</p>
 			{/if}
+			{@render actions?.()}
 		</div>
 	{:else}
 		{#if book.cover_url}
@@ -60,6 +62,7 @@
 			{#if book.tags.length}
 				<p class="text-sm text-slate-500">{book.tags.map((tag) => tag.name).join(', ')}</p>
 			{/if}
+			{@render actions?.()}
 		</div>
 	{/if}
 </li>

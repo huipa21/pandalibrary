@@ -7,6 +7,7 @@
 	import { getBook } from '#lib/catalog/api.js';
 	import type { Book, BookFile } from '#lib/catalog/types.js';
 	import { readerFormat } from '#lib/reader/index.js';
+	import AddToShelf from '#lib/shelves/AddToShelf.svelte';
 	import { currentAccount, offlineAvailable, offlineStatus } from '#lib/sync/client.js';
 	import { downloadedBooks, OfflineStorageError, removeBook } from '#lib/sync/db.js';
 	import { downloadForOffline, loadBook as loadOfflineBook, loadCover } from '#lib/sync/library.js';
@@ -288,6 +289,10 @@
 						</button>
 					{/if}
 				</section>
+
+				{#if !offline}
+					<AddToShelf bookId={book.id} />
+				{/if}
 
 				{#if book.identifiers.length}
 					<section aria-labelledby="book-identifiers-heading" class="space-y-2">
