@@ -9,7 +9,7 @@ import (
 
 const maximumAssociations = 1000
 
-func normalizeBookPatch(patch BookPatch) (BookPatch, []string, error) {
+func normalizeBookPatch(patch BookPatch, allowCoverOnly bool) (BookPatch, []string, error) {
 	fields := make([]string, 0, 11)
 	if patch.LibraryID.Set && (patch.LibraryID.Value == nil || *patch.LibraryID.Value < 1) {
 		return BookPatch{}, nil, invalid("library ID must be positive")
@@ -149,7 +149,7 @@ func normalizeBookPatch(patch BookPatch) (BookPatch, []string, error) {
 		patch.Identifiers.Value = &values
 		fields = append(fields, "identifiers")
 	}
-	if len(fields) == 0 && !patch.LibraryID.Set {
+	if len(fields) == 0 && !patch.LibraryID.Set && !allowCoverOnly {
 		return BookPatch{}, nil, invalid("at least one book update is required")
 	}
 	return patch, fields, nil

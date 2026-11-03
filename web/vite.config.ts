@@ -13,7 +13,8 @@ export default defineConfig(({ mode }) => {
 		plugins: [
 			tailwindcss(),
 			sveltekit({
-				adapter: adapter({ fallback: 'index.html' })
+				adapter: adapter({ fallback: 'index.html' }),
+				paths: { relative: false }
 			}),
 			paraglideVitePlugin({
 				project: './project.inlang',

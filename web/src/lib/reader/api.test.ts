@@ -27,7 +27,7 @@ describe('reader API', () => {
 		expect(await blob.text()).toBe('book');
 		expect(fetcher).toHaveBeenCalledWith(
 			`https://library.test${file.download_url}`,
-			{ credentials: 'same-origin', redirect: 'error' }
+			{ credentials: 'same-origin', redirect: 'error', cache: 'no-store' }
 		);
 		for (const download_url of [
 			'https://evil.test/book',

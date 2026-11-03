@@ -129,6 +129,12 @@ func (s *Store) RemoveStaged(token string) (returnErr error) {
 }
 
 func (s *Store) PublishBook(ctx context.Context, staged StagedBook, format string) (returnErr error) {
+	select {
+	case s.publication <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-s.publication }()
 	name, err := BookPath(staged.SHA256, format)
 	if err != nil {
 		return err

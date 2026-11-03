@@ -37,3 +37,7 @@ Prompts are kept after completion as a record of what was asked.
 | I1 | [I1-importer.md](./I1-importer.md) | Draft |
 | S1 | [S1-search.md](./S1-search.md) | Done |
 | SH1 | [SH1-shelves.md](./SH1-shelves.md) | Done |
+| W3 | [W3-offline-pwa.md](./W3-offline-pwa.md) | Draft |
+| K1 | [K1-koreader-sync.md](./K1-koreader-sync.md) | Done |
+| M1 | [M1-metadata-providers.md](./M1-metadata-providers.md) | Draft |
+| J1 | [J1-maintenance-jobs.md](./J1-maintenance-jobs.md) | Done |

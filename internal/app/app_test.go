@@ -70,6 +70,35 @@ func TestStartupMigratesAndCreatesRuntimeDirectories(t *testing.T) {
 	}
 }
 
+func TestKOSyncIsMountedWithoutCookieAuthentication(t *testing.T) {
+	app, err := newApplication(context.Background(), testConfig(t), testLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := app.close(); err != nil {
+			t.Error(err)
+		}
+	})
+	for _, tc := range []struct {
+		method, path, body string
+		status             int
+	}{
+		{http.MethodGet, "/kosync/healthcheck", `{"state":"OK"}`, http.StatusOK},
+		{http.MethodPost, "/kosync/users/create", `{"message":"User registration is disabled.","code":2005}`, http.StatusPaymentRequired},
+		{http.MethodGet, "/kosync/users/auth", `{"message":"Unauthorized","code":2001}`, http.StatusUnauthorized},
+		{http.MethodGet, "/kosync/syncs/progress/unknown", `{"message":"Unauthorized","code":2001}`, http.StatusUnauthorized},
+		{http.MethodPut, "/kosync/syncs/progress", `{"message":"Unauthorized","code":2001}`, http.StatusUnauthorized},
+	} {
+		response := httptest.NewRecorder()
+		app.handler.ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil))
+		if response.Code != tc.status || strings.TrimSpace(response.Body.String()) != tc.body ||
+			response.Header().Get("Content-Type") != "application/json" {
+			t.Fatalf("%s %s = %d %s", tc.method, tc.path, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestSetupTokenIsLoggedOnlyWhileFirstRunIsRequired(t *testing.T) {
 	cfg := testConfig(t)
 	var firstRunLogs bytes.Buffer

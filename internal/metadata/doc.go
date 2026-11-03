@@ -1,2 +1,2 @@
-// Package metadata is reserved for online metadata providers and caching.
+// Package metadata performs bounded, cached lookups from online book providers.
 package metadata

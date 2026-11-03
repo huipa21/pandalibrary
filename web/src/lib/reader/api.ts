@@ -38,12 +38,7 @@ export async function getSettings(): Promise<Setting[]> {
 	return response.settings;
 }
 
-export async function downloadBookFile(
-	bookId: number,
-	file: BookFile,
-	origin = window.location.origin,
-	fetcher: typeof fetch = fetch
-): Promise<Blob> {
+export function validatedBookFileUrl(bookId: number, file: BookFile, origin: string): URL {
 	let url: URL;
 	try {
 		url = new URL(file.download_url, origin);
@@ -57,8 +52,17 @@ export async function downloadBookFile(
 		url.username !== '' ||
 		url.password !== ''
 	) throw new InvalidFileUrlError();
+	return url;
+}
 
-	const response = await fetcher(url.href, { credentials: 'same-origin', redirect: 'error' });
+export async function downloadBookFile(
+	bookId: number,
+	file: BookFile,
+	origin = window.location.origin,
+	fetcher: typeof fetch = fetch
+): Promise<Blob> {
+	const url = validatedBookFileUrl(bookId, file, origin);
+	const response = await fetcher(url.href, { credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
 	if (!response.ok) {
 		throw new ApiError(response.status, response.statusText, await response.text());
 	}

@@ -8,14 +8,19 @@
 	import { getBook } from '#lib/catalog/api.js';
 	import type { Book, BookFile } from '#lib/catalog/types.js';
 	import { createReader, readerFormat } from '#lib/reader/index.js';
-	import { deviceId, downloadBookFile, getBookState, getSettings, pushMutation, SyncError } from '#lib/reader/api.js';
+	import { deviceId, downloadBookFile, getBookState, getSettings, SyncError } from '#lib/reader/api.js';
 	import { annotationForReader, deleteAnnotation, highlightColor, HIGHLIGHT_COLORS, makeHighlight, makeNote, type HighlightColor } from '#lib/reader/annotations.js';
 	import { renderMarkdown } from '#lib/reader/markdown.js';
-	import { fraction, progressMutation, ProgressWriter, restorePosition } from '#lib/reader/progress.js';
+	import { fraction, progressMutation, restorePosition } from '#lib/reader/progress.js';
 	import { ReadingSessions, SessionWriter } from '#lib/reader/sessions.js';
 	import { DEFAULT_SETTINGS, isReaderSettings, loadReaderSettings, mergeBookSettings } from '#lib/reader/settings.js';
 	import type { Highlight, Note, Reader, ReaderFormat, ReaderSelection, ReaderSettings, Relocation } from '#lib/reader/types.js';
 	import NoteEditor from '#lib/reader/NoteEditor.svelte';
+	import {
+		currentAccount, DurableProgressWriter, offlineAvailable, offlineStatus, readerOpened, saveMutation, syncNow
+	} from '#lib/sync/client.js';
+	import { OfflineStorageError } from '#lib/sync/db.js';
+	import { loadBook as loadOfflineBook, loadFile, loadReaderState } from '#lib/sync/library.js';
 
 	interface NoteDraft {
 		id: string;
@@ -46,15 +51,17 @@
 	let draft = $state<NoteDraft | null>(null);
 	let surface = $state<HTMLDivElement>();
 	let reader: Reader | null = null;
-	let progressWriter: ProgressWriter | null = null;
-	const retiredProgressWriters = new Set<ProgressWriter>();
+	let progressWriter: DurableProgressWriter | null = null;
+	const retiredProgressWriters = new Set<DurableProgressWriter>();
 	let sessionClock: ReadingSessions | null = null;
 	let savedBookSettings: { [key: string]: JsonValue } = {};
 	let canSaveSettings = $state(true);
 	let browserDeviceId = '';
 	let requestVersion = 0;
 	let mounted = true;
-	const sessionWriter = new SessionWriter(reportPendingError);
+	const sessionWriter = new SessionWriter(reportPendingError, async (mutation) => {
+		await saveMutation(mutation);
+	});
 	const orderedHighlights = $derived([...highlights].sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at)));
 	const bookNotes = $derived(notes.filter((note) => note.highlight_id === null));
 	const progressPercent = $derived(Math.round((location?.fraction ?? 0) * 100));
@@ -66,6 +73,10 @@
 	});
 
 	onMount(() => {
+		const releaseReader = readerOpened();
+		const unsubscribe = offlineStatus.subscribe((status) => {
+			if (status.online && status.error && status.pending) pendingError = m['reader.error.save']();
+		});
 		const activity = () => { if (ready && !document.hidden) sessionClock?.activity(); };
 		const visibility = () => {
 			if (!ready) return;
@@ -82,6 +93,8 @@
 		}
 		document.addEventListener('visibilitychange', visibility);
 		return () => {
+			releaseReader();
+			unsubscribe();
 			window.removeEventListener('keydown', onKeydown);
 			for (const name of ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const) {
 				window.removeEventListener(name, activity);
@@ -194,11 +207,22 @@
 		}
 
 		try {
-			const [loadedBook, state, storedSettings] = await Promise.all([
-				getBook(bookId),
-				getBookState(bookId),
-				getSettings()
-			]);
+			let loadedBook: Book;
+			let state: Awaited<ReturnType<typeof getBookState>>;
+			let storedSettings: Awaited<ReturnType<typeof getSettings>>;
+			let offline = false;
+			if (offlineAvailable()) {
+				const loaded = await loadOfflineBook(currentAccount(), bookId);
+				loadedBook = loaded.book;
+				offline = loaded.offline;
+				const saved = await loadReaderState(currentAccount(), bookId, offline);
+				state = saved.state;
+				storedSettings = saved.settings;
+			} else {
+				[loadedBook, state, storedSettings] = await Promise.all([
+					getBook(bookId), getBookState(bookId), getSettings()
+				]);
+			}
 			if (version !== requestVersion) return;
 			const selectedFile = loadedBook.files.find((item) => item.id === fileId);
 			if (!selectedFile) {
@@ -210,7 +234,9 @@
 				loadError = m['reader.error.unsupported']();
 				return;
 			}
-			const blob = await downloadBookFile(bookId, selectedFile);
+			const blob = offlineAvailable()
+				? await loadFile(currentAccount(), bookId, selectedFile, offline)
+				: await downloadBookFile(bookId, selectedFile);
 			if (version !== requestVersion) return;
 			browserDeviceId = deviceId();
 			const loadedSettings = loadReaderSettings(storedSettings, selectedFormat, bookId);
@@ -225,7 +251,7 @@
 			format = selectedFormat;
 			highlights = state.highlights.filter((highlight) => !highlight.deleted_at);
 			notes = state.notes.filter((note) => !note.deleted_at);
-			progressWriter = new ProgressWriter(reportPendingError);
+			progressWriter = new DurableProgressWriter(reportPendingError);
 			await tick();
 			if (version !== requestVersion) return;
 			if (!surface) throw new Error('The reader surface is unavailable.');
@@ -277,6 +303,7 @@
 			console.error('Could not open book', cause);
 			loadError = cause instanceof ApiError
 				? (cause.status === 404 ? m['reader.error.not_found']() : m['reader.error.api']())
+				: cause instanceof OfflineStorageError ? m['offline.missing']()
 				: cause instanceof TypeError ? m['reader.error.connection']() : m['reader.error.open']();
 		} finally {
 			if (version === requestVersion) opening = false;
@@ -334,8 +361,12 @@
 	async function retryWrites() {
 		try {
 			await flushForClose();
+			if (navigator.onLine && offlineAvailable()) {
+				const result = await syncNow(true);
+				if (result.issues) throw new SyncError('stale');
+			}
 			pendingError = '';
-			savedMessage = m['reader.saved']();
+			savedMessage = navigator.onLine ? m['reader.saved']() : m['offline.queued']();
 		} catch (error) {
 			reportPendingError(error);
 		}
@@ -358,7 +389,7 @@
 		savedMessage = '';
 		try {
 			const value = mergeBookSettings(savedBookSettings, settings);
-			await pushMutation({
+			const outcome = await saveMutation({
 				entity: 'user_settings',
 				key: `reader.book.${book.id}`,
 				op: 'upsert',
@@ -367,7 +398,7 @@
 			});
 			savedBookSettings = value;
 			settingsWarning = '';
-			savedMessage = m['reader.saved']();
+			savedMessage = outcome === 'applied' ? m['reader.saved']() : m['offline.queued']();
 		} catch (error) {
 			reportActionError(error);
 		} finally {
@@ -387,7 +418,7 @@
 		try {
 			const mutation = makeHighlight(book.id, file.id, chosen, selectedColor);
 			if (!('id' in mutation)) throw new Error('Highlight ID is missing.');
-			await pushMutation(mutation);
+			await saveMutation(mutation);
 			const now = new Date(mutation.updated_at).toISOString();
 			const highlight: Highlight = {
 				id: mutation.id, book_id: book.id, book_file_id: file.id, locator: chosen.locator,
@@ -413,7 +444,7 @@
 		busy = true;
 		actionError = '';
 		try {
-			await pushMutation({
+			await saveMutation({
 				entity: 'highlights', id: highlight.id, op: 'upsert', updated_at: Date.now(),
 				data: {
 					book_id: highlight.book_id, book_file_id: highlight.book_file_id,
@@ -441,7 +472,7 @@
 		busy = true;
 		actionError = '';
 		try {
-			await pushMutation(deleteAnnotation('highlights', highlight.id));
+			await saveMutation(deleteAnnotation('highlights', highlight.id));
 			highlights = highlights.filter((item) => item.id !== highlight.id);
 			notes = notes.filter((note) => note.highlight_id !== highlight.id);
 			if (draft?.highlightId === highlight.id) draft = null;
@@ -489,7 +520,7 @@
 		actionError = '';
 		try {
 			const mutation = makeNote(book.id, current.body, current.highlightId, current.id);
-			await pushMutation(mutation);
+			await saveMutation(mutation);
 			const existing = notes.find((note) => note.id === current.id);
 			const now = new Date(mutation.updated_at).toISOString();
 			const note: Note = {
@@ -512,7 +543,7 @@
 		busy = true;
 		actionError = '';
 		try {
-			await pushMutation(deleteAnnotation('notes', note.id));
+			await saveMutation(deleteAnnotation('notes', note.id));
 			notes = notes.filter((item) => item.id !== note.id);
 			if (draft?.id === note.id) draft = null;
 		} catch (error) {

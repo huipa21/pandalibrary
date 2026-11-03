@@ -2,6 +2,7 @@ package blobstore
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,13 +13,30 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 var ErrInvalidKey = errors.New("invalid blob key")
 
 // Store reads content-addressed files under one data directory.
 type Store struct {
-	root string
+	root        string
+	publication chan struct{}
+}
+
+// WithPublicationLock serializes orphan removal with content publication.
+// The callback must not call another method that publishes content.
+func (s *Store) WithPublicationLock(ctx context.Context, run func() error) error {
+	select {
+	case s.publication <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-s.publication }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return run()
 }
 
 // New opens an existing data directory as the root of the blob layout.
@@ -37,7 +55,7 @@ func New(dataDir string) (*Store, error) {
 	if !info.IsDir() {
 		return nil, errors.New("blob data directory is not a directory")
 	}
-	return &Store{root: root}, nil
+	return &Store{root: root, publication: make(chan struct{}, 1)}, nil
 }
 
 // ValidHash reports whether hash is a lowercase hexadecimal SHA-256 digest.
@@ -129,6 +147,8 @@ func (s *Store) open(name string) (*os.File, error) {
 
 // PublishCover atomically publishes normalized cover variants without replacing existing blobs.
 func (s *Store) PublishCover(hash string, full, thumbnail []byte) (returnErr error) {
+	s.publication <- struct{}{}
+	defer func() { <-s.publication }()
 	fullPath, err := CoverPath(hash, false)
 	if err != nil {
 		return err
@@ -161,6 +181,13 @@ func (s *Store) PublishCover(hash string, full, thumbnail []byte) (returnErr err
 	}
 	if err := publish(root, thumbnailPath, thumbnail); err != nil {
 		return fmt.Errorf("publish cover thumbnail: %w", err)
+	}
+	// Reusing an old orphan is a new publication too; restart its maintenance grace.
+	now := time.Now()
+	for _, path := range []string{fullPath, thumbnailPath} {
+		if err := root.Chtimes(path, now, now); err != nil {
+			return fmt.Errorf("refresh published cover grace: %w", err)
+		}
 	}
 	return nil
 }

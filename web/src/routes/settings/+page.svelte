@@ -3,6 +3,7 @@
 	import { ApiError, api } from '#lib/api/client.js';
 	import { setLocale, type Locale } from '#lib/paraglide/runtime.js';
 	import * as m from '#lib/paraglide/messages.js';
+	import StorageSettings from '#lib/sync/StorageSettings.svelte';
 
 	interface UserProfile {
 		id: number;
@@ -145,6 +146,8 @@
 			</button>
 		</form>
 	{/if}
+
+	<StorageSettings />
 
 	<section class="max-w-3xl space-y-5">
 		<div>

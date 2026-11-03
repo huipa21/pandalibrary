@@ -1,2 +1,2 @@
-// Package kosync is reserved for the KOReader sync protocol adapter.
+// Package kosync adapts KOReader's sync protocol to per-user reading state.
 package kosync

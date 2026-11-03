@@ -9,6 +9,9 @@ const user = {
 };
 
 test('setup, manage an app password, sign out, and sign in', async ({ page }) => {
+	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
+		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
+	} }));
 	let setupRequired = true;
 	let authenticated = false;
 	let passwords: Array<{ id: number; kind: string; label: string; created_at: string }> = [];

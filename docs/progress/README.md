@@ -25,10 +25,10 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 7 | I1 | Importer | C1, X1 | [I1-importer.md](../prompts/I1-importer.md) | Done | `master` | Durable uploads/drop imports, two workers, recovery, formats/FTS/covers; required Go gates pass; X1/X3 BOM/CP1251 plain-FB2 blocker unchanged |
 | 7 | S1 | Search | C1 | [S1-search.md](../prompts/S1-search.md) | Done | `master` | Authenticated FTS/short-query search with visibility and query-bound pagination; checks pass |
 | 7 | SH1 | Shelves | C1 | [SH1-shelves.md](../prompts/SH1-shelves.md) | Done | `master` | Private/shared shelves, visibility-filtered manual ordering, and paged APIs; checks pass |
-| 8 | W3 | Offline PWA | W2 | — | Not started | | |
-| 8 | K1 | KOReader sync | R1, I1 | — | Not started | | Needs a real device test |
-| 8 | M1 | Metadata providers | C1, X1 | — | Not started | | |
-| 8 | J1 | Maintenance jobs | I1, R1 | — | Not started | | |
+| 8 | W3 | Offline PWA | W2 | [W3-offline-pwa.md](../prompts/W3-offline-pwa.md) | Done | `master` | Account-scoped downloads/outbox, atomic revision pulls, offline reader and storage controls; frontend checks, 53 unit and 21 browser tests pass |
+| 8 | K1 | KOReader sync | R1, I1 | [K1-koreader-sync.md](../prompts/K1-koreader-sync.md) | Done | `master` | Protocol/bridge/session tests pass; no device available, safe XPointer fallback enabled; all required Go gates pass |
+| 8 | M1 | Metadata providers | C1, X1 | [M1-metadata-providers.md](../prompts/M1-metadata-providers.md) | Done | `master` | Four bounded/cached providers, admin config, atomic per-field apply/provenance and safe covers; Go gates pass |
+| 8 | J1 | Maintenance jobs | I1, R1 | [J1-maintenance-jobs.md](../prompts/J1-maintenance-jobs.md) | Done | `master` | Bounded maintenance/admin controls, verified retained backups, safe orphan sweep; all required Go gates pass |
 | 9 | ST1 | Stats API | R1 | — | Not started | | |
 | 9 | E1 | Notes export | R1 | — | Not started | | |
 | 9 | O1 | OPDS | S1, SH1 | — | Not started | | |
@@ -41,6 +41,74 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-03 — M1 review — Restricted the NeoDB private-address exception to the exact
+  request origin on every hop. Added regression tests for direct and redirected requests
+  that change scheme while retaining the same host and port.
+
+- 2026-11-03 — W3 — Completed the offline PWA with explicit hash-versioned file/cover
+  downloads, account-scoped IndexedDB, durable progress/annotation/settings/session outbox,
+  bounded R1 push batches and atomic pull/cursor persistence. Confirmed edits survive a
+  failed pull without a duplicate push; stale/rejected writes remain reviewable. Added
+  app/online/visible/reader/Background Sync triggers, explicit retry, trusted-device
+  offline session restoration and logout/account isolation, 403/404 eviction, bilingual
+  accessible storage/persistence/quota controls, and a public-shell-only service worker.
+  Private files and metadata share an IndexedDB transaction rather than a second
+  unscoped Cache Storage cache; online files bypass HTTP caches for access revalidation.
+  `pnpm --dir web check`, `test` (53 tests), `build`, and `test:e2e -- --workers=2`
+  (21 tests) pass. Browser tests prove offline progress/notes survive reload, reconnect
+  pushes then pulls without Background Sync, denied books/files are evicted, and account
+  changes/logout isolate downloads. Browser/API limits and the 180-day full-resync
+  decision are recorded in the W3 prompt; backend behavior and schemas are unchanged.
+
+- 2026-11-03 — M1 — Implemented Open Library, Google Books, NeoDB, and Hardcover
+  adapters against verified official contracts, parallel ISBN-first lookup with bounded
+  time/rate and versioned SQLite caching, write-only admin credentials, and cached
+  per-field selection APIs. Catalog integration commits selected values, cover
+  reference, provenance, and FTS atomically without changing manual edit behavior.
+  Cover downloads enforce provider host allowlists, redirect/DNS/IP checks, exact-origin
+  explicit NeoDB exceptions, and image/time/size limits. Offline fixtures and HTTP/TLS
+  tests cover success/failure, cache, secrets, visibility, apply rollback, and cover
+  safety. `task sqlc:check`, `task build`, `task lint`, and `task test` pass. The M1 prompt
+  records W5/W6 DTOs, limits, and upstream limitations; no migration or UI changes.
+
+- 2026-11-03 — K1 — Re-ran full gates after concurrent M1/J1 changes settled:
+  `task sqlc:check`, `task build`, `task lint`, `task test`, and uncached
+  K1/HTTP/reading/app tests pass. K1 marked Done; real-device XPointer validation remains
+  a follow-up (chapter synthesis stays disabled behind `Options.ChapterXPointer`).
+
+- 2026-11-03 — K1 — Implemented all five `/kosync` endpoints, existing app-password
+  verification with bounded failure throttling, exact per-user raw records, visibility-
+  checked R1 LWW/revision bridging, and atomic server-derived sessions. Added golden HTTP,
+  application-mount and migrated-SQLite tests for credentials, field limits, all seven
+  formats, visibility, freshness, page/chapter mapping, session boundaries/restarts,
+  stale writes and rollback. Uncached K1/HTTP/reading/app tests and scoped staticcheck
+  pass; adapter statement coverage is 84.1%. `task sqlc:check` and `task build` pass.
+  The full test suite passed once, but final lint/test encountered concurrent M1's
+  test-file syntax error; unrelated implementations were not changed. No real KOReader
+  device/model was available: chapter-XPointer synthesis is tested but disabled in
+  application wiring. Newer web positions retain the last device XPointer with web
+  percentage/time; without one, return no position. Exact PDF/CBZ pages remain enabled.
+  Setup and the unhyphenated app-password requirement are documented in the root README
+  and K1 hand-off.
+
+- 2026-11-03 — J1 — Implemented bounded hourly expiry/tombstone/history cleanup, verified
+  online backups with seven-snapshot retention, conservative 24-hour-grace book/cover
+  orphan cleanup, daily optimize/FTS checks, and passive five-minute checkpoints.
+  Admin status/manual-run routes share per-job exclusion with scheduled runs; shutdown
+  cancels accepted work before database close. Active imports, spool manifests, the import
+  ID high-water row, symlinks, referenced/recent files, and custom drop roots are preserved.
+  A shared storage publication guard restarts republished covers' grace periods and
+  prevents orphan-removal races. Focused blobstore/jobs/HTTP/application tests, five
+  repeated storage/job runs, targeted vet/staticcheck, `task sqlc:check`, `task build`,
+  `task lint`, and `task test` pass. Two dedicated symlink tests skip on this Windows host
+  because symlink privileges are unavailable. J1 prompt and architecture record schedules,
+  safe-retention exceptions, bounds, and the W5 route/DTO contract.
+
+- 2026-11-03 — docs — Drafted all four Step 8 prompts (W3, K1, M1, J1) from the accepted
+  plan, current architecture/schema, and merged W2/R1/I1/C1/X1 interfaces. Prompts define
+  shared app/router append-only wiring; K1 records the real-device test or safe fallback
+  requirement. Awaiting review.
 
 - 2026-11-03 — W2 — Implemented the seven-format browser reader and reader-owned chooser,
   accessible English/Chinese controls, R1 progress restore/debounced saves, highlights,

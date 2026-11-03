@@ -249,6 +249,24 @@ func (s *Service) ListSettings(ctx context.Context, viewer Viewer) ([]Setting, e
 
 // Push applies a validated batch atomically and reports one outcome for every item.
 func (s *Service) Push(ctx context.Context, viewer Viewer, request PushRequest) (PushResponse, error) {
+	var response PushResponse
+	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+		var err error
+		response, err = s.PushTx(ctx, tx, viewer, request)
+		return err
+	})
+	if err != nil {
+		return PushResponse{}, fmt.Errorf("apply reading sync batch: %w", err)
+	}
+	return response, nil
+}
+
+// PushTx applies the same validation and LWW rules in a caller-owned transaction.
+// The caller must roll back on error and must not expose results before committing.
+func (s *Service) PushTx(ctx context.Context, tx *sql.Tx, viewer Viewer, request PushRequest) (PushResponse, error) {
+	if tx == nil {
+		return PushResponse{}, errors.New("reading sync requires a transaction")
+	}
 	response := PushResponse{Results: make([]MutationResult, len(request.Mutations))}
 	if err := checkViewer(viewer); err != nil {
 		return response, err
@@ -264,19 +282,13 @@ func (s *Service) Push(ctx context.Context, viewer Viewer, request PushRequest) 
 			return PushResponse{}, fmt.Errorf("%w: mutation %d has an invalid envelope", ErrInvalid, i)
 		}
 	}
-	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
-		q := sqlc.New(tx)
-		for i, mutation := range request.Mutations {
-			status, reason, err := s.applyMutation(ctx, q, tx, viewer, mutation)
-			if err != nil {
-				return fmt.Errorf("apply sync mutation %d: %w", i, err)
-			}
-			response.Results[i] = MutationResult{Index: i, Status: status, Reason: reason}
+	q := sqlc.New(tx)
+	for i, mutation := range request.Mutations {
+		status, reason, err := s.applyMutation(ctx, q, tx, viewer, mutation)
+		if err != nil {
+			return PushResponse{}, fmt.Errorf("apply sync mutation %d: %w", i, err)
 		}
-		return nil
-	})
-	if err != nil {
-		return PushResponse{}, fmt.Errorf("apply reading sync batch: %w", err)
+		response.Results[i] = MutationResult{Index: i, Status: status, Reason: reason}
 	}
 	return response, nil
 }

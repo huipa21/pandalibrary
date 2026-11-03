@@ -1,2 +1,2 @@
-// Package jobs is reserved for scheduled maintenance.
+// Package jobs provides the scheduler and bounded application maintenance.
 package jobs

@@ -2,6 +2,7 @@
 	import { api } from '#lib/api/client.js';
 	import { setLocale, type Locale } from '#lib/paraglide/runtime.js';
 	import * as m from '#lib/paraglide/messages.js';
+	import { withSessionLock } from '#lib/sync/engine.js';
 
 	let token = $state('');
 	let username = $state('');
@@ -16,10 +17,12 @@
 		error = '';
 		submitting = true;
 		try {
-			await api.request<{ user: { locale: Locale } }>('/setup', {
-				method: 'POST',
-				body: { token, username, display_name: displayName, password, locale }
-			});
+			await withSessionLock(() =>
+				api.request<{ user: { locale: Locale } }>('/setup', {
+					method: 'POST',
+					body: { token, username, display_name: displayName, password, locale }
+				})
+			);
 			await setLocale(locale, { reload: false });
 			window.location.assign('/');
 		} catch {

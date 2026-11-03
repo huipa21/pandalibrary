@@ -5,12 +5,15 @@
 	import { catalogErrorMessage } from '#lib/catalog/errors.js';
 	import type { Book } from '#lib/catalog/types.js';
 	import { readerFormat } from '#lib/reader/index.js';
+	import { currentAccount, offlineAvailable } from '#lib/sync/client.js';
+	import { downloadedBooks } from '#lib/sync/db.js';
 
 	let books = $state<Book[]>([]);
 	let cursor = $state<string | null>(null);
 	let loading = $state(true);
 	let loadingMore = $state(false);
 	let error = $state('');
+	let offline = $state(false);
 	const seenCursors = new Set<string>();
 
 	onMount(() => { void load(); });
@@ -26,6 +29,10 @@
 		}
 		error = '';
 		try {
+			if (!navigator.onLine) {
+				await loadDownloaded();
+				return;
+			}
 			const result = await listBooks({}, 'title', { cursor: more ? cursor : null });
 			if (result.next_cursor && seenCursors.has(result.next_cursor)) {
 				throw new Error('The catalog returned a repeated cursor.');
@@ -33,8 +40,19 @@
 			if (result.next_cursor) seenCursors.add(result.next_cursor);
 			books = more ? [...books, ...result.items] : result.items;
 			cursor = result.next_cursor;
+			offline = false;
 		} catch (cause) {
 			console.error('Could not load books for the reader', cause);
+			if (cause instanceof TypeError && offlineAvailable()) {
+				try {
+					await loadDownloaded();
+					return;
+				} catch (storageError) {
+					console.error('Could not load downloaded books', storageError);
+					error = m['offline.storage.failure']();
+					return;
+				}
+			}
 			error = catalogErrorMessage(cause, {
 				api: m['reader.error.api'](),
 				connection: m['reader.error.connection'](),
@@ -45,6 +63,17 @@
 			loadingMore = false;
 		}
 	}
+
+	async function loadDownloaded() {
+		if (!offlineAvailable()) throw new Error('Offline storage is unavailable.');
+		const downloaded = await downloadedBooks(currentAccount());
+		books = downloaded.filter((item) => item.fileIds.length > 0).map((item) => ({
+			...item.book,
+			files: item.book.files.filter((file) => item.fileIds.includes(file.id))
+		}));
+		cursor = null;
+		offline = true;
+	}
 </script>
 
 <section class="space-y-6">
@@ -52,6 +81,7 @@
 		<h1 class="text-3xl font-semibold tracking-tight">{m['reader.launch.title']()}</h1>
 		<p class="text-slate-600">{m['reader.launch.description']()}</p>
 	</header>
+	{#if offline}<p class="text-sm text-slate-600">{m['offline.only_downloaded']()}</p>{/if}
 	{#if loading}
 		<p role="status" class="text-slate-600">{m['reader.loading']()}</p>
 	{:else}

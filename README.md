@@ -1,11 +1,12 @@
 # PandaLibrary
 
 Self-hosted ebook library: a single Go binary with an embedded SvelteKit PWA, SQLite,
-OPDS 1.2, KOReader sync, and EPUB/MOBI/AZW3/FB2/CBZ/PDF readers in the browser.
+KOReader sync, and EPUB/MOBI/AZW3/FB2/CBZ/PDF readers in the browser. OPDS 1.2 is
+planned.
 
-Status: the database, embedded web scaffold, and server foundation are in place; product
-features have not started yet. See
-[docs/progress](docs/progress/README.md).
+Status: authentication, catalog, importing, search, shelves, browser reading and offline
+sync, KOReader sync, metadata providers, and maintenance jobs are implemented. See
+[docs/progress](docs/progress/README.md) for remaining work.
 
 - [docs/](docs/README.md): architecture, decisions (ADRs), plans, prompts, progress
 - [internal/db/migrations/](internal/db/migrations/): the database schema (goose migrations,
@@ -56,8 +57,7 @@ endpoint and exits non-zero if it is unavailable or unhealthy. When `serve` uses
 non-default `--listen` flag, pass the same flag to `healthcheck` or set `PANDA_LISTEN`
 for both commands. The server applies migrations before opening the listener. On first
 run, it logs a one-time setup token; open `/setup` in the embedded SPA and enter that token
-to create the initial administrator. The browser then uses cookie-backed login. Catalog
-and import features are not implemented yet.
+to create the initial administrator. The browser then uses cookie-backed login.
 
 Server flags override their corresponding environment variables:
 
@@ -73,7 +73,7 @@ Server flags override their corresponding environment variables:
 | `PANDA_LOG_LEVEL` | `--log-level` | `info` |
 
 Trusted proxies are a comma-separated list of CIDRs; only configure proxies that sanitize
-forwarded headers. The drop directory is created at startup, but no watcher runs yet.
+forwarded headers. The drop directory is created and watched at startup.
 `PANDA_BASE_URL` supplies the trusted public origin for cookie-origin checks and enables
 the `Secure` attribute on session cookies when it uses HTTPS. Use
 `pandalibrary serve --help` for flag details.
@@ -101,15 +101,31 @@ pnpm --dir web build
 
 The development server proxies `/api`, `/opds`, and `/kosync` to
 `http://127.0.0.1:8080`. Set `VITE_API_PROXY_TARGET` to override the backend URL.
-Playwright is configured for later end-to-end tasks; browser installation and browser tests
-are intentionally separate from `pnpm test`.
+Playwright browser installation and end-to-end tests are separate from `pnpm test`; run
+the browser tests with `pnpm --dir web test:e2e`.
 
 The Go `webui` package embeds `web/build`. On a fresh checkout, build the web app before
 running Go build, lint, or test tasks; CI builds the assets independently in its Go job.
 
+## KOReader progress sync (K1)
+
+In Settings, create an app password with kind `kosync`. In KOReader's Progress Sync
+plugin, set the custom server to `https://your-host/kosync`, log in with your PandaLibrary
+username, and enter that app password **without its display hyphens** (preserve its case).
+Do not use your web-login password or an OPDS app password; registration from KOReader is
+disabled. Use HTTPS because the MD5 credential sent by KOReader is reusable.
+
+Use KOReader's **Binary** document checksum and the unchanged imported file for web/device
+sync. Unknown digests still sync between KOReader devices, but cannot update library
+progress or reading sessions. Access restrictions apply to all library bridging.
+
+PDF/CBZ web positions sync by exact page. Real-device chapter-XPointer validation has not
+been performed, so reflowable books safely retain the last KOReader XPointer with the newer
+web percentage/timestamp; jump manually to that percentage if needed. If no device
+XPointer exists yet, no position is fabricated. KOReader-to-KOReader positions remain exact.
+
 ## Importing books (I1)
 
-The importer is now implemented; the foundation-only status notes above predate I1.
 Administrators can send a multipart `library_id` and one `file` to
 `POST /api/v1/uploads`, or one `file` to `POST /api/v1/books/{id}/files` to attach
 another format. Both return `202` with a durable import job. Poll

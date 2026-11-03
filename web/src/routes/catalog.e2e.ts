@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function authenticate(page: Page, locale = 'en') {
+	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
+		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
+	} }));
 	await page.route('**/api/v1/setup', (route) => route.fulfill({ json: { required: false } }));
 	await page.route('**/api/v1/auth/me', (route) =>
 		route.fulfill({

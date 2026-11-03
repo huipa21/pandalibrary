@@ -165,9 +165,30 @@ Background goroutines (all stop on context cancel during graceful shutdown):
 |---|---|---|
 | Importer pool (2 workers) | queue | Process `import_jobs` (resumes `pending`/`processing` rows on startup) |
 | Drop-folder watcher | fsnotify (+ optional poll) | Debounce until file is stable, enqueue job |
-| Maintenance | hourly | Delete expired sessions; prune expired `metadata_cache` rows; prune `import_jobs` > 30 days |
-| Maintenance | daily | `VACUUM INTO backups/…` (keep N); orphan blob sweep; `PRAGMA optimize` |
+| Maintenance | hourly | Delete expired sessions and `metadata_cache`; prune completed `import_jobs` > 30 days and sync tombstones > 180 days |
+| Maintenance | daily | Verified `VACUUM INTO backups/…` snapshots (keep 7); orphan blob/cover sweep (24-hour grace); `PRAGMA optimize`; FTS consistency check |
 | Maintenance | every 5 min | `PRAGMA wal_checkpoint(PASSIVE)` |
+
+Maintenance never prunes pending or processing import jobs, and the orphan sweep leaves
+`drop/` and `tmp/` untouched. It scans only the content-addressed `files/` and `covers/`
+layouts, skips symlinks, and removes only old files still unreferenced while holding the
+database writer lock. Completed import jobs with a remaining spool manifest are retained
+for importer cleanup/recovery; the highest job ID is retained to prevent SQLite from
+reusing an ID. Hourly import-history pruning examines at most 1,000 candidates.
+
+Each maintenance run has a five-minute deadline and observes shutdown cancellation.
+Backups use exclusive, private `.partial` destinations, SQLite `quick_check`, disk sync,
+and no-overwrite publication before retention runs. Retention keeps the seven newest
+successful `maintenance-<UTC timestamp>-<random>.db` snapshots; unrelated files and
+pre-migration backups are left alone. Orphan scans check references immediately before
+deletion, preserve pending/processing import hashes, and defer cover removal while any
+import is active. Storage roots overlapping the configured drop directory are skipped
+with a warning. A sweep inspects at most 100,000 files and removes at most 1,000 orphans;
+errors are logged, and a later run can continue remaining work. FTS checks use FTS5's
+`integrity-check` command and never rebuild indexes. Blob publication shares a
+cancellation-aware guard with orphan removal; republishing an existing cover refreshes
+both variants' filesystem mtimes so its 24-hour grace period restarts before catalog
+references are committed.
 
 ### SQLite connections
 
@@ -206,10 +227,27 @@ keyset cursors (`?cursor=…&limit=…`).
 | `/api/v1/stats/*` | session | Dashboard aggregates |
 | `/api/v1/export/notes` | session | Markdown (one book) or zip (many) |
 | `/api/v1/admin/*` | admin | Users, libraries, access grants, hide list, providers, backups, reindex |
+| `/api/v1/admin/maintenance` | admin | List maintenance jobs and request on-demand runs |
 | `/opds/*` | Basic (opds app password) | OPDS 1.2 (§9) |
 | `/kosync/*` | KOReader headers (kosync app password) | KOReader sync (§8) |
 | `/healthz` | none | Liveness (DB ping) |
 | everything else | none | Embedded SPA; unknown paths → `index.html`; `/_app/immutable/*` cached for 1 year |
+
+### Maintenance API contract (J1)
+
+- `GET /api/v1/admin/maintenance` returns
+  `{"jobs":[{"name":"backup","schedule":"24h0m0s","status":"idle","last_run":null}]}`.
+  Each job reports its schedule, current/last status (`idle`, `accepted`, `running`,
+  `completed`, or `error`), and the last run's opaque ID and UTC accepted/started/completed
+  timestamps when available. Jobs are `cleanup-expired`, `backup`, `orphan-sweep`,
+  `optimize`, `fts-check`, and `wal-checkpoint`.
+- `POST /api/v1/admin/maintenance/{job}` requests a run and returns `202` with
+  `{"run":{"id":"backup-1","status":"accepted","accepted_at":"…"}}`. Poll the list route
+  for its `completed` or `error` result. An unsupported name returns `404`; an overlapping
+  run of the same job returns `409`. Both routes require an administrator session;
+  POST uses the standard cookie-origin protection. Errors never include database or
+  filesystem details. Run status is in memory and resets on process restart; detailed
+  failures are in the server logs.
 
 ### Catalog contract (C1)
 
@@ -497,13 +535,33 @@ highlight also tombstones the notes attached to it, in the same transaction.
 **Offline books:**
 
 - The user clicks "Download for offline".
-- The SPA stores the file response in Cache Storage (`books-v1`, keyed by the file URL),
-  stores the book's detail JSON and cover in IndexedDB, and calls
-  `navigator.storage.persist()`.
+- The SPA atomically stores the file `Blob`, hash-versioned catalog URL, book detail and
+  cover in account-scoped IndexedDB (`pandalibrary-offline`, schema version 1), then
+  requests `navigator.storage.persist()`. Keeping private files and metadata in one
+  transaction avoids partially published downloads and unscoped Cache Storage lookups.
+- The versioned service worker cache contains only public build assets and the SPA
+  shell. Absolute shell asset URLs support offline navigation at any reader route;
+  authenticated API, OPDS and KOReader responses are never intercepted or cached.
 - Readers open from a `Blob`, whether it came from the cache or the network.
+- Online file fetches use `cache: no-store` so an immutable HTTP cache entry cannot
+  bypass access revalidation after an account or permission change.
 - Settings show storage usage and an evict action.
 - If the server later returns 403/404 for that book, the cached copy is evicted.
-- iOS Safari has no Background Sync and may evict storage, so sync runs on app open.
+- All private reads/writes require the active authenticated account's stable user ID.
+  Logout locks offline access; another account cannot read or push retained data.
+  A remembered account can resume offline on this trusted device, but an online 401
+  clears that remembered access. No session token or credential is stored offline.
+- Confirmed outbox entries remain replayable until the complete pull snapshot, cursor
+  and confirmed-entry cleanup commit in one transaction. Rejected/stale entries remain
+  available for explicit retry/discard and do not override the server snapshot.
+- A last durable pull at least 180 days old triggers a full `cursor=0` pull; the wire
+  cursor remains the R1 revision, not a timestamp.
+- Web Locks serialize sync with app login/logout across tabs and the worker. Browsers
+  without Web Locks or IndexedDB report offline storage unavailable and retain the
+  existing online reader path. Service workers require HTTPS (or localhost).
+- iOS Safari has no Background Sync and may evict storage: app-open, online, visible,
+  reader-interval and explicit retries do not depend on Background Sync. Missing
+  downloaded data is reported rather than silently treated as a successful download.
 
 ## 11. Online metadata
 

@@ -1,0 +1,132 @@
+[
+  {
+    "name": "health",
+    "method": "GET",
+    "path": "/kosync/healthcheck",
+    "auth": "none",
+    "status": 200,
+    "response": {"state": "OK"}
+  },
+  {
+    "name": "registration-refused",
+    "method": "POST",
+    "path": "/kosync/users/create",
+    "auth": "none",
+    "body": "{\"username\":\"new\",\"password\":\"secret\"}",
+    "status": 402,
+    "response": {"message": "User registration is disabled.", "code": 2005}
+  },
+  {
+    "name": "authenticated-registration-still-refused",
+    "method": "POST",
+    "path": "/kosync/users/create",
+    "status": 402,
+    "response": {"message": "User registration is disabled.", "code": 2005}
+  },
+  {
+    "name": "authentication",
+    "method": "GET",
+    "path": "/kosync/users/auth",
+    "status": 200,
+    "response": {"authorized": "OK"}
+  },
+  {
+    "name": "invalid-authentication",
+    "method": "GET",
+    "path": "/kosync/users/auth",
+    "auth": "invalid",
+    "status": 401,
+    "response": {"message": "Unauthorized", "code": 2001}
+  },
+  {
+    "name": "missing-document-record",
+    "method": "GET",
+    "path": "/kosync/syncs/progress/unknown",
+    "status": 200,
+    "response": {}
+  },
+  {
+    "name": "unknown-document-put",
+    "method": "PUT",
+    "path": "/kosync/syncs/progress",
+    "body": "{\"document\":\"unknown\",\"progress\":\" /body/DocFragment[2]/body/p[1].0 \\n\",\"percentage\":0.375,\"device\":\"PocketBook\",\"device_id\":\"eink-1\",\"timestamp\":1}",
+    "status": 200,
+    "response": {"document": "unknown", "timestamp": 0}
+  },
+  {
+    "name": "unknown-document-exact-roundtrip",
+    "method": "GET",
+    "path": "/kosync/syncs/progress/unknown",
+    "status": 200,
+    "response": {"document": "unknown", "progress": " /body/DocFragment[2]/body/p[1].0 \n", "percentage": 0.375, "device": "PocketBook", "device_id": "eink-1", "timestamp": 0}
+  },
+  {
+    "name": "known-visible-put",
+    "method": "PUT",
+    "path": "/kosync/syncs/progress",
+    "body": "{\"document\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"progress\":\"/body/DocFragment[1]/body/p[2].0\",\"percentage\":0.25,\"device\":\"Kobo\",\"device_id\":\"kobo-1\"}",
+    "status": 200,
+    "response": {"document": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "timestamp": 0}
+  },
+  {
+    "name": "known-visible-get",
+    "method": "GET",
+    "path": "/kosync/syncs/progress/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": 200,
+    "response": {"document": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "progress": "/body/DocFragment[1]/body/p[2].0", "percentage": 0.25, "device": "Kobo", "device_id": "kobo-1", "timestamp": 0}
+  },
+  {
+    "name": "malformed-json",
+    "method": "PUT",
+    "path": "/kosync/syncs/progress",
+    "body": "{",
+    "status": 400,
+    "response": {"message": "Invalid JSON.", "code": 103}
+  },
+  {
+    "name": "null-body",
+    "method": "PUT",
+    "path": "/kosync/syncs/progress",
+    "body": "null",
+    "status": 403,
+    "response": {"message": "Invalid request", "code": 2003}
+  },
+  {
+    "name": "missing-document-field",
+    "method": "PUT",
+    "path": "/kosync/syncs/progress",
+    "body": "{\"progress\":\"1\",\"percentage\":0,\"device\":\"Kobo\"}",
+    "status": 403,
+    "response": {"message": "Field 'document' not provided.", "code": 2004}
+  },
+  {
+    "name": "unservable-document-field",
+    "method": "PUT",
+    "path": "/kosync/syncs/progress",
+    "body": "{\"document\":\"a/b\",\"progress\":\"1\",\"percentage\":0,\"device\":\"Kobo\"}",
+    "status": 403,
+    "response": {"message": "Field 'document' contains characters the read route cannot serve.", "code": 2007}
+  },
+  {
+    "name": "invalid-percentage",
+    "method": "PUT",
+    "path": "/kosync/syncs/progress",
+    "body": "{\"document\":\"unknown\",\"progress\":\"1\",\"percentage\":1.1,\"device\":\"Kobo\"}",
+    "status": 403,
+    "response": {"message": "Invalid request", "code": 2003}
+  },
+  {
+    "name": "wrong-method",
+    "method": "POST",
+    "path": "/kosync/syncs/progress",
+    "status": 405,
+    "response": {"message": "Method not allowed", "code": 405}
+  },
+  {
+    "name": "unknown-route",
+    "method": "GET",
+    "path": "/kosync/not-an-endpoint",
+    "status": 404,
+    "response": {"message": "Not found", "code": 404}
+  }
+]

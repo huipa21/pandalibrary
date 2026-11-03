@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"pandalibrary/internal/covers"
 	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/sqlc"
 	"pandalibrary/internal/search"
@@ -12,15 +13,42 @@ import (
 
 // UpdateBook applies a validated metadata patch atomically to a visible book.
 func (s *Service) UpdateBook(ctx context.Context, viewer Viewer, id int64, patch BookPatch) (Book, error) {
+	return s.updateBook(ctx, viewer, id, patch, nil, nil)
+}
+
+func (s *Service) updateBook(ctx context.Context, viewer Viewer, id int64, patch BookPatch, sources map[string]MetadataSource, cover *covers.Result) (Book, error) {
 	if err := checkAdmin(viewer); err != nil {
 		return Book{}, err
 	}
 	if id < 1 {
 		return Book{}, invalid("book ID is invalid")
 	}
-	patch, fields, err := normalizeBookPatch(patch)
+	patch, fields, err := normalizeBookPatch(patch, cover != nil)
 	if err != nil {
 		return Book{}, err
+	}
+	if sources != nil {
+		if patch.LibraryID.Set {
+			return Book{}, invalid("provider metadata cannot move books")
+		}
+		expected := append([]string(nil), fields...)
+		if cover != nil {
+			expected = append(expected, "cover")
+		}
+		if len(sources) != len(expected) {
+			return Book{}, invalid("each selected field requires provenance")
+		}
+		for _, field := range expected {
+			source, ok := sources[field]
+			if !ok || !validMetadataSource(source) {
+				return Book{}, invalid("provider provenance is invalid")
+			}
+		}
+	}
+	if cover != nil {
+		if err := s.blobs.PublishCover(cover.FullSHA256, cover.FullJPEG, cover.ThumbnailJPEG); err != nil {
+			return Book{}, fmt.Errorf("publish provider cover: %w", err)
+		}
 	}
 	var result Book
 	err = db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
@@ -107,8 +135,27 @@ func (s *Service) UpdateBook(ctx context.Context, viewer Viewer, id int64, patch
 			return fmt.Errorf("update book: %w", err)
 		}
 		for _, field := range fields {
-			if err := setManualSource(ctx, queries, viewer, id, field, now); err != nil {
-				return err
+			if sources == nil {
+				if err := setManualSource(ctx, queries, viewer, id, field, now); err != nil {
+					return err
+				}
+			}
+		}
+		if cover != nil {
+			if err := queries.CatalogUpdateCover(ctx, sqlc.CatalogUpdateCoverParams{
+				ID: id, CoverSha256: sql.NullString{String: cover.FullSHA256, Valid: true},
+				CoverSource: sql.NullString{String: sources["cover"].Provider, Valid: true}, UpdatedAt: now,
+			}); err != nil {
+				return fmt.Errorf("update provider cover: %w", err)
+			}
+		}
+		for field, source := range sources {
+			if err := queries.MetadataUpsertFieldSource(ctx, sqlc.MetadataUpsertFieldSourceParams{
+				BookID: id, Field: field, Source: source.Provider,
+				SourceRef: sql.NullString{String: source.Reference, Valid: true},
+				ChosenBy:  sql.NullInt64{Int64: viewer.UserID, Valid: true}, ChosenAt: now,
+			}); err != nil {
+				return fmt.Errorf("update provider field source: %w", err)
 			}
 		}
 		if err := search.IndexBook(ctx, tx, id); err != nil {

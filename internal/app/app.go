@@ -22,6 +22,8 @@ import (
 	"pandalibrary/internal/httpapi"
 	"pandalibrary/internal/importer"
 	"pandalibrary/internal/jobs"
+	"pandalibrary/internal/kosync"
+	"pandalibrary/internal/metadata"
 	"pandalibrary/internal/reading"
 	"pandalibrary/internal/search"
 	webui "pandalibrary/web"
@@ -30,12 +32,13 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 type application struct {
-	databases *db.DB
-	handler   http.Handler
-	scheduler *jobs.Scheduler
-	importer  *importer.Service
-	ready     atomic.Bool
-	logger    *slog.Logger
+	databases   *db.DB
+	handler     http.Handler
+	scheduler   *jobs.Scheduler
+	maintenance *jobs.Maintenance
+	importer    *importer.Service
+	ready       atomic.Bool
+	logger      *slog.Logger
 }
 
 func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger) (_ *application, returnErr error) {
@@ -58,8 +61,16 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("open application database: %w", err)
 	}
+	var maintenance *jobs.Maintenance
 	defer func() {
 		if returnErr != nil {
+			if maintenance != nil {
+				stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+				if err := maintenance.Stop(stopCtx); err != nil {
+					returnErr = errors.Join(returnErr, err)
+				}
+				cancel()
+			}
 			if err := databases.Close(); err != nil {
 				returnErr = errors.Join(returnErr, fmt.Errorf("close application database after startup failure: %w", err))
 			}
@@ -95,13 +106,28 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure blob storage: %w", err)
 	}
+	maintenance, err = jobs.NewMaintenance(ctx, databases.Writer, databases.Reader, blobs, cfg.DataDir, cfg.DropDir, logger)
+	if err != nil {
+		return nil, fmt.Errorf("configure maintenance: %w", err)
+	}
+	if err := maintenance.Register(scheduler); err != nil {
+		return nil, fmt.Errorf("register maintenance jobs: %w", err)
+	}
 	catalogService, err := catalog.NewService(databases.Writer, databases.Reader, blobs)
 	if err != nil {
 		return nil, fmt.Errorf("configure catalog: %w", err)
 	}
+	metadataService, err := metadata.NewService(databases.Writer, databases.Reader, catalogService)
+	if err != nil {
+		return nil, fmt.Errorf("configure metadata: %w", err)
+	}
 	readingService, err := reading.NewService(databases.Writer, databases.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("configure reading: %w", err)
+	}
+	kosyncService, err := kosync.NewService(databases.Writer, databases.Reader, readingService, kosync.Options{})
+	if err != nil {
+		return nil, fmt.Errorf("configure KOReader sync: %w", err)
 	}
 	searchService, err := search.NewService(databases.Reader)
 	if err != nil {
@@ -115,10 +141,11 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		return nil, fmt.Errorf("configure importer: %w", err)
 	}
 	app := &application{
-		databases: databases,
-		scheduler: scheduler,
-		importer:  importService,
-		logger:    logger,
+		databases:   databases,
+		scheduler:   scheduler,
+		maintenance: maintenance,
+		importer:    importService,
+		logger:      logger,
 	}
 	app.handler, err = httpapi.NewRouter(httpapi.RouterOptions{
 		Database: databases.Reader, Ready: app.ready.Load, Assets: assets, Logger: logger,
@@ -126,10 +153,13 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		Mounts: []httpapi.Mount{
 			httpapi.AuthMount(authentication, logger),
 			httpapi.CatalogMount(catalogService, authentication, logger),
+			httpapi.MetadataMount(metadataService, authentication, logger),
 			httpapi.ReadingMount(readingService, authentication, logger),
 			httpapi.SearchMount(searchService, authentication, logger),
 			httpapi.ImportMount(importService, catalogService, authentication, logger),
 			httpapi.ShelfMount(catalogService, authentication, logger),
+			httpapi.KOSyncMount(kosyncService, authentication, logger),
+			httpapi.MaintenanceMount(maintenance, authentication, logger),
 		},
 	})
 	if err != nil {
@@ -145,6 +175,12 @@ func (a *application) close() error {
 	defer cancel()
 	if err := a.importer.Stop(stopCtx); err != nil {
 		return fmt.Errorf("stop importer before closing database: %w", err)
+	}
+	if err := a.scheduler.Stop(stopCtx); err != nil {
+		return err
+	}
+	if err := a.maintenance.Stop(stopCtx); err != nil {
+		return err
 	}
 	if err := a.databases.Close(); err != nil {
 		return fmt.Errorf("close application database: %w", err)
@@ -217,6 +253,9 @@ func (a *application) serve(ctx context.Context, listener net.Listener) error {
 		serveErr = <-serveResult
 	}
 	stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	if err := a.maintenance.Stop(stopCtx); err != nil {
+		stopErr = errors.Join(stopErr, err)
+	}
 	if err := a.importer.Stop(stopCtx); err != nil {
 		stopErr = errors.Join(stopErr, err)
 	}

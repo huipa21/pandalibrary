@@ -11,6 +11,7 @@ type TestMutation = {
 };
 
 interface MockState {
+	rev: number;
 	progress: Record<string, unknown> | null;
 	highlights: Record<string, unknown>[];
 	notes: Record<string, unknown>[];
@@ -29,6 +30,7 @@ async function setupReader(
 	options: { locale?: string; initialProgress?: Record<string, unknown> | null; alternateFile?: boolean } = {}
 ): Promise<MockState> {
 	const state: MockState = {
+		rev: 1,
 		progress: options.initialProgress ?? null,
 		highlights: [],
 		notes: [],
@@ -61,6 +63,16 @@ async function setupReader(
 		json: { user_book: null, progress: state.progress, highlights: state.highlights, notes: state.notes }
 	}));
 	await page.route('**/api/v1/me/settings', (route) => route.fulfill({ json: { settings: state.settings } }));
+	await page.route('**/api/v1/sync/pull?*', (route) => {
+		const cursor = Number(new URL(route.request().url()).searchParams.get('cursor'));
+		const newer = (row: Record<string, unknown>) => Number(row.rev) > cursor;
+		return route.fulfill({ json: {
+			cursor: state.rev, user_books: [],
+			reading_progress: state.progress && newer(state.progress) ? [{ ...state.progress, book_id: 21 }] : [],
+			highlights: state.highlights.filter(newer), notes: state.notes.filter(newer),
+			user_settings: state.settings.filter(newer)
+		} });
+	});
 	await page.route('**/api/v1/sync/push', async (route) => {
 		const request = route.request().postDataJSON() as { mutations: TestMutation[] };
 		state.attempts.push(...request.mutations);
@@ -70,10 +82,11 @@ async function setupReader(
 			return;
 		}
 		for (const mutation of request.mutations) {
+			state.rev += 1;
 			state.mutations.push(mutation);
 			const now = new Date(mutation.updated_at).toISOString();
 			if (mutation.entity === 'reading_progress') {
-				state.progress = { ...mutation.data, updated_at: now, rev: 2 };
+				state.progress = { ...mutation.data, updated_at: now, rev: state.rev };
 			} else if (mutation.entity === 'highlights') {
 				if (mutation.op === 'delete') {
 					state.highlights = state.highlights.filter((item) => item.id !== mutation.id);
@@ -82,7 +95,7 @@ async function setupReader(
 					const old = state.highlights.find((item) => item.id === mutation.id);
 					state.highlights = [
 						...state.highlights.filter((item) => item.id !== mutation.id),
-						{ ...mutation.data, id: mutation.id, created_at: old?.created_at ?? now, updated_at: now, deleted_at: null, rev: 2 }
+						{ ...mutation.data, id: mutation.id, created_at: old?.created_at ?? now, updated_at: now, deleted_at: null, rev: state.rev }
 					];
 				}
 			} else if (mutation.entity === 'notes') {
@@ -92,13 +105,13 @@ async function setupReader(
 					const old = state.notes.find((item) => item.id === mutation.id);
 					state.notes = [
 						...state.notes.filter((item) => item.id !== mutation.id),
-						{ ...mutation.data, id: mutation.id, created_at: old?.created_at ?? now, updated_at: now, deleted_at: null, rev: 2 }
+						{ ...mutation.data, id: mutation.id, created_at: old?.created_at ?? now, updated_at: now, deleted_at: null, rev: state.rev }
 					];
 				}
 			} else if (mutation.entity === 'user_settings') {
 				state.settings = [
 					...state.settings.filter((item) => item.key !== mutation.key),
-					{ key: mutation.key ?? '', value: mutation.data.value, updated_at: now, rev: 2 }
+					{ key: mutation.key ?? '', value: mutation.data.value, updated_at: now, rev: state.rev }
 				];
 			}
 		}
