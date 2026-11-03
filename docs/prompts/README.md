@@ -29,3 +29,7 @@ Prompts are kept after completion as a record of what was asked.
 | F4 | [F4-server-skeleton.md](./F4-server-skeleton.md) | Done |
 | A1 | [A1-auth-vertical-slice.md](./A1-auth-vertical-slice.md) | Done |
 | C1 | [C1-catalog-core.md](./C1-catalog-core.md) | Done |
+| R1 | [R1-reading-sync-api.md](./R1-reading-sync-api.md) | Done |
+| W1 | [W1-library-ui.md](./W1-library-ui.md) | Draft |
+| X2 | [X2-pdf-cbz-extractors.md](./X2-pdf-cbz-extractors.md) | Done |
+| X3 | [X3-mobi-fb2-extractors.md](./X3-mobi-fb2-extractors.md) | Blocked (X1 FB2 sniffing) |

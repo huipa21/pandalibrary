@@ -21,6 +21,7 @@ import (
 	"pandalibrary/internal/db/migrations"
 	"pandalibrary/internal/httpapi"
 	"pandalibrary/internal/jobs"
+	"pandalibrary/internal/reading"
 	webui "pandalibrary/web"
 )
 
@@ -95,6 +96,10 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure catalog: %w", err)
 	}
+	readingService, err := reading.NewService(databases.Writer, databases.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("configure reading: %w", err)
+	}
 	app := &application{
 		databases: databases,
 		scheduler: scheduler,
@@ -106,6 +111,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		Mounts: []httpapi.Mount{
 			httpapi.AuthMount(authentication, logger),
 			httpapi.CatalogMount(catalogService, authentication, logger),
+			httpapi.ReadingMount(readingService, authentication, logger),
 		},
 	})
 	if err != nil {

@@ -1,0 +1,278 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import * as m from '#lib/paraglide/messages.js';
+	import { catalogErrorMessage } from './errors.js';
+	import { listAllEntities, listBooks } from './api.js';
+	import { bookFiltersFromSearch, bookPageOptions, hasNextPage, selectedSort, setCatalogFilter } from './query.js';
+	import type { Book, BookFilters, BookSort, CatalogEntity, EntityKind } from './types.js';
+	import BookCard from './BookCard.svelte';
+
+	let { scope }: { scope: BookFilters } = $props();
+	let books = $state<Book[]>([]);
+	let nextCursor = $state<string | null>(null);
+	let loading = $state(true);
+	let loadingMore = $state(false);
+	let error = $state('');
+	let moreError = $state('');
+	let optionsError = $state('');
+	let optionsLoading = $state(false);
+	let authors = $state<CatalogEntity[]>([]);
+	let series = $state<CatalogEntity[]>([]);
+	let tags = $state<CatalogEntity[]>([]);
+	let mode = $state<'grid' | 'list'>('grid');
+	let reloadVersion = $state(0);
+	let requestVersion = 0;
+	const selectedAuthor = $derived(page.url.searchParams.get('author_id') ?? '');
+	const selectedSeries = $derived(page.url.searchParams.get('series_id') ?? '');
+	const selectedTag = $derived(page.url.searchParams.get('tag_id') ?? '');
+	const sort = $derived(
+		selectedSort(
+			page.url.searchParams,
+			bookFiltersFromSearch(scope, page.url.searchParams).series_id
+		)
+	);
+	const hasSeriesFilter = $derived(
+		bookFiltersFromSearch(scope, page.url.searchParams).series_id !== undefined
+	);
+
+	onMount(() => {
+		if (scope.library_id !== undefined) void loadFilterOptions();
+	});
+
+	$effect(() => {
+		const search = page.url.searchParams.toString();
+		const currentScope = scope;
+		const refresh = reloadVersion;
+		void loadFirstPage(search, currentScope, refresh);
+	});
+
+	async function loadFilterOptions() {
+		optionsLoading = true;
+		optionsError = '';
+		try {
+			[authors, series, tags] = await Promise.all([
+				listAllEntities('authors'),
+				listAllEntities('series'),
+				listAllEntities('tags')
+			]);
+		} catch (cause) {
+			optionsError = catalogErrorMessage(cause, {
+				api: m['catalog.error.api'](),
+				connection: m['catalog.error.connection'](),
+				notFound: m['catalog.error.not_found']()
+			});
+		} finally {
+			optionsLoading = false;
+		}
+	}
+
+	async function loadFirstPage(search: string, filters: BookFilters, _refresh: number) {
+		const request = ++requestVersion;
+		books = [];
+		nextCursor = null;
+		loading = true;
+		error = '';
+		moreError = '';
+		try {
+			const params = new URLSearchParams(search);
+			const effectiveFilters = bookFiltersFromSearch(filters, params);
+			const effectiveSort: BookSort = selectedSort(params, effectiveFilters.series_id);
+			const result = await listBooks(effectiveFilters, effectiveSort);
+			if (request !== requestVersion) return;
+			books = result.items;
+			nextCursor = result.next_cursor;
+		} catch (cause) {
+			if (request !== requestVersion) return;
+			error = catalogErrorMessage(cause, {
+				api: m['catalog.error.api'](),
+				connection: m['catalog.error.connection'](),
+				notFound: m['catalog.error.not_found']()
+			});
+		} finally {
+			if (request === requestVersion) loading = false;
+		}
+	}
+
+	async function loadMore() {
+		if (!nextCursor || loadingMore) return;
+		const request = requestVersion;
+		const cursor = nextCursor;
+		loadingMore = true;
+		moreError = '';
+		try {
+			const params = new URLSearchParams(page.url.searchParams.toString());
+			const effectiveFilters = bookFiltersFromSearch(scope, params);
+			const effectiveSort = selectedSort(params, effectiveFilters.series_id);
+			const result = await listBooks(effectiveFilters, effectiveSort, bookPageOptions(cursor));
+			if (request !== requestVersion) return;
+			books = [...books, ...result.items];
+			nextCursor = result.next_cursor;
+		} catch (cause) {
+			if (request !== requestVersion) return;
+			moreError = catalogErrorMessage(cause, {
+				api: m['catalog.error.api'](),
+				connection: m['catalog.error.connection'](),
+				notFound: m['catalog.error.not_found']()
+			});
+		} finally {
+			if (request === requestVersion) loadingMore = false;
+		}
+	}
+
+	async function changeQuery(key: 'author_id' | 'series_id' | 'tag_id' | 'sort', value: string) {
+		const params = setCatalogFilter(
+			new URLSearchParams(page.url.searchParams.toString()),
+			key,
+			value
+		);
+		const query = params.toString();
+		const href = `${page.url.pathname}${query ? `?${query}` : ''}`;
+		try {
+			await goto(href, { replaceState: true });
+		} catch {
+			error = m['catalog.error.navigation']();
+		}
+	}
+
+	async function clearFilters() {
+		try {
+			await goto(page.url.pathname, { replaceState: true });
+		} catch {
+			error = m['catalog.error.navigation']();
+		}
+	}
+</script>
+
+<section class="space-y-5" aria-labelledby="book-results-heading">
+	<div class="flex flex-wrap items-end justify-between gap-4">
+		<h2 id="book-results-heading" class="text-xl font-semibold">{m['catalog.books.title']()}</h2>
+		<div class="flex flex-wrap items-end gap-3">
+			{#if scope.library_id !== undefined}
+				<div class="flex flex-wrap gap-3" role="group" aria-label={m['catalog.books.filter_group']()}>
+					<label class="grid gap-1 text-sm font-medium" for="filter-author">
+						<span>{m['catalog.books.author_filter']()}</span>
+						<select
+							id="filter-author"
+							class="min-w-40 rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+							disabled={optionsLoading || Boolean(optionsError)}
+							value={selectedAuthor}
+							onchange={(event) => changeQuery('author_id', event.currentTarget.value)}
+						>
+							<option value="">{m['catalog.books.all_authors']()}</option>
+							{#each authors as author (author.id)}
+								<option value={author.id}>{author.name}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="grid gap-1 text-sm font-medium" for="filter-series">
+						<span>{m['catalog.books.series_filter']()}</span>
+						<select
+							id="filter-series"
+							class="min-w-40 rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+							disabled={optionsLoading || Boolean(optionsError)}
+							value={selectedSeries}
+							onchange={(event) => changeQuery('series_id', event.currentTarget.value)}
+						>
+							<option value="">{m['catalog.books.all_series']()}</option>
+							{#each series as item (item.id)}
+								<option value={item.id}>{item.name}</option>
+							{/each}
+						</select>
+					</label>
+					<label class="grid gap-1 text-sm font-medium" for="filter-tag">
+						<span>{m['catalog.books.tag_filter']()}</span>
+						<select
+							id="filter-tag"
+							class="min-w-40 rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+							disabled={optionsLoading || Boolean(optionsError)}
+							value={selectedTag}
+							onchange={(event) => changeQuery('tag_id', event.currentTarget.value)}
+						>
+							<option value="">{m['catalog.books.all_tags']()}</option>
+							{#each tags as tag (tag.id)}
+								<option value={tag.id}>{tag.name}</option>
+							{/each}
+						</select>
+					</label>
+				</div>
+			{/if}
+			<label class="grid gap-1 text-sm font-medium" for="sort-books">
+				<span>{m['catalog.books.sort']()}</span>
+				<select
+					id="sort-books"
+					class="rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+					value={sort}
+					onchange={(event) => changeQuery('sort', event.currentTarget.value)}
+				>
+					<option value="title">{m['catalog.books.sort_title']()}</option>
+					<option value="added">{m['catalog.books.sort_added']()}</option>
+					{#if hasSeriesFilter}
+						<option value="series">{m['catalog.books.sort_series']()}</option>
+					{/if}
+				</select>
+			</label>
+			<div class="flex gap-2" role="group" aria-label={m['catalog.books.view']()}>
+				<button
+					class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+					aria-pressed={mode === 'grid'}
+					onclick={() => (mode = 'grid')}
+				>{m['catalog.books.grid']()}</button>
+				<button
+					class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+					aria-pressed={mode === 'list'}
+					onclick={() => (mode = 'list')}
+				>{m['catalog.books.list']()}</button>
+			</div>
+			{#if scope.library_id !== undefined}
+				<button
+					class="rounded-md px-3 py-2 text-sm text-slate-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+					onclick={clearFilters}
+					disabled={!selectedAuthor && !selectedSeries && !selectedTag && sort === 'title'}
+				>{m['catalog.books.clear_filters']()}</button>
+			{/if}
+		</div>
+	</div>
+
+	{#if optionsLoading}
+		<p class="text-sm text-slate-600" role="status">{m['catalog.books.loading_filters']()}</p>
+	{:else if optionsError}
+		<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">
+			<p>{optionsError}</p>
+			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={loadFilterOptions}>{m['catalog.retry']()}</button>
+		</div>
+	{/if}
+
+	{#if error}
+		<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">
+			<p>{error}</p>
+			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => (reloadVersion += 1)}>{m['catalog.retry']()}</button>
+		</div>
+	{:else if loading}
+		<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
+	{:else if books.length === 0}
+		<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['catalog.books.empty']()}</p>
+	{:else}
+		<ul class={mode === 'grid' ? 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4' : 'space-y-3'}>
+			{#each books as book (book.id)}
+				<BookCard {book} {mode} />
+			{/each}
+		</ul>
+		{#if moreError}
+			<div class="flex flex-wrap items-center gap-3 text-red-800" role="alert">
+				<p>{moreError}</p>
+				<button class="underline underline-offset-4 focus-visible:outline-2" onclick={loadMore}>{m['catalog.retry']()}</button>
+			</div>
+		{/if}
+		{#if hasNextPage(nextCursor)}
+			<button
+				class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+				disabled={loadingMore}
+				onclick={loadMore}
+			>{loadingMore ? m['catalog.books.loading_more']() : m['catalog.books.load_more']()}</button>
+		{:else}
+			<p class="text-center text-sm text-slate-500" role="status">{m['catalog.books.end']()}</p>
+		{/if}
+	{/if}
+</section>

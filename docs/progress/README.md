@@ -17,10 +17,10 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 3 | F4 🔒 | Server skeleton | F2, F3 | [F4-server-skeleton.md](../prompts/F4-server-skeleton.md) | Done | `master` | Server, health, SPA, middleware, and shutdown; F2/X1 remain in review |
 | 4 | A1 🔒 | Auth vertical slice | F4 | [A1-auth-vertical-slice.md](../prompts/A1-auth-vertical-slice.md) | Done | `master` | Auth setup, sessions, app passwords, CLI, and web flows; checks pass |
 | 5 | C1 🔒 | Catalog core | A1 | [C1-catalog-core.md](../prompts/C1-catalog-core.md) | Done | `master` | Catalog, ACLs, metadata, media, and FTS; F2/X1 remain in review |
-| 6 | R1 | Reading and sync API | C1 | — | Not started | | |
-| 6 | W1 | Library UI | C1 | — | Not started | | |
-| 6 | X2 | PDF and CBZ extractors | X1 | — | Not started | | |
-| 6 | X3 | MOBI/AZW3 and FB2 extractors | X1 | — | Not started | | |
+| 6 | R1 | Reading and sync API | C1 | [R1-reading-sync-api.md](../prompts/R1-reading-sync-api.md) | Done | `master` | Push/pull DTO and schema deletion limits recorded in prompt hand-off |
+| 6 | W1 | Library UI | C1 | [W1-library-ui.md](../prompts/W1-library-ui.md) | Done | `master` | Bilingual catalog browsing, filters, keyset paging and details; frontend checks and browser tests pass |
+| 6 | X2 | PDF and CBZ extractors | X1 | [X2-pdf-cbz-extractors.md](../prompts/X2-pdf-cbz-extractors.md) | Done | `master` | PDF/CBZ registration and fixture tests; pdfcpu v0.16.4 |
+| 6 | X3 | MOBI/AZW3 and FB2 extractors | X1 | [X3-mobi-fb2-extractors.md](../prompts/X3-mobi-fb2-extractors.md) | Blocked (X1 FB2 sniffing) | `master` | Plain CP1251 and BOM FB2 cannot reach the registered extractor |
 | 7 | W2 | Reader UI | R1, W1 | — | Not started | | |
 | 7 | I1 | Importer | C1, X1 | — | Not started | | |
 | 7 | S1 | Search | C1 | — | Not started | | |
@@ -42,6 +42,26 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-03 — X3 — Implemented MOBI/AZW3 and FB2/FBZ extractors with DRM detection,
+  bounded metadata/covers, generated fixtures, and registration tests. `task build`,
+  `task lint`, and `task test` pass. Plain FB2 registry dispatch for Windows-1251 and
+  UTF-8 with a BOM is blocked by X1's out-of-scope sniffer; direct extraction and FBZ
+  dispatch work, and two registry cases are explicitly skipped pending an X1 fix.
+- 2026-11-03 — W1 — Implemented the bilingual catalog UI with accessible library browsing,
+  entity indexes/details, URL-backed book filters and sort, server-cursor paging, book
+  details and hash-versioned downloads. `pnpm --dir web check`, `test`, `build`, and the
+  full Playwright suite pass; browser validation used port 4193 because 4173 was occupied.
+- 2026-11-03 — R1 — Implemented the user-scoped reading/settings APIs, transactional LWW
+  push/pull, append-only sessions, annotation tombstones/FTS, and visibility-filtered search.
+  Added SQLite service and authenticated HTTP tests; `task sqlc:check`, `task build`,
+  `task lint`, and `task test` pass. No migration was needed.
+- 2026-11-03 — X2 — Implemented bounded PDF metadata/page-count extraction with pdfcpu
+  v0.16.4 and ComicInfo/cover extraction for CBZ; added generated-fixture, error, and
+  registry tests. `task build`, `task lint`, and `task test` pass. I1 can register with
+  `pdf.Register` and `cbz.Register`; no global registry wiring was added.
+- 2026-11-03 — docs — Drafted all four Step 6 prompts (R1, W1, X2, X3) from the accepted
+  plan and the current C1, X1, database, extractor, and web interfaces. Prompts are ready
+  for review; implementation remains gated on review/merge of the prior work.
 - 2026-11-03 — C1 — Implemented the visibility-filtered catalog, library ACLs, metadata
   and FTS transactions, and authorized file/cover serving. `task sqlc:check`, `task
   build`, `task lint`, and time-bounded `task test` pass; F2/X1 remain in review.

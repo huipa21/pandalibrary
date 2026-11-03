@@ -17,6 +17,7 @@ import (
 	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/migrations"
 	"pandalibrary/internal/db/sqlc"
+	"pandalibrary/internal/reading"
 )
 
 type catalogFixture struct {
@@ -192,10 +193,22 @@ func TestBookDerivedReadVisibility(t *testing.T) {
 	fixture := newCatalogFixture(t)
 	ctx := context.Background()
 	queries := sqlc.New(fixture.db.Reader)
+	readingService, err := reading.NewService(fixture.db.Writer, fixture.db.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range visibilityCases() {
 		t.Run(test.name, func(t *testing.T) {
 			for _, id := range []int64{101, 102, 103, 104, 999} {
 				want := test.visible[id]
+				_, readingErr := readingService.GetBookState(ctx, reading.Viewer{
+					UserID: test.viewer.UserID, IsAdmin: test.viewer.IsAdmin,
+				}, id)
+				if want && readingErr != nil {
+					t.Errorf("reading state for visible book %d: %v", id, readingErr)
+				} else if !want && !errors.Is(readingErr, reading.ErrNotFound) {
+					t.Errorf("reading state for invisible book %d: got %v, want not found", id, readingErr)
+				}
 				for _, read := range bookVisibilityReads(ctx, queries, test.viewer, id, fixture.files[id]) {
 					visible, err := read.read()
 					if err != nil || visible != want {

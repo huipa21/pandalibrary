@@ -5,6 +5,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { locales, localizeHref, setLocale, type Locale } from '#lib/paraglide/runtime.js';
 	import { ApiError, api } from '#lib/api/client.js';
+	import { navigation } from '#lib/nav.js';
 	import './layout.css';
 	import type { LayoutProps } from './$types';
 
@@ -68,32 +69,38 @@
 
 <div class="min-h-screen bg-slate-50 text-slate-950">
 	<header class="border-b border-slate-200 bg-white">
-		<div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+		<div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
 			<a class="font-semibold tracking-tight" href="/">{m['common.app_name']()}</a>
-			<div class="flex items-center gap-6">
+			<div class="flex flex-wrap items-center gap-4 sm:gap-6">
 				{#if viewer}
-					<nav aria-label={m['auth.navigation.label']()} class="flex gap-4 text-sm">
-						<a class="text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline" href="/">
-							{m['auth.navigation.home']()}
-						</a>
+					<nav aria-label={m['auth.navigation.label']()} class="flex flex-wrap gap-3 text-sm sm:gap-4">
+						{#each navigation as item (item.id)}
+							<a
+								class="rounded-sm text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+								href={item.href}
+								aria-current={page.url.pathname === item.href || (item.href !== '/' && page.url.pathname.startsWith(`${item.href}/`)) ? 'page' : undefined}
+							>
+								{item.label()}
+							</a>
+						{/each}
 						<a
-							class="text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline"
+							class="rounded-sm text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
 							href="/settings"
 						>
 							{m['auth.navigation.settings']()}
 						</a>
 					</nav>
-					<span class="hidden text-sm text-slate-600 sm:inline">
+					<span class="hidden text-sm text-slate-600 lg:inline">
 						{viewer.display_name || viewer.username}
 					</span>
-					<button class="text-sm text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline" onclick={logout}>
+					<button class="rounded-sm text-sm text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" onclick={logout}>
 						{m['auth.logout.submit']()}
 					</button>
 				{/if}
-				<nav aria-label="Language" class="flex gap-4 text-sm">
+				<nav aria-label={m['catalog.language.navigation']()} class="flex gap-3 text-sm sm:gap-4">
 					{#each locales as locale (locale)}
 						<a
-							class="text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline"
+							class="rounded-sm text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
 							href={localizeHref(page.url.pathname, { locale })}
 							hreflang={locale}
 							lang={locale}
