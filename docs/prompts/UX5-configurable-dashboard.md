@@ -1,8 +1,8 @@
 # UX5: Dashboard cover rows and gear-based section configuration
 
-- Status: Ready
+- Status: Review (full frontend check has pre-existing failures)
 - Wave: 3; dependencies merged: UX3, UX4 (and their prerequisites)
-- Branch/worktree: `task/ux5` / `..\pandalibrary-ux5`; migration: no
+- Branch/worktree: `task/ux3` / `C:\other\pandalibrary`; migration: no
 
 ## Read first and ownership
 
@@ -56,3 +56,40 @@ pagination and resume navigation. Use real-server browser coverage for the
 main saved-configuration flow, not only local-storage mocks.
 Run frontend check, focused units/browser tests and build. Record exact
 commands/results and update your prompt/progress row/log.
+
+## UX5 hand-off
+
+- The root page now renders independently loaded dashboard rows with the three
+  first-use defaults and a gear dialog for adding, removing, and ordering all
+  five built-in feeds and permitted numeric shelves. The shared UX3 shelf
+  creator is used from both the page and configuration dialog.
+- `dashboard.layout.v1` is account-scoped and uses the existing durable
+  settings/outbox sync. An explicitly empty layout stays empty; invalid or
+  unsupported layouts require an explicit reset. Unsynchronized offline data,
+  failed saves, and stale or rejected mutations are surfaced rather than
+  silently replaced. Continue Reading resolves the exact saved, supported file.
+- Rows fetch at most 12 books per page and start near the viewport. Shelf
+  selection is paged, metadata checks are bounded, stale requests are ignored,
+  and inaccessible shelves show a generic removable state. The UX3 dialog is
+  promoted to a native modal by its dashboard parent without changing UX3.
+
+### Validation (2026-11-04)
+
+- `pnpm --dir web test -- --no-file-parallelism`: 24 files, 189 tests passed.
+- `pnpm --dir web exec vitest run src/lib/dashboard`: 17 tests passed.
+- `pnpm --dir web build`: passed.
+- With `PANDA_E2E_BINARY` pointing to an isolated server built with
+  `$env:CGO_ENABLED = '0'; go build -o $binary .\cmd\pandalibrary`,
+  `pnpm --dir web exec playwright test dashboard.e2e.ts dashboard-real.e2e.ts --workers=1`:
+  12 passed. This includes real-server shelf creation, cross-device settings,
+  offline reload, and reconnect synchronization.
+- An isolated `pnpm --dir web exec svelte-check --tsconfig
+  .\tsconfig.ux5-check.tmp.json --fail-on-warnings` passed with zero errors
+  and warnings. Its temporary configuration supplied the existing UX3
+  dialog's public prop declaration
+  to isolate its pre-existing diagnostic; those temporary files were removed.
+  The real dialog was exercised by browser tests.
+- `pnpm --dir web check` still fails with 11 errors and 6 warnings in the
+  pre-existing `UserForm.svelte`, `admin/users/+page.svelte`, and
+  `ShelfCreateDialog.svelte`. These files are outside UX5 ownership. The task
+  remains in Review until the shared full-check baseline is repaired.

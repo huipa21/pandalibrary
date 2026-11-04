@@ -152,6 +152,21 @@ describe('admin error keys', () => {
 		] as const) {
 			keys.add(providerFieldErrorKey(error));
 		}
+		for (const error of [
+			'username_required',
+			'username_too_long',
+			'username_invalid',
+			'display_name_too_long',
+			'password_required',
+			'password_too_short',
+			'password_too_long',
+			'role_invalid',
+			'locale_invalid',
+			'no_changes'
+		] as const) {
+			// User field errors map to admin.users.form.error.{error}
+			keys.add(`admin.users.form.error.${error}`);
+		}
 		for (const key of keys) {
 			expect(has(en, key), key).toBe(true);
 			expect(has(zh, key), key).toBe(true);
