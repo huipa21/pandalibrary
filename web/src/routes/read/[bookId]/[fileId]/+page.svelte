@@ -10,11 +10,12 @@
 	import { createReader, readerFormat } from '#lib/reader/index.js';
 	import { deviceId, downloadBookFile, getBookState, getSettings, SyncError } from '#lib/reader/api.js';
 	import { annotationForReader, deleteAnnotation, highlightColor, HIGHLIGHT_COLORS, makeHighlight, makeNote, type HighlightColor } from '#lib/reader/annotations.js';
+	import { bookmarkForPosition, deleteBookmark, makeBookmark, updateBookmarkLabel } from '#lib/reader/bookmarks.js';
 	import { renderMarkdown } from '#lib/reader/markdown.js';
 	import { fraction, progressMutation, restorePosition } from '#lib/reader/progress.js';
 	import { ReadingSessions, SessionWriter } from '#lib/reader/sessions.js';
 	import { DEFAULT_SETTINGS, isReaderSettings, loadReaderSettings, mergeBookSettings } from '#lib/reader/settings.js';
-	import type { Highlight, Note, Reader, ReaderFormat, ReaderSelection, ReaderSettings, Relocation } from '#lib/reader/types.js';
+	import type { Bookmark, Highlight, Note, Reader, ReaderFormat, ReaderSelection, ReaderSettings, Relocation } from '#lib/reader/types.js';
 	import NoteEditor from '#lib/reader/NoteEditor.svelte';
 	import {
 		currentAccount, DurableProgressWriter, offlineAvailable, offlineStatus, readerOpened, saveMutation, syncNow
@@ -26,6 +27,13 @@
 		id: string;
 		highlightId: string | null;
 		body: string;
+		original: string;
+		editing: boolean;
+	}
+
+	interface BookmarkDraft {
+		id: string;
+		label: string;
 		original: string;
 		editing: boolean;
 	}
@@ -44,11 +52,14 @@
 	let ready = $state(false);
 	let settings = $state<ReaderSettings>({ ...DEFAULT_SETTINGS });
 	let highlights = $state<Highlight[]>([]);
+	let bookmarks = $state<Bookmark[]>([]);
 	let notes = $state<Note[]>([]);
 	let location = $state<Relocation | null>(null);
 	let selection = $state<ReaderSelection | null>(null);
 	let selectedColor = $state<HighlightColor>('yellow');
 	let draft = $state<NoteDraft | null>(null);
+	let bookmarkDraft = $state<BookmarkDraft | null>(null);
+	let showBookmarks = $state(false);
 	let surface = $state<HTMLDivElement>();
 	let reader: Reader | null = null;
 	let progressWriter: DurableProgressWriter | null = null;
@@ -64,6 +75,7 @@
 	});
 	const orderedHighlights = $derived([...highlights].sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at)));
 	const bookNotes = $derived(notes.filter((note) => note.highlight_id === null));
+	const availableBookmarks = $derived(bookmarks.filter((bm) => bookmarkForPosition(bm, file?.id ?? -1, format ?? 'epub')));
 	const progressPercent = $derived(Math.round((location?.fraction ?? 0) * 100));
 
 	$effect(() => {
@@ -191,8 +203,10 @@
 		location = null;
 		selection = null;
 		highlights = [];
+		bookmarks = [];
 		notes = [];
 		draft = null;
+		bookmarkDraft = null;
 		opening = true;
 		loadError = '';
 		actionError = '';
@@ -250,6 +264,7 @@
 			file = selectedFile;
 			format = selectedFormat;
 			highlights = state.highlights.filter((highlight) => !highlight.deleted_at);
+			bookmarks = state.bookmarks.filter((bookmark) => !bookmark.deleted_at);
 			notes = state.notes.filter((note) => !note.deleted_at);
 			progressWriter = new DurableProgressWriter(reportPendingError);
 			await tick();
@@ -553,6 +568,69 @@
 		}
 	}
 
+	async function saveBookmark() {
+		if (!book || !file || !location || busy || !reader) return;
+		busy = true;
+		actionError = '';
+		const label = bookmarkDraft?.label ?? '';
+		const id = bookmarkDraft?.id ?? uuidv7();
+		try {
+			const existing = bookmarks.find((bm) => bm.id === id);
+			const mutation = makeBookmark(book.id, file.id, location, label, existing);
+			await saveMutation(mutation);
+			const now = new Date(mutation.updated_at).toISOString();
+			const bookmark: Bookmark = {
+				id, book_id: book.id, book_file_id: file.id, locator: location.locator,
+				position: location.fraction, label, chapter: existing?.chapter ?? null,
+				created_at: existing?.created_at ?? now, updated_at: now, deleted_at: null, rev: existing?.rev ?? 0
+			};
+			bookmarks = existing ? bookmarks.map((item) => item.id === bookmark.id ? bookmark : item) : [...bookmarks, bookmark];
+			bookmarkDraft = null;
+			savedMessage = 'Bookmark saved';
+			setTimeout(() => { if (savedMessage === 'Bookmark saved') savedMessage = ''; }, 3000);
+		} catch (error) {
+			if (error instanceof Error && error.message === 'Bookmark exceeds the server limits.') {
+				actionError = 'Bookmark exceeds the server limit';
+			} else reportActionError(error);
+		} finally {
+			busy = false;
+		}
+	}
+
+	function editBookmark(bookmark: Bookmark) {
+		bookmarkDraft = {
+			id: bookmark.id,
+			label: bookmark.label,
+			original: bookmark.label,
+			editing: true
+		};
+	}
+
+	async function removeBookmark(bookmark: Bookmark) {
+		if (busy || !window.confirm('Delete this bookmark?')) return;
+		busy = true;
+		actionError = '';
+		try {
+			await saveMutation(deleteBookmark(bookmark.id));
+			bookmarks = bookmarks.filter((item) => item.id !== bookmark.id);
+			if (bookmarkDraft?.id === bookmark.id) bookmarkDraft = null;
+		} catch (error) {
+			reportActionError(error);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function jumpToBookmark(bookmark: Bookmark) {
+		if (!reader || !bookmarkForPosition(bookmark, file?.id ?? -1, format ?? 'epub')) return;
+		try {
+			const locator = bookmark.locator as any;
+			await reader.goTo(locator);
+		} catch (error) {
+			actionError = 'Could not jump to bookmark';
+		}
+	}
+
 	function colorLabel(color: HighlightColor): string {
 		switch (color) {
 			case 'yellow': return m['reader.annotations.yellow']();
@@ -735,6 +813,73 @@
 					{/each}
 				</div>
 			{/each}
+		</section>
+
+		<section aria-labelledby="bookmarks-heading" class="space-y-4">
+			<div class="flex items-center justify-between">
+				<h2 id="bookmarks-heading" class="text-xl font-semibold">Bookmarks</h2>
+				<button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus-visible:outline-2" disabled={!ready || busy} onclick={() => showBookmarks = !showBookmarks}>
+					{showBookmarks ? 'Hide' : 'Show'} ({availableBookmarks.length})
+				</button>
+			</div>
+			<div class="flex flex-wrap gap-3">
+				<button class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={!ready || busy} onclick={() => bookmarkDraft = { id: uuidv7(), label: '', original: '', editing: false }}>Save Position</button>
+				{#if availableBookmarks.length > 0}
+					<select class="rounded-md border border-slate-300 p-2 focus-visible:outline-2" disabled={!ready || busy} onchange={(event) => {
+						const bm = availableBookmarks.find((b) => b.id === event.currentTarget.value);
+						if (bm) void jumpToBookmark(bm);
+					}}>
+						<option value="">Jump to bookmark</option>
+						{#each availableBookmarks as bookmark (bookmark.id)}
+							<option value={bookmark.id}>{bookmark.label || 'Unnamed'}</option>
+						{/each}
+					</select>
+				{/if}
+			</div>
+
+			{#if bookmarkDraft}
+				<form class="space-y-3 rounded-md border border-slate-300 bg-slate-50 p-4" onsubmit={(event) => { event.preventDefault(); void saveBookmark(); }}>
+					<h3 class="font-semibold">{bookmarkDraft.editing ? 'Edit Bookmark' : 'New Bookmark'}</h3>
+					<label class="space-y-1 text-sm font-medium">
+						<span>Label (optional)</span>
+						<input
+							type="text"
+							class="block w-full rounded-md border border-slate-300 p-2 focus-visible:outline-2"
+							placeholder="e.g., Chapter 5, Important passage"
+							bind:value={bookmarkDraft.label}
+							maxlength="512"
+							disabled={busy}
+						/>
+					</label>
+					<div class="flex flex-wrap gap-3">
+						<button type="submit" class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={busy}>Save</button>
+						<button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-2" onclick={() => { bookmarkDraft = null; }}>Cancel</button>
+					</div>
+				</form>
+			{/if}
+
+			{#if !availableBookmarks.length}
+				<p class="text-slate-600">No bookmarks</p>
+			{:else if showBookmarks}
+				<div class="space-y-3">
+					{#each availableBookmarks as bookmark (bookmark.id)}
+						<div class="space-y-2 rounded-md border border-slate-200 bg-white p-4">
+							<div class="flex items-start justify-between">
+								<div class="min-w-0 flex-1">
+									<p class="font-semibold">{bookmark.label || 'Unnamed'}</p>
+									<p class="text-sm text-slate-600">{(Math.round(bookmark.position * 1000) / 10).toFixed(1)}%{bookmark.chapter ? ` — ${bookmark.chapter}` : ''}</p>
+								</div>
+								<time class="whitespace-nowrap text-sm text-slate-600">{new Date(bookmark.created_at).toLocaleDateString()}</time>
+							</div>
+							<div class="flex flex-wrap gap-3 text-sm">
+								<button class="underline focus-visible:outline-2" disabled={busy} onclick={() => void jumpToBookmark(bookmark)}>Jump</button>
+								<button class="underline focus-visible:outline-2" disabled={busy} onclick={() => editBookmark(bookmark)}>Edit</button>
+								<button class="underline focus-visible:outline-2" disabled={busy} onclick={() => void removeBookmark(bookmark)}>Delete</button>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
 		</section>
 	</article>
 {/if}

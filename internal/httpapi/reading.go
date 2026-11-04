@@ -30,6 +30,7 @@ func ReadingMount(service *reading.Service, authentication *auth.Service, logger
 		router.Group(func(secured chi.Router) {
 			secured.Use(SessionMiddleware(authentication, logger))
 			secured.Get("/api/v1/me/books/{id}", handler.getBookState)
+			secured.Get("/api/v1/me/bookmarks", handler.listBookmarks)
 			secured.Get("/api/v1/me/settings", handler.listSettings)
 			secured.With(cookieProtection).Post("/api/v1/sync/push", handler.push)
 			secured.Get("/api/v1/sync/pull", handler.pull)
@@ -49,6 +50,41 @@ func (h *readingHTTP) getBookState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.service.GetBookState(r.Context(), viewer, bookID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, result)
+}
+
+func (h *readingHTTP) listBookmarks(w http.ResponseWriter, r *http.Request) {
+	viewer, ok := h.viewer(w, r)
+	if !ok {
+		return
+	}
+	values, valid := h.query(w, r, "limit", "cursor")
+	if !valid {
+		return
+	}
+	limit := int64(20)
+	if raw, exists := values["limit"]; exists && len(raw) == 1 {
+		l, err := strconv.ParseInt(raw[0], 10, 64)
+		if err != nil || l < 1 || l > 100 {
+			WriteProblem(w, h.logger, http.StatusBadRequest, "The limit must be between 1 and 100.")
+			return
+		}
+		limit = l
+	}
+	offset := int64(0)
+	if raw, exists := values["cursor"]; exists && len(raw) == 1 && raw[0] != "" {
+		o, err := strconv.ParseInt(raw[0], 10, 64)
+		if err != nil || o < 0 || strconv.FormatInt(o, 10) != raw[0] {
+			WriteProblem(w, h.logger, http.StatusBadRequest, "The cursor is invalid.")
+			return
+		}
+		offset = o
+	}
+	result, err := h.service.ListUserBookmarks(r.Context(), viewer, limit, offset)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

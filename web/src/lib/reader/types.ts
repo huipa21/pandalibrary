@@ -88,10 +88,25 @@ export interface Note {
 	rev: number;
 }
 
+export interface Bookmark {
+	id: string;
+	book_id: number;
+	book_file_id: number | null;
+	locator: JsonValue;
+	position: number;
+	label: string;
+	chapter: string | null;
+	created_at: string;
+	updated_at: string;
+	deleted_at: string | null;
+	rev: number;
+}
+
 export interface BookState {
 	user_book: unknown;
 	progress: Progress | null;
 	highlights: Highlight[];
+	bookmarks: Bookmark[];
 	notes: Note[];
 }
 

@@ -1,6 +1,6 @@
 import type { JsonValue } from '#lib/api/client.js';
 import type { Book } from '#lib/catalog/types.js';
-import type { Highlight, Note, Progress, Setting } from '#lib/reader/types.js';
+import type { Bookmark, Highlight, Note, Progress, Setting } from '#lib/reader/types.js';
 
 export interface OfflineViewer {
 	id: number;
@@ -11,7 +11,7 @@ export interface OfflineViewer {
 }
 
 export type SyncMutation = {
-	entity: 'user_books' | 'reading_progress' | 'highlights' | 'notes' | 'user_settings' | 'reading_sessions';
+	entity: 'user_books' | 'reading_progress' | 'highlights' | 'bookmarks' | 'notes' | 'user_settings' | 'reading_sessions';
 	op: 'upsert' | 'delete';
 	data: { [key: string]: JsonValue };
 	updated_at: number;
@@ -42,6 +42,7 @@ export interface PullResponse {
 	user_books: UserBookRow[];
 	reading_progress: ProgressRow[];
 	highlights: Highlight[];
+	bookmarks: Bookmark[];
 	notes: Note[];
 	user_settings: Setting[];
 }
@@ -50,6 +51,7 @@ export type StoredRow =
 	| { account: number; entity: 'user_books'; key: string; value: UserBookRow }
 	| { account: number; entity: 'reading_progress'; key: string; value: ProgressRow }
 	| { account: number; entity: 'highlights'; key: string; value: Highlight }
+	| { account: number; entity: 'bookmarks'; key: string; value: Bookmark }
 	| { account: number; entity: 'notes'; key: string; value: Note }
 	| { account: number; entity: 'user_settings'; key: string; value: Setting };
 

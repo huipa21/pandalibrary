@@ -371,5 +371,90 @@ SELECT * FROM user_settings
 WHERE user_id = sqlc.arg(user_id) AND rev > sqlc.arg(cursor) AND rev <= sqlc.arg(high_water)
 ORDER BY rev, key;
 
+-- name: ReadingPullBookmarks :many
+SELECT bm.* FROM bookmarks bm JOIN books b ON b.id = bm.book_id
+WHERE bm.user_id = sqlc.arg(user_id) AND bm.rev > sqlc.arg(cursor) AND bm.rev <= sqlc.arg(high_water)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(user_id))
+ORDER BY bm.rev, bm.id;
+
+-- name: ReadingVisibleBookmarkCount :one
+SELECT COUNT(*) FROM bookmarks bm
+JOIN books b ON b.id = bm.book_id
+WHERE bm.user_id = sqlc.arg(user_id) AND bm.book_id = sqlc.arg(book_id) AND bm.deleted_at IS NULL
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(user_id)
+);
+
+-- name: ReadingListUserBookmarks :many
+SELECT bm.* FROM bookmarks bm
+JOIN books b ON b.id = bm.book_id
+WHERE bm.user_id = sqlc.arg(user_id) AND bm.deleted_at IS NULL
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(user_id)
+)
+ORDER BY bm.created_at DESC, bm.id
+LIMIT sqlc.arg(limit) OFFSET sqlc.arg(offset);
+
+-- name: ReadingListBookmarksByBookID :many
+SELECT bm.* FROM bookmarks bm
+JOIN books b ON b.id = bm.book_id
+WHERE bm.user_id = sqlc.arg(user_id) AND bm.book_id = sqlc.arg(book_id) AND bm.deleted_at IS NULL
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(user_id)
+)
+ORDER BY bm.position, bm.id;
+
+-- name: ReadingGetOwnedBookmark :one
+SELECT bm.* FROM bookmarks bm
+JOIN books b ON b.id = bm.book_id
+WHERE bm.id = sqlc.arg(id) AND bm.user_id = sqlc.arg(user_id)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(user_id));
+
+-- name: ReadingGetBookmarkClock :one
+SELECT updated_at FROM bookmarks WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id);
+
+-- name: ReadingGetBookmarkOwner :one
+SELECT user_id FROM bookmarks WHERE id = sqlc.arg(id);
+
+-- name: ReadingUpsertBookmark :execrows
+INSERT INTO bookmarks (id, user_id, book_id, book_file_id, locator, position, label, chapter, created_at, updated_at, deleted_at, rev)
+SELECT sqlc.arg(id), sqlc.arg(user_id), b.id, sqlc.narg(book_file_id), sqlc.arg(locator),
+       sqlc.arg(position), sqlc.arg(label), sqlc.narg(chapter), sqlc.arg(created_at),
+       sqlc.arg(updated_at), sqlc.narg(deleted_at), sqlc.arg(rev)
+FROM books b
+WHERE b.id = sqlc.arg(book_id)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(user_id))
+ON CONFLICT(id) DO UPDATE SET
+    book_file_id = excluded.book_file_id,
+    locator = excluded.locator,
+    position = excluded.position,
+    label = excluded.label,
+    chapter = excluded.chapter,
+    updated_at = excluded.updated_at,
+    deleted_at = excluded.deleted_at,
+    rev = excluded.rev;
+
+-- name: ReadingTombstoneBookmark :exec
+UPDATE bookmarks SET updated_at = sqlc.arg(updated_at), deleted_at = sqlc.arg(deleted_at), rev = sqlc.arg(rev)
+WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND deleted_at IS NULL;
+
 -- name: ReadingSyncHighWater :one
 SELECT value FROM sync_counter WHERE id = 1;

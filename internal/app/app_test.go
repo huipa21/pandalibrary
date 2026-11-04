@@ -55,7 +55,7 @@ func TestStartupMigratesAndCreatesRuntimeDirectories(t *testing.T) {
 	err = app.databases.Reader.QueryRow(
 		"SELECT MAX(version_id) FROM goose_db_version WHERE is_applied = 1",
 	).Scan(&version)
-	if err != nil || version != 2 || !app.ready.Load() {
+	if err != nil || version != 3 || !app.ready.Load() {
 		t.Fatalf("migration version = %d, readiness = %v, error = %v", version, app.ready.Load(), err)
 	}
 	setupResponse := httptest.NewRecorder()

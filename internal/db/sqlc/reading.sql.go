@@ -28,6 +28,33 @@ func (q *Queries) ReadingDeleteNoteFTS(ctx context.Context, id string) error {
 	return err
 }
 
+const readingGetBookmarkClock = `-- name: ReadingGetBookmarkClock :one
+SELECT updated_at FROM bookmarks WHERE id = ?1 AND user_id = ?2
+`
+
+type ReadingGetBookmarkClockParams struct {
+	ID     string
+	UserID int64
+}
+
+func (q *Queries) ReadingGetBookmarkClock(ctx context.Context, arg ReadingGetBookmarkClockParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, readingGetBookmarkClock, arg.ID, arg.UserID)
+	var updated_at int64
+	err := row.Scan(&updated_at)
+	return updated_at, err
+}
+
+const readingGetBookmarkOwner = `-- name: ReadingGetBookmarkOwner :one
+SELECT user_id FROM bookmarks WHERE id = ?1
+`
+
+func (q *Queries) ReadingGetBookmarkOwner(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, readingGetBookmarkOwner, id)
+	var user_id int64
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const readingGetHighlightClock = `-- name: ReadingGetHighlightClock :one
 SELECT updated_at FROM highlights WHERE id = ?1 AND user_id = ?2
 `
@@ -119,6 +146,43 @@ func (q *Queries) ReadingGetNoteOwner(ctx context.Context, id string) (int64, er
 	var user_id int64
 	err := row.Scan(&user_id)
 	return user_id, err
+}
+
+const readingGetOwnedBookmark = `-- name: ReadingGetOwnedBookmark :one
+SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm
+JOIN books b ON b.id = bm.book_id
+WHERE bm.id = ?1 AND bm.user_id = ?2
+AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
+`
+
+type ReadingGetOwnedBookmarkParams struct {
+	ID      string
+	UserID  int64
+	IsAdmin int64
+}
+
+func (q *Queries) ReadingGetOwnedBookmark(ctx context.Context, arg ReadingGetOwnedBookmarkParams) (Bookmark, error) {
+	row := q.db.QueryRowContext(ctx, readingGetOwnedBookmark, arg.ID, arg.UserID, arg.IsAdmin)
+	var i Bookmark
+	err := row.Scan(
+		&i.Seq,
+		&i.ID,
+		&i.UserID,
+		&i.BookID,
+		&i.BookFileID,
+		&i.Locator,
+		&i.Position,
+		&i.Label,
+		&i.Chapter,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.Rev,
+	)
+	return i, err
 }
 
 const readingGetOwnedHighlight = `-- name: ReadingGetOwnedHighlight :one
@@ -430,6 +494,62 @@ func (q *Queries) ReadingInsertSession(ctx context.Context, arg ReadingInsertSes
 	return result.RowsAffected()
 }
 
+const readingListBookmarksByBookID = `-- name: ReadingListBookmarksByBookID :many
+SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm
+JOIN books b ON b.id = bm.book_id
+WHERE bm.user_id = ?1 AND bm.book_id = ?2 AND bm.deleted_at IS NULL
+AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
+)
+ORDER BY bm.position, bm.id
+`
+
+type ReadingListBookmarksByBookIDParams struct {
+	UserID  int64
+	BookID  int64
+	IsAdmin int64
+}
+
+func (q *Queries) ReadingListBookmarksByBookID(ctx context.Context, arg ReadingListBookmarksByBookIDParams) ([]Bookmark, error) {
+	rows, err := q.db.QueryContext(ctx, readingListBookmarksByBookID, arg.UserID, arg.BookID, arg.IsAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Bookmark{}
+	for rows.Next() {
+		var i Bookmark
+		if err := rows.Scan(
+			&i.Seq,
+			&i.ID,
+			&i.UserID,
+			&i.BookID,
+			&i.BookFileID,
+			&i.Locator,
+			&i.Position,
+			&i.Label,
+			&i.Chapter,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Rev,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readingListHighlights = `-- name: ReadingListHighlights :many
 SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position, h.text, h.color, h.chapter, h.created_at, h.updated_at, h.deleted_at, h.rev FROM highlights h
 JOIN books b ON b.id = h.book_id
@@ -566,6 +686,128 @@ func (q *Queries) ReadingListSettings(ctx context.Context, userID int64) ([]User
 			&i.Key,
 			&i.Value,
 			&i.UpdatedAt,
+			&i.Rev,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readingListUserBookmarks = `-- name: ReadingListUserBookmarks :many
+SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm
+JOIN books b ON b.id = bm.book_id
+WHERE bm.user_id = ?1 AND bm.deleted_at IS NULL
+AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
+)
+ORDER BY bm.created_at DESC, bm.id
+LIMIT ?4 OFFSET ?3
+`
+
+type ReadingListUserBookmarksParams struct {
+	UserID  int64
+	IsAdmin int64
+	Offset  int64
+	Limit   int64
+}
+
+func (q *Queries) ReadingListUserBookmarks(ctx context.Context, arg ReadingListUserBookmarksParams) ([]Bookmark, error) {
+	rows, err := q.db.QueryContext(ctx, readingListUserBookmarks,
+		arg.UserID,
+		arg.IsAdmin,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Bookmark{}
+	for rows.Next() {
+		var i Bookmark
+		if err := rows.Scan(
+			&i.Seq,
+			&i.ID,
+			&i.UserID,
+			&i.BookID,
+			&i.BookFileID,
+			&i.Locator,
+			&i.Position,
+			&i.Label,
+			&i.Chapter,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Rev,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readingPullBookmarks = `-- name: ReadingPullBookmarks :many
+SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm JOIN books b ON b.id = bm.book_id
+WHERE bm.user_id = ?1 AND bm.rev > ?2 AND bm.rev <= ?3
+AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1)
+ORDER BY bm.rev, bm.id
+`
+
+type ReadingPullBookmarksParams struct {
+	UserID    int64
+	Cursor    int64
+	HighWater int64
+	IsAdmin   int64
+}
+
+func (q *Queries) ReadingPullBookmarks(ctx context.Context, arg ReadingPullBookmarksParams) ([]Bookmark, error) {
+	rows, err := q.db.QueryContext(ctx, readingPullBookmarks,
+		arg.UserID,
+		arg.Cursor,
+		arg.HighWater,
+		arg.IsAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Bookmark{}
+	for rows.Next() {
+		var i Bookmark
+		if err := rows.Scan(
+			&i.Seq,
+			&i.ID,
+			&i.UserID,
+			&i.BookID,
+			&i.BookFileID,
+			&i.Locator,
+			&i.Position,
+			&i.Label,
+			&i.Chapter,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
 			&i.Rev,
 		); err != nil {
 			return nil, err
@@ -1141,6 +1383,30 @@ func (q *Queries) ReadingSyncHighWater(ctx context.Context) (int64, error) {
 	return value, err
 }
 
+const readingTombstoneBookmark = `-- name: ReadingTombstoneBookmark :exec
+UPDATE bookmarks SET updated_at = ?1, deleted_at = ?2, rev = ?3
+WHERE id = ?4 AND user_id = ?5 AND deleted_at IS NULL
+`
+
+type ReadingTombstoneBookmarkParams struct {
+	UpdatedAt int64
+	DeletedAt sql.NullInt64
+	Rev       int64
+	ID        string
+	UserID    int64
+}
+
+func (q *Queries) ReadingTombstoneBookmark(ctx context.Context, arg ReadingTombstoneBookmarkParams) error {
+	_, err := q.db.ExecContext(ctx, readingTombstoneBookmark,
+		arg.UpdatedAt,
+		arg.DeletedAt,
+		arg.Rev,
+		arg.ID,
+		arg.UserID,
+	)
+	return err
+}
+
 const readingTombstoneNote = `-- name: ReadingTombstoneNote :exec
 UPDATE notes SET updated_at = ?1, deleted_at = ?2,
     rev = ?3
@@ -1164,6 +1430,66 @@ func (q *Queries) ReadingTombstoneNote(ctx context.Context, arg ReadingTombstone
 		arg.UserID,
 	)
 	return err
+}
+
+const readingUpsertBookmark = `-- name: ReadingUpsertBookmark :execrows
+INSERT INTO bookmarks (id, user_id, book_id, book_file_id, locator, position, label, chapter, created_at, updated_at, deleted_at, rev)
+SELECT ?1, ?2, b.id, ?3, ?4,
+       ?5, ?6, ?7, ?8,
+       ?9, ?10, ?11
+FROM books b
+WHERE b.id = ?12
+AND (CAST(?13 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
+ON CONFLICT(id) DO UPDATE SET
+    book_file_id = excluded.book_file_id,
+    locator = excluded.locator,
+    position = excluded.position,
+    label = excluded.label,
+    chapter = excluded.chapter,
+    updated_at = excluded.updated_at,
+    deleted_at = excluded.deleted_at,
+    rev = excluded.rev
+`
+
+type ReadingUpsertBookmarkParams struct {
+	ID         string
+	UserID     int64
+	BookFileID sql.NullInt64
+	Locator    string
+	Position   float64
+	Label      string
+	Chapter    sql.NullString
+	CreatedAt  int64
+	UpdatedAt  int64
+	DeletedAt  sql.NullInt64
+	Rev        int64
+	BookID     int64
+	IsAdmin    int64
+}
+
+func (q *Queries) ReadingUpsertBookmark(ctx context.Context, arg ReadingUpsertBookmarkParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, readingUpsertBookmark,
+		arg.ID,
+		arg.UserID,
+		arg.BookFileID,
+		arg.Locator,
+		arg.Position,
+		arg.Label,
+		arg.Chapter,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.DeletedAt,
+		arg.Rev,
+		arg.BookID,
+		arg.IsAdmin,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const readingUpsertHighlight = `-- name: ReadingUpsertHighlight :execrows
@@ -1478,4 +1804,29 @@ func (q *Queries) ReadingVisibleBookFile(ctx context.Context, arg ReadingVisible
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const readingVisibleBookmarkCount = `-- name: ReadingVisibleBookmarkCount :one
+SELECT COUNT(*) FROM bookmarks bm
+JOIN books b ON b.id = bm.book_id
+WHERE bm.user_id = ?1 AND bm.book_id = ?2 AND bm.deleted_at IS NULL
+AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
+)
+`
+
+type ReadingVisibleBookmarkCountParams struct {
+	UserID  int64
+	BookID  int64
+	IsAdmin int64
+}
+
+func (q *Queries) ReadingVisibleBookmarkCount(ctx context.Context, arg ReadingVisibleBookmarkCountParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, readingVisibleBookmarkCount, arg.UserID, arg.BookID, arg.IsAdmin)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
