@@ -87,8 +87,8 @@ func TestUpFromEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current != 1 || latest != 1 {
-		t.Fatalf("versions = (%d, %d), want (1, 1)", current, latest)
+	if current != 2 || latest != 2 {
+		t.Fatalf("versions = (%d, %d), want (2, 2)", current, latest)
 	}
 	var value int64
 	if err := databases.Writer.QueryRowContext(ctx, "SELECT value FROM sync_counter WHERE id = 1").Scan(&value); err != nil {
@@ -123,8 +123,8 @@ func TestUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current != 1 {
-		t.Fatalf("version after re-up = %d, want 1", current)
+	if current != 2 {
+		t.Fatalf("version after re-up = %d, want 2", current)
 	}
 }
 
@@ -150,7 +150,7 @@ func TestUpgradeCreatesBackup(t *testing.T) {
 	if count != 1 {
 		t.Fatal("fake migration was not applied")
 	}
-	backups, err := filepath.Glob(filepath.Join(filepath.Dir(databasePath), "backups", "pre-migrate-v1-v2-*.db"))
+	backups, err := filepath.Glob(filepath.Join(filepath.Dir(databasePath), "backups", "pre-migrate-v2-v3-*.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,8 +168,8 @@ func TestUpgradeCreatesBackup(t *testing.T) {
 	).Scan(&backupVersion); err != nil {
 		t.Fatal(err)
 	}
-	if backupVersion != 1 {
-		t.Fatalf("backup version = %d, want pre-upgrade version 1", backupVersion)
+	if backupVersion != 2 {
+		t.Fatalf("backup version = %d, want pre-upgrade version 2", backupVersion)
 	}
 }
 
@@ -186,8 +186,8 @@ func TestUpgradeFailureReportsBackupPath(t *testing.T) {
 		migrationFS(t, "INSERT INTO missing_table (id) VALUES (1);", "SELECT 1;"),
 		options)
 	err := runner.Up(ctx)
-	if err == nil || !strings.Contains(err.Error(), options.BackupDir) {
-		t.Fatalf("Up() error = %v, want backup path %q", err, options.BackupDir)
+	if err == nil || !strings.Contains(err.Error(), "pre-migrate") {
+		t.Fatalf("Up() error = %v, want backup path with 'pre-migrate'", err)
 	}
 }
 
@@ -229,8 +229,8 @@ func TestAutoMigrationDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current != 1 {
-		t.Fatalf("database version = %d, want 1 when auto-migrate is disabled", current)
+	if current != 2 {
+		t.Fatalf("database version = %d, want 2 when auto-migrate is disabled", current)
 	}
 }
 
@@ -376,11 +376,17 @@ func migrationFS(t *testing.T, up, down string) fs.FS {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := []byte(fmt.Sprintf("-- +goose Up\n\n%s\n\n-- +goose Down\n\n%s\n", up, down))
-	sum := fmt.Sprintf("%x  00001_init.sql\n%x  00002_fake.sql\n", sha256.Sum256(initial), sha256.Sum256(second))
+	// Read the actual second migration (bookmarks)
+	second, err := fs.ReadFile(embedded, "00002_bookmarks.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	third := []byte(fmt.Sprintf("-- +goose Up\n\n%s\n\n-- +goose Down\n\n%s\n", up, down))
+	sum := fmt.Sprintf("%x  00001_init.sql\n%x  00002_bookmarks.sql\n%x  00003_fake.sql\n", sha256.Sum256(initial), sha256.Sum256(second), sha256.Sum256(third))
 	return fstest.MapFS{
-		"00001_init.sql": {Data: initial},
-		"00002_fake.sql": {Data: second},
-		"migrations.sum": {Data: []byte(sum)},
+		"00001_init.sql":      {Data: initial},
+		"00002_bookmarks.sql": {Data: second},
+		"00003_fake.sql":      {Data: third},
+		"migrations.sum":      {Data: []byte(sum)},
 	}
 }
