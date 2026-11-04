@@ -36,11 +36,39 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 10 | W7 | Stats, notes and export UI | ST1, E1, W2 | [W7-stats-notes-export-ui.md](../prompts/W7-stats-notes-export-ui.md) | Done | `master` | `/stats` (SVG charts + tables, local dates/timezone) and `/notes` (annotation search, Markdown/ZIP export); check, 39 unit and 4 browser tests pass |
 | 10 | W5 | Admin UI | I1, M1, W1, J1 | [W5-admin-ui.md](../prompts/W5-admin-ui.md) | Done | `master` | `/admin` libraries/access, hide lists, uploads + polled import history, providers, maintenance; check, 29 unit and 7 browser tests pass; user-list/account API still missing (ID-based workflow) |
 | 10 | W6 | Metadata merge UI | M1, W1 | [W6-metadata-merge-ui.md](../prompts/W6-metadata-merge-ui.md) | Done | `master` | Admin `/books/{id}/edit` per-field candidate merge via request-key references, server-proxied cover previews, 409 re-lookup, sequential pdf.js first-page cover batch; check, 20 unit and 3 browser tests pass |
-| 11 | Q1 🔒 | Release and end-to-end | all | — | Not started | | |
+| 11 | Q1 🔒 | Release and end-to-end | all | [Q1-release-e2e.md](../prompts/Q1-release-e2e.md) | Done | `master` | Scratch image 11.3 MiB compressed; runtime/health/shutdown, 39 real-server browser tests, upgrade checks, and Go/web gates pass locally; release/CI workflows wired |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-04 — Q1 — Completed local release validation. The scratch image measures
+  11.3 MiB as a gzipped image archive (below the 35 MiB ceiling); Podman Docker-format
+  builds preserve its healthcheck. Verified non-root persistent storage, startup
+  migrations, setup reachability, healthy/unavailable checks, and clean SIGTERM exit.
+  Replaced the Windows-hanging E2E process wrapper with Playwright-owned setup/teardown,
+  isolated loopback ports/data, redacted diagnostics, and verified cleanup on startup
+  failure and success. All 39 compiled-server browser tests pass; static-preview mode
+  retains 38 passing tests and skips the real-server-only journey. Go build/lint/test,
+  web check/build and 161 unit tests pass. The first-release upgrade fixture now comes
+  directly from the immutable v1 migration rather than candidate startup; both upgrade
+  paths pass locally (the previous-binary branch used the same local build). CI and
+  release workflows fetch a prior release when available; remote workflows have not
+  been executed in this session. Existing FB2 and KOReader-device caveats remain.
+
+- 2026-11-04 — Q1 — Added the scratch multi-stage container, versioned release binaries,
+  least-privilege published-release workflow, full real-server Playwright harness, v1
+  baseline/previous-release upgrade check, and user/operator guide. `task build`, `task
+  lint`, `task test`, web check/test/build, all 39 Playwright tests, and the generated
+  upgrade baseline pass. Local container build could not fetch Docker Hub layers through
+  Podman; CI now measures compressed size and verifies runtime/health/shutdown behavior.
+  Awaiting the CI container gate.
+
+- 2026-11-04 — docs — Drafted the Step 11 Q1 release and end-to-end prompt from the
+  accepted plan, deployment/migration architecture, current CI and browser-test setup, and
+  the merged feature status. It covers the scratch image and healthcheck, real-server
+  Playwright CI, a first-release-safe migration-upgrade baseline, release workflow, and
+  operator guide. Awaiting review.
 
 - 2026-11-04 — W5 — Added the administrator-only `/admin` area: library CRUD with
   conflict messages, per-library access grants, per-user hide lists, single-file uploads

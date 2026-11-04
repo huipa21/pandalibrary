@@ -125,12 +125,15 @@ async function useProductionCsp(page: Page) {
 		const response = await route.fetch();
 		const headers = response.headers();
 		delete headers['content-length'];
+		delete headers['content-encoding'];
+		const source = await response.text();
+		const nonce = source.match(/<script[^>]*\bnonce="([^"]+)"/)?.[1] ?? 'test-reader';
+		const html = source.replace('<script>', `<script nonce="${nonce}">`);
 		headers['content-security-policy'] =
-			"default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-test-reader'; " +
+			`default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'nonce-${nonce}'; ` +
 			"style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self' blob: data:; " +
 			"media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; " +
 			"object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
-		const html = (await response.text()).replace('<script>', '<script nonce="test-reader">');
 		await route.fulfill({ response, headers, body: html });
 	});
 }

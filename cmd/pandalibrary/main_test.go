@@ -32,6 +32,19 @@ func TestCommandDispatch(t *testing.T) {
 	}
 }
 
+func TestVersionCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if err := run([]string{"version"}, &stdout, &stderr); err != nil {
+		t.Fatalf("version command: %v", err)
+	}
+	if got, want := stdout.String(), version+"\n"; got != want {
+		t.Fatalf("version output = %q, want %q", got, want)
+	}
+	if err := run([]string{"version", "extra"}, &stdout, &stderr); err == nil {
+		t.Fatal("version command accepted extra arguments")
+	}
+}
+
 func TestUserCreateAndResetPassword(t *testing.T) {
 	t.Setenv("PANDA_DATA_DIR", t.TempDir())
 	passwords := []string{"correct horse battery", "correct horse battery"}

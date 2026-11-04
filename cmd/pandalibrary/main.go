@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	_ "time/tzdata"
 
 	"pandalibrary/internal/app"
 	"pandalibrary/internal/auth"
@@ -22,6 +23,8 @@ import (
 
 	"golang.org/x/term"
 )
+
+var version = "dev"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
@@ -39,6 +42,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runServe(args[1:], stderr)
 	case "healthcheck":
 		return runHealthcheck(args[1:], stderr)
+	case "version":
+		if len(args) != 1 {
+			return fmt.Errorf("version does not accept arguments")
+		}
+		_, err := fmt.Fprintln(stdout, version)
+		return err
 	case "user":
 		return runUser(args[1:], stdout, stderr)
 	case "migrate":

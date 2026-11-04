@@ -48,3 +48,4 @@ Prompts are kept after completion as a record of what was asked.
 | W7 | [W7-stats-notes-export-ui.md](./W7-stats-notes-export-ui.md) | Draft |
 | W5 | [W5-admin-ui.md](./W5-admin-ui.md) | Done |
 | W6 | [W6-metadata-merge-ui.md](./W6-metadata-merge-ui.md) | Done |
+| Q1 | [Q1-release-e2e.md](./Q1-release-e2e.md) | Done |
