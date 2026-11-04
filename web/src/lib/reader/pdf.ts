@@ -18,7 +18,7 @@ const assets = import.meta.glob('/node_modules/pdfjs-dist/{cmaps,standard_fonts,
 	import: 'default'
 });
 
-class PdfBinaryDataFactory {
+export class PdfBinaryDataFactory {
 	async fetch({ kind, filename }: { kind: string; filename: string }): Promise<Uint8Array> {
 		const directories: Record<string, string> = {
 			cMapUrl: 'cmaps',

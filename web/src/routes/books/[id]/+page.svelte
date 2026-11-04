@@ -8,6 +8,8 @@
 	import type { Book, BookFile } from '#lib/catalog/types.js';
 	import { readerFormat } from '#lib/reader/index.js';
 	import AddToShelf from '#lib/shelves/AddToShelf.svelte';
+	import { getSessionViewer } from '#lib/shelves/api.js';
+	import { isAdministrator } from '#lib/shelves/form.js';
 	import { currentAccount, offlineAvailable, offlineStatus } from '#lib/sync/client.js';
 	import { downloadedBooks, OfflineStorageError, removeBook } from '#lib/sync/db.js';
 	import { downloadForOffline, loadBook as loadOfflineBook, loadCover } from '#lib/sync/library.js';
@@ -22,6 +24,7 @@
 	let downloadBusy = $state<number | null>(null);
 	let offlineNotice = $state('');
 	let offlineError = $state('');
+	let canEditMetadata = $state(false);
 	let requestVersion = 0;
 	let objectUrl: string | null = null;
 
@@ -45,6 +48,7 @@
 		offlineError = '';
 		offlineNotice = '';
 		savedFileIds = [];
+		canEditMetadata = false;
 		loading = true;
 		error = '';
 		const parsedID = Number(id);
@@ -60,6 +64,15 @@
 			if (request !== requestVersion) return;
 			book = loaded.book;
 			offline = loaded.offline;
+			if (!loaded.offline) {
+				// Only hides the entry point; the edit route and API enforce authorization.
+				void getSessionViewer().then(
+					(viewer) => {
+						if (request === requestVersion) canEditMetadata = isAdministrator(viewer);
+					},
+					() => undefined
+				);
+			}
 			if (offlineAvailable()) {
 				const stored = (await downloadedBooks(currentAccount())).find((item) => item.book.id === parsedID);
 				if (request !== requestVersion) return;
@@ -171,6 +184,11 @@
 			</a>
 			<h1 class="text-3xl font-semibold tracking-tight">{book.title}</h1>
 			{#if book.subtitle}<p class="text-xl text-slate-600">{book.subtitle}</p>{/if}
+			{#if canEditMetadata && !offline}
+				<a class="inline-block rounded-md border border-slate-300 px-3 py-2 text-sm font-medium focus-visible:outline-2" href={`/books/${book.id}/edit`}>
+					{m['metadata.edit.link']()}
+				</a>
+			{/if}
 		</header>
 		{#if offlineNotice}<p role="status" class="rounded-md bg-green-50 p-3 text-green-800">{offlineNotice}</p>{/if}
 		{#if offlineError}<p role="alert" class="rounded-md bg-red-50 p-3 text-red-800">{offlineError}</p>{/if}

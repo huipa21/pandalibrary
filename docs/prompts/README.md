@@ -45,3 +45,6 @@ Prompts are kept after completion as a record of what was asked.
 | E1 | [E1-notes-export.md](./E1-notes-export.md) | Done |
 | O1 | [O1-opds.md](./O1-opds.md) | Done |
 | W4 | [W4-search-shelves-ui.md](./W4-search-shelves-ui.md) | Done |
+| W7 | [W7-stats-notes-export-ui.md](./W7-stats-notes-export-ui.md) | Draft |
+| W5 | [W5-admin-ui.md](./W5-admin-ui.md) | Done |
+| W6 | [W6-metadata-merge-ui.md](./W6-metadata-merge-ui.md) | Done |

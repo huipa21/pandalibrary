@@ -5,7 +5,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { locales, localizeHref, setLocale, type Locale } from '#lib/paraglide/runtime.js';
 	import { ApiError, api } from '#lib/api/client.js';
-	import { navigation } from '#lib/nav.js';
+	import { navigationFor } from '#lib/nav.js';
 	import SearchBox from '#lib/search/SearchBox.svelte';
 	import { activateOffline, deactivateOffline, offlineStatus, rememberedViewer, syncNow } from '#lib/sync/client.js';
 	import { withSessionLock } from '#lib/sync/engine.js';
@@ -120,7 +120,7 @@
 				{#if viewer}
 					{#if page.url.pathname !== '/search'}<SearchBox />{/if}
 					<nav aria-label={m['auth.navigation.label']()} class="flex flex-wrap gap-3 text-sm sm:gap-4">
-						{#each navigation as item (item.id)}
+						{#each navigationFor(viewer.role) as item (item.id)}
 							<a
 								class="rounded-sm text-slate-600 underline-offset-4 hover:text-slate-950 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
 								href={item.href}

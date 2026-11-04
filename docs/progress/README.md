@@ -33,14 +33,45 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 9 | E1 | Notes export | R1 | [E1-notes-export.md](../prompts/E1-notes-export.md) | Done | `master` | Authenticated Markdown/ZIP export; visibility, ordering, YAML, filename, and HTTP coverage; Go gates pass |
 | 9 | O1 | OPDS | S1, SH1 | [O1-opds.md](../prompts/O1-opds.md) | Done | `master` | Basic-auth OPDS 1.2 navigation/acquisition feeds, OpenSearch, 50-entry paging, visibility on every feed/download; schema-rule and r2-opds-js client checks; all required Go gates pass |
 | 9 | W4 | Search and shelves UI | S1, SH1, W1 | [W4-search-shelves-ui.md](../prompts/W4-search-shelves-ui.md) | Done | `master` | Bilingual shell/page search with opaque cursors, shelf list/detail/CRUD/membership UI, library shelf links; check, 73 unit and 24 browser tests pass |
-| 10 | W7 | Stats, notes and export UI | ST1, E1, W2 | — | Not started | | |
-| 10 | W5 | Admin UI | I1, M1, W1, J1 | — | Not started | | |
-| 10 | W6 | Metadata merge UI | M1, W1 | — | Not started | | |
+| 10 | W7 | Stats, notes and export UI | ST1, E1, W2 | [W7-stats-notes-export-ui.md](../prompts/W7-stats-notes-export-ui.md) | Done | `master` | `/stats` (SVG charts + tables, local dates/timezone) and `/notes` (annotation search, Markdown/ZIP export); check, 39 unit and 4 browser tests pass |
+| 10 | W5 | Admin UI | I1, M1, W1, J1 | [W5-admin-ui.md](../prompts/W5-admin-ui.md) | Done | `master` | `/admin` libraries/access, hide lists, uploads + polled import history, providers, maintenance; check, 29 unit and 7 browser tests pass; user-list/account API still missing (ID-based workflow) |
+| 10 | W6 | Metadata merge UI | M1, W1 | [W6-metadata-merge-ui.md](../prompts/W6-metadata-merge-ui.md) | Done | `master` | Admin `/books/{id}/edit` per-field candidate merge via request-key references, server-proxied cover previews, 409 re-lookup, sequential pdf.js first-page cover batch; check, 20 unit and 3 browser tests pass |
 | 11 | Q1 🔒 | Release and end-to-end | all | — | Not started | | |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-04 — W5 — Added the administrator-only `/admin` area: library CRUD with
+  conflict messages, per-library access grants, per-user hide lists, single-file uploads
+  with cursor-paged import history that polls (bounded, non-overlapping) while jobs are
+  active, metadata provider settings with write-only tokens (omit preserves, `null`
+  removes after confirmation), and maintenance jobs with run-now, 409 handling, and an
+  in-memory-status notice. Admin nav is role-filtered and the layout re-checks the role.
+  Follow-ups: no user-list/account API exists, so grants and hide lists use numeric user
+  IDs from the CLI; hide lists lack book titles. 29 unit and 7 browser tests.
+
+- 2026-11-04 — W6 — Added the admin-only `/books/{id}/edit` page (with an "Edit metadata" link on
+  the book page for admins): bodyless M1 lookup, per-field radios defaulting to "keep current",
+  apply sends only `{provider, reference}` under the current `request_key`, 409 clears
+  selections and re-runs the lookup, cover options only when the candidate has `cover_url`, and
+  previews only through the server preview endpoint (object URLs revoked). No manual PATCH
+  editing is offered. The PDF cover batch lives on the edit page (route ownership is limited to
+  `books/[id]/edit`). It walks visible libraries and books with opaque cursors (repeated-cursor
+  guard), runs one book at a time, and rechecks each book before download and again before
+  upload. A small race remains because `PUT ?source=pdfjs` overwrites existing covers. It
+  renders page 1 with pdf.js to a JPEG (long edge 1200 px, scale ≤ 4, quality 0.85; PDFs over
+  256 MiB are reported as too large). Cancel stops after the current book. 20 unit and 3
+  browser tests.
+- 2026-11-04 — W7 — Added `/stats` over ST1 (local inclusive dates, browser IANA timezone,
+  366-day guard, inline SVG bar charts with data tables; no chart dependency) and `/notes`
+  over R1/E1 (URL-driven annotation search, "Book {id}" labels since results lack titles,
+  positions for highlights only, per-book export selection capped at 100 and reset per
+  query, Markdown/ZIP download via Content-Disposition filenames). 39 unit and 4 browser tests.
+
+- 2026-11-04 — docs — Drafted the Step 10 W5–W7 prompts from the merged APIs and UI
+  hand-offs. W5 records the missing administrator user-list/account-management API and
+  limits its user access controls to explicit IDs; all three prompts await review.
 
 - 2026-11-03 — W4 — Added the app-shell search box and `/search` page over S1 (query in
   the URL, cursors passed back verbatim, pagination reset on query change, 400s treated
