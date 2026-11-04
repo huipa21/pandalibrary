@@ -59,7 +59,7 @@ func TestApplicationMountsShelfRoutes(t *testing.T) {
 	app.handler.ServeHTTP(response, request)
 	var page catalog.Page[catalog.Shelf]
 	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || response.Code != http.StatusOK ||
-		len(page.Items) != 1 || page.Items[0].Name != "Real application" {
+		len(page.Items) != 2 || page.Items[0].SystemKey == nil || page.Items[1].Name != "Real application" {
 		t.Fatalf("list shelves through application = %d %+v, %v", response.Code, page, err)
 	}
 }

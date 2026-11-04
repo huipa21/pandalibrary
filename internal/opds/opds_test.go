@@ -484,11 +484,11 @@ func TestNavigationFeedsApplyVisibility(t *testing.T) {
 	for _, entry := range shelves.Entries {
 		names = append(names, entry.Title+"="+entry.Content)
 	}
-	if !slices.Equal(names, []string{"Mine=1 book", "Shared=Shared shelf · 1 book"}) {
+	if !slices.Equal(names, []string{"Favorites=0 books", "Mine=1 book", "Shared=Shared shelf · 1 book"}) {
 		t.Fatalf("reader shelves = %v", names)
 	}
 	adminShelves := f.feed("admin", "/opds/shelves", "navigation")
-	if len(adminShelves.Entries) != 3 {
+	if len(adminShelves.Entries) != 4 || adminShelves.Entries[0].Title != "Favorites" {
 		t.Fatalf("admin shelves = %+v", adminShelves.Entries)
 	}
 	adminLibraries := f.feed("admin", "/opds/libraries", "navigation")

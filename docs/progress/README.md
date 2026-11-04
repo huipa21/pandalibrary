@@ -48,7 +48,7 @@ below are local to this follow-up; merge a wave before starting the next.
 | Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
 | 1 | UX1 | Sidebar shell and All Books | baseline | [UX1](../prompts/UX1-sidebar-shell.md) | Ready | `task/ux1` | Root shell/nav/theme ownership |
-| 1 | UX2 | System and automatic shelves API | baseline | [UX2](../prompts/UX2-system-smart-shelves.md) | Ready | `task/ux2` | Only migration writer in wave 1 |
+| 1 | UX2 | System and automatic shelves API | baseline | [UX2](../prompts/UX2-system-smart-shelves.md) | Done | `task/ux2` | Only migration writer in wave 1 |
 | 1 | UX7 | Admin users API | baseline | [UX7](../prompts/UX7-admin-users-api.md) | Ready | `task/ux7` | Existing user schema; no migration |
 | 1 | UX9 | Commit-based dev/image version | baseline | [UX9](../prompts/UX9-build-version.md) | Ready | `task/ux9` | Standalone footer component; UX10 wires it |
 | 2 | UX3 | Sidebar shelves and reusable shelf UI | UX1, UX2 | [UX3](../prompts/UX3-shelf-navigation-ui.md) | Ready | `task/ux3` | Reused by dashboard |
@@ -61,6 +61,15 @@ below are local to this follow-up; merge a wave before starting the next.
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-04 — UX2 — Added migration 00002 (`mode`, `system_key`, `rules`) with
+  Favorites backfill and lazy, idempotent provisioning. Added the GET-only
+  `/api/v1/shelves/system/{favorites|unshelved}` routes and private automatic shelves
+  with flat all/any rules. The rules are evaluated live in SQL with the existing
+  visibility predicate. Mode conversion, system-shelf rename and delete, and automatic
+  membership writes return 409; shelf-list cursors issued before UX2 are invalidated.
+  `task sqlc:check`, `task build`, `task lint` and `task test` pass. Details are in
+  the UX2 hand-off and `architecture/ux2-shelves.md`.
 
 - 2026-11-04 — UX planning — Committed existing work as `05326ce`; extraction
   tests, reader units and frontend checks passed. Ignored local dev launchers.

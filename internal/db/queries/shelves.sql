@@ -2,34 +2,37 @@
 SELECT s.* FROM shelves s
 WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR s.kind = 'shared'
     OR (s.kind = 'private' AND s.owner_id = CAST(sqlc.arg(user_id) AS INTEGER)))
+AND (s.system_key IS NULL OR s.owner_id = CAST(sqlc.arg(user_id) AS INTEGER))
 AND (CAST(sqlc.arg(after_id) AS INTEGER) = 0
-    OR s.name COLLATE NOCASE > CAST(sqlc.arg(after_name) AS TEXT) COLLATE NOCASE
-    OR (s.name COLLATE NOCASE = CAST(sqlc.arg(after_name) AS TEXT) COLLATE NOCASE
-        AND s.id > sqlc.arg(after_id)))
-ORDER BY s.name COLLATE NOCASE, s.id
+    OR (CASE WHEN s.system_key IS NULL THEN 1 ELSE 0 END) > CAST(sqlc.arg(after_rank) AS INTEGER)
+    OR ((CASE WHEN s.system_key IS NULL THEN 1 ELSE 0 END) = CAST(sqlc.arg(after_rank) AS INTEGER)
+        AND (s.name COLLATE NOCASE > CAST(sqlc.arg(after_name) AS TEXT) COLLATE NOCASE
+            OR (s.name COLLATE NOCASE = CAST(sqlc.arg(after_name) AS TEXT) COLLATE NOCASE
+                AND s.id > sqlc.arg(after_id)))))
+ORDER BY (CASE WHEN s.system_key IS NULL THEN 1 ELSE 0 END), s.name COLLATE NOCASE, s.id
 LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: ShelfGet :one
 SELECT s.* FROM shelves s
 WHERE s.id = sqlc.arg(shelf_id)
 AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR s.kind = 'shared'
-    OR (s.kind = 'private' AND s.owner_id = CAST(sqlc.arg(user_id) AS INTEGER)));
+    OR (s.kind = 'private' AND s.owner_id = CAST(sqlc.arg(user_id) AS INTEGER)))
+AND (s.system_key IS NULL OR s.owner_id = CAST(sqlc.arg(user_id) AS INTEGER));
 
 -- name: ShelfNameTaken :one
 SELECT count(*) FROM shelves
 WHERE kind = sqlc.arg(kind) AND name = sqlc.arg(name) COLLATE NOCASE
-AND id != sqlc.arg(exclude_id)
+AND id != sqlc.arg(exclude_id) AND system_key IS NULL
 AND (kind = 'shared' OR owner_id = sqlc.narg(owner_id));
 
 -- name: ShelfCreate :one
-INSERT INTO shelves (kind, owner_id, name, description, created_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at;
+INSERT INTO shelves (kind, owner_id, name, description, created_by, created_at, updated_at, mode, rules)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
 
 -- name: ShelfUpdate :one
-UPDATE shelves SET name = ?, description = ?, updated_at = ? WHERE id = ?
-RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at;
-
+UPDATE shelves SET name = ?, description = ?, rules = ?, updated_at = ? WHERE id = ?
+RETURNING *;
 -- name: ShelfDelete :execrows
 DELETE FROM shelves WHERE id = ?;
 

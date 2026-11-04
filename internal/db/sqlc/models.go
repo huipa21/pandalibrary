@@ -262,6 +262,9 @@ type Shelf struct {
 	CreatedBy   sql.NullInt64
 	CreatedAt   int64
 	UpdatedAt   int64
+	Mode        string
+	SystemKey   sql.NullString
+	Rules       sql.NullString
 }
 
 type ShelfBook struct {

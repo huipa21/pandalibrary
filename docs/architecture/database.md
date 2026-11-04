@@ -122,7 +122,11 @@ erDiagram
   - `kind='private'` requires an `owner_id`. `kind='shared'` (admin-created, visible to
     all) must have `owner_id IS NULL`, enforced by a CHECK.
   - Name uniqueness is per owner for private shelves and global for shared ones, through
-    two partial unique indexes.
+    two partial unique indexes. System shelves are excluded from the private-name index.
+  - Migration 00002 adds `mode` (`manual`|`automatic`), `system_key` (NULL or
+    `favorites`, unique per owner) and `rules` (JSON, present exactly for automatic
+    private shelves). Automatic membership is computed at read time, never stored in
+    `shelf_books`. See [UX2 shelves](ux2-shelves.md).
 - **`shelf_books`** keeps a manual `position` and who added the book. Books a user cannot
   see are filtered out at read time.
 
