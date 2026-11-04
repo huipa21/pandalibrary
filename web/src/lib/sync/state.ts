@@ -1,5 +1,5 @@
 import type { JsonValue } from '#lib/api/client.js';
-import type { BookState, Highlight, Note, Progress, Setting } from '#lib/reader/types.js';
+import type { Bookmark, BookState, Highlight, Note, Progress, Setting } from '#lib/reader/types.js';
 import { OfflineStorageError, outbox, rows } from './db.js';
 import type { OutboxEntry, StoredRow, SyncMutation, UserBookRow } from './types.js';
 
@@ -41,6 +41,7 @@ export function replayMutations(
 	let userBook = base.user_book;
 	let progress = base.progress;
 	const highlights = new Map(base.highlights.map((item) => [item.id, item]));
+	const bookmarks = new Map(base.bookmarks.map((item) => [item.id, item]));
 	const notes = new Map(base.notes.map((item) => [item.id, item]));
 	const settings = new Map(baseSettings.map((item) => [item.key, item]));
 
@@ -89,6 +90,25 @@ export function replayMutations(
 					rev: previous?.rev ?? 0
 				});
 			}
+		} else if (entity === 'bookmarks' && 'id' in mutation) {
+			if (op === 'delete') {
+				bookmarks.delete(mutation.id);
+			} else if (data.book_id === bookId) {
+				const previous = bookmarks.get(mutation.id);
+				bookmarks.set(mutation.id, {
+					id: mutation.id,
+					book_id: bookId,
+					book_file_id: nullableNumber(data, 'book_file_id'),
+					locator: json(data, 'locator'),
+					position: number(data, 'position'),
+					label: text(data, 'label'),
+					chapter: nullableText(data, 'chapter'),
+					created_at: previous?.created_at ?? updatedAt,
+					updated_at: updatedAt,
+					deleted_at: null,
+					rev: previous?.rev ?? 0
+				});
+			}
 		} else if (entity === 'notes' && 'id' in mutation) {
 			if (op === 'delete') {
 				notes.delete(mutation.id);
@@ -108,7 +128,7 @@ export function replayMutations(
 		}
 	}
 	return {
-		state: { user_book: userBook, progress, highlights: [...highlights.values()], notes: [...notes.values()] },
+		state: { user_book: userBook, progress, highlights: [...highlights.values()], bookmarks: [...bookmarks.values()], notes: [...notes.values()] },
 		settings: [...settings.values()]
 	};
 }
@@ -117,6 +137,7 @@ function snapshot(bookId: number, saved: StoredRow[]): { state: BookState; setti
 	let userBook: UserBookRow | null = null;
 	let progress: Progress | null = null;
 	const highlights: Highlight[] = [];
+	const bookmarks: Bookmark[] = [];
 	const notes: Note[] = [];
 	const settings: Setting[] = [];
 	for (const row of saved) {
@@ -130,6 +151,9 @@ function snapshot(bookId: number, saved: StoredRow[]): { state: BookState; setti
 			case 'highlights':
 				if (row.value.book_id === bookId && !row.value.deleted_at) highlights.push(row.value);
 				break;
+			case 'bookmarks':
+				if (row.value.book_id === bookId && !row.value.deleted_at) bookmarks.push(row.value);
+				break;
 			case 'notes':
 				if (row.value.book_id === bookId && !row.value.deleted_at) notes.push(row.value);
 				break;
@@ -138,7 +162,7 @@ function snapshot(bookId: number, saved: StoredRow[]): { state: BookState; setti
 				break;
 		}
 	}
-	return { state: { user_book: userBook, progress, highlights, notes }, settings };
+	return { state: { user_book: userBook, progress, highlights, bookmarks, notes }, settings };
 }
 
 export async function readerState(
