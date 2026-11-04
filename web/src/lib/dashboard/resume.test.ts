@@ -54,7 +54,7 @@ it('chooses only the exact saved, supported file rather than the first available
 
 it('resumes using account-scoped queued progress over the online snapshot', async () => {
 	vi.spyOn(readerApi, 'getBookState').mockResolvedValue({
-		user_book: null, progress: progress(11), highlights: [], notes: []
+		user_book: null, progress: progress(11), highlights: [], notes: [], bookmarks: []
 	});
 	await enqueue(1, {
 		entity: 'reading_progress', key: '21', op: 'upsert', updated_at: Date.parse(timestamp),
@@ -69,7 +69,7 @@ it('resumes using account-scoped queued progress over the online snapshot', asyn
 
 it('reports missing or unsupported saved files instead of choosing another file', async () => {
 	vi.spyOn(readerApi, 'getBookState').mockResolvedValue({
-		user_book: null, progress: progress(13), highlights: [], notes: []
+		user_book: null, progress: progress(13), highlights: [], notes: [], bookmarks: []
 	});
 	await expect(resumeFile(1, book)).rejects.toBeInstanceOf(ResumeFileUnavailableError);
 });

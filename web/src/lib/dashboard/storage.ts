@@ -6,7 +6,7 @@ import { SyncProtocolError, withSessionLock } from '#lib/sync/engine.js';
 import { replayMutations } from '#lib/sync/state.js';
 import { DASHBOARD_SETTING, layoutValue, parseLayout, type ParsedLayout, type SectionId } from './layout.js';
 
-const EMPTY_BOOK_STATE: BookState = { user_book: null, progress: null, highlights: [], notes: [] };
+const EMPTY_BOOK_STATE: BookState = { user_book: null, progress: null, highlights: [], notes: [], bookmarks: [] };
 
 export class LayoutNotSyncedError extends Error {
 	constructor() {

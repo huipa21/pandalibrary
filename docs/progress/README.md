@@ -49,11 +49,11 @@ below are local to this follow-up; merge a wave before starting the next.
 |---|---|---|---|---|---|---|---|
 | 1 | UX1 | Sidebar shell and All Books | baseline | [UX1](../prompts/UX1-sidebar-shell.md) | Done | `task/ux1` | Shell, `/books`, `/libraries`; shelves/footer slots for UX3/UX10 |
 | 1 | UX2 | System and automatic shelves API | baseline | [UX2](../prompts/UX2-system-smart-shelves.md) | Done | `task/ux2` | Only migration writer in wave 1 |
-| 1 | UX7 | Admin users API | baseline | [UX7](../prompts/UX7-admin-users-api.md) | Ready | `task/ux7` | Existing user schema; no migration |
-| 1 | UX9 | Commit-based dev/image version | baseline | [UX9](../prompts/UX9-build-version.md) | Ready | `task/ux9` | Standalone footer component; UX10 wires it |
+| 1 | UX7 | Admin users API | baseline | [UX7](../prompts/UX7-admin-users-api.md) | Done | `task/ux7` | Admin CRUD/paging, atomic lockout/actor guards and all-credential revocation; Go/sqlc gates pass; UX8 hand-off recorded |
+| 1 | UX9 | Commit-based dev/image version | baseline | [UX9](../prompts/UX9-build-version.md) | Done | `master` | Public version API/CLI, stamped builds, and standalone footer; UX10 wires it |
 | 2 | UX3 | Sidebar shelves and reusable shelf UI | UX1, UX2 | [UX3](../prompts/UX3-shelf-navigation-ui.md) | Done | `task/ux3` | Reused by dashboard |
 | 2 | UX4 | Dashboard feeds API | UX2 | [UX4](../prompts/UX4-dashboard-feeds-api.md) | Done | `task/ux4` | Keyset pagination, visibility-safe SQL, hand-off ready for UX5 |
-| 2 | UX6 | Bookmarks and offline reader sync | UX1, UX2 | [UX6](../prompts/UX6-bookmarks.md) | Ready | `task/ux6` | Only migration writer in wave 2 |
+| 2 | UX6 | Bookmarks and offline reader sync | UX1, UX2 | [UX6](../prompts/UX6-bookmarks.md) | Ready | `task/ux6` | Migration 00003 (renumbered after UX2's 00002 on merge) |
 | 2 | UX8 | Admin users UI and selectors | UX7 | [UX8](../prompts/UX8-admin-users-ui.md) | Ready | `task/ux8` | Admin area only |
 | 3 | UX5 | Configurable dashboard | UX3, UX4 | [UX5](../prompts/UX5-configurable-dashboard.md) | Review | `task/ux3` | Dashboard and sync tests pass; existing full frontend check failures remain |
 | 4 | UX10 | Integration and verification gate | UX1-UX9 | [UX10](../prompts/UX10-layout-integration.md) | Ready | `task/ux10` | Real-browser, upgrade and image verification |
@@ -84,7 +84,6 @@ Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, block
   full catalog/httpapi suites pass. Hand-off docs with DTO/route/ordering/cursor examples
   in `docs/ux4-handoff.md` ready for UX5. No migrations, model changes, or refactors.
 
-<<<<<<< HEAD
 - 2026-11-04 — UX1 — Added the dark header + left sidebar shell (`web/src/lib/shell/`),
   All Books at `/books`, the library index at `/libraries`, and a temporary dashboard
   at `/` (UX5 replaces it). Below `lg` the sidebar is a focus-trapped drawer; the reader
@@ -92,7 +91,7 @@ Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, block
   slot (`data-slot="sidebar-footer"`) awaits UX10 wiring of UX9's `BuildVersion`.
   `/bookmarks` links ahead of UX6. Also fixed filter selects that ignored deep-linked
   values. check, unit, build and the full real-server Playwright suite pass. Status Review.
-=======
+
 - 2026-11-04 — UX2 — Added migration 00002 (`mode`, `system_key`, `rules`) with
   Favorites backfill and lazy, idempotent provisioning. Added the GET-only
   `/api/v1/shelves/system/{favorites|unshelved}` routes and private automatic shelves
@@ -102,7 +101,25 @@ Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, block
   `task sqlc:check`, `task build`, `task lint` and `task test` pass. Details are in
   the UX2 hand-off and `architecture/ux2-shelves.md`.
 
->>>>>>> task/ux2
+- 2026-11-04 — UX9 — Added validated UTC commit provenance to the CLI and public
+  version API, ordinary builds and fresh/cached `go run`, plus portable stamped
+  release/image wrappers. Added the standalone bilingual, accessible version
+  footer for UX10 to wire. Go lint/tests, frontend check/tests/build, Chromium
+  footer tests, shallow/dirty fixtures, Vite proxy, tagged cross-build, and
+  scratch container checks pass; unstamped raw image builds fail explicitly.
+  Exact commands, API/component contracts, and image results are in the UX9 hand-off.
+
+- 2026-11-04 — UX7 — Implemented session/admin-only account CRUD, username/ID
+  keyset paging, strict bounded JSON, transactional self/last-enabled-admin
+  protection and acting-session rechecks. Reset/disable/revoke invalidate browser
+  and OPDS/KOReader credentials; role changes revoke browser sessions; deletion
+  preserves shared catalog data. Shared CLI reset now also revokes app passwords;
+  login rechecks prevent in-flight old-password sessions after reset. Focused
+  auth/HTTP/app/CLI/OPDS/KOReader tests, sqlc diff, CGO-free build, vet,
+  staticcheck, full Go tests and ten repeated concurrency runs pass. Exact UX8
+  API/error examples and self-reset/revoke login redirect are in the UX7 hand-off.
+  No migration, dependency or web changes.
+
 - 2026-11-04 — UX planning — Committed existing work as `05326ce`; extraction
   tests, reader units and frontend checks passed. Ignored local dev launchers.
   Assessed the screenshot request and prepared ten Ready issue prompts with
