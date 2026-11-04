@@ -87,8 +87,8 @@ func TestUpFromEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current != 1 || latest != 1 {
-		t.Fatalf("versions = (%d, %d), want (1, 1)", current, latest)
+	if current != embeddedLatest || latest != embeddedLatest {
+		t.Fatalf("versions = (%d, %d), want (%d, %d)", current, latest, embeddedLatest, embeddedLatest)
 	}
 	var value int64
 	if err := databases.Writer.QueryRowContext(ctx, "SELECT value FROM sync_counter WHERE id = 1").Scan(&value); err != nil {
@@ -123,11 +123,120 @@ func TestUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current != 1 {
-		t.Fatalf("version after re-up = %d, want 1", current)
+	if current != embeddedLatest {
+		t.Fatalf("version after re-up = %d, want %d", current, embeddedLatest)
 	}
 }
 
+func TestShelfModesMigrationPreservesDataAndProvisionsFavorites(t *testing.T) {
+	ctx := context.Background()
+	databases, databasePath := openTestDB(t)
+	v1 := newTestRunner(t, databases.Writer, databasePath, embeddedPrefixFS(t, 1), DefaultOptions())
+	if err := v1.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES
+			(1, 'admin', 'x', 'admin', 1, 1), (2, 'reader', 'x', 'user', 1, 1)`,
+		`INSERT INTO libraries (id, name, slug, created_at, updated_at) VALUES (10, 'Main', 'main', 1, 1)`,
+		`INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at) VALUES
+			(101, 10, 'A', 'a', 1, 1), (102, 10, 'B', 'b', 1, 1)`,
+		`INSERT INTO shelves (id, kind, owner_id, name, description, created_by, created_at, updated_at) VALUES
+			(5, 'private', 2, 'Favorites', 'custom', 2, 7, 7),
+			(6, 'shared', NULL, 'Staff', NULL, 1, 8, 8)`,
+		`INSERT INTO shelf_books (shelf_id, book_id, position, added_by, added_at) VALUES
+			(5, 102, 0, 2, 9), (5, 101, 1, 2, 10)`,
+	} {
+		if _, err := databases.Writer.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runner := newTestRunner(t, databases.Writer, databasePath, embedded, DefaultOptions())
+	if err := runner.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertState := func(label string) {
+		t.Helper()
+		var name, description, mode string
+		var systemKey sql.NullString
+		if err := databases.Writer.QueryRowContext(ctx,
+			"SELECT name, description, mode, system_key FROM shelves WHERE id = 5",
+		).Scan(&name, &description, &mode, &systemKey); err != nil {
+			t.Fatalf("%s: %v", label, err)
+		}
+		if name != "Favorites" || description != "custom" || mode != "manual" || systemKey.Valid {
+			t.Fatalf("%s: custom shelf = (%q, %q, %q, %v), want preserved manual non-system shelf", label, name, description, mode, systemKey)
+		}
+		rows, err := databases.Writer.QueryContext(ctx, "SELECT book_id FROM shelf_books WHERE shelf_id = 5 ORDER BY position")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var order []int64
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				t.Fatal(err)
+			}
+			order = append(order, id)
+		}
+		_ = rows.Close()
+		if fmt.Sprint(order) != "[102 101]" {
+			t.Fatalf("%s: custom shelf order = %v, want [102 101]", label, order)
+		}
+		for _, userID := range []int64{1, 2} {
+			var count int
+			if err := databases.Writer.QueryRowContext(ctx,
+				"SELECT count(*) FROM shelves WHERE owner_id = ? AND system_key = 'favorites' AND kind = 'private' AND mode = 'manual' AND rules IS NULL",
+				userID,
+			).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 {
+				t.Fatalf("%s: user %d favorites count = %d, want 1", label, userID, count)
+			}
+		}
+		var sharedMode string
+		if err := databases.Writer.QueryRowContext(ctx, "SELECT mode FROM shelves WHERE id = 6").Scan(&sharedMode); err != nil {
+			t.Fatal(err)
+		}
+		if sharedMode != "manual" {
+			t.Fatalf("%s: shared shelf mode = %q, want manual", label, sharedMode)
+		}
+	}
+	assertState("after upgrade")
+
+	if _, err := databases.Writer.ExecContext(ctx,
+		"INSERT INTO shelves (kind, owner_id, name, mode, system_key, created_at, updated_at) VALUES ('private', 2, 'Favorites', 'manual', 'favorites', 1, 1)",
+	); err == nil {
+		t.Fatal("second favorites shelf for the same user was accepted")
+	}
+	if _, err := databases.Writer.ExecContext(ctx,
+		"INSERT INTO shelves (kind, owner_id, name, mode, rules, created_at, updated_at) VALUES ('shared', NULL, 'Auto', 'automatic', '{}', 1, 1)",
+	); err == nil {
+		t.Fatal("shared automatic shelf was accepted")
+	}
+	if _, err := databases.Writer.ExecContext(ctx,
+		"INSERT INTO shelves (kind, owner_id, name, mode, created_at, updated_at) VALUES ('private', 2, 'Auto', 'automatic', 1, 1)",
+	); err == nil {
+		t.Fatal("automatic shelf without rules was accepted")
+	}
+
+	if err := runner.DownTo(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	var shelves int
+	if err := databases.Writer.QueryRowContext(ctx, "SELECT count(*) FROM shelves").Scan(&shelves); err != nil {
+		t.Fatal(err)
+	}
+	if shelves != 2 {
+		t.Fatalf("shelves after down = %d, want the 2 original shelves", shelves)
+	}
+	if err := runner.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertState("after re-up")
+}
 func TestUpgradeCreatesBackup(t *testing.T) {
 	ctx := context.Background()
 	databases, databasePath := openTestDB(t)
@@ -150,7 +259,7 @@ func TestUpgradeCreatesBackup(t *testing.T) {
 	if count != 1 {
 		t.Fatal("fake migration was not applied")
 	}
-	backups, err := filepath.Glob(filepath.Join(filepath.Dir(databasePath), "backups", "pre-migrate-v1-v2-*.db"))
+	backups, err := filepath.Glob(filepath.Join(filepath.Dir(databasePath), "backups", fmt.Sprintf("pre-migrate-v%d-v%d-*.db", embeddedLatest, embeddedLatest+1)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,8 +277,8 @@ func TestUpgradeCreatesBackup(t *testing.T) {
 	).Scan(&backupVersion); err != nil {
 		t.Fatal(err)
 	}
-	if backupVersion != 1 {
-		t.Fatalf("backup version = %d, want pre-upgrade version 1", backupVersion)
+	if backupVersion != embeddedLatest {
+		t.Fatalf("backup version = %d, want pre-upgrade version %d", backupVersion, embeddedLatest)
 	}
 }
 
@@ -229,8 +338,8 @@ func TestAutoMigrationDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if current != 1 {
-		t.Fatalf("database version = %d, want 1 when auto-migrate is disabled", current)
+	if current != embeddedLatest {
+		t.Fatalf("database version = %d, want %d when auto-migrate is disabled", current, embeddedLatest)
 	}
 }
 
@@ -370,17 +479,47 @@ func newTestRunner(t *testing.T, writer *sql.DB, path string, files fs.FS, optio
 	return runner
 }
 
-func migrationFS(t *testing.T, up, down string) fs.FS {
+const embeddedLatest = 2
+
+// embeddedPrefixFS returns the embedded migrations up to and including version max, with a matching sum.
+func embeddedPrefixFS(t *testing.T, max int) fstest.MapFS {
 	t.Helper()
-	initial, err := fs.ReadFile(embedded, "00001_init.sql")
+	entries, err := fs.ReadDir(embedded, ".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := []byte(fmt.Sprintf("-- +goose Up\n\n%s\n\n-- +goose Down\n\n%s\n", up, down))
-	sum := fmt.Sprintf("%x  00001_init.sql\n%x  00002_fake.sql\n", sha256.Sum256(initial), sha256.Sum256(second))
-	return fstest.MapFS{
-		"00001_init.sql": {Data: initial},
-		"00002_fake.sql": {Data: second},
-		"migrations.sum": {Data: []byte(sum)},
+	files := fstest.MapFS{}
+	var sum strings.Builder
+	for _, entry := range entries {
+		match := migrationFilePattern.FindStringSubmatch(entry.Name())
+		if match == nil {
+			continue
+		}
+		var version int
+		if _, err := fmt.Sscanf(match[1], "%d", &version); err != nil {
+			t.Fatal(err)
+		}
+		if version > max {
+			continue
+		}
+		data, err := fs.ReadFile(embedded, entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[entry.Name()] = &fstest.MapFile{Data: data}
+		fmt.Fprintf(&sum, "%x  %s\n", sha256.Sum256(data), entry.Name())
 	}
+	files["migrations.sum"] = &fstest.MapFile{Data: []byte(sum.String())}
+	return files
+}
+
+func migrationFS(t *testing.T, up, down string) fs.FS {
+	t.Helper()
+	files := embeddedPrefixFS(t, embeddedLatest)
+	name := fmt.Sprintf("%05d_fake.sql", embeddedLatest+1)
+	fake := []byte(fmt.Sprintf("-- +goose Up\n\n%s\n\n-- +goose Down\n\n%s\n", up, down))
+	files[name] = &fstest.MapFile{Data: fake}
+	sum := string(files["migrations.sum"].Data) + fmt.Sprintf("%x  %s\n", sha256.Sum256(fake), name)
+	files["migrations.sum"] = &fstest.MapFile{Data: []byte(sum)}
+	return files
 }

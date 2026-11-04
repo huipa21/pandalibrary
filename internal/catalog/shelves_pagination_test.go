@@ -22,6 +22,10 @@ func TestShelfCursorSupportsMaximumLengthNames(t *testing.T) {
 	first := createTestShelf(t, fixture.service, reader, "private", strings.Repeat("<", 1024))
 	second := createTestShelf(t, fixture.service, reader, "private", strings.Repeat(">", 1024))
 	page, err := fixture.service.ListShelves(context.Background(), reader, PageOptions{Limit: 1})
+	if err != nil || len(page.Items) != 1 || page.Items[0].SystemKey == nil || *page.Items[0].SystemKey != SystemShelfFavorites || page.NextCursor == nil {
+		t.Fatalf("system shelf page = %+v, %v", page, err)
+	}
+	page, err = fixture.service.ListShelves(context.Background(), reader, PageOptions{Limit: 1, Cursor: *page.NextCursor})
 	if err != nil || len(page.Items) != 1 || page.Items[0].ID != first.ID || page.NextCursor == nil {
 		t.Fatalf("first maximum-name page = %+v, %v", page, err)
 	}
@@ -124,7 +128,7 @@ func TestShelfPaginationAndCursorBounds(t *testing.T) {
 		t.Fatalf("maximum shelf page = %d, cursor %v, error %v", len(maxShelfPage.Items), maxShelfPage.NextCursor, err)
 	}
 	lastShelves, err := fixture.service.ListShelves(ctx, reader, PageOptions{Limit: 100, Cursor: *maxShelfPage.NextCursor})
-	if err != nil || len(lastShelves.Items) != 7 || lastShelves.NextCursor != nil {
+	if err != nil || len(lastShelves.Items) != 8 || lastShelves.NextCursor != nil {
 		t.Fatalf("last shelf page = %d, cursor %v, error %v", len(lastShelves.Items), lastShelves.NextCursor, err)
 	}
 	seen := make(map[int64]bool)
@@ -136,8 +140,8 @@ func TestShelfPaginationAndCursorBounds(t *testing.T) {
 			seen[item.ID] = true
 		}
 	}
-	if len(seen) != 107 {
-		t.Fatalf("listed %d shelves, want 107", len(seen))
+	if len(seen) != 108 {
+		t.Fatalf("listed %d shelves, want 108 including Favorites", len(seen))
 	}
 	for _, test := range []struct {
 		viewer Viewer

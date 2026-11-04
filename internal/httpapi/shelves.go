@@ -21,6 +21,9 @@ func ShelfMount(service *catalog.Service, authentication *auth.Service, logger *
 			secured.Use(SessionMiddleware(authentication, logger))
 			secured.Get("/api/v1/shelves", handler.withViewer(handler.listShelves))
 			secured.With(cookieProtection).Post("/api/v1/shelves", handler.withViewer(handler.createShelf))
+			// Literal system routes take precedence over the numeric {id} routes.
+			secured.Get("/api/v1/shelves/system/{key}", handler.withViewer(handler.getSystemShelf))
+			secured.Get("/api/v1/shelves/system/{key}/books", handler.withViewer(handler.listSystemShelfBooks))
 			secured.Get("/api/v1/shelves/{id}", handler.withViewer(handler.getShelf))
 			secured.With(cookieProtection).Patch("/api/v1/shelves/{id}", handler.withViewer(handler.updateShelf))
 			secured.With(cookieProtection).Delete("/api/v1/shelves/{id}", handler.withViewer(handler.deleteShelf))
@@ -41,6 +44,35 @@ func (h *catalogHTTP) listShelves(w http.ResponseWriter, r *http.Request, viewer
 		return
 	}
 	result, err := h.service.ListShelves(r.Context(), viewer, options)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, result)
+}
+
+func (h *catalogHTTP) getSystemShelf(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	if _, ok := h.query(w, r); !ok {
+		return
+	}
+	result, err := h.service.GetSystemShelf(r.Context(), viewer, chi.URLParam(r, "key"))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]catalog.SystemShelf{"shelf": result})
+}
+
+func (h *catalogHTTP) listSystemShelfBooks(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	values, ok := h.query(w, r, "limit", "cursor")
+	if !ok {
+		return
+	}
+	options, ok := h.pageOptions(w, values)
+	if !ok {
+		return
+	}
+	result, err := h.service.ListSystemShelfBooks(r.Context(), viewer, chi.URLParam(r, "key"), options)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

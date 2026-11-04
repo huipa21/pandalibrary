@@ -110,10 +110,10 @@ func TestShelfHTTPCRUDAndPermissions(t *testing.T) {
 			t.Fatal(err)
 		}
 		var ids []int64
-		for _, shelf := range page.Items {
+		for _, shelf := range page.Items[1:] {
 			ids = append(ids, shelf.ID)
 		}
-		if !reflect.DeepEqual(ids, test.want) || page.NextCursor != nil {
+		if page.Items[0].SystemKey == nil || *page.Items[0].SystemKey != "favorites" || !reflect.DeepEqual(ids, test.want) || page.NextCursor != nil {
 			t.Fatalf("shelf list = %v, want %v", ids, test.want)
 		}
 	}
@@ -200,7 +200,7 @@ func TestShelfHTTPVisibilityCountsAndOrdering(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &shelves); err != nil {
 		t.Fatal(err)
 	}
-	if len(shelves.Items) != 2 || shelves.Items[0].VisibleBookCount != 2 || shelves.Items[1].VisibleBookCount != 1 {
+	if len(shelves.Items) != 3 || shelves.Items[0].SystemKey == nil || shelves.Items[1].VisibleBookCount != 2 || shelves.Items[2].VisibleBookCount != 1 {
 		t.Fatalf("list exposed incorrect visible counts: %+v", shelves.Items)
 	}
 	for _, id := range []int64{102, 103, 9999} {
@@ -340,4 +340,106 @@ func TestShelfHTTPInternalErrorsAreNotExposed(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 2 {
 		t.Fatalf("failed deletion was not rolled back: %+v, %v", page, err)
 	}
+}
+
+func TestShelfHTTPSystemAndAutomaticShelves(t *testing.T) {
+	fixture := newShelfHTTPFixture(t)
+	response := fixture.request(http.MethodGet, "/api/v1/shelves/system/favorites", nil, fixture.reader, nil)
+	expectShelfStatus(t, response, http.StatusOK)
+	var favorites struct {
+		Shelf catalog.SystemShelf `json:"shelf"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &favorites); err != nil || favorites.Shelf.ShelfID == nil ||
+		favorites.Shelf.Key != "favorites" || favorites.Shelf.Mode != "manual" {
+		t.Fatalf("favorites response = %s, %v", response.Body.String(), err)
+	}
+	favoritesID := *favorites.Shelf.ShelfID
+	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(favoritesID, 101), nil, fixture.reader, nil), http.StatusOK)
+	response = fixture.request(http.MethodGet, "/api/v1/shelves/system/favorites/books", nil, fixture.reader, nil)
+	expectShelfStatus(t, response, http.StatusOK)
+	if !strings.Contains(response.Body.String(), `"id":101`) {
+		t.Fatalf("favorites books = %s", response.Body.String())
+	}
+	expectShelfStatus(t, fixture.request(http.MethodPatch, shelfHTTPPath(favoritesID),
+		strings.NewReader(`{"name":"Loved"}`), fixture.reader, nil), http.StatusConflict)
+	expectShelfStatus(t, fixture.request(http.MethodPatch, shelfHTTPPath(favoritesID),
+		strings.NewReader(`{"description":"mine"}`), fixture.reader, nil), http.StatusOK)
+	expectShelfStatus(t, fixture.request(http.MethodDelete, shelfHTTPPath(favoritesID), nil, fixture.reader, nil), http.StatusConflict)
+	expectShelfStatus(t, fixture.request(http.MethodGet, shelfHTTPPath(favoritesID), nil, fixture.admin, nil), http.StatusNotFound)
+
+	response = fixture.request(http.MethodGet, "/api/v1/shelves/system/unshelved", nil, fixture.reader, nil)
+	expectShelfStatus(t, response, http.StatusOK)
+	if !strings.Contains(response.Body.String(), `"key":"unshelved"`) ||
+		!strings.Contains(response.Body.String(), `"shelf_id":null`) ||
+		!strings.Contains(response.Body.String(), `"mode":"automatic"`) {
+		t.Fatalf("unshelved response = %s", response.Body.String())
+	}
+	response = fixture.request(http.MethodGet, "/api/v1/shelves/system/unshelved/books?limit=1", nil, fixture.admin, nil)
+	expectShelfStatus(t, response, http.StatusOK)
+	var page catalog.Page[catalog.Book]
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.NextCursor == nil {
+		t.Fatalf("unshelved page = %s, %v", response.Body.String(), err)
+	}
+	expectShelfStatus(t, fixture.request(http.MethodGet,
+		"/api/v1/shelves/system/unshelved/books?cursor="+*page.NextCursor, nil, fixture.reader, nil), http.StatusBadRequest)
+	expectShelfStatus(t, fixture.request(http.MethodGet, "/api/v1/shelves/system/unshelved/books?limit=101", nil, fixture.reader, nil), http.StatusBadRequest)
+	for _, path := range []string{"/api/v1/shelves/system/recent", "/api/v1/shelves/system/recent/books", "/api/v1/shelves/system/Favorites"} {
+		expectShelfStatus(t, fixture.request(http.MethodGet, path, nil, fixture.reader, nil), http.StatusNotFound)
+	}
+	for _, request := range []struct{ method, path string }{
+		{http.MethodPatch, "/api/v1/shelves/system/unshelved"},
+		{http.MethodDelete, "/api/v1/shelves/system/unshelved"},
+		{http.MethodPut, "/api/v1/shelves/system/unshelved/books/101"},
+		{http.MethodDelete, "/api/v1/shelves/system/favorites/books/101"},
+	} {
+		response := fixture.request(request.method, request.path, strings.NewReader(`{}`), fixture.reader, nil)
+		if response.Code != http.StatusMethodNotAllowed && response.Code != http.StatusNotFound {
+			t.Fatalf("%s %s = %d, want 404 or 405: %s", request.method, request.path, response.Code, response.Body.String())
+		}
+	}
+	expectShelfStatus(t, fixture.request(http.MethodGet, "/api/v1/shelves/system/unshelved", nil, nil, nil), http.StatusUnauthorized)
+
+	rulesJSON := `{"match":"all","conditions":[{"field":"author_id","op":"eq","value":1}]}`
+	response = fixture.request(http.MethodPost, "/api/v1/shelves", strings.NewReader(
+		`{"kind":"private","mode":"automatic","name":"Auto","rules":`+rulesJSON+`}`), fixture.reader, nil)
+	expectShelfStatus(t, response, http.StatusCreated)
+	var created struct {
+		Shelf catalog.Shelf `json:"shelf"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil || created.Shelf.Mode != "automatic" ||
+		!strings.Contains(response.Body.String(), `"rules":`+rulesJSON) || !strings.Contains(response.Body.String(), `"system_key":null`) {
+		t.Fatalf("created automatic shelf = %s, %v", response.Body.String(), err)
+	}
+	response = fixture.request(http.MethodGet, shelfHTTPPath(created.Shelf.ID)+"/books", nil, fixture.reader, nil)
+	expectShelfStatus(t, response, http.StatusOK)
+	if !strings.Contains(response.Body.String(), `"id":101`) {
+		t.Fatalf("automatic shelf books = %s", response.Body.String())
+	}
+	for name, body := range map[string]string{
+		"shared":         `{"kind":"shared","mode":"automatic","name":"S","rules":` + rulesJSON + `}`,
+		"missing rules":  `{"kind":"private","mode":"automatic","name":"S"}`,
+		"unknown key":    `{"kind":"private","mode":"automatic","name":"S","rules":{"match":"all","extra":1,"conditions":[{"field":"format","op":"eq","value":"epub"}]}}`,
+		"nested":         `{"kind":"private","mode":"automatic","name":"S","rules":{"match":"all","conditions":[{"match":"any","conditions":[]}]}}`,
+		"condition key":  `{"kind":"private","mode":"automatic","name":"S","rules":{"match":"all","conditions":[{"field":"format","op":"eq","value":"epub","not":true}]}}`,
+		"string id":      `{"kind":"private","mode":"automatic","name":"S","rules":{"match":"all","conditions":[{"field":"tag_id","op":"eq","value":"1"}]}}`,
+		"rules array":    `{"kind":"private","mode":"automatic","name":"S","rules":[]}`,
+		"manual + rules": `{"kind":"private","name":"S","rules":` + rulesJSON + `}`,
+	} {
+		cookie := fixture.reader
+		if name == "shared" {
+			cookie = fixture.admin
+		}
+		response := fixture.request(http.MethodPost, "/api/v1/shelves", strings.NewReader(body), cookie, nil)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("%s = %d, want 400: %s", name, response.Code, response.Body.String())
+		}
+	}
+	expectShelfStatus(t, fixture.request(http.MethodPatch, shelfHTTPPath(created.Shelf.ID),
+		strings.NewReader(`{"mode":"manual"}`), fixture.reader, nil), http.StatusConflict)
+	expectShelfStatus(t, fixture.request(http.MethodPatch, shelfHTTPPath(created.Shelf.ID),
+		strings.NewReader(`{"rules":{"match":"any","conditions":[{"field":"format","op":"eq","value":"epub"}]}}`), fixture.reader, nil), http.StatusOK)
+	expectShelfStatus(t, fixture.request(http.MethodPatch, shelfHTTPPath(created.Shelf.ID),
+		strings.NewReader(`{"rules":null}`), fixture.reader, nil), http.StatusBadRequest)
+	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(created.Shelf.ID, 101), nil, fixture.reader, nil), http.StatusConflict)
+	expectShelfStatus(t, fixture.request(http.MethodDelete, shelfHTTPBookPath(created.Shelf.ID, 101), nil, fixture.reader, nil), http.StatusConflict)
 }

@@ -1,6 +1,6 @@
 # UX2: System shelves and automatic shelf rules API
 
-- Status: Ready
+- Status: Done
 - Wave: 1; dependencies: baseline `05326ce`; migration: yes (sole writer)
 - Branch/worktree: `task/ux2` / `..\pandalibrary-ux2`
 
@@ -76,3 +76,132 @@ No web source, auth, dashboard, or build files.
   tests, `task sqlc:check`, `task build`, `task lint`, and `task test`.
 - Record DTO/request/response examples, errors, cursor behavior, migration
   version, and exact results. UX3/UX4/UX6 must consume the merged contract.
+
+## Hand-off (2026-11-04)
+
+Implemented on `task/ux2`. Decisions are recorded in
+[architecture/ux2-shelves.md](../architecture/ux2-shelves.md).
+
+### Migration
+
+Migration version is **2** (`00002_shelf_modes.sql`), and `migrations.sum` is
+regenerated.
+
+- It adds `shelves.mode`, `shelves.system_key` and `shelves.rules`, with CHECK
+  constraints, the unique `(owner_id, system_key)` index, and a private-name index that
+  excludes system shelves.
+- It backfills one Favorites shelf per existing account.
+- Down/up is lossless for manual shelves and their order.
+
+### DTO
+
+Numeric shelf DTO, as returned by list, get, create and update:
+
+```json
+{"id":7,"kind":"private","mode":"automatic","system_key":null,
+ "rules":{"match":"all","conditions":[{"field":"author_id","op":"eq","value":1}]},
+ "owner_id":2,"name":"By author","description":null,"created_by":2,
+ "visible_book_count":3,"created_at":"…","updated_at":"…"}
+```
+
+The viewer's own Favorites shelf has `"system_key":"favorites"`, `"mode":"manual"`,
+`"rules":null`, and an English default `name`. Clients localize it by key.
+
+### Endpoints
+
+`GET /api/v1/shelves` returns the viewer's own Favorites first, then custom shelves by
+name. Shelf-list cursors issued before UX2 are rejected with 400.
+
+`GET /api/v1/shelves/system/{key}`, where `key` is `favorites` or `unshelved`, returns:
+
+```json
+{"shelf":{"key":"unshelved","name":"Unshelved","mode":"automatic","visible_book_count":12,"shelf_id":null}}
+{"shelf":{"key":"favorites","name":"Favorites","mode":"manual","visible_book_count":3,"shelf_id":41}}
+```
+
+`GET /api/v1/shelves/system/{key}/books?limit=&cursor=` returns the normal
+`Page<Book>`.
+
+- Favorites is in manual order and uses the numeric shelf cursor.
+- Unshelved is ordered by `(sort_title, id)`.
+- An unsupported key returns a 404 problem.
+- The system routes are GET-only. Mutations get 404 or 405.
+
+To create an automatic shelf, `POST /api/v1/shelves` with:
+
+```json
+{"kind":"private","mode":"automatic","name":"Unread epubs",
+ "rules":{"match":"all","conditions":[
+   {"field":"reading_status","op":"eq","value":"unread"},
+   {"field":"format","op":"eq","value":"epub"}]}}
+```
+
+If `mode` is omitted, the shelf is manual.
+
+To change rules, send `PATCH /api/v1/shelves/{id}` with `{"rules":{…}}`. Membership
+for both modes is read through `GET /api/v1/shelves/{id}/books`.
+
+### Errors
+
+400:
+
+- shared automatic shelf
+- missing or invalid rules
+- rules on a manual create
+- unknown field, operator or key, or nesting
+- wrong value type
+- empty, oversized or control-character strings
+- invalid enum
+- more than 20 conditions
+- `rules:null` or `mode:null` in PATCH
+- stale or cross-viewer cursor
+- `limit` outside 1–100
+
+409:
+
+- changing `mode`
+- rules on a manual or system shelf
+- rename or delete of Favorites
+- PUT/DELETE membership on an automatic shelf
+
+404:
+
+- another account's Favorites, including for admins
+- an unsupported system key
+
+### Cursors
+
+- Automatic cursors are scoped to viewer, shelf, `automatic`, and a rules signature.
+  Changing the rules gives 400 on the old cursor.
+- Unshelved cursors are scoped to the viewer.
+- Manual shelf cursors are unchanged.
+
+### Tests added
+
+- Migration upgrade/down/up: preserves a custom "Favorites" shelf with its order,
+  provisions Favorites exactly once, and enforces the constraints.
+- Favorites protection, privacy, membership, and parallel provisioning with 16
+  goroutines.
+- Unshelved definition, counts, pagination, and cross-viewer and cross-key cursors.
+- Automatic validation, including injection-style values.
+- Each rule field, all/any, live metadata, status and new-book changes, tied sort
+  keys, and cursor invalidation after a rules change.
+- HTTP coverage of all of the above.
+- Existing list expectations in catalog, HTTP, OPDS and app now include Favorites.
+
+### Validation results
+
+These passed in `..\pandalibrary-ux2`:
+
+- `go test ./internal/catalog/ ./internal/httpapi/ ./internal/opds/ ./internal/db/... ./internal/app/`
+- `task sqlc:check`, with no diff
+- `task build`
+- `task lint` (`go vet` and staticcheck)
+- `task test`, all packages ok
+
+### Notes for consumers
+
+- **UX3** renders Unshelved via the system route and Favorites by `system_key`. It
+  should not match on the shelf name.
+- **UX4** can reuse `ShelfAutomaticBooks`-style visibility predicates.
+- **UX6** must add migration **00003**.

@@ -23,8 +23,10 @@ func shelfOrderSignature(ids []int64) string {
 	return base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
 }
 
-// ListShelfBooks returns visible, fully hydrated books in manual shelf order.
-// A cursor is invalidated if the viewer's visible membership or order changes.
+// ListShelfBooks returns visible, fully hydrated books. Manual shelves use manual
+// order and a cursor that is invalidated if the viewer's visible membership or order
+// changes. Automatic shelves are evaluated live and ordered by sort title and ID; their
+// cursors are bound to the current rules.
 func (s *Service) ListShelfBooks(ctx context.Context, viewer Viewer, shelfID int64, options PageOptions) (Page[Book], error) {
 	if err := checkViewer(viewer); err != nil {
 		return Page[Book]{}, err
@@ -32,55 +34,108 @@ func (s *Service) ListShelfBooks(ctx context.Context, viewer Viewer, shelfID int
 	if shelfID < 1 {
 		return Page[Book]{}, invalid("shelf ID is invalid")
 	}
+	if options.Limit != 0 && (options.Limit < 1 || options.Limit > maximumPageSize) {
+		return Page[Book]{}, invalid("limit must be between 1 and 100")
+	}
+	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (Page[Book], error) {
+		shelf, err := shelfForViewer(ctx, queries, viewer, shelfID)
+		if err != nil {
+			return Page[Book]{}, err
+		}
+		if shelf.Mode == ShelfModeAutomatic {
+			return listAutomaticShelfBooks(ctx, queries, viewer, shelf, options)
+		}
+		return listManualShelfBooks(ctx, queries, viewer, shelfID, options)
+	})
+}
+
+func listManualShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelfID int64, options PageOptions) (Page[Book], error) {
 	scope := fmt.Sprintf("%s:%d", viewerScope(viewer), shelfID)
 	limit, after, err := parsePage(options, "shelf_books", scope, "manual")
 	if err != nil {
 		return Page[Book]{}, err
 	}
-	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (Page[Book], error) {
-		if _, err := shelfForViewer(ctx, queries, viewer, shelfID); err != nil {
-			return Page[Book]{}, err
-		}
-		ids, err := queries.ShelfVisibleBookIDs(ctx, sqlc.ShelfVisibleBookIDsParams{
-			ShelfID: shelfID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
-		})
-		if err != nil {
-			return Page[Book]{}, fmt.Errorf("list visible shelf books: %w", err)
-		}
-		// Avoid exposing raw positions while detecting changes that could skip or repeat books.
-		signature := shelfOrderSignature(ids)
-		if after.ID != 0 {
-			if after.Text != signature {
-				return Page[Book]{}, invalid("shelf order has changed; restart pagination")
-			}
-			index := slices.Index(ids, after.ID)
-			if index < 0 {
-				return Page[Book]{}, invalid("cursor is invalid")
-			}
-			ids = ids[index+1:]
-		}
-		ids, next, err := paginate(ids, limit, func(id int64) cursor {
-			return cursor{
-				Version: 1, Kind: "shelf_books", Scope: scope, Sort: "manual", ID: id, Text: signature,
-			}
-		})
-		if err != nil {
-			return Page[Book]{}, err
-		}
-		items := make([]Book, 0, len(ids))
-		for _, id := range ids {
-			row, err := visibleBook(ctx, queries, viewer, id)
-			if err != nil {
-				return Page[Book]{}, err
-			}
-			book, err := hydrateBook(ctx, queries, viewer, row)
-			if err != nil {
-				return Page[Book]{}, err
-			}
-			items = append(items, book)
-		}
-		return Page[Book]{Items: items, NextCursor: next}, nil
+	ids, err := queries.ShelfVisibleBookIDs(ctx, sqlc.ShelfVisibleBookIDsParams{
+		ShelfID: shelfID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
 	})
+	if err != nil {
+		return Page[Book]{}, fmt.Errorf("list visible shelf books: %w", err)
+	}
+	// Avoid exposing raw positions while detecting changes that could skip or repeat books.
+	signature := shelfOrderSignature(ids)
+	if after.ID != 0 {
+		if after.Text != signature {
+			return Page[Book]{}, invalid("shelf order has changed; restart pagination")
+		}
+		index := slices.Index(ids, after.ID)
+		if index < 0 {
+			return Page[Book]{}, invalid("cursor is invalid")
+		}
+		ids = ids[index+1:]
+	}
+	ids, next, err := paginate(ids, limit, func(id int64) cursor {
+		return cursor{
+			Version: 1, Kind: "shelf_books", Scope: scope, Sort: "manual", ID: id, Text: signature,
+		}
+	})
+	if err != nil {
+		return Page[Book]{}, err
+	}
+	items := make([]Book, 0, len(ids))
+	for _, id := range ids {
+		row, err := visibleBook(ctx, queries, viewer, id)
+		if err != nil {
+			return Page[Book]{}, err
+		}
+		book, err := hydrateBook(ctx, queries, viewer, row)
+		if err != nil {
+			return Page[Book]{}, err
+		}
+		items = append(items, book)
+	}
+	return Page[Book]{Items: items, NextCursor: next}, nil
+}
+
+func listAutomaticShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelf sqlc.Shelf, options PageOptions) (Page[Book], error) {
+	scope := fmt.Sprintf("%s:%d:automatic:%s", viewerScope(viewer), shelf.ID, rulesSignature(shelf.Rules.String))
+	limit, after, err := parsePage(options, "shelf_books", scope, "title")
+	if err != nil {
+		return Page[Book]{}, err
+	}
+	rows, err := queries.ShelfAutomaticBooks(ctx, sqlc.ShelfAutomaticBooksParams{
+		IsAdmin: adminFlag(viewer), UserID: viewer.UserID, Rules: shelf.Rules.String,
+		AfterID: after.ID, AfterTitle: after.Text, PageSize: int64(limit + 1),
+	})
+	if err != nil {
+		return Page[Book]{}, fmt.Errorf("list automatic shelf books: %w", err)
+	}
+	return titlePage(ctx, queries, viewer, rows, limit, "shelf_books", scope)
+}
+
+// titlePage hydrates a sort-title/ID keyset page fetched with limit+1 rows.
+func titlePage(ctx context.Context, queries *sqlc.Queries, viewer Viewer, rows []sqlc.Book, limit int, kind, scope string) (Page[Book], error) {
+	rows, next, err := paginate(rows, limit, func(row sqlc.Book) cursor {
+		return cursor{Version: 1, Kind: kind, Scope: scope, Sort: "title", ID: row.ID, Text: row.SortTitle}
+	})
+	if err != nil {
+		return Page[Book]{}, err
+	}
+	items := make([]Book, 0, len(rows))
+	for _, row := range rows {
+		book, err := hydrateBook(ctx, queries, viewer, row)
+		if err != nil {
+			return Page[Book]{}, err
+		}
+		items = append(items, book)
+	}
+	return Page[Book]{Items: items, NextCursor: next}, nil
+}
+
+func checkManualMembership(shelf sqlc.Shelf) error {
+	if shelf.Mode != ShelfModeManual {
+		return conflict("automatic shelf membership is computed from its rules")
+	}
+	return nil
 }
 
 func orderedShelfMembers(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelfID int64) ([]sqlc.ShelfOrderedMembersRow, error) {
@@ -136,6 +191,9 @@ func (s *Service) PutShelfBook(ctx context.Context, viewer Viewer, shelfID, book
 			return err
 		}
 		if err := checkShelfManager(viewer, shelf); err != nil {
+			return err
+		}
+		if err := checkManualMembership(shelf); err != nil {
 			return err
 		}
 		if _, err := visibleBook(ctx, queries, viewer, bookID); err != nil {
@@ -227,6 +285,9 @@ func (s *Service) RemoveShelfBook(ctx context.Context, viewer Viewer, shelfID, b
 			return err
 		}
 		if err := checkShelfManager(viewer, shelf); err != nil {
+			return err
+		}
+		if err := checkManualMembership(shelf); err != nil {
 			return err
 		}
 		if _, err := visibleBook(ctx, queries, viewer, bookID); err != nil {

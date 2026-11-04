@@ -131,10 +131,17 @@ func TestShelfCRUDAndPermissions(t *testing.T) {
 			t.Fatal(err)
 		}
 		var ids []int64
-		for _, shelf := range page.Items {
+		for i, shelf := range page.Items {
+			if shelf.SystemKey != nil {
+				// Only the viewer's own Favorites is listed, ahead of custom shelves.
+				if i != 0 || *shelf.SystemKey != SystemShelfFavorites || shelf.OwnerID == nil || *shelf.OwnerID != test.viewer.UserID {
+					t.Fatalf("viewer %d unexpected system shelf %+v at %d", test.viewer.UserID, shelf, i)
+				}
+				continue
+			}
 			ids = append(ids, shelf.ID)
 		}
-		if !reflect.DeepEqual(ids, test.want) || page.NextCursor != nil {
+		if len(page.Items) == 0 || page.Items[0].SystemKey == nil || !reflect.DeepEqual(ids, test.want) || page.NextCursor != nil {
 			t.Fatalf("viewer %d shelves = %v, want %v", test.viewer.UserID, ids, test.want)
 		}
 	}
@@ -245,7 +252,7 @@ func TestShelfVisibilityOrderingAndCounts(t *testing.T) {
 			t.Fatalf("viewer %d count = %+v, %v", test.viewer.UserID, got, err)
 		}
 		page, err := fixture.service.ListShelves(ctx, test.viewer, PageOptions{})
-		if err != nil || len(page.Items) != 1 || page.Items[0].VisibleBookCount != test.count {
+		if err != nil || len(page.Items) != 2 || page.Items[0].SystemKey == nil || page.Items[1].ID != shelf.ID || page.Items[1].VisibleBookCount != test.count {
 			t.Fatalf("viewer %d list count = %+v, %v", test.viewer.UserID, page, err)
 		}
 		if ids := shelfBookIDs(t, fixture.service, test.viewer, shelf.ID, 1); !reflect.DeepEqual(ids, test.want) {

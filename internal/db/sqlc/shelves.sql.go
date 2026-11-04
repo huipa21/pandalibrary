@@ -11,9 +11,9 @@ import (
 )
 
 const shelfCreate = `-- name: ShelfCreate :one
-INSERT INTO shelves (kind, owner_id, name, description, created_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at
+INSERT INTO shelves (kind, owner_id, name, description, created_by, created_at, updated_at, mode, rules)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at, mode, system_key, rules
 `
 
 type ShelfCreateParams struct {
@@ -24,6 +24,8 @@ type ShelfCreateParams struct {
 	CreatedBy   sql.NullInt64
 	CreatedAt   int64
 	UpdatedAt   int64
+	Mode        string
+	Rules       sql.NullString
 }
 
 func (q *Queries) ShelfCreate(ctx context.Context, arg ShelfCreateParams) (Shelf, error) {
@@ -35,6 +37,8 @@ func (q *Queries) ShelfCreate(ctx context.Context, arg ShelfCreateParams) (Shelf
 		arg.CreatedBy,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Mode,
+		arg.Rules,
 	)
 	var i Shelf
 	err := row.Scan(
@@ -46,6 +50,9 @@ func (q *Queries) ShelfCreate(ctx context.Context, arg ShelfCreateParams) (Shelf
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Mode,
+		&i.SystemKey,
+		&i.Rules,
 	)
 	return i, err
 }
@@ -63,10 +70,11 @@ func (q *Queries) ShelfDelete(ctx context.Context, id int64) (int64, error) {
 }
 
 const shelfGet = `-- name: ShelfGet :one
-SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at FROM shelves s
+SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules FROM shelves s
 WHERE s.id = ?1
 AND (CAST(?2 AS INTEGER) = 1 OR s.kind = 'shared'
     OR (s.kind = 'private' AND s.owner_id = CAST(?3 AS INTEGER)))
+AND (s.system_key IS NULL OR s.owner_id = CAST(?3 AS INTEGER))
 `
 
 type ShelfGetParams struct {
@@ -87,6 +95,9 @@ func (q *Queries) ShelfGet(ctx context.Context, arg ShelfGetParams) (Shelf, erro
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Mode,
+		&i.SystemKey,
+		&i.Rules,
 	)
 	return i, err
 }
@@ -116,21 +127,25 @@ func (q *Queries) ShelfInsertBook(ctx context.Context, arg ShelfInsertBookParams
 }
 
 const shelfList = `-- name: ShelfList :many
-SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at FROM shelves s
+SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules FROM shelves s
 WHERE (CAST(?1 AS INTEGER) = 1 OR s.kind = 'shared'
     OR (s.kind = 'private' AND s.owner_id = CAST(?2 AS INTEGER)))
+AND (s.system_key IS NULL OR s.owner_id = CAST(?2 AS INTEGER))
 AND (CAST(?3 AS INTEGER) = 0
-    OR s.name COLLATE NOCASE > CAST(?4 AS TEXT) COLLATE NOCASE
-    OR (s.name COLLATE NOCASE = CAST(?4 AS TEXT) COLLATE NOCASE
-        AND s.id > ?3))
-ORDER BY s.name COLLATE NOCASE, s.id
-LIMIT CAST(?5 AS INTEGER)
+    OR (CASE WHEN s.system_key IS NULL THEN 1 ELSE 0 END) > CAST(?4 AS INTEGER)
+    OR ((CASE WHEN s.system_key IS NULL THEN 1 ELSE 0 END) = CAST(?4 AS INTEGER)
+        AND (s.name COLLATE NOCASE > CAST(?5 AS TEXT) COLLATE NOCASE
+            OR (s.name COLLATE NOCASE = CAST(?5 AS TEXT) COLLATE NOCASE
+                AND s.id > ?3))))
+ORDER BY (CASE WHEN s.system_key IS NULL THEN 1 ELSE 0 END), s.name COLLATE NOCASE, s.id
+LIMIT CAST(?6 AS INTEGER)
 `
 
 type ShelfListParams struct {
 	IsAdmin   int64
 	UserID    int64
 	AfterID   int64
+	AfterRank int64
 	AfterName string
 	PageSize  int64
 }
@@ -140,6 +155,7 @@ func (q *Queries) ShelfList(ctx context.Context, arg ShelfListParams) ([]Shelf, 
 		arg.IsAdmin,
 		arg.UserID,
 		arg.AfterID,
+		arg.AfterRank,
 		arg.AfterName,
 		arg.PageSize,
 	)
@@ -159,6 +175,9 @@ func (q *Queries) ShelfList(ctx context.Context, arg ShelfListParams) ([]Shelf, 
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Mode,
+			&i.SystemKey,
+			&i.Rules,
 		); err != nil {
 			return nil, err
 		}
@@ -176,7 +195,7 @@ func (q *Queries) ShelfList(ctx context.Context, arg ShelfListParams) ([]Shelf, 
 const shelfNameTaken = `-- name: ShelfNameTaken :one
 SELECT count(*) FROM shelves
 WHERE kind = ?1 AND name = ?2 COLLATE NOCASE
-AND id != ?3
+AND id != ?3 AND system_key IS NULL
 AND (kind = 'shared' OR owner_id = ?4)
 `
 
@@ -280,13 +299,14 @@ func (q *Queries) ShelfTouch(ctx context.Context, arg ShelfTouchParams) error {
 }
 
 const shelfUpdate = `-- name: ShelfUpdate :one
-UPDATE shelves SET name = ?, description = ?, updated_at = ? WHERE id = ?
-RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at
+UPDATE shelves SET name = ?, description = ?, rules = ?, updated_at = ? WHERE id = ?
+RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at, mode, system_key, rules
 `
 
 type ShelfUpdateParams struct {
 	Name        string
 	Description sql.NullString
+	Rules       sql.NullString
 	UpdatedAt   int64
 	ID          int64
 }
@@ -295,6 +315,7 @@ func (q *Queries) ShelfUpdate(ctx context.Context, arg ShelfUpdateParams) (Shelf
 	row := q.db.QueryRowContext(ctx, shelfUpdate,
 		arg.Name,
 		arg.Description,
+		arg.Rules,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -308,6 +329,9 @@ func (q *Queries) ShelfUpdate(ctx context.Context, arg ShelfUpdateParams) (Shelf
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Mode,
+		&i.SystemKey,
+		&i.Rules,
 	)
 	return i, err
 }
