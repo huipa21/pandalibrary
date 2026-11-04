@@ -90,6 +90,22 @@ type BookTag struct {
 	TagID  int64
 }
 
+type Bookmark struct {
+	Seq        int64
+	ID         string
+	UserID     int64
+	BookID     int64
+	BookFileID sql.NullInt64
+	Locator    string
+	Position   float64
+	Label      string
+	Chapter    sql.NullString
+	CreatedAt  int64
+	UpdatedAt  int64
+	DeletedAt  sql.NullInt64
+	Rev        int64
+}
+
 type BooksFt struct {
 	Title       string
 	Authors     string

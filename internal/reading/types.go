@@ -70,11 +70,27 @@ type Setting struct {
 	Rev       int64           `json:"rev"`
 }
 
+// Bookmark is a saved reading position, distinct from highlights/notes.
+type Bookmark struct {
+	ID         string          `json:"id"`
+	BookID     int64           `json:"book_id"`
+	BookFileID *int64          `json:"book_file_id"`
+	Locator    json.RawMessage `json:"locator"`
+	Position   float64         `json:"position"`
+	Label      string          `json:"label"`
+	Chapter    *string         `json:"chapter"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+	DeletedAt  *time.Time      `json:"deleted_at"`
+	Rev        int64           `json:"rev"`
+}
+
 // BookState contains only the authenticated user's live state for a visible book.
 type BookState struct {
 	UserBook   *UserBook   `json:"user_book"`
 	Progress   *Progress   `json:"progress"`
 	Highlights []Highlight `json:"highlights"`
+	Bookmarks  []Bookmark  `json:"bookmarks"`
 	Notes      []Note      `json:"notes"`
 }
 
@@ -111,6 +127,7 @@ type PullResponse struct {
 	UserBooks  []UserBookRow `json:"user_books"`
 	Progress   []ProgressRow `json:"reading_progress"`
 	Highlights []Highlight   `json:"highlights"`
+	Bookmarks  []Bookmark    `json:"bookmarks"`
 	Notes      []Note        `json:"notes"`
 	Settings   []Setting     `json:"user_settings"`
 }
@@ -147,4 +164,31 @@ type AnnotationResult struct {
 	Content   string    `json:"content"`
 	Position  float64   `json:"position"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// BookmarkItem is a bookmark with minimal book information for display.
+type BookmarkItem struct {
+	ID         string          `json:"id"`
+	BookID     int64           `json:"book_id"`
+	BookFileID *int64          `json:"book_file_id"`
+	Locator    json.RawMessage `json:"locator"`
+	Position   float64         `json:"position"`
+	Label      string          `json:"label"`
+	Chapter    *string         `json:"chapter"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+	Book       *BookmarkBookSummary `json:"book"`
+}
+
+// BookmarkBookSummary is minimal book info for bookmark display.
+type BookmarkBookSummary struct {
+	ID           int64  `json:"id"`
+	Title        string `json:"title"`
+	CoverSha256  *string `json:"cover_sha256"`
+}
+
+// BookmarksListResponse is a paginated response of bookmarks.
+type BookmarksListResponse struct {
+	Items      []BookmarkItem `json:"items"`
+	NextCursor *string        `json:"next_cursor"`
 }

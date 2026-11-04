@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -146,6 +147,15 @@ func toSetting(row sqlc.UserSetting) Setting {
 	}
 }
 
+func toBookmark(row sqlc.Bookmark) Bookmark {
+	return Bookmark{
+		ID: row.ID, BookID: row.BookID, BookFileID: nullableInt(row.BookFileID),
+		Locator: json.RawMessage(row.Locator), Position: row.Position, Label: row.Label,
+		Chapter: nullableString(row.Chapter), CreatedAt: timestamp(row.CreatedAt),
+		UpdatedAt: timestamp(row.UpdatedAt), DeletedAt: nullableTime(row.DeletedAt), Rev: row.Rev,
+	}
+}
+
 type readTransaction func(*sql.Tx) error
 
 func readSnapshot(ctx context.Context, database *sql.DB, fn readTransaction) (returnErr error) {
@@ -177,6 +187,7 @@ func (s *Service) GetBookState(ctx context.Context, viewer Viewer, bookID int64)
 		return state, fmt.Errorf("%w: book ID is invalid", ErrInvalid)
 	}
 	state.Highlights = []Highlight{}
+	state.Bookmarks = []Bookmark{}
 	state.Notes = []Note{}
 	err := readSnapshot(ctx, s.reader, func(tx *sql.Tx) error {
 		q := sqlc.New(tx)
@@ -212,6 +223,15 @@ func (s *Service) GetBookState(ctx context.Context, viewer Viewer, bookID int64)
 		}
 		for _, row := range highlights {
 			state.Highlights = append(state.Highlights, toHighlight(row))
+		}
+		bookmarks, err := q.ReadingListBookmarksByBookID(ctx, sqlc.ReadingListBookmarksByBookIDParams{
+			UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
+		})
+		if err != nil {
+			return fmt.Errorf("list bookmarks: %w", err)
+		}
+		for _, row := range bookmarks {
+			state.Bookmarks = append(state.Bookmarks, toBookmark(row))
 		}
 		notes, err := q.ReadingListNotes(ctx, sqlc.ReadingListNotesParams{
 			UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
@@ -344,6 +364,16 @@ type sessionData struct {
 	StartPercentage *float64 `json:"start_percentage"`
 	EndPercentage   *float64 `json:"end_percentage"`
 	PagesTurned     *int64   `json:"pages_turned"`
+}
+
+type bookmarkData struct {
+	BookID     int64           `json:"book_id"`
+	BookFileID *int64          `json:"book_file_id"`
+	Locator    json.RawMessage `json:"locator"`
+	Position   float64         `json:"position"`
+	Label      string          `json:"label"`
+	Chapter    *string         `json:"chapter"`
+	CreatedAt  *int64          `json:"created_at"`
 }
 
 func decodeMutationData(raw json.RawMessage, target any) error {
@@ -847,6 +877,96 @@ func (s *Service) applyMutation(
 			return reject("book is unavailable")
 		}
 		return applied()
+
+	case "bookmarks":
+		id := mutationID(mutation)
+		if !validUUIDv7(id) {
+			return reject("bookmark ID must be a UUIDv7")
+		}
+		owner, err := q.ReadingGetBookmarkOwner(ctx, id)
+		exists := err == nil
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", "", fmt.Errorf("check bookmark ownership: %w", err)
+		}
+		if exists && owner != viewer.UserID {
+			return reject("bookmark is owned by another user")
+		}
+		var existing sqlc.Bookmark
+		if exists {
+			existing, err = q.ReadingGetOwnedBookmark(ctx, sqlc.ReadingGetOwnedBookmarkParams{
+				ID: id, UserID: viewer.UserID, IsAdmin: adminFlag(viewer),
+			})
+			if errors.Is(err, sql.ErrNoRows) {
+				return reject("bookmark book is unavailable")
+			}
+			if err != nil {
+				return "", "", fmt.Errorf("get owned bookmark: %w", err)
+			}
+			if updatedAt <= existing.UpdatedAt {
+				return stale()
+			}
+		}
+		if mutation.Op == "delete" {
+			if !exists {
+				return reject("bookmark does not exist")
+			}
+			return s.deleteBookmark(ctx, q, tx, viewer, existing, updatedAt)
+		}
+		var data bookmarkData
+		if err := decodeMutationData(mutation.Data, &data); err != nil {
+			return reject("bookmark data is invalid")
+		}
+		if data.BookID < 1 || !validOptionalJSON(data.Locator, maxLocatorBytes) ||
+			len(data.Locator) == 0 || !json.Valid(data.Locator) ||
+			math.IsNaN(data.Position) || math.IsInf(data.Position, 0) || data.Position < 0 || data.Position > 1 ||
+			len(data.Label) > 512 || data.Chapter != nil && len(*data.Chapter) > 512 {
+			return reject("bookmark fields are invalid")
+		}
+		if exists && existing.BookID != data.BookID {
+			return reject("bookmark cannot be moved to another book")
+		}
+		if err := s.requireVisibleBook(ctx, q, viewer, data.BookID); errors.Is(err, ErrNotFound) {
+			return reject("book is unavailable")
+		} else if err != nil {
+			return "", "", err
+		}
+		if data.BookFileID != nil {
+			if _, err := q.ReadingVisibleBookFile(ctx, sqlc.ReadingVisibleBookFileParams{
+				BookID: data.BookID, BookFileID: *data.BookFileID, UserID: viewer.UserID,
+				IsAdmin: adminFlag(viewer),
+			}); errors.Is(err, sql.ErrNoRows) {
+				return reject("book file is unavailable")
+			} else if err != nil {
+				return "", "", fmt.Errorf("check bookmark book file: %w", err)
+			}
+		}
+		createdAt := now
+		if exists {
+			createdAt = existing.CreatedAt
+		} else if data.CreatedAt != nil {
+			if *data.CreatedAt < 0 {
+				return reject("created_at must be non-negative")
+			}
+			createdAt = min(*data.CreatedAt, now)
+		}
+		rev, err := db.NextRev(ctx, tx)
+		if err != nil {
+			return "", "", err
+		}
+		rows, err := q.ReadingUpsertBookmark(ctx, sqlc.ReadingUpsertBookmarkParams{
+			ID: id, UserID: viewer.UserID, BookID: data.BookID, IsAdmin: adminFlag(viewer),
+			BookFileID: nullableIntInput(data.BookFileID), Locator: string(data.Locator),
+			Position: data.Position, Label: data.Label, Chapter: nullableStringInput(data.Chapter),
+			CreatedAt: createdAt, UpdatedAt: updatedAt, Rev: rev,
+		})
+		if err != nil {
+			return "", "", fmt.Errorf("upsert bookmark: %w", err)
+		}
+		if rows != 1 {
+			return reject("book is unavailable")
+		}
+		return applied()
+
 	default:
 		return reject("entity is unsupported")
 	}
@@ -982,11 +1102,27 @@ func (s *Service) deleteNote(
 	return applied()
 }
 
+func (s *Service) deleteBookmark(
+	ctx context.Context, q *sqlc.Queries, tx *sql.Tx, viewer Viewer, bookmark sqlc.Bookmark, updatedAt int64,
+) (string, string, error) {
+	rev, err := db.NextRev(ctx, tx)
+	if err != nil {
+		return "", "", err
+	}
+	if err := q.ReadingTombstoneBookmark(ctx, sqlc.ReadingTombstoneBookmarkParams{
+		ID: bookmark.ID, UserID: viewer.UserID, UpdatedAt: updatedAt,
+		DeletedAt: sql.NullInt64{Int64: updatedAt, Valid: true}, Rev: rev,
+	}); err != nil {
+		return "", "", fmt.Errorf("tombstone bookmark: %w", err)
+	}
+	return applied()
+}
+
 // Pull returns a consistent snapshot bounded by one high-water sync revision.
 func (s *Service) Pull(ctx context.Context, viewer Viewer, cursor int64) (PullResponse, error) {
 	result := PullResponse{
 		UserBooks: []UserBookRow{}, Progress: []ProgressRow{}, Highlights: []Highlight{},
-		Notes: []Note{}, Settings: []Setting{},
+		Bookmarks: []Bookmark{}, Notes: []Note{}, Settings: []Setting{},
 	}
 	if err := checkViewer(viewer); err != nil {
 		return result, err
@@ -1031,6 +1167,15 @@ func (s *Service) Pull(ctx context.Context, viewer Viewer, cursor int64) (PullRe
 		}
 		for _, row := range highlights {
 			result.Highlights = append(result.Highlights, toHighlight(row))
+		}
+		bookmarks, err := q.ReadingPullBookmarks(ctx, sqlc.ReadingPullBookmarksParams{
+			UserID: viewer.UserID, Cursor: cursor, HighWater: highWater, IsAdmin: adminFlag(viewer),
+		})
+		if err != nil {
+			return fmt.Errorf("pull bookmarks: %w", err)
+		}
+		for _, row := range bookmarks {
+			result.Bookmarks = append(result.Bookmarks, toBookmark(row))
 		}
 		notes, err := q.ReadingPullNotes(ctx, sqlc.ReadingPullNotesParams{
 			UserID: viewer.UserID, Cursor: cursor, HighWater: highWater, IsAdmin: adminFlag(viewer),
@@ -1144,4 +1289,61 @@ func (s *Service) SearchAnnotations(
 
 func escapeLike(value string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
+}
+
+// ListUserBookmarks returns paginated bookmarks for the authenticated user across all books.
+func (s *Service) ListUserBookmarks(ctx context.Context, viewer Viewer, limit int64, offset int64) (BookmarksListResponse, error) {
+	response := BookmarksListResponse{Items: []BookmarkItem{}}
+	if err := checkViewer(viewer); err != nil {
+		return response, err
+	}
+	if limit < 1 || limit > 100 {
+		return response, fmt.Errorf("%w: limit must be between 1 and 100", ErrInvalid)
+	}
+	if offset < 0 {
+		return response, fmt.Errorf("%w: offset must be non-negative", ErrInvalid)
+	}
+	err := readSnapshot(ctx, s.reader, func(tx *sql.Tx) error {
+		q := sqlc.New(tx)
+		bookmarks, err := q.ReadingListUserBookmarks(ctx, sqlc.ReadingListUserBookmarksParams{
+			UserID: viewer.UserID, IsAdmin: adminFlag(viewer), Limit: limit + 1, Offset: offset,
+		})
+		if err != nil {
+			return fmt.Errorf("list user bookmarks: %w", err)
+		}
+		hasMore := int64(len(bookmarks)) > limit
+		if hasMore {
+			bookmarks = bookmarks[:limit]
+		}
+		for _, bm := range bookmarks {
+			book, err := q.CatalogGetBook(ctx, sqlc.CatalogGetBookParams{
+				BookID: bm.BookID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
+			})
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("get bookmark book: %w", err)
+			}
+			var bookSummary *BookmarkBookSummary
+			if err == nil {
+				bookSummary = &BookmarkBookSummary{
+					ID: book.ID, Title: book.Title, CoverSha256: nullableString(book.CoverSha256),
+				}
+			}
+			response.Items = append(response.Items, BookmarkItem{
+				ID: bm.ID, BookID: bm.BookID, BookFileID: nullableInt(bm.BookFileID),
+				Locator: json.RawMessage(bm.Locator), Position: bm.Position, Label: bm.Label,
+				Chapter: nullableString(bm.Chapter), CreatedAt: timestamp(bm.CreatedAt),
+				UpdatedAt: timestamp(bm.UpdatedAt), Book: bookSummary,
+			})
+		}
+		if hasMore {
+			nextOffset := offset + limit
+			cursor := strconv.FormatInt(nextOffset, 10)
+			response.NextCursor = &cursor
+		}
+		return nil
+	})
+	if err != nil {
+		return BookmarksListResponse{}, err
+	}
+	return response, nil
 }
