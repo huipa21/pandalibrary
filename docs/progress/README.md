@@ -51,7 +51,7 @@ below are local to this follow-up; merge a wave before starting the next.
 | 1 | UX2 | System and automatic shelves API | baseline | [UX2](../prompts/UX2-system-smart-shelves.md) | Done | `task/ux2` | Only migration writer in wave 1 |
 | 1 | UX7 | Admin users API | baseline | [UX7](../prompts/UX7-admin-users-api.md) | Ready | `task/ux7` | Existing user schema; no migration |
 | 1 | UX9 | Commit-based dev/image version | baseline | [UX9](../prompts/UX9-build-version.md) | Ready | `task/ux9` | Standalone footer component; UX10 wires it |
-| 2 | UX3 | Sidebar shelves and reusable shelf UI | UX1, UX2 | [UX3](../prompts/UX3-shelf-navigation-ui.md) | Ready | `task/ux3` | Reused by dashboard |
+| 2 | UX3 | Sidebar shelves and reusable shelf UI | UX1, UX2 | [UX3](../prompts/UX3-shelf-navigation-ui.md) | Done | `task/ux3` | Reused by dashboard |
 | 2 | UX4 | Dashboard feeds API | UX2 | [UX4](../prompts/UX4-dashboard-feeds-api.md) | Done | `task/ux4` | Keyset pagination, visibility-safe SQL, hand-off ready for UX5 |
 | 2 | UX6 | Bookmarks and offline reader sync | UX1, UX2 | [UX6](../prompts/UX6-bookmarks.md) | Ready | `task/ux6` | Only migration writer in wave 2 |
 | 2 | UX8 | Admin users UI and selectors | UX7 | [UX8](../prompts/UX8-admin-users-ui.md) | Ready | `task/ux8` | Admin area only |
