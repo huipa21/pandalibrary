@@ -9,6 +9,8 @@ import (
 	"io"
 	"path"
 	"strings"
+
+	"golang.org/x/net/html/charset"
 )
 
 const (
@@ -180,13 +182,26 @@ func isImageExtension(ext string) bool {
 }
 
 func looksLikeXML(prefix []byte) bool {
+	prefix = bytes.TrimPrefix(prefix, []byte{0xef, 0xbb, 0xbf})
 	trimmed := bytes.TrimSpace(prefix)
 	return bytes.HasPrefix(trimmed, []byte("<?xml")) || bytes.HasPrefix(trimmed, []byte("<"))
 }
 
 func sniffFB2Root(r io.ReaderAt, size int64) (Format, error) {
-	probeSize := min(int64(maxXMLRootProbe), size)
-	decoder := xml.NewDecoder(io.NewSectionReader(r, 0, probeSize))
+	offset := int64(0)
+	if size >= 3 {
+		var bom [3]byte
+		if err := readAt(r, bom[:], 0); err != nil {
+			return "", err
+		}
+		if bytes.Equal(bom[:], []byte{0xef, 0xbb, 0xbf}) {
+			offset = 3
+		}
+	}
+	probeEnd := min(int64(maxXMLRootProbe), size)
+	probeSize := probeEnd - offset
+	decoder := xml.NewDecoder(io.NewSectionReader(r, offset, probeSize))
+	decoder.CharsetReader = charset.NewReaderLabel
 	for {
 		token, err := decoder.Token()
 		if err != nil {

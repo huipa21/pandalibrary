@@ -350,10 +350,18 @@ func TestEveryDispatchableFormatUsesImporterRegistry(t *testing.T) {
 			}
 		})
 	}
-	for _, blocked := range [][]byte{append([]byte{0xef, 0xbb, 0xbf}, fb2...), []byte(`<?xml version="1.0" encoding="windows-1251"?><FictionBook/>`)} {
-		if _, err := f.service.registry.Extract(context.Background(), bytes.NewReader(blocked), int64(len(blocked)), "blocked.fb2"); err == nil {
-			t.Fatal("X1 FB2 blocker changed; update hand-off and add dispatch coverage")
-		}
+	for _, test := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "UTF-8 BOM", data: append([]byte{0xef, 0xbb, 0xbf}, fb2...)},
+		{name: "Windows-1251 declaration", data: []byte(`<?xml version="1.0" encoding="windows-1251"?><FictionBook><description><title-info><book-title>Fixture</book-title></title-info></description></FictionBook>`)},
+	} {
+		t.Run("plain FB2 "+test.name, func(t *testing.T) {
+			if _, err := f.service.registry.Extract(context.Background(), bytes.NewReader(test.data), int64(len(test.data)), "fixture.fb2"); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

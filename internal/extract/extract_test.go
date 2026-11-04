@@ -23,6 +23,8 @@ func TestSniffFormats(t *testing.T) {
 		{name: "AZW3", data: mobiHeader(8), want: FormatAZW3},
 		{name: "AZW3 KF8 boundary", data: mobiBoundaryHeader(), want: FormatAZW3},
 		{name: "FB2", data: []byte(`<?xml version="1.0"?><FictionBook/>`), want: FormatFB2},
+		{name: "FB2 UTF-8 BOM", data: append([]byte{0xef, 0xbb, 0xbf}, []byte(`<?xml version="1.0"?><FictionBook/>`)...), want: FormatFB2},
+		{name: "FB2 Windows-1251", data: []byte("<?xml version=\"1.0\" encoding=\"windows-1251\"?><FictionBook>\xd0\xe8\xe2\xe5\xf2</FictionBook>"), want: FormatFB2},
 		{name: "EPUB", data: zipBytes(t, map[string][]byte{"mimetype": []byte("application/epub+zip")}), want: FormatEPUB},
 		{name: "FBZ", data: zipBytes(t, map[string][]byte{"book.fb2": []byte("<FictionBook/>")}), want: FormatFBZ},
 		{name: "CBZ", data: zipBytes(t, map[string][]byte{"001.jpg": []byte("image")}), want: FormatCBZ},
@@ -43,6 +45,18 @@ func TestSniffFormats(t *testing.T) {
 func TestSniffUnsupportedAndInvalid(t *testing.T) {
 	if _, err := Sniff(bytes.NewReader([]byte("not an ebook")), int64(len("not an ebook"))); !errors.Is(err, ErrUnsupportedFormat) {
 		t.Fatalf("Sniff() error = %v, want unsupported format", err)
+	}
+	notFB2 := []byte(`<?xml version="1.0"?><book/>`)
+	if _, err := Sniff(bytes.NewReader(notFB2), int64(len(notFB2))); !errors.Is(err, ErrUnsupportedFormat) {
+		t.Fatalf("Sniff() error = %v, want unsupported format for non-FictionBook XML", err)
+	}
+	malformedXML := []byte(`<?xml version="1.0"?><FictionBook`)
+	if _, err := Sniff(bytes.NewReader(malformedXML), int64(len(malformedXML))); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Sniff() error = %v, want invalid input for malformed XML", err)
+	}
+	unknownEncoding := []byte(`<?xml version="1.0" encoding="unknown-encoding"?><FictionBook/>`)
+	if _, err := Sniff(bytes.NewReader(unknownEncoding), int64(len(unknownEncoding))); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Sniff() error = %v, want invalid input for unknown XML encoding", err)
 	}
 	broken := []byte("PK\x03\x04broken")
 	if _, err := Sniff(bytes.NewReader(broken), int64(len(broken))); !errors.Is(err, ErrInvalidInput) {

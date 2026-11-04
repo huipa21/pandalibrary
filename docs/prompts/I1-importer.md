@@ -56,10 +56,9 @@ useful job status while workers and the watcher stop cleanly with the server.
 ## Requirements
 
 1. Register the merged EPUB, PDF, MOBI, AZW3, FB2, FBZ, and CBZ extractors with one
-   `extract.Registry`. Do not modify the X1 sniffer or extractor packages. X3 currently
-   records a known plain-FB2 sniffing blocker; retain it as an explicit follow-up rather
-   than masking it or claiming that dispatch works. Test every registry format that is
-   currently dispatchable and document the blocked plain-FB2 case in the hand-off.
+   `extract.Registry`. Do not modify the X1 sniffer or extractor packages. Test every
+   registered format through the shared registry, including plain FB2 with a UTF-8 BOM
+   and a Windows-1251 declaration.
 2. Extend `blobstore.Store` with safe content-addressed write operations for book blobs.
    Stream into a unique file under `tmp/`, compute SHA-256, byte size, and KOReader partial
    MD5 in one pass, sync and close it, then publish atomically under `files/<prefix>/`.
@@ -113,7 +112,7 @@ useful job status while workers and the watcher stop cleanly with the server.
 
 ## Out of scope
 
-- Format extraction/sniffing fixes (X1/X2/X3); report the X3 blocker for its owner
+- Format extraction/sniffing fixes (X1/X2/X3); rely on the shared extractor registry
 - Metadata providers, metadata merge workflow, and admin UI (M1/W5)
 - Maintenance retention/orphan sweeps (J1) and KOReader protocol integration (K1)
 - Search query endpoint (S1); only maintain the FTS row through `search.IndexBook`
@@ -125,8 +124,8 @@ useful job status while workers and the watcher stop cleanly with the server.
 - [x] A corrupt drop file reaches `.failed/` with a bounded error file.
 - [x] Workers recover queued jobs after restart and stop cleanly on shutdown.
 - [x] Uploads and drop paths are bounded and cannot escape their configured roots.
-- [x] Supported format tests use the registry; the known X3 plain-FB2 blocker remains
-  explicit and is not worked around in X1 code.
+- [x] Supported format tests use the registry, including plain FB2 with a UTF-8 BOM and
+  a Windows-1251 declaration.
 - [x] `task sqlc:check`, `task build`, `task lint`, and `task test` pass.
 
 ## Validation commands
@@ -143,7 +142,8 @@ task test
 - Update this prompt's status and I1's row and dated log entry in
   [progress/README.md](../progress/README.md).
 - Record the upload/job contract and any importer lifecycle API used by J1 and W5.
-- Report the X3 plain-FB2 sniffing blocker without changing its owner files.
+- The plain FB2 sniffing follow-up is resolved in X1; importer tests exercise its BOM and
+  Windows-1251 registry dispatch.
 - Update architecture docs or add an ADR only if the accepted design changes.
 
 ### Implemented contract (2026-11-03)
@@ -183,12 +183,16 @@ task test
 - `PANDA_DROP_POLL` / `--drop-poll` accepts `0` (disabled) or a Go duration of at least
   `1s`, for example `5s`. Polling supplements fsnotify and permits startup without
   fsnotify when the backend is unavailable.
-- EPUB, PDF, MOBI, AZW3, UTF-8 FB2 without a BOM, FBZ, and CBZ all have registry dispatch
-  coverage. **Known X1/X3 follow-up:** Windows-1251 plain FB2 and UTF-8 plain FB2 with a
-  BOM still fail before reaching their extractor. Importer tests explicitly retain this
-  limitation; no sniffer or extractor changes were made.
+- EPUB, PDF, MOBI, AZW3, UTF-8 FB2 with and without a BOM, Windows-1251 FB2, FBZ, and CBZ
+  all have registry dispatch coverage.
 - Validation passed: `task sqlc:check`, `task build`, `task lint`, and `task test`.
   Tests cover real SQLite rollback/FTS, cover publication, a forced concurrent duplicate
   race, active-job cancellation/recovery, startup/live fsnotify and polling-only scans,
   debounce, ignored/unsafe paths, terminal cleanup recovery, multipart streaming limits,
   authorization, history, and attachment visibility changes.
+
+### Follow-up status (2026-11-04)
+
+- The X1 plain-FB2 sniffing limitation noted during I1 has been fixed. The importer
+  registry now dispatches plain FB2 with a UTF-8 BOM and a Windows-1251 declaration;
+  `TestEveryDispatchableFormatUsesImporterRegistry` covers both variants.

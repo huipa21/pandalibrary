@@ -1,6 +1,6 @@
 # F2: Database and migration runner
 
-- Status: Review
+- Status: Done
 - Plan entry: [implementation-plan.md](../plans/implementation-plan.md) § F2
 - Depends on (merged): F1
 - Can run in parallel with: F3, X1
@@ -104,16 +104,16 @@ database primitives later service and server tasks depend on.
 
 ## Acceptance criteria
 
-- [ ] An empty data directory migrates to the latest version; a database at version 99
+- [x] An empty data directory migrates to the latest version; a database at version 99
   is explicitly refused.
-- [ ] A test-only `00002` migration auto-applies with a pre-migration backup; disabling
+- [x] A test-only `00002` migration auto-applies with a pre-migration backup; disabling
   auto-migration or backups has the documented effect.
-- [ ] Writer and reader pools use the documented settings, and transaction/revision
+- [x] Writer and reader pools use the documented settings, and transaction/revision
   tests pass.
-- [ ] `task sqlc` generates code without modifying the schema, and the sqlc diff/check
+- [x] `task sqlc` generates code without modifying the schema, and the sqlc diff/check
   reports a clean state.
-- [ ] `task build`, `task lint`, and `task test` pass from the repository root.
-- [ ] No merged migration is modified and no application schema migration is added.
+- [x] `task build`, `task lint`, and `task test` pass from the repository root.
+- [x] No merged migration is modified and no application schema migration is added.
 
 ## Validation commands
 

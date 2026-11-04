@@ -1,6 +1,6 @@
 # X3: MOBI/AZW3 and FB2/FBZ extractors
 
-- Status: Blocked (X1 FB2 sniffing)
+- Status: Done
 - Plan entry: [implementation-plan.md](../plans/implementation-plan.md) § X3
 - Depends on (merged): X1
 - Can run in parallel with: R1, W1, X2
@@ -94,10 +94,10 @@ clearly, and test format-specific metadata and encodings with small fixtures.
 
 ## Acceptance criteria
 
-- [x] MOBI, AZW3, UTF-8 FB2 without a BOM, and FBZ register and dispatch through the
-  common registry.
-- [ ] EXTH metadata, DRM rejection, FB2 CP1251 parsing, series, identifiers, and bounded
-  covers behave as specified. Plain CP1251 FB2 is blocked by X1's sniffer before dispatch.
+- [x] MOBI, AZW3, UTF-8 FB2 with and without a BOM, Windows-1251 FB2, and FBZ register
+  and dispatch through the common registry.
+- [x] EXTH metadata, DRM rejection, FB2 CP1251 parsing, series, identifiers, and bounded
+  covers behave as specified.
 - [x] Invalid and oversized inputs fail explicitly and return no partial metadata.
 - [x] Fixture tests cover each format and the listed safety/edge cases.
 - [x] `task build`, `task lint`, and `task test` pass, or any unrelated pre-existing
@@ -125,19 +125,14 @@ task test
   errors. They register MOBI/AZW3 and FB2/FBZ respectively; no application-wide registry
   is wired here. `errors.Is(err, mobi.ErrDRM)` identifies a protected MOBI/AZW3 file, and
   the same error also matches `extract.ErrUnsupportedFormat`.
-- Direct `fb2.Extract` and FBZ registry dispatch accept both Windows-1251 and UTF-8 with a
-  BOM. Plain FB2 registry dispatch is blocked for these encodings: X1's `looksLikeXML`
-  does not recognize a UTF-8 BOM, and `sniffFB2Root` creates an XML decoder without
-  `CharsetReader`, so a Windows-1251 declaration fails before the registered extractor
-  runs. The X1 follow-up is to recognize the initial UTF-8 BOM in XML signature detection
-  and set the root decoder's `CharsetReader` to `charset.NewReaderLabel`. Fixing
-  `internal/extract/sniff.go` is outside X3's ownership. The two corresponding registry
-  tests are explicitly skipped only for these known failures and will run when X1 is
-  corrected.
+- Direct FB2 extraction, FBZ registry dispatch, and plain FB2 registry dispatch accept
+  Windows-1251 and UTF-8 with a BOM. The shared sniffer strips an initial UTF-8 BOM for
+  signature detection and configures the bounded root decoder with
+  `charset.NewReaderLabel`. The plain-registry regression tests run without skips.
 - FB2 documents are limited to `MaxEntryUncompressed`, with the description limited to
   `MaxMetadataDocumentSize`, XML depth to 256, and decoded covers to
   `MaxCoverEntrySize`. MOBI cover records are returned unmodified after image validation
   using the existing `covers.MaxInputPixels` limit. `golang.org/x/net/html/charset`
   requires the added indirect `golang.org/x/text v0.43.0` module.
 - `task build`, `task lint`, and `task test` pass; focused boundary, cancellation, and
-  fuzz tests pass. The two known X1 registry cases above are skipped, not passed.
+  fuzz tests pass.

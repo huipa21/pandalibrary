@@ -1,6 +1,6 @@
 # X1: Extraction core, EPUB, and covers
 
-- Status: Review
+- Status: Done
 - Plan entry: [implementation-plan.md](../plans/implementation-plan.md) § X1
 - Depends on (merged): F1
 - Can run in parallel with: F2, F3
@@ -118,7 +118,7 @@ database, HTTP server, or storage implementation.
   dimensions and reports stable content hashes.
 - [x] Partial MD5 matches an independently verified KOReader value, including short-file
   and sparse/large-offset cases.
-- [ ] `task build`, `task lint`, and `task test` pass from the repository root.
+- [x] `task build`, `task lint`, and `task test` pass from the repository root.
 - [x] No database, web, importer, or later-format implementation is added by X1.
 
 ## Validation commands
@@ -141,7 +141,8 @@ task test
   `MaxArchiveUncompressed`, and `MaxCompressedInput` limits. Package fixtures live under
   `internal/extract/testdata/`; EPUB fixtures are XML resources assembled into ZIP
   archives in tests. No archive member name is a filesystem destination.
-- `task build` and `task test` pass. X1-package `go vet` and `staticcheck` pass. The
-  repository `task lint` is blocked by existing diagnostics in `internal/db/migrations/`
-  (SA4004, ST1005, and test syntax parser errors); those files are outside X1's scope.
+- `task build`, `task lint`, and `task test` pass from the repository root.
+- Follow-up (2026-11-04): shared FB2 sniffing now recognizes an initial UTF-8 BOM and
+  uses `charset.NewReaderLabel` for declared encodings, allowing plain BOM and
+  Windows-1251 FB2 registry dispatch. The formerly skipped X3 registry tests now run.
 - Update architecture docs or add an ADR only if the accepted design changes.

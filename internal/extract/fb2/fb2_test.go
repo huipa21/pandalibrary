@@ -88,9 +88,6 @@ func TestWindows1251PlainFB2Registry(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := registry.Extract(context.Background(), bytes.NewReader(document), int64(len(document)), "book.fb2")
-	if errors.Is(err, extract.ErrInvalidInput) && strings.Contains(err.Error(), "CharsetReader is nil") {
-		t.Skip("X1's shared FB2 sniffer does not yet support non-UTF-8 XML declarations")
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,9 +114,6 @@ func TestUTF8BOMFB2AndFBZ(t *testing.T) {
 	}
 	t.Run("plain registry", func(t *testing.T) {
 		got, err := registry.Extract(context.Background(), bytes.NewReader(document), int64(len(document)), "book.fb2")
-		if errors.Is(err, extract.ErrUnsupportedFormat) {
-			t.Skip("X1's shared sniffer does not yet recognize a UTF-8 BOM")
-		}
 		if err != nil || got.Title != "BOM title" {
 			t.Fatalf("registry BOM metadata = %#v, error = %v", got, err)
 		}
