@@ -1,8 +1,8 @@
 # UX5: Dashboard cover rows and gear-based section configuration
 
-- Status: Review (full frontend check has pre-existing failures)
+- Status: Done
 - Wave: 3; dependencies merged: UX3, UX4 (and their prerequisites)
-- Branch/worktree: `task/ux3` / `C:\other\pandalibrary`; migration: no
+- Branch/worktree: `master` / `C:\other\pandalibrary`; migration: no
 
 ## Read first and ownership
 
@@ -89,7 +89,26 @@ commands/results and update your prompt/progress row/log.
   dialog's public prop declaration
   to isolate its pre-existing diagnostic; those temporary files were removed.
   The real dialog was exercised by browser tests.
-- `pnpm --dir web check` still fails with 11 errors and 6 warnings in the
-  pre-existing `UserForm.svelte`, `admin/users/+page.svelte`, and
-  `ShelfCreateDialog.svelte`. These files are outside UX5 ownership. The task
-  remains in Review until the shared full-check baseline is repaired.
+- The original commit left `pnpm --dir web check` failing with 11 errors and
+  6 warnings outside UX5.
+
+### Completion validation on `master` after UX6/UX7 merges
+
+- Minimal cross-task fixes made the full check pass. `UserForm.svelte` now
+  validates through its own submit handler instead of handing the raw event to
+  the parent, and seeds its fields once. Admin form actions are typed, and the
+  edit/reset forms are keyed per user. `ShelfCreateDialog.svelte` records the
+  focus-return element and gives its backdrop a presentation role. Bookmark
+  locators are typed `JsonValue`, the bookmarks search box no longer uses
+  `autofocus`, `offline.outbox.bookmark` is localized, and the sync test and
+  dashboard browser mocks include the UX6 `bookmarks` collection.
+- `pnpm --dir web check`: 0 errors, 0 warnings.
+- `pnpm --dir web test -- --no-file-parallelism`: 25 files, 195 tests passed.
+- `pnpm --dir web build`: passed.
+- Isolated-binary `playwright test dashboard.e2e.ts dashboard-real.e2e.ts
+  admin search-shelves page.svelte --workers=1`: all passed.
+- Four browser tests in suites outside UX5 already failed on `master` before
+  these fixes and still fail. In `shell.e2e.ts:55` and `:108`, the sidebar
+  "New shelf" link is no longer rendered. In `offline.e2e.ts:120`, "Next page"
+  is not found. `offline.e2e.ts:168` gets the connection error instead of
+  "The reader request failed." These belong to the UX3/UX6/UX7 owners.

@@ -24,7 +24,7 @@ const book: Book = {
 };
 
 function pull(cursor = 0): PullResponse {
-	return { cursor, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: [] };
+	return { cursor, user_books: [], reading_progress: [], highlights: [], bookmarks: [], notes: [], user_settings: [] };
 }
 
 function progress(percentage = 0.5): SyncMutation {

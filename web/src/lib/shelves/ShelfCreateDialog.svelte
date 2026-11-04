@@ -26,6 +26,7 @@
 	let errors = $state<Record<string, string>>({});
 
 	onMount(() => {
+		originalFocusElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		return () => {
 			originalFocusElement?.focus();
 		};
@@ -128,7 +129,7 @@
 </script>
 
 {#if open}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={handleBackgroundClick}>
+	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="presentation" onclick={handleBackgroundClick}>
 		<dialog
 			bind:this={dialogElement}
 			class="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 shadow-lg"

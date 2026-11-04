@@ -5,7 +5,7 @@
 	import PagerFooter from '#lib/admin/PagerFooter.svelte';
 	import UserForm from '#lib/admin/UserForm.svelte';
 	import { createUser, deleteUser, listAdminUsers, resetUserPassword, revokeUserCredentials, revokeUserSessions, updateUser } from '#lib/admin/api.js';
-	import { adminErrorKey } from '#lib/admin/form.js';
+	import { adminErrorKey, type UserFormDraft } from '#lib/admin/form.js';
 	import { formatTimestamp } from '#lib/admin/jobs.js';
 	import type { User } from '#lib/admin/types.js';
 	import { panelClass, primaryButton, smallDangerButton, smallSecondaryButton } from '#lib/admin/ui.js';
@@ -28,11 +28,11 @@
 		await users.reset((cursor, signal) => listAdminUsers({ cursor, signal }));
 	}
 
-	async function handleCreateUser(input: { username: string; displayName: string; password: string; role: string; locale: string }): Promise<string | null> {
+	async function handleCreateUser(input: Partial<UserFormDraft>): Promise<string | null> {
 		notice = '';
 		actionError = '';
 		try {
-			const user = await createUser(input.username, input.displayName, input.password, input.role, input.locale);
+			await createUser(input.username ?? '', input.displayName ?? '', input.password ?? '', input.role ?? 'user', input.locale ?? 'en');
 			notice = m['admin.users.form.success_create']();
 			creating = false;
 			await users.reload();
@@ -188,12 +188,16 @@
 	{:else if editingUser}
 		<section class={panelClass} aria-labelledby="edit-heading">
 			<h2 id="edit-heading" class="text-xl font-semibold">{m['admin.users.form.edit_title']()}</h2>
-			<UserForm mode="edit" user={editingUser} onsubmit={handleUpdateUser} oncancel={() => (editingUser = null)} />
+			{#key editingUser.id}
+				<UserForm mode="edit" user={editingUser} onsubmit={handleUpdateUser} oncancel={() => (editingUser = null)} />
+			{/key}
 		</section>
 	{:else if selectedUserForAction && selectedUserForAction.id}
 		<section class={panelClass} aria-labelledby="reset-heading">
 			<h2 id="reset-heading" class="text-xl font-semibold">{m['admin.users.form.password_new']()}</h2>
-			<UserForm mode="reset-password" user={selectedUserForAction} onsubmit={(input) => handleResetPassword(input.password)} oncancel={() => (selectedUserForAction = null)} />
+			{#key selectedUserForAction.id}
+				<UserForm mode="reset-password" user={selectedUserForAction} onsubmit={(input) => handleResetPassword(input.password ?? '')} oncancel={() => (selectedUserForAction = null)} />
+			{/key}
 		</section>
 	{/if}
 

@@ -302,7 +302,11 @@ export type AdminAction =
 	| 'upload'
 	| 'load_libraries'
 	| 'save_provider'
-	| 'run_job';
+	| 'run_job'
+	| 'create'
+	| 'update'
+	| 'reset'
+	| 'delete';
 
 /** Maps a failed administrator request to a localized message key without echoing server text. */
 export function adminErrorKey(error: unknown, action: AdminAction): string {
@@ -322,6 +326,9 @@ export function adminErrorKey(error: unknown, action: AdminAction): string {
 				case 'revoke':
 					return 'admin.error.grant_not_found';
 				case 'load_hidden':
+				case 'update':
+				case 'reset':
+				case 'delete':
 					return 'admin.error.user_not_found';
 				case 'hide':
 				case 'unhide':

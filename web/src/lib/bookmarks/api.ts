@@ -1,4 +1,4 @@
-import { api } from '#lib/api/client.js';
+import { api, type JsonValue } from '#lib/api/client.js';
 import type { Bookmark } from '#lib/reader/types.js';
 
 export interface BookmarksListResponse {
@@ -10,7 +10,7 @@ export interface BookmarkItem {
 	id: string;
 	book_id: number;
 	book_file_id: number | null;
-	locator: unknown;
+	locator: JsonValue;
 	position: number;
 	label: string;
 	chapter: string | null;

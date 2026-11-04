@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
-	import { validateUserDraft, userPatch, type UserFormDraft, type UserFieldError } from './form.js';
+	import { translate } from '#lib/paging/translate.js';
+	import { validateUserDraft, type UserFormDraft, type UserFieldError } from './form.js';
 	import { inputClass, primaryButton, secondaryButton } from './ui.js';
 	import type { User } from './types.js';
 
@@ -13,11 +15,13 @@
 
 	const { mode, user, onsubmit, oncancel }: Props = $props();
 
-	let username = $state(user?.username || '');
-	let displayName = $state(user?.display_name || '');
+	// The page remounts this form per user, so fields are intentionally seeded once.
+	const initial = untrack(() => user);
+	let username = $state(initial?.username || '');
+	let displayName = $state(initial?.display_name || '');
 	let password = $state('');
-	let role = $state(user?.role || 'user');
-	let locale = $state(user?.locale || 'en');
+	let role = $state(initial?.role || 'user');
+	let locale = $state(initial?.locale || 'en');
 	let busy = $state(false);
 	let errors = $state<Record<string, UserFieldError | string>>({});
 
@@ -63,11 +67,11 @@
 	function getFieldError(field: string): string {
 		const error = errors[field];
 		if (!error) return '';
-		return m[`admin.users.form.error.${error}`] ? m[`admin.users.form.error.${error}`]() : error;
+		return field === 'form' ? error : translate(`admin.users.form.error.${error}`);
 	}
 </script>
 
-<form {onsubmit} novalidate class="space-y-4">
+<form onsubmit={handleSubmit} novalidate class="space-y-4">
 	{#if mode === 'reset-password' && user}
 		<div>
 			<label for="field-user-info" class="block text-sm font-medium text-slate-700">{m['admin.users.username_label']()}</label>

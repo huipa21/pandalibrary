@@ -89,7 +89,7 @@ async function mockApi(page: Page, server: ServerState) {
 		if (path === '/sync/pull') {
 			const cursor = Number(url.searchParams.get('cursor') ?? 0);
 			return route.fulfill({ json: {
-				cursor: Math.max(cursor, server.revision), user_books: [], reading_progress: [], highlights: [], notes: [],
+				cursor: Math.max(cursor, server.revision), user_books: [], reading_progress: [], highlights: [], bookmarks: [], notes: [],
 				user_settings: setting && setting.rev > cursor ? [setting] : []
 			} });
 		}
@@ -158,7 +158,7 @@ async function mockApi(page: Page, server: ServerState) {
 			return route.fulfill({ json: { items: [], next_cursor: null } });
 		}
 		if (path === '/me/books/21') return route.fulfill({ json: {
-			user_book: null, highlights: [], notes: [], progress: {
+			user_book: null, highlights: [], bookmarks: [], notes: [], progress: {
 				book_file_id: server.progressFile, source: 'web', locator: null, percentage: 0.4,
 				device: 'Web', device_id: 'device', updated_at: timestamp, rev: 1
 			}

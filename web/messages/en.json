@@ -254,6 +254,7 @@
 	"offline.outbox.setting": "Reader setting",
 	"offline.outbox.session": "Reading session",
 	"offline.outbox.book": "Book status",
+	"offline.outbox.bookmark": "Bookmark",
 	"search.nav": "Search",
 	"search.title": "Search",
 	"search.description": "Find books by title, author, series, tag, or other details.",

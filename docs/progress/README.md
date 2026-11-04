@@ -55,12 +55,19 @@ below are local to this follow-up; merge a wave before starting the next.
 | 2 | UX4 | Dashboard feeds API | UX2 | [UX4](../prompts/UX4-dashboard-feeds-api.md) | Done | `task/ux4` | Keyset pagination, visibility-safe SQL, hand-off ready for UX5 |
 | 2 | UX6 | Bookmarks and offline reader sync | UX1, UX2 | [UX6](../prompts/UX6-bookmarks.md) | Ready | `task/ux6` | Migration 00003 (renumbered after UX2's 00002 on merge) |
 | 2 | UX8 | Admin users UI and selectors | UX7 | [UX8](../prompts/UX8-admin-users-ui.md) | Ready | `task/ux8` | Admin area only |
-| 3 | UX5 | Configurable dashboard | UX3, UX4 | [UX5](../prompts/UX5-configurable-dashboard.md) | Review | `task/ux3` | Dashboard and sync tests pass; existing full frontend check failures remain |
+| 3 | UX5 | Configurable dashboard | UX3, UX4 | [UX5](../prompts/UX5-configurable-dashboard.md) | Done | `master` | Full frontend check, units, build and dashboard browser tests pass |
 | 4 | UX10 | Integration and verification gate | UX1-UX9 | [UX10](../prompts/UX10-layout-integration.md) | Ready | `task/ux10` | Real-browser, upgrade and image verification |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-04 — UX5 — Finished on `master`: minimal cross-task fixes (admin user
+  form submit/validation, shelf dialog focus return, bookmark typing/i18n,
+  `bookmarks` in sync and dashboard mocks) make `pnpm --dir web check` pass
+  with 0 errors and 0 warnings. 195 unit tests, the build, and the dashboard
+  browser tests pass. Four existing shell/offline browser failures from other
+  tasks remain; see the UX5 prompt.
 
 - 2026-11-04 — UX5 — Implemented configurable, independently paged dashboard
   cover rows, reusable shelf creation, safe resume, and account-scoped durable

@@ -254,6 +254,7 @@
 	"offline.outbox.setting": "阅读设置",
 	"offline.outbox.session": "阅读时段",
 	"offline.outbox.book": "图书状态",
+	"offline.outbox.bookmark": "书签",
 	"search.nav": "搜索",
 	"search.title": "搜索",
 	"search.description": "按书名、作者、系列、标签或其他信息查找图书。",

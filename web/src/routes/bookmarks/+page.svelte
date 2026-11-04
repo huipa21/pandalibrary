@@ -145,7 +145,7 @@
 								bind:value={editLabel}
 								maxlength={MAX_BOOKMARK_LABEL_CHARS}
 								disabled={busy}
-								autofocus
+								{@attach (input) => input.focus()}
 							/>
 							{#if editError}
 								<p class="text-sm text-red-600">{editError}</p>
