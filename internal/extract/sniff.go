@@ -53,9 +53,7 @@ func Sniff(r io.ReaderAt, size int64) (Format, error) {
 		if errors.Is(err, ErrUnsupportedFormat) || errors.Is(err, ErrInvalidInput) {
 			return "", err
 		}
-		if !errors.Is(err, io.EOF) {
-			return "", fmt.Errorf("%w: invalid XML input: %v", ErrInvalidInput, err)
-		}
+		return "", fmt.Errorf("%w: invalid XML input: %v", ErrInvalidInput, err)
 	}
 	return "", fmt.Errorf("%w: no recognized ebook signature", ErrUnsupportedFormat)
 }
@@ -215,6 +213,10 @@ func sniffFB2Root(r io.ReaderAt, size int64) (Format, error) {
 			return "", fmt.Errorf("%w: XML root is not FictionBook", ErrUnsupportedFormat)
 		case xml.Directive:
 			return "", fmt.Errorf("%w: XML directives are not accepted", ErrInvalidInput)
+		case xml.CharData:
+			if len(bytes.TrimSpace(token)) != 0 {
+				return "", fmt.Errorf("%w: text before XML root", ErrInvalidInput)
+			}
 		}
 	}
 }

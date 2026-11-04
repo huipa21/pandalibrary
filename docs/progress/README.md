@@ -13,14 +13,14 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 1 | F1 🔒 | Repository scaffold | — | [F1-repo-scaffold.md](../prompts/F1-repo-scaffold.md) | Done | `task/f1` | Merged into master after F2/F3/X1 |
 | 2 | F2 | Database and migration runner | F1 | [F2-db-migrations.md](../prompts/F2-db-migrations.md) | Done | `master` | sqlc check, build, lint, and full tests pass |
 | 2 | F3 | Web scaffold | F1 | [F3-web-scaffold.md](../prompts/F3-web-scaffold.md) | Done | | Static fallback embedded; F4 must route SPA paths to it |
-| 2 | X1 | Extraction core, EPUB, covers | F1 | [X1-extraction-epub-covers.md](../prompts/X1-extraction-epub-covers.md) | Done | `master` | Full gates pass; FB2 BOM/Windows-1251 sniffing follow-up complete |
+| 2 | X1 | Extraction core, EPUB, covers | F1 | [X1-extraction-epub-covers.md](../prompts/X1-extraction-epub-covers.md) | Done | `master` | FB2 BOM/Windows-1251, typed XML rejection, and exact 64 KiB probe tests pass; full Go gates pass |
 | 3 | F4 🔒 | Server skeleton | F2, F3 | [F4-server-skeleton.md](../prompts/F4-server-skeleton.md) | Done | `master` | Server, health, SPA, middleware, and shutdown; F2/X1 review closed |
 | 4 | A1 🔒 | Auth vertical slice | F4 | [A1-auth-vertical-slice.md](../prompts/A1-auth-vertical-slice.md) | Done | `master` | Auth setup, sessions, app passwords, CLI, and web flows; checks pass |
 | 5 | C1 🔒 | Catalog core | A1 | [C1-catalog-core.md](../prompts/C1-catalog-core.md) | Done | `master` | Catalog, ACLs, metadata, media, and FTS; F2/X1 review closed |
 | 6 | R1 | Reading and sync API | C1 | [R1-reading-sync-api.md](../prompts/R1-reading-sync-api.md) | Done | `master` | Push/pull DTO and schema deletion limits recorded in prompt hand-off |
 | 6 | W1 | Library UI | C1 | [W1-library-ui.md](../prompts/W1-library-ui.md) | Done | `master` | Bilingual catalog browsing, filters, keyset paging and details; frontend checks and browser tests pass |
 | 6 | X2 | PDF and CBZ extractors | X1 | [X2-pdf-cbz-extractors.md](../prompts/X2-pdf-cbz-extractors.md) | Done | `master` | PDF/CBZ registration and fixture tests; pdfcpu v0.16.4 |
-| 6 | X3 | MOBI/AZW3 and FB2 extractors | X1 | [X3-mobi-fb2-extractors.md](../prompts/X3-mobi-fb2-extractors.md) | Done | `master` | Plain UTF-8 BOM and Windows-1251 FB2 dispatch through the registry |
+| 6 | X3 | MOBI/AZW3 and FB2 extractors | X1 | [X3-mobi-fb2-extractors.md](../prompts/X3-mobi-fb2-extractors.md) | Done | `master` | Unblocked: both formerly skipped plain-FB2 registry cases revalidated; focused and full Go gates pass |
 | 7 | W2 | Reader UI | R1, W1 | [W2-reader-ui.md](../prompts/W2-reader-ui.md) | Done | `master` | Seven-format bilingual reader, R1 progress/annotations/settings/sessions, isolated book content; frontend checks and browser tests pass |
 | 7 | I1 | Importer | C1, X1 | [I1-importer.md](../prompts/I1-importer.md) | Done | `master` | Durable uploads/drop imports, two workers, recovery, formats/FTS/covers; Go gates pass; importer registry covers FB2 BOM/Windows-1251 |
 | 7 | S1 | Search | C1 | [S1-search.md](../prompts/S1-search.md) | Done | `master` | Authenticated FTS/short-query search with visibility and query-bound pagination; checks pass |
@@ -41,6 +41,12 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-04 — X1/X3 — Revalidated the existing BOM/Windows-1251 shared-sniffer fix
+  and both formerly skipped registry cases. Closed malformed-root gaps and added
+  exact source-byte probe-limit regression coverage. Focused extraction tests and
+  `task build`, `task lint`, `task test` pass; X1/X3 remain Done and X3 unblocked.
+  Details are in the X1/X3 prompt hand-offs; the FB2 extractor is unchanged.
 
 - 2026-11-04 — X1/F2/X3 — Fixed shared plain-FB2 sniffing for UTF-8 BOM and declared
   Windows-1251 encodings, kept XML root probing bounded, and configured the XML decoder

@@ -1,9 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { EditorState } from '@codemirror/state';
-	import { EditorView, keymap } from '@codemirror/view';
-	import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-	import { markdown } from '@codemirror/lang-markdown';
+	import type { EditorView as EditorViewType } from '@codemirror/view';
 	import * as m from '#lib/paraglide/messages.js';
 	import { renderMarkdown } from './markdown.js';
 
@@ -12,7 +9,28 @@
 	const preview = $derived(renderMarkdown(value));
 
 	onMount(() => {
-		const view = new EditorView({
+		let view: EditorViewType | undefined;
+		let destroyed = false;
+		void initEditor().then((created) => {
+			if (destroyed) created.destroy();
+			else view = created;
+		});
+		return () => {
+			destroyed = true;
+			view?.destroy();
+		};
+	});
+
+	// CodeMirror is loaded lazily to keep it out of the reader page's initial chunk.
+	async function initEditor() {
+		const [{ EditorState }, { EditorView, keymap }, { defaultKeymap, history, historyKeymap }, { markdown }] =
+			await Promise.all([
+				import('@codemirror/state'),
+				import('@codemirror/view'),
+				import('@codemirror/commands'),
+				import('@codemirror/lang-markdown')
+			]);
+		return new EditorView({
 			parent: editorElement,
 			state: EditorState.create({
 				doc: value,
@@ -32,8 +50,7 @@
 				]
 			})
 		});
-		return () => view.destroy();
-	});
+	}
 </script>
 
 <div class="grid gap-4 md:grid-cols-2">

@@ -131,7 +131,13 @@ suite, upgrade baseline, and scratch image before attaching Linux amd64/arm64 bi
 
 ## Development
 
-Install Go 1.27, Task, staticcheck, Node.js 24.15.0, and pnpm 11.2.2. Install Go tools:
+Development requires Go 1.27, Node.js 24.15.0, and pnpm 11.2.2.
+Root-level `dev.cmd` and `dev.ps1` are optional, local-only launchers and are
+Git-ignored; they are not included in a fresh checkout. Use the commands below
+for the supported development workflow. On first use, enter the `setup_token`
+printed by the backend to create an administrator; keep the token private.
+
+Also install Task and staticcheck for the checks below:
 
 ```sh
 go install github.com/go-task/task/v3/cmd/task@v3.54.0

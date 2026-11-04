@@ -1,6 +1,6 @@
 # X1: Extraction core, EPUB, and covers
 
-- Status: Done
+- Status: Done (shared FB2 sniffing revalidated 2026-11-04)
 - Plan entry: [implementation-plan.md](../plans/implementation-plan.md) § X1
 - Depends on (merged): F1
 - Can run in parallel with: F2, F3
@@ -145,4 +145,12 @@ task test
 - Follow-up (2026-11-04): shared FB2 sniffing now recognizes an initial UTF-8 BOM and
   uses `charset.NewReaderLabel` for declared encodings, allowing plain BOM and
   Windows-1251 FB2 registry dispatch. The formerly skipped X3 registry tests now run.
+- Follow-up validation (2026-11-04): rejected rootless XML and text before the root
+  with `ErrInvalidInput`. Added registry rejection tests for malformed declarations,
+  unknown encodings, truncated/missing roots, non-FictionBook roots, and unsafe
+  directives, with and without a BOM. Source-byte boundary tests cover UTF-8, BOM,
+  and Windows-1251 at the existing 64 KiB root-probe limit, including charset expansion.
+  `go test ./internal/extract ./internal/extract/fb2 -count=1`, both formerly skipped
+  registry cases, and `task build`, `task lint`, `task test` pass. No FB2 extractor,
+  archive dispatch, dependency, or probe-limit changes were required.
 - Update architecture docs or add an ADR only if the accepted design changes.

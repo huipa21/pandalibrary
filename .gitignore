@@ -1,5 +1,7 @@
 /pandalibrary
 /pandalibrary.exe
+/dev.cmd
+/dev.ps1
 *.test
 *.test.exe
 /coverage.out

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -24,6 +25,7 @@ func TestSniffFormats(t *testing.T) {
 		{name: "AZW3 KF8 boundary", data: mobiBoundaryHeader(), want: FormatAZW3},
 		{name: "FB2", data: []byte(`<?xml version="1.0"?><FictionBook/>`), want: FormatFB2},
 		{name: "FB2 UTF-8 BOM", data: append([]byte{0xef, 0xbb, 0xbf}, []byte(`<?xml version="1.0"?><FictionBook/>`)...), want: FormatFB2},
+		{name: "FB2 UTF-8 BOM without declaration", data: append([]byte{0xef, 0xbb, 0xbf}, []byte(`<FictionBook/>`)...), want: FormatFB2},
 		{name: "FB2 Windows-1251", data: []byte("<?xml version=\"1.0\" encoding=\"windows-1251\"?><FictionBook>\xd0\xe8\xe2\xe5\xf2</FictionBook>"), want: FormatFB2},
 		{name: "EPUB", data: zipBytes(t, map[string][]byte{"mimetype": []byte("application/epub+zip")}), want: FormatEPUB},
 		{name: "FBZ", data: zipBytes(t, map[string][]byte{"book.fb2": []byte("<FictionBook/>")}), want: FormatFBZ},
@@ -70,6 +72,90 @@ func TestRegistryRequiresRegisteredHandler(t *testing.T) {
 	if !errors.Is(err, ErrNotRegistered) || !errors.Is(err, ErrUnsupportedFormat) {
 		t.Fatalf("Extract() error = %v, want not registered and unsupported", err)
 	}
+}
+
+func TestRegistryRejectsInvalidFB2Roots(t *testing.T) {
+	tests := []struct {
+		name string
+		xml  string
+		want error
+	}{
+		{"non-FictionBook root", `<?xml version="1.0"?><book/>`, ErrUnsupportedFormat},
+		{"unknown encoding", `<?xml version="1.0" encoding="unknown-encoding"?><FictionBook/>`, ErrInvalidInput},
+		{"malformed declaration", `<?xml version="1.0" encoding="windows-1251><FictionBook/>`, ErrInvalidInput},
+		{"truncated root", `<?xml version="1.0"?><FictionBook`, ErrInvalidInput},
+		{"missing root", `<?xml version="1.0"?>`, ErrInvalidInput},
+		{"text before root", `<?xml version="1.0"?>unexpected<FictionBook/>`, ErrInvalidInput},
+		{"doctype", `<!DOCTYPE FictionBook><FictionBook/>`, ErrInvalidInput},
+		{"external entity", `<!DOCTYPE FictionBook [<!ENTITY x SYSTEM "file:///book">]><FictionBook/>`, ErrInvalidInput},
+	}
+	for _, test := range tests {
+		for _, bom := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/BOM=%t", test.name, bom), func(t *testing.T) {
+				data := []byte(test.xml)
+				if bom {
+					data = append([]byte{0xef, 0xbb, 0xbf}, data...)
+				}
+				registry := NewRegistry(time.Second)
+				called := false
+				if err := registry.Register(FormatFB2, func(context.Context, io.ReaderAt, int64, string) (Metadata, error) {
+					called = true
+					return Metadata{Title: "unexpected dispatch"}, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				metadata, err := registry.Extract(context.Background(), bytes.NewReader(data), int64(len(data)), "book.fb2")
+				if !errors.Is(err, test.want) {
+					t.Fatalf("Extract() error = %v, want %v", err, test.want)
+				}
+				if called || metadata.Title != "" {
+					t.Fatalf("invalid XML dispatched: called=%t, metadata=%#v", called, metadata)
+				}
+			})
+		}
+	}
+}
+
+func TestSniffFB2RootProbeBound(t *testing.T) {
+	for _, encoding := range []struct {
+		name   string
+		prefix string
+		fill   string
+	}{
+		{"UTF-8", `<?xml version="1.0" encoding="UTF-8"?>`, "a"},
+		{"UTF-8 BOM", "\xef\xbb\xbf" + `<?xml version="1.0" encoding="UTF-8"?>`, "a"},
+		{"Windows-1251", `<?xml version="1.0" encoding="windows-1251"?>`, "\xcf"},
+	} {
+		for _, delta := range []int{-1, 0, 1, len("<FictionBook/>") + 1} {
+			t.Run(fmt.Sprintf("%s/root-end=%+d", encoding.name, delta), func(t *testing.T) {
+				const root = "<FictionBook/>"
+				padding := maxXMLRootProbe - len(encoding.prefix) - len("<!---->") - len(root) + delta
+				data := []byte(encoding.prefix + "<!--" + strings.Repeat(encoding.fill, padding) + "-->" + root + strings.Repeat("\n", 128))
+				reader := &probeReaderAt{Reader: bytes.NewReader(data)}
+				format, err := Sniff(reader, int64(len(data)))
+				if delta <= 0 {
+					if err != nil || format != FormatFB2 {
+						t.Fatalf("Sniff() = %s, %v; want FB2", format, err)
+					}
+				} else if !errors.Is(err, ErrInvalidInput) || format != "" {
+					t.Fatalf("Sniff() = %s, %v; want invalid input", format, err)
+				}
+				if reader.maxEnd > maxXMLRootProbe {
+					t.Fatalf("read through byte %d, probe limit is %d", reader.maxEnd, maxXMLRootProbe)
+				}
+			})
+		}
+	}
+}
+
+type probeReaderAt struct {
+	*bytes.Reader
+	maxEnd int64
+}
+
+func (r *probeReaderAt) ReadAt(p []byte, offset int64) (int, error) {
+	r.maxEnd = max(r.maxEnd, offset+int64(len(p)))
+	return r.Reader.ReadAt(p, offset)
 }
 
 func TestRegistryPanicAndTimeoutReturnNoMetadata(t *testing.T) {

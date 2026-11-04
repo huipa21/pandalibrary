@@ -1,6 +1,6 @@
 # X3: MOBI/AZW3 and FB2/FBZ extractors
 
-- Status: Done
+- Status: Done (unblocked; both plain-FB2 registry regressions pass, 2026-11-04)
 - Plan entry: [implementation-plan.md](../plans/implementation-plan.md) § X3
 - Depends on (merged): X1
 - Can run in parallel with: R1, W1, X2
@@ -136,3 +136,8 @@ task test
   requires the added indirect `golang.org/x/text v0.43.0` module.
 - `task build`, `task lint`, and `task test` pass; focused boundary, cancellation, and
   fuzz tests pass.
+- Shared-sniffer revalidation (2026-11-04): `TestWindows1251PlainFB2Registry` and
+  `TestUTF8BOMFB2AndFBZ/plain_registry` both pass without skips. The focused
+  `go test ./internal/extract ./internal/extract/fb2 -count=1` run and
+  `task build`, `task lint`, `task test` also pass. X3 remains unblocked; this
+  follow-up changed neither the FB2 extractor nor its tests.
