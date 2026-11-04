@@ -1,6 +1,6 @@
 # UX1: Screenshot-inspired sidebar shell and All Books
 
-- Status: Ready
+- Status: Review (see hand-off below)
 - Wave: 1; dependencies: baseline `05326ce`; migration: no
 - Branch/worktree: `task/ux1` / `..\pandalibrary-ux1`
 
@@ -72,3 +72,56 @@ API. UX3 later owns shelf-slot wiring; UX10 later wires version display.
 - Update stale shell assertions only for intentional layout changes, not to
   weaken permission/reader/offline tests. Record exact commands/results and
   shelf/footer slot contracts in your hand-off.
+
+## Hand-off (2026-11-04)
+
+Implemented on `task/ux1`.
+
+- Shell: `web/src/lib/shell/AppShell.svelte` (header, sidebar/drawer, main
+  panel), `Sidebar.svelte`, `SidebarShelves.svelte` (placeholder),
+  `AccountControls.svelte`, `focus.ts`. `+layout.svelte` keeps its auth/offline
+  logic and only wraps it in `<AppShell>`. Theme tokens (`--color-shell-*`,
+  `--spacing-shell-*`) and `.shell-*` classes live in `layout.css`.
+- Navigation (`web/src/lib/nav.ts`): HOME = Dashboard `/`, All Books `/books`,
+  Bookmarks `/bookmarks` (page owned by UX6), Notes `/notes`. BROWSE =
+  Libraries, Authors, Series, Tags, Read, Search, Stats, Admin (admin only).
+  All Books is active only on exact `/books`; Libraries is active on
+  `/libraries` and `/library/*`. `/read/<book>/<file>` is immersive: the
+  sidebar opens only as a drawer.
+- Below 64rem the sidebar is a modal drawer: focus moves in, Tab is trapped,
+  Escape and navigation close it and focus returns to the toggle. Settings,
+  sign-out and language appear in the header on desktop and in the drawer on mobile.
+- Pages: `/books` renders `BookBrowser` with an empty scope. The former index
+  moved to `/libraries`, and back links now point there. `/` is a temporary
+  API-free dashboard (`data-temporary-dashboard`) for UX5 to replace.
+- Catalog: `allowsCatalogFilters(scope)` now enables library/format/language
+  filters for any scope without a fixed author/series/tag. Option values are
+  strings, so deep-linked filter values display correctly; before this,
+  numeric values never matched the URL string.
+- i18n: 25 `ux1.*` keys in `en.json`/`zh.json`; parity is unit-tested.
+
+### Slot contracts
+
+- Shelves (UX3): pass a `shelves` snippet to `<AppShell>`/`<Sidebar>`, or
+  replace the `SidebarShelves` default in `Sidebar.svelte`. Keep the root marked
+  `data-slot="sidebar-shelves"`; it sits between HOME and BROWSE. Shelf links
+  duplicate main-page links, so scope browser assertions to `getByRole('main')`.
+- Footer (UX9/UX10): pass a `footer` snippet to `<AppShell>` in
+  `+layout.svelte` (for example `{#snippet footer()}<BuildVersion />{/snippet}`).
+  It renders in `footer[data-slot="sidebar-footer"]`, pinned below the
+  scrolling nav.
+
+### Validation
+
+- `pnpm --dir web check` — 0 errors, 0 warnings.
+- `pnpm --dir web test` — 172 passed. One parallel run timed out
+  `reader.test.ts` (5 s) under machine load. It passed in isolation, with
+  `--no-file-parallelism`, and on rerun.
+- `pnpm --dir web build` — succeeds.
+- Real server: `go build -o $env:TEMP\pandalibrary-ux1-e2e.exe ./cmd/pandalibrary`
+  (with `CGO_ENABLED=0`, after the web build), `PANDA_E2E_BINARY` set, then
+  `pnpm --dir web exec playwright test --workers=3` — 43 passed. This includes the new
+  `src/lib/shell/shell.e2e.ts` (desktop layout/overflow/active state, admin
+  and zh labels, mobile drawer keyboard flow, public login without sidebar).
+- Stale assertions updated only for intentional changes: the catalog locale
+  test opens `/libraries`; one shelves assertion is scoped to `main`.

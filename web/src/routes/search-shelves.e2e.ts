@@ -159,7 +159,7 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await page.route('**/api/v1/shelves/8/books?*', (route) => route.fulfill({ json: { items: [book], next_cursor: null } }));
 
 	await page.goto('/shelves');
-	await expect(page.getByRole('link', { name: 'Favorites' })).toBeVisible();
+	await expect(page.getByRole('main').getByRole('link', { name: 'Favorites' })).toBeVisible();
 	await expect(page.getByText('Shared', { exact: true })).toBeVisible();
 	await expect(page.getByRole('group', { name: 'Visibility' })).toHaveCount(0);
 

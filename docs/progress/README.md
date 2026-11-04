@@ -47,7 +47,7 @@ below are local to this follow-up; merge a wave before starting the next.
 
 | Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
-| 1 | UX1 | Sidebar shell and All Books | baseline | [UX1](../prompts/UX1-sidebar-shell.md) | Ready | `task/ux1` | Root shell/nav/theme ownership |
+| 1 | UX1 | Sidebar shell and All Books | baseline | [UX1](../prompts/UX1-sidebar-shell.md) | Review | `task/ux1` | Shell, `/books`, `/libraries`; shelves/footer slots for UX3/UX10 |
 | 1 | UX2 | System and automatic shelves API | baseline | [UX2](../prompts/UX2-system-smart-shelves.md) | Ready | `task/ux2` | Only migration writer in wave 1 |
 | 1 | UX7 | Admin users API | baseline | [UX7](../prompts/UX7-admin-users-api.md) | Ready | `task/ux7` | Existing user schema; no migration |
 | 1 | UX9 | Commit-based dev/image version | baseline | [UX9](../prompts/UX9-build-version.md) | Ready | `task/ux9` | Standalone footer component; UX10 wires it |
@@ -62,6 +62,13 @@ below are local to this follow-up; merge a wave before starting the next.
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-04 — UX1 — Added the dark header + left sidebar shell (`web/src/lib/shell/`),
+  All Books at `/books`, the library index at `/libraries`, and a temporary dashboard
+  at `/` (UX5 replaces it). Below `lg` the sidebar is a focus-trapped drawer; the reader
+  route is immersive. Shelves slot (`data-slot="sidebar-shelves"`) awaits UX3; footer
+  slot (`data-slot="sidebar-footer"`) awaits UX10 wiring of UX9's `BuildVersion`.
+  `/bookmarks` links ahead of UX6. Also fixed filter selects that ignored deep-linked
+  values. check, unit, build and the full real-server Playwright suite pass. Status Review.
 - 2026-11-04 — UX planning — Committed existing work as `05326ce`; extraction
   tests, reader units and frontend checks passed. Ignored local dev launchers.
   Assessed the screenshot request and prepared ten Ready issue prompts with

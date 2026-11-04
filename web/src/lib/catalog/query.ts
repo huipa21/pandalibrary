@@ -21,6 +21,14 @@ export function selectedSort(params: SearchParamsReader, seriesID?: number): Boo
 	return 'title';
 }
 
+/**
+ * Library and All Books views accept author/series/tag filters from the URL. Entity pages fix one
+ * of those filters in their scope, so their URL filters are ignored.
+ */
+export function allowsCatalogFilters(scope: BookFilters): boolean {
+	return FILTER_KEYS.every((key) => scope[key] === undefined);
+}
+
 export function bookFiltersFromSearch(
 	scope: BookFilters,
 	params: SearchParamsReader
@@ -28,7 +36,7 @@ export function bookFiltersFromSearch(
 	const filters: { library_id?: number; author_id?: number; series_id?: number; tag_id?: number } = {
 		...scope
 	};
-	if (scope.library_id !== undefined) {
+	if (allowsCatalogFilters(scope)) {
 		for (const key of FILTER_KEYS) {
 			const id = positiveID(params.get(key));
 			if (id !== undefined) filters[key] = id;

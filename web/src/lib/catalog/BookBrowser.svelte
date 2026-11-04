@@ -5,7 +5,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { catalogErrorMessage } from './errors.js';
 	import { listAllEntities, listBooks } from './api.js';
-	import { bookFiltersFromSearch, bookPageOptions, hasNextPage, selectedSort, setCatalogFilter } from './query.js';
+	import { allowsCatalogFilters, bookFiltersFromSearch, bookPageOptions, hasNextPage, selectedSort, setCatalogFilter } from './query.js';
 	import type { Book, BookFilters, BookSort, CatalogEntity, EntityKind } from './types.js';
 	import BookCard from './BookCard.svelte';
 
@@ -37,8 +37,10 @@
 		bookFiltersFromSearch(scope, page.url.searchParams).series_id !== undefined
 	);
 
+	const filterable = $derived(allowsCatalogFilters(scope));
+
 	onMount(() => {
-		if (scope.library_id !== undefined) void loadFilterOptions();
+		if (filterable) void loadFilterOptions();
 	});
 
 	$effect(() => {
@@ -149,7 +151,7 @@
 	<div class="flex flex-wrap items-end justify-between gap-4">
 		<h2 id="book-results-heading" class="text-xl font-semibold">{m['catalog.books.title']()}</h2>
 		<div class="flex flex-wrap items-end gap-3">
-			{#if scope.library_id !== undefined}
+			{#if filterable}
 				<div class="flex flex-wrap gap-3" role="group" aria-label={m['catalog.books.filter_group']()}>
 					<label class="grid gap-1 text-sm font-medium" for="filter-author">
 						<span>{m['catalog.books.author_filter']()}</span>
@@ -162,7 +164,7 @@
 						>
 							<option value="">{m['catalog.books.all_authors']()}</option>
 							{#each authors as author (author.id)}
-								<option value={author.id}>{author.name}</option>
+								<option value={String(author.id)}>{author.name}</option>
 							{/each}
 						</select>
 					</label>
@@ -177,7 +179,7 @@
 						>
 							<option value="">{m['catalog.books.all_series']()}</option>
 							{#each series as item (item.id)}
-								<option value={item.id}>{item.name}</option>
+								<option value={String(item.id)}>{item.name}</option>
 							{/each}
 						</select>
 					</label>
@@ -192,7 +194,7 @@
 						>
 							<option value="">{m['catalog.books.all_tags']()}</option>
 							{#each tags as tag (tag.id)}
-								<option value={tag.id}>{tag.name}</option>
+								<option value={String(tag.id)}>{tag.name}</option>
 							{/each}
 						</select>
 					</label>
@@ -225,7 +227,7 @@
 					onclick={() => (mode = 'list')}
 				>{m['catalog.books.list']()}</button>
 			</div>
-			{#if scope.library_id !== undefined}
+			{#if filterable}
 				<button
 					class="rounded-md px-3 py-2 text-sm text-slate-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
 					onclick={clearFilters}

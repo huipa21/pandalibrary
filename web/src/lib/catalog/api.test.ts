@@ -2,7 +2,7 @@ import en from '../../../messages/en.json';
 import zh from '../../../messages/zh.json';
 import { describe, expect, it } from 'vitest';
 import { buildBooksPath, buildPagePath, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from './api';
-import { bookFiltersFromSearch, hasNextPage, selectedSort, setCatalogFilter } from './query';
+import { allowsCatalogFilters, bookFiltersFromSearch, hasNextPage, selectedSort, setCatalogFilter } from './query';
 
 describe('catalog API helpers', () => {
 	it('uses the bounded default page size and preserves opaque cursors', () => {
@@ -52,6 +52,15 @@ describe('catalog API helpers', () => {
 		);
 
 		expect(filters).toEqual({ library_id: 5, author_id: 8, tag_id: 12 });
+	});
+
+	it('applies URL filters to the unrestricted All Books scope but not to entity scopes', () => {
+		const params = new URLSearchParams('author_id=8&tag_id=12');
+
+		expect(allowsCatalogFilters({})).toBe(true);
+		expect(bookFiltersFromSearch({}, params)).toEqual({ author_id: 8, tag_id: 12 });
+		expect(allowsCatalogFilters({ series_id: 3 })).toBe(false);
+		expect(bookFiltersFromSearch({ series_id: 3 }, params)).toEqual({ series_id: 3 });
 	});
 
 	it('treats a null next cursor as the end of the list', () => {

@@ -47,14 +47,14 @@
 	<div class="space-y-4" role="alert">
 		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800">{error}</p>
 		<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadLibrary(page.params.id ?? '')}>{m['catalog.retry']()}</button>
-		<a class="underline underline-offset-4 focus-visible:outline-2" href="/">{m['catalog.back_to_libraries']()}</a>
+		<a class="underline underline-offset-4 focus-visible:outline-2" href="/libraries">{m['catalog.back_to_libraries']()}</a>
 	</div>
 {:else if loading}
 	<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 {:else if library}
 	<section class="space-y-8">
 		<header class="space-y-2">
-			<a class="text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href="/">{m['catalog.back_to_libraries']()}</a>
+			<a class="text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href="/libraries">{m['catalog.back_to_libraries']()}</a>
 			<h1 class="text-3xl font-semibold tracking-tight">{library.name}</h1>
 		</header>
 		<ShelfLinks />

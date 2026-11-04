@@ -37,7 +37,7 @@ test('renders localized loading, API error, and empty library states', async ({ 
 		await route.fulfill({ json: { items: [], next_cursor: null } });
 	});
 
-	await page.goto('/');
+	await page.goto('/libraries');
 	await expect(page.getByRole('status')).toHaveText('正在加载目录…');
 	await expect(page.getByRole('alert')).toContainText('目录请求失败');
 	await page.getByRole('button', { name: '重试' }).click();
