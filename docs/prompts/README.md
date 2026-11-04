@@ -18,6 +18,11 @@ reflect what earlier tasks actually built.
 
 Prompts are kept after completion as a record of what was asked.
 
+The [sidebar/dashboard follow-up](../plans/sidebar-dashboard-plan.md) is a
+complete requested planning batch: its prompts are drafted together with
+explicit contracts. Before launching a later wave, read the merged dependency
+hand-offs and update its prompts if the contracts changed.
+
 ## Index
 
 | Task | Prompt | Status |
@@ -49,3 +54,13 @@ Prompts are kept after completion as a record of what was asked.
 | W5 | [W5-admin-ui.md](./W5-admin-ui.md) | Done |
 | W6 | [W6-metadata-merge-ui.md](./W6-metadata-merge-ui.md) | Done |
 | Q1 | [Q1-release-e2e.md](./Q1-release-e2e.md) | Done |
+| UX1 | [UX1-sidebar-shell.md](./UX1-sidebar-shell.md) | Ready |
+| UX2 | [UX2-system-smart-shelves.md](./UX2-system-smart-shelves.md) | Ready |
+| UX3 | [UX3-shelf-navigation-ui.md](./UX3-shelf-navigation-ui.md) | Ready |
+| UX4 | [UX4-dashboard-feeds-api.md](./UX4-dashboard-feeds-api.md) | Ready |
+| UX5 | [UX5-configurable-dashboard.md](./UX5-configurable-dashboard.md) | Ready |
+| UX6 | [UX6-bookmarks.md](./UX6-bookmarks.md) | Ready |
+| UX7 | [UX7-admin-users-api.md](./UX7-admin-users-api.md) | Ready |
+| UX8 | [UX8-admin-users-ui.md](./UX8-admin-users-ui.md) | Ready |
+| UX9 | [UX9-build-version.md](./UX9-build-version.md) | Ready |
+| UX10 | [UX10-layout-integration.md](./UX10-layout-integration.md) | Ready |

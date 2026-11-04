@@ -38,9 +38,35 @@ Rules: each session edits only its own task's row and appends to the log. Plan:
 | 10 | W6 | Metadata merge UI | M1, W1 | [W6-metadata-merge-ui.md](../prompts/W6-metadata-merge-ui.md) | Done | `master` | Admin `/books/{id}/edit` per-field candidate merge via request-key references, server-proxied cover previews, 409 re-lookup, sequential pdf.js first-page cover batch; check, 20 unit and 3 browser tests pass |
 | 11 | Q1 🔒 | Release and end-to-end | all | [Q1-release-e2e.md](../prompts/Q1-release-e2e.md) | Done | `master` | Scratch image 11.3 MiB compressed; runtime/health/shutdown, 39 real-server browser tests, upgrade checks, and Go/web gates pass locally; release/CI workflows wired |
 
+## Sidebar/dashboard follow-up board
+
+Plan and parallel ownership rules:
+[sidebar-dashboard-plan.md](../plans/sidebar-dashboard-plan.md).
+These are local issue specifications, not published GitHub issues. Wave numbers
+below are local to this follow-up; merge a wave before starting the next.
+
+| Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
+|---|---|---|---|---|---|---|---|
+| 1 | UX1 | Sidebar shell and All Books | baseline | [UX1](../prompts/UX1-sidebar-shell.md) | Ready | `task/ux1` | Root shell/nav/theme ownership |
+| 1 | UX2 | System and automatic shelves API | baseline | [UX2](../prompts/UX2-system-smart-shelves.md) | Ready | `task/ux2` | Only migration writer in wave 1 |
+| 1 | UX7 | Admin users API | baseline | [UX7](../prompts/UX7-admin-users-api.md) | Ready | `task/ux7` | Existing user schema; no migration |
+| 1 | UX9 | Commit-based dev/image version | baseline | [UX9](../prompts/UX9-build-version.md) | Ready | `task/ux9` | Standalone footer component; UX10 wires it |
+| 2 | UX3 | Sidebar shelves and reusable shelf UI | UX1, UX2 | [UX3](../prompts/UX3-shelf-navigation-ui.md) | Ready | `task/ux3` | Reused by dashboard |
+| 2 | UX4 | Dashboard feeds API | UX2 | [UX4](../prompts/UX4-dashboard-feeds-api.md) | Ready | `task/ux4` | Separate SQL/catalog files |
+| 2 | UX6 | Bookmarks and offline reader sync | UX1, UX2 | [UX6](../prompts/UX6-bookmarks.md) | Ready | `task/ux6` | Only migration writer in wave 2 |
+| 2 | UX8 | Admin users UI and selectors | UX7 | [UX8](../prompts/UX8-admin-users-ui.md) | Ready | `task/ux8` | Admin area only |
+| 3 | UX5 | Configurable dashboard | UX3, UX4 | [UX5](../prompts/UX5-configurable-dashboard.md) | Ready | `task/ux5` | Empty saved dashboard remains empty |
+| 4 | UX10 | Integration and verification gate | UX1-UX9 | [UX10](../prompts/UX10-layout-integration.md) | Ready | `task/ux10` | Real-browser, upgrade and image verification |
+
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-04 — UX planning — Committed existing work as `05326ce`; extraction
+  tests, reader units and frontend checks passed. Ignored local dev launchers.
+  Assessed the screenshot request and prepared ten Ready issue prompts with
+  fixed ownership, API/component contracts and four execution waves. No feature
+  implementation or remote issue creation was performed.
 
 - 2026-11-04 — X1/X3 — Revalidated the existing BOM/Windows-1251 shared-sniffer fix
   and both formerly skipped registry cases. Closed malformed-root gaps and added
