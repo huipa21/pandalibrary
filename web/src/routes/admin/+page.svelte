@@ -3,6 +3,7 @@
 	import { focusRing, panelClass } from '#lib/admin/ui.js';
 
 	const cards = [
+		{ href: '/admin/users', title: m['admin.tabs.users'], description: m['admin.overview.users'] },
 		{ href: '/admin/libraries', title: m['admin.tabs.libraries'], description: m['admin.overview.libraries'] },
 		{ href: '/admin/hidden-books', title: m['admin.tabs.hidden_books'], description: m['admin.overview.hidden_books'] },
 		{ href: '/admin/imports', title: m['admin.tabs.imports'], description: m['admin.overview.imports'] },

@@ -1,5 +1,5 @@
 import { ApiError } from '#lib/api/client.js';
-import type { Library, LibraryPatch, ProviderPatch, ProviderSettings } from './types.js';
+import type { Library, LibraryPatch, ProviderPatch, ProviderSettings, User, UserPatch } from './types.js';
 
 const encoder = new TextEncoder();
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
@@ -9,6 +9,10 @@ export const MAX_LIBRARY_NAME_BYTES = 1024;
 export const MAX_LIBRARY_SLUG_LENGTH = 128;
 export const MAX_PROVIDER_PRIORITY = 10000;
 export const MAX_PROVIDER_TOKEN_BYTES = 8192;
+export const MAX_USERNAME_BYTES = 64;
+export const MAX_DISPLAY_NAME_BYTES = 128;
+export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_PASSWORD_LENGTH = 128;
 
 /** Returns a positive safe integer ID, or null for anything else. */
 export function parsePositiveID(value: string): number | null {
@@ -16,6 +20,92 @@ export function parsePositiveID(value: string): number | null {
 	if (!/^\d{1,16}$/.test(text)) return null;
 	const id = Number(text);
 	return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+export type UserFieldError =
+	| 'username_required'
+	| 'username_too_long'
+	| 'username_invalid'
+	| 'display_name_too_long'
+	| 'password_required'
+	| 'password_too_short'
+	| 'password_too_long'
+	| 'role_invalid'
+	| 'locale_invalid'
+	| 'no_changes';
+
+export interface UserFormDraft {
+	username: string;
+	displayName: string;
+	password: string;
+	role: string;
+	locale: string;
+}
+
+export type UserFormResult =
+	| { readonly ok: true; readonly draft: UserFormDraft }
+	| { readonly ok: false; readonly field: 'username' | 'display_name' | 'password' | 'role' | 'locale' | 'form'; readonly error: UserFieldError };
+
+/** Mirrors UX7's user field rules so obvious mistakes are reported before submitting. */
+export function validateUserDraft(draft: Partial<UserFormDraft>, requirePassword: boolean = false): UserFormResult {
+	const username = (draft.username || '').trim();
+	if (!username) return { ok: false, field: 'username', error: 'username_required' };
+	if (encoder.encode(username).length > MAX_USERNAME_BYTES) return { ok: false, field: 'username', error: 'username_too_long' };
+	if (CONTROL_CHARACTERS.test(username)) return { ok: false, field: 'username', error: 'username_invalid' };
+
+	const displayName = (draft.displayName || '').trim();
+	if (encoder.encode(displayName).length > MAX_DISPLAY_NAME_BYTES) {
+		return { ok: false, field: 'display_name', error: 'display_name_too_long' };
+	}
+
+	const password = draft.password || '';
+	if (requirePassword) {
+		if (!password) return { ok: false, field: 'password', error: 'password_required' };
+		if (password.length < MIN_PASSWORD_LENGTH) return { ok: false, field: 'password', error: 'password_too_short' };
+		if (password.length > MAX_PASSWORD_LENGTH) return { ok: false, field: 'password', error: 'password_too_long' };
+	} else if (password && (password.length < MIN_PASSWORD_LENGTH || password.length > MAX_PASSWORD_LENGTH)) {
+		return { ok: false, field: 'password', error: 'password_too_short' };
+	}
+
+	const role = draft.role || 'user';
+	if (role !== 'admin' && role !== 'user') return { ok: false, field: 'role', error: 'role_invalid' };
+
+	const locale = draft.locale || 'en';
+	if (locale !== 'en' && locale !== 'zh') return { ok: false, field: 'locale', error: 'locale_invalid' };
+
+	return {
+		ok: true,
+		draft: {
+			username,
+			displayName,
+			password,
+			role,
+			locale
+		}
+	};
+}
+
+/** Builds a PATCH containing only changed fields. */
+export function userPatch(user: User, draft: Partial<UserFormDraft>):
+	| { readonly ok: true; readonly patch: UserPatch }
+	| { readonly ok: false; readonly field: 'username' | 'display_name' | 'role' | 'locale' | 'form'; readonly error: UserFieldError } {
+	const result = validateUserDraft(draft, false);
+	if (!result.ok) {
+		// Filter out password field errors since we're not updating password in edit mode
+		if (result.field === 'password') {
+			return { ok: false, field: 'form', error: result.error as UserFieldError };
+		}
+		return result as { readonly ok: false; readonly field: 'username' | 'display_name' | 'role' | 'locale' | 'form'; readonly error: UserFieldError };
+	}
+	
+	const patch: Record<string, string | undefined> = {};
+	if (result.draft.username !== user.username) patch.username = result.draft.username;
+	if (result.draft.displayName !== user.display_name) patch.display_name = result.draft.displayName;
+	if (result.draft.role !== user.role) patch.role = result.draft.role;
+	if (result.draft.locale !== user.locale) patch.locale = result.draft.locale;
+	
+	if (Object.keys(patch).length === 0) return { ok: false, field: 'form', error: 'no_changes' };
+	return { ok: true, patch: patch as UserPatch };
 }
 
 export type LibraryFieldError =

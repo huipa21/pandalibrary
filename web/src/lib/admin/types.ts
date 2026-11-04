@@ -1,5 +1,26 @@
 export type { Library, Page } from '#lib/catalog/types.js';
 
+/** UX8 user account visible to administrators. */
+export interface User {
+	readonly id: number;
+	readonly username: string;
+	readonly display_name: string;
+	readonly role: 'admin' | 'user';
+	readonly locale: 'en' | 'zh';
+	readonly disabled: boolean;
+	readonly created_at: string;
+	readonly updated_at: string;
+}
+
+/** Omitted fields are unchanged. */
+export interface UserPatch {
+	readonly username?: string;
+	readonly display_name?: string;
+	readonly role?: string;
+	readonly locale?: string;
+	readonly disabled?: boolean;
+}
+
 /** C1 administrator-visible library grant. */
 export interface AccessEntry {
 	readonly user_id: number;

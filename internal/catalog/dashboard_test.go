@@ -1,0 +1,454 @@
+package catalog
+
+import (
+	"context"
+	"fmt"
+	"testing"
+)
+
+func dashboardBookIDs(t *testing.T, service *Service, viewer Viewer, section string, limit int) []int64 {
+	t.Helper()
+	var result []int64
+	options := PageOptions{Limit: limit}
+	for pageNumber := 0; ; pageNumber++ {
+		if pageNumber > 200 {
+			t.Fatal("dashboard pagination did not terminate")
+		}
+		page, err := service.ListDashboardBooks(context.Background(), viewer, section, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, book := range page.Items {
+			result = append(result, book.ID)
+		}
+		if page.NextCursor == nil {
+			return result
+		}
+		options.Cursor = *page.NextCursor
+	}
+}
+
+func setProgress(t *testing.T, fixture catalogFixture, userID, bookID int64, percentage float64) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO reading_progress (user_id, book_id, source, percentage, updated_at, rev)
+		VALUES (?, ?, 'web', ?, 123456789, 1)
+		ON CONFLICT(user_id, book_id) DO UPDATE SET percentage = excluded.percentage, updated_at = excluded.updated_at
+	`, userID, bookID, percentage)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setUserBookStatus(t *testing.T, fixture catalogFixture, userID, bookID int64, status string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO user_books (user_id, book_id, status, updated_at, rev)
+		VALUES (?, ?, ?, 123456789, 1)
+		ON CONFLICT(user_id, book_id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at
+	`, userID, bookID, status)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func hideBook(t *testing.T, fixture catalogFixture, userID, bookID, hiddenByID int64) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT OR IGNORE INTO book_hidden (user_id, book_id, hidden_by, created_at)
+		VALUES (?, ?, ?, 123456789)
+	`, userID, bookID, hiddenByID)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDashboardContinueReading(t *testing.T) {
+	ctx := context.Background()
+	fixture := newCatalogFixture(t)
+	reader1, reader2 := Viewer{UserID: 2}, Viewer{UserID: 3}
+
+	// Create a new library for this test
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO libraries (id, name, slug, created_at, updated_at)
+		VALUES (100, 'Test Library', 'testlib', 123456789, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO library_access (library_id, user_id, granted_at)
+		VALUES (100, 2, 123456789), (100, 3, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create books in the test library
+	for i := 1; i <= 3; i++ {
+		_, err := fixture.db.Writer.ExecContext(ctx, `
+			INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at)
+			VALUES (?, 100, ?, ?, 123456789, 123456789)
+		`, 200+i, fmt.Sprintf("Book %d", i), fmt.Sprintf("book %d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Set progress for reader1
+	setProgress(t, fixture, reader1.UserID, 201, 0.3)
+	setProgress(t, fixture, reader1.UserID, 202, 0.7)
+	// Set progress for reader2
+	setProgress(t, fixture, reader2.UserID, 203, 0.5)
+
+	// Test reader1 sees books 201 and 202
+	ids := dashboardBookIDs(t, fixture.service, reader1, "continue_reading", 50)
+	if len(ids) != 2 {
+		t.Errorf("reader1 continue reading count = %d, want 2", len(ids))
+	}
+
+	// Test reader2 sees only book 203
+	ids = dashboardBookIDs(t, fixture.service, reader2, "continue_reading", 50)
+	if len(ids) != 1 || ids[0] != 203 {
+		t.Errorf("reader2 continue reading = %v, want [203]", ids)
+	}
+
+	// Test pagination
+	page1, err := fixture.service.ListDashboardBooks(ctx, reader1, "continue_reading", PageOptions{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page1.Items) != 1 {
+		t.Errorf("page 1 size = %d, want 1", len(page1.Items))
+	}
+	if page1.NextCursor == nil {
+		t.Fatal("expected next cursor for page 1")
+	}
+
+	page2, err := fixture.service.ListDashboardBooks(ctx, reader1, "continue_reading", PageOptions{Limit: 1, Cursor: *page1.NextCursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page2.Items) != 1 {
+		t.Errorf("page 2 size = %d, want 1", len(page2.Items))
+	}
+	if page2.NextCursor != nil {
+		t.Fatal("did not expect next cursor for final page")
+	}
+	if page1.Items[0].ID == page2.Items[0].ID {
+		t.Fatal("page 1 and page 2 have same book")
+	}
+}
+
+func TestDashboardRecentlyAdded(t *testing.T) {
+	ctx := context.Background()
+	fixture := newCatalogFixture(t)
+	reader := Viewer{UserID: 2}
+
+	// The reader has access to library 10 with books from the fixture.
+	// Query recently_added for library 10 - should include those fixture books
+	// This tests that visibility filtering works correctly.
+	ids := dashboardBookIDs(t, fixture.service, reader, "recently_added", 50)
+	
+	// Should see at least the recently added books from the default fixture
+	if len(ids) < 2 {
+		t.Errorf("recently_added count = %d, want at least 2", len(ids))
+	}
+	
+	// All should be accessible by the reader (library 10 or others they have access to)
+	for _, id := range ids {
+		book, err := fixture.service.GetBook(ctx, reader, id)
+		if err != nil {
+			t.Errorf("reader cannot access book %d: %v", id, err)
+		}
+		if book.ID != id {
+			t.Errorf("unexpected book: %v", book.ID)
+		}
+	}
+}
+
+func TestDashboardReadBooks(t *testing.T) {
+	ctx := context.Background()
+	fixture := newCatalogFixture(t)
+	reader1, reader2 := Viewer{UserID: 2}, Viewer{UserID: 3}
+
+	// Create test library
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO libraries (id, name, slug, created_at, updated_at)
+		VALUES (102, 'Test Lib 3', 'testlib3', 123456789, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO library_access (library_id, user_id, granted_at)
+		VALUES (102, 2, 123456789), (102, 3, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create books
+	for i := 1; i <= 3; i++ {
+		_, err := fixture.db.Writer.ExecContext(ctx, `
+			INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at)
+			VALUES (?, 102, ?, ?, 123456789, 123456789)
+		`, 220+i, fmt.Sprintf("Book %d", i), fmt.Sprintf("book %d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Mark as finished
+	setUserBookStatus(t, fixture, reader1.UserID, 221, "finished")
+	setUserBookStatus(t, fixture, reader1.UserID, 222, "finished")
+	setUserBookStatus(t, fixture, reader2.UserID, 223, "finished")
+
+	// Test reader1
+	ids := dashboardBookIDs(t, fixture.service, reader1, "read", 50)
+	if len(ids) != 2 {
+		t.Errorf("reader1 read count = %d, want 2", len(ids))
+	}
+
+	// Test reader2
+	ids = dashboardBookIDs(t, fixture.service, reader2, "read", 50)
+	if len(ids) != 1 || ids[0] != 223 {
+		t.Errorf("reader2 read = %v, want [223]", ids)
+	}
+}
+
+func TestDashboardUnread(t *testing.T) {
+	ctx := context.Background()
+	fixture := newCatalogFixture(t)
+	reader := Viewer{UserID: 2}
+
+	// Create test library
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO libraries (id, name, slug, created_at, updated_at)
+		VALUES (103, 'Test Lib 4', 'testlib4', 123456789, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO library_access (library_id, user_id, granted_at)
+		VALUES (103, 2, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create books - use unique IDs to avoid conflicts
+	for i := 1; i <= 3; i++ {
+		_, err := fixture.db.Writer.ExecContext(ctx, `
+			INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at)
+			VALUES (?, 103, ?, ?, 123456789, 123456789)
+		`, 6230+i, fmt.Sprintf("Book %c", 'A'+i-1), fmt.Sprintf("book %c", 'a'+i-1))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Mark some with other statuses
+	setUserBookStatus(t, fixture, reader.UserID, 6232, "reading")
+	setUserBookStatus(t, fixture, reader.UserID, 6233, "want_to_read")
+	// Explicitly mark as unread
+	setUserBookStatus(t, fixture, reader.UserID, 6231, "unread")
+
+	// Should see book 6231 (explicitly unread)
+	ids := dashboardBookIDs(t, fixture.service, reader, "unread", 50)
+	if len(ids) < 1 || ids[0] != 6231 {
+		t.Errorf("book 6231 not in unread results: %v", ids)
+	}
+
+	// Verify that books with other statuses are excluded
+	for _, id := range ids {
+		if id == 6232 || id == 6233 {
+			t.Errorf("book %d should not be in unread results", id)
+		}
+	}
+}
+
+func TestDashboardWantToRead(t *testing.T) {
+	ctx := context.Background()
+	fixture := newCatalogFixture(t)
+	reader1, reader2 := Viewer{UserID: 2}, Viewer{UserID: 3}
+
+	// Create test library
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO libraries (id, name, slug, created_at, updated_at)
+		VALUES (104, 'Test Lib 5', 'testlib5', 123456789, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO library_access (library_id, user_id, granted_at)
+		VALUES (104, 2, 123456789), (104, 3, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create books
+	for i := 1; i <= 3; i++ {
+		_, err := fixture.db.Writer.ExecContext(ctx, `
+			INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at)
+			VALUES (?, 104, ?, ?, 123456789, 123456789)
+		`, 240+i, fmt.Sprintf("Book %d", i), fmt.Sprintf("book %d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Set want_to_read status
+	setUserBookStatus(t, fixture, reader1.UserID, 241, "want_to_read")
+	setUserBookStatus(t, fixture, reader1.UserID, 242, "want_to_read")
+	setUserBookStatus(t, fixture, reader2.UserID, 243, "want_to_read")
+
+	// Test reader1
+	ids := dashboardBookIDs(t, fixture.service, reader1, "want_to_read", 50)
+	if len(ids) != 2 {
+		t.Errorf("reader1 want_to_read count = %d, want 2", len(ids))
+	}
+
+	// Test reader2
+	ids = dashboardBookIDs(t, fixture.service, reader2, "want_to_read", 50)
+	if len(ids) != 1 || ids[0] != 243 {
+		t.Errorf("reader2 want_to_read = %v, want [243]", ids)
+	}
+}
+
+func TestDashboardHiddenBooks(t *testing.T) {
+	ctx := context.Background()
+	fixture := newCatalogFixture(t)
+	reader, admin := Viewer{UserID: 2}, Viewer{UserID: 1, IsAdmin: true}
+
+	// Create test library
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO libraries (id, name, slug, created_at, updated_at)
+		VALUES (105, 'Test Lib 6', 'testlib6', 123456789, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO library_access (library_id, user_id, granted_at)
+		VALUES (105, 2, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create books
+	_, err = fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at)
+		VALUES (250, 105, 'Book 1', 'book 1', 123456789, 123456789),
+		       (251, 105, 'Book 2', 'book 2', 123456789, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Hide book 250 for reader
+	hideBook(t, fixture, reader.UserID, 250, admin.UserID)
+
+	// Add progress to both
+	setProgress(t, fixture, reader.UserID, 250, 0.5)
+	setProgress(t, fixture, reader.UserID, 251, 0.5)
+
+	// Should only see book 251
+	ids := dashboardBookIDs(t, fixture.service, reader, "continue_reading", 50)
+	if len(ids) != 1 || ids[0] != 251 {
+		t.Errorf("hidden books test = %v, want [251]", ids)
+	}
+}
+
+func TestDashboardLibraryAccess(t *testing.T) {
+	ctx := context.Background()
+	fixture := newCatalogFixture(t)
+	reader1, reader2 := Viewer{UserID: 2}, Viewer{UserID: 3}
+
+	// Create two libraries
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO libraries (id, name, slug, created_at, updated_at)
+		VALUES (106, 'Lib A', 'liba', 123456789, 123456789),
+		       (107, 'Lib B', 'libb', 123456789, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO library_access (library_id, user_id, granted_at)
+		VALUES (106, 2, 123456789), (107, 3, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create books in each library
+	_, err = fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at)
+		VALUES (260, 106, 'Book A', 'book a', 123456789, 123456789),
+		       (261, 107, 'Book B', 'book b', 123456789, 123456789)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add progress
+	setProgress(t, fixture, reader1.UserID, 260, 0.5)
+	setProgress(t, fixture, reader2.UserID, 261, 0.5)
+
+	// Test reader1 only sees book 260
+	ids := dashboardBookIDs(t, fixture.service, reader1, "continue_reading", 50)
+	if len(ids) != 1 || ids[0] != 260 {
+		t.Errorf("reader1 access = %v, want [260]", ids)
+	}
+
+	// Test reader2 only sees book 261
+	ids = dashboardBookIDs(t, fixture.service, reader2, "continue_reading", 50)
+	if len(ids) != 1 || ids[0] != 261 {
+		t.Errorf("reader2 access = %v, want [261]", ids)
+	}
+}
+
+func TestDashboardInvalidSection(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	reader := Viewer{UserID: 2}
+
+	_, err := fixture.service.ListDashboardBooks(context.Background(), reader, "invalid_section", PageOptions{})
+	if err == nil {
+		t.Fatal("expected error for invalid section")
+	}
+}
+
+func TestDashboardLimitValidation(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	reader := Viewer{UserID: 2}
+
+	// Test limit > 100
+	_, err := fixture.service.ListDashboardBooks(context.Background(), reader, "continue_reading", PageOptions{Limit: 101})
+	if err == nil {
+		t.Fatal("expected error for limit > 100")
+	}
+
+	// Test with default limit (should work)
+	_, err = fixture.service.ListDashboardBooks(context.Background(), reader, "continue_reading", PageOptions{})
+	if err != nil {
+		t.Fatalf("default limit should work: %v", err)
+	}
+}
+
+func TestDashboardInvalidCursor(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	reader := Viewer{UserID: 2}
+
+	_, err := fixture.service.ListDashboardBooks(context.Background(), reader, "continue_reading", PageOptions{Cursor: "invalid"})
+	if err == nil {
+		t.Fatal("expected error for malformed cursor")
+	}
+}

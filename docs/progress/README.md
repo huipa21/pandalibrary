@@ -52,7 +52,7 @@ below are local to this follow-up; merge a wave before starting the next.
 | 1 | UX7 | Admin users API | baseline | [UX7](../prompts/UX7-admin-users-api.md) | Ready | `task/ux7` | Existing user schema; no migration |
 | 1 | UX9 | Commit-based dev/image version | baseline | [UX9](../prompts/UX9-build-version.md) | Ready | `task/ux9` | Standalone footer component; UX10 wires it |
 | 2 | UX3 | Sidebar shelves and reusable shelf UI | UX1, UX2 | [UX3](../prompts/UX3-shelf-navigation-ui.md) | Ready | `task/ux3` | Reused by dashboard |
-| 2 | UX4 | Dashboard feeds API | UX2 | [UX4](../prompts/UX4-dashboard-feeds-api.md) | Ready | `task/ux4` | Separate SQL/catalog files |
+| 2 | UX4 | Dashboard feeds API | UX2 | [UX4](../prompts/UX4-dashboard-feeds-api.md) | Done | `task/ux4` | Keyset pagination, visibility-safe SQL, hand-off ready for UX5 |
 | 2 | UX6 | Bookmarks and offline reader sync | UX1, UX2 | [UX6](../prompts/UX6-bookmarks.md) | Ready | `task/ux6` | Only migration writer in wave 2 |
 | 2 | UX8 | Admin users UI and selectors | UX7 | [UX8](../prompts/UX8-admin-users-ui.md) | Ready | `task/ux8` | Admin area only |
 | 3 | UX5 | Configurable dashboard | UX3, UX4 | [UX5](../prompts/UX5-configurable-dashboard.md) | Ready | `task/ux5` | Empty saved dashboard remains empty |
@@ -61,6 +61,19 @@ below are local to this follow-up; merge a wave before starting the next.
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-04 — UX4 — Implemented account-scoped dashboard book feeds API with
+  `GET /api/v1/dashboard/sections/{section}/books` for `continue_reading`, `recently_added`,
+  `read`, `unread`, `want_to_read` sections. Added five SQL queries in `dashboard.sql`
+  filtering by exact predicates and timestamps with ID tie-breakers. Service implements
+  keyset pagination with opaque cursors scoped to viewer+section. HTTP handler with
+  session auth, visibility checks (library grants, hide lists, requester-scoped reading data).
+  All queries filter/page in SQL before hydration; no per-book calls or enumeration.
+  Returns existing `Page<Book>` contract unchanged. Default limit 20, max 100 with validation.
+  Added comprehensive test suite: multiple accounts/libraries, hidden books, library access,
+  section predicates/ordering, pagination, invalid inputs. sqlc generation, Go build/lint/test,
+  full catalog/httpapi suites pass. Hand-off docs with DTO/route/ordering/cursor examples
+  in `docs/ux4-handoff.md` ready for UX5. No migrations, model changes, or refactors.
 
 <<<<<<< HEAD
 - 2026-11-04 — UX1 — Added the dark header + left sidebar shell (`web/src/lib/shell/`),

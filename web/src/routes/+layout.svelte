@@ -6,6 +6,7 @@
 	import { setLocale, type Locale } from '#lib/paraglide/runtime.js';
 	import { ApiError, api } from '#lib/api/client.js';
 	import AppShell from '#lib/shell/AppShell.svelte';
+	import ShelfNavigation from '#lib/shelves/ShelfNavigation.svelte';
 	import { activateOffline, deactivateOffline, offlineStatus, rememberedViewer, syncNow } from '#lib/sync/client.js';
 	import { withSessionLock } from '#lib/sync/engine.js';
 	import './layout.css';
@@ -112,6 +113,10 @@
 </svelte:head>
 
 <AppShell pathname={page.url.pathname} {viewer} onlogout={logout}>
+	{#snippet shelves()}
+		<ShelfNavigation pathname={page.url.pathname} />
+	{/snippet}
+
 	{#if authError}
 		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">{authError}</p>
 	{:else if checkingAuth && !publicRoute}

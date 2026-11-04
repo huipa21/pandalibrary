@@ -1,7 +1,7 @@
 import { api, type JsonValue } from '#lib/api/client.js';
 import { buildPagePath, MAX_PAGE_SIZE, type PageOptions } from '#lib/catalog/api.js';
 import type { Book, Page } from '#lib/catalog/types.js';
-import type { SessionViewer, Shelf, ShelfInput, ShelfPatch } from './types.js';
+import type { SessionViewer, Shelf, ShelfInput, ShelfPatch, RuleSet } from './types.js';
 
 type RequestOptions = PageOptions & { signal?: AbortSignal };
 
@@ -14,6 +14,14 @@ export function buildShelvesPath(options: PageOptions = {}): string {
 
 export function buildShelfBooksPath(shelfID: number, options: PageOptions = {}): string {
 	return buildPagePath(`/shelves/${shelfID}/books`, options);
+}
+
+export function buildSystemShelfPath(key: string, options: PageOptions = {}): string {
+	return buildPagePath(`/shelves/system/${key}`, options);
+}
+
+export function buildSystemShelfBooksPath(key: string, options: PageOptions = {}): string {
+	return buildPagePath(`/shelves/system/${key}/books`, options);
 }
 
 export async function listShelves(options: RequestOptions = {}): Promise<Page<Shelf>> {
@@ -41,19 +49,26 @@ export async function getShelf(id: number): Promise<Shelf> {
 	return (await api.request<{ shelf: Shelf }>(`/shelves/${id}`)).shelf;
 }
 
+export async function getSystemShelf(key: string): Promise<Shelf> {
+	return (await api.request<{ shelf: Shelf }>(`/shelves/system/${key}`)).shelf;
+}
+
 export async function createShelf(input: ShelfInput): Promise<Shelf> {
-	const body: { [key: string]: JsonValue } = {
+	const body: Record<string, any> = {
 		kind: input.kind,
 		name: input.name,
 		description: input.description
 	};
+	if (input.mode !== undefined) body.mode = input.mode;
+	if (input.rules !== undefined) body.rules = input.rules;
 	return (await api.request<{ shelf: Shelf }>('/shelves', { method: 'POST', body })).shelf;
 }
 
 export async function updateShelf(id: number, patch: ShelfPatch): Promise<Shelf> {
-	const body: { [key: string]: JsonValue } = {};
+	const body: Record<string, any> = {};
 	if (patch.name !== undefined) body.name = patch.name;
 	if (patch.description !== undefined) body.description = patch.description;
+	if (patch.rules !== undefined) body.rules = patch.rules;
 	return (await api.request<{ shelf: Shelf }>(`/shelves/${id}`, { method: 'PATCH', body })).shelf;
 }
 
@@ -63,6 +78,10 @@ export async function deleteShelf(id: number): Promise<void> {
 
 export async function listShelfBooks(shelfID: number, options: RequestOptions = {}): Promise<Page<Book>> {
 	return api.request(buildShelfBooksPath(shelfID, options), { signal: options.signal });
+}
+
+export async function listSystemShelfBooks(key: string, options: RequestOptions = {}): Promise<Page<Book>> {
+	return api.request(buildSystemShelfBooksPath(key, options), { signal: options.signal });
 }
 
 /** Appends a visible book (or leaves an existing member in place) unless a position is given. */

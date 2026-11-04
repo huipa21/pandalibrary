@@ -18,6 +18,7 @@
 
 	const sections = [
 		{ href: '/admin', label: m['admin.tabs.overview'] },
+		{ href: '/admin/users', label: m['admin.tabs.users'] },
 		{ href: '/admin/libraries', label: m['admin.tabs.libraries'] },
 		{ href: '/admin/hidden-books', label: m['admin.tabs.hidden_books'] },
 		{ href: '/admin/imports', label: m['admin.tabs.imports'] },
