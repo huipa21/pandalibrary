@@ -170,6 +170,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		TrustedProxies: cfg.TrustedProxies, MaxBodyBytes: cfg.MaxUploadBytes, BaseURL: cfg.BaseURL,
 		Mounts: []httpapi.Mount{
 			httpapi.AuthMount(authentication, logger),
+			httpapi.AdminUsersMount(authentication, logger),
 			httpapi.CatalogMount(catalogService, authentication, logger),
 			httpapi.MetadataMount(metadataService, authentication, logger),
 			httpapi.ReadingMount(readingService, authentication, logger),
@@ -180,6 +181,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.KOSyncMount(kosyncService, authentication, logger),
 			httpapi.MaintenanceMount(maintenance, authentication, logger),
 			httpapi.StatsMount(statsService, authentication, logger),
+			httpapi.VersionMount(logger),
 			opdsMount,
 		},
 	})

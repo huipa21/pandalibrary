@@ -34,6 +34,8 @@ jobs:
         run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
       - name: Install staticcheck
         run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+      - name: Test portable provenance wrapper
+        run: node --test scripts/build.test.mjs
       - name: Build
         run: task build
       - name: Lint
@@ -90,9 +92,11 @@ jobs:
       - name: Build real-server E2E binary
         run: |
           mkdir -p bin
-          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=ci" -o bin/pandalibrary ./cmd/pandalibrary
+          node scripts/build-binary.mjs --output bin/pandalibrary
       - name: Install Playwright browser
         run: pnpm --dir web exec playwright install --with-deps chromium
+      - name: Check standalone version footer in a browser
+        run: node web/scripts/build-version-check.mjs
       - name: Run Playwright against the compiled server
         env:
           PANDA_E2E_BINARY: ${{ github.workspace }}/bin/pandalibrary
@@ -128,6 +132,4 @@ jobs:
           PANDA_CANDIDATE_BINARY: ${{ github.workspace }}/bin/pandalibrary
         run: node web/scripts/upgrade-check.mjs
       - name: Build and verify the scratch container
-        env:
-          VERSION: ci-${{ github.run_id }}
         run: node web/scripts/container-check.mjs

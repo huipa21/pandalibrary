@@ -10,13 +10,20 @@ COPY web/ ./
 RUN pnpm install --frozen-lockfile && pnpm build
 
 FROM golang:${GO_VERSION}-alpine AS build
-ARG VERSION=dev
+ARG COMMIT
+ARG COMMIT_DATE
+ARG DIRTY
+ARG RELEASE
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /src/web/build ./web/build
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/pandalibrary ./cmd/pandalibrary \
+RUN CGO_ENABLED=0 go run ./internal/buildinfo/cmd/checkstamp \
+      -commit "${COMMIT}" -date "${COMMIT_DATE}" -dirty "${DIRTY}" -release "${RELEASE}" \
+    && CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+      -ldflags="-s -w -X pandalibrary/internal/buildinfo.stampCommit=${COMMIT} -X pandalibrary/internal/buildinfo.stampCommitDate=${COMMIT_DATE} -X pandalibrary/internal/buildinfo.stampDirty=${DIRTY} -X pandalibrary/internal/buildinfo.stampRelease=${RELEASE}" \
+      -o /out/pandalibrary ./cmd/pandalibrary \
     && mkdir -p /out/data \
     && chown 65532:65532 /out/data
 

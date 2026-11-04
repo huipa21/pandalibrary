@@ -1,16 +1,19 @@
+import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createGzip } from 'node:zlib';
 import { createServer } from 'node:net';
-import { basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { projectRoot, resolveProvenance } from '../../scripts/provenance.mjs';
 
 const engine = process.env.CONTAINER_ENGINE || 'docker';
-const version = process.env.VERSION || 'release-check';
-const image = `pandalibrary:${version}`;
+const release = process.env.RELEASE_VERSION || '';
 const suffix = `${process.pid}-${Date.now()}`;
+const image = `pandalibrary:check-${suffix}`;
 const container = `pandalibrary-check-${suffix}`;
 const volume = `pandalibrary-data-${suffix}`;
 let volumeCreated = false;
 let containerCreated = false;
+let imageCreated = false;
 
 function sanitize(value) {
 	return value
@@ -19,9 +22,9 @@ function sanitize(value) {
 		.replace(/(password|token)=([^\s,"]+)/gi, '$1=[redacted]');
 }
 
-function run(args, { allowFailure = false, timeout = 120_000 } = {}) {
+function runCommand(command, args, { allowFailure = false, timeout = 120_000 } = {}) {
 	return new Promise((resolve, reject) => {
-		const child = spawn(engine, args, { stdio: ['ignore', 'pipe', 'pipe'], timeout });
+		const child = spawn(command, args, { cwd: projectRoot, stdio: ['ignore', 'pipe', 'pipe'], timeout });
 		const stdout = [];
 		const stderr = [];
 		child.stdout.on('data', (chunk) => stdout.push(chunk));
@@ -30,12 +33,28 @@ function run(args, { allowFailure = false, timeout = 120_000 } = {}) {
 		child.once('close', (code) => {
 			const result = { code, stdout: Buffer.concat(stdout).toString().trim(), stderr: Buffer.concat(stderr).toString().trim() };
 			if (code !== 0 && !allowFailure) {
-				reject(new Error(`${engine} ${args.join(' ')} failed (${code}): ${result.stderr || result.stdout}`));
+				reject(new Error(`${command} ${args.join(' ')} failed (${code}): ${result.stderr || result.stdout}`));
 				return;
 			}
 			resolve(result);
 		});
 	});
+}
+
+function run(args, options) {
+	return runCommand(engine, args, options);
+}
+
+function expectedMetadata(stamp) {
+	const commitDate = new Date(stamp.commitDate).toISOString().replace('.000Z', 'Z');
+	const prefix = commitDate.slice(0, 19).replaceAll('-', '').replace('T', '-').replaceAll(':', '');
+	return {
+		version: `${prefix}+${stamp.commit.slice(0, 12)}${stamp.dirty === 'true' ? '-dirty' : ''}`,
+		commit: stamp.commit,
+		commit_date: commitDate,
+		dirty: stamp.dirty === 'true',
+		release: stamp.release || null
+	};
 }
 
 async function unusedPort() {
@@ -93,7 +112,8 @@ async function waitForHealth() {
 async function cleanup() {
 	for (const args of [
 		...(containerCreated ? [['rm', '--force', container]] : []),
-		...(volumeCreated ? [['volume', 'rm', '--force', volume]] : [])
+		...(volumeCreated ? [['volume', 'rm', '--force', volume]] : []),
+		...(imageCreated ? [['image', 'rm', image]] : [])
 	]) {
 		try {
 			await run(args);
@@ -105,13 +125,21 @@ async function cleanup() {
 }
 
 try {
-	// OCI image metadata does not retain Docker HEALTHCHECK instructions in Podman.
-	const format = /^podman(?:\.exe)?$/i.test(basename(engine)) ? ['--format', 'docker'] : [];
-	await run(['build', ...format, '--build-arg', `VERSION=${version}`, '--tag', image, '.'], { timeout: 20 * 60_000 });
+	const expected = expectedMetadata(resolveProvenance(projectRoot, release));
+	const builder = fileURLToPath(new URL('../../scripts/build-container.mjs', import.meta.url));
+	await runCommand(process.execPath, [
+		builder, '--tag', image, ...(release ? ['--release', release] : [])
+	], { timeout: 20 * 60_000 });
+	imageCreated = true;
 	const user = await run(['image', 'inspect', '--format', '{{.Config.User}}', image]);
 	if (user.stdout !== '65532:65532') throw new Error(`image user is ${user.stdout}; expected 65532:65532`);
-	const embeddedVersion = await run(['run', '--rm', '--entrypoint', '/pandalibrary', image, 'version']);
-	if (embeddedVersion.stdout !== version) throw new Error(`binary version is ${embeddedVersion.stdout}; expected ${version}`);
+	const embeddedVersion = await run([
+		'run', '--rm', '--env', 'PATH=/nonexistent', '--entrypoint', '/pandalibrary', image, 'version'
+	]);
+	const expectedCLI = expected.version + (release ? ` (release ${release})` : '');
+	if (embeddedVersion.stdout !== expectedCLI) {
+		throw new Error(`binary version is ${embeddedVersion.stdout}; expected ${expectedCLI}`);
+	}
 
 	const compressedBytes = await compressedImageSize();
 	console.log(`Compressed image archive: ${(compressedBytes / (1024 * 1024)).toFixed(1)} MiB`);
@@ -126,6 +154,14 @@ try {
 	]);
 	containerCreated = true;
 	await waitForHealth();
+
+	const versionResponse = await fetch(`http://127.0.0.1:${port}/api/v1/version`, {
+		cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(10_000)
+	});
+	if (!versionResponse.ok || versionResponse.headers.get('cache-control') !== 'no-store') {
+		throw new Error(`public version endpoint failed (${versionResponse.status})`);
+	}
+	assert.deepEqual(await versionResponse.json(), expected, 'container HTTP provenance differs from the checkout');
 
 	const setupPage = await fetch(`http://127.0.0.1:${port}/setup`, { signal: AbortSignal.timeout(10_000) });
 	if (!setupPage.ok || !(await setupPage.text()).includes('<html')) {
@@ -151,7 +187,7 @@ try {
 	if (!migrations.stdout.includes('Status: up to date')) {
 		throw new Error(`startup migrations did not finish: ${migrations.stdout}`);
 	}
-	console.log('Container checks passed: migrations, health, setup, unhealthy detection, and SIGTERM shutdown.');
+	console.log(`Container checks passed: ${expectedCLI}; public version, migrations, health, setup, unhealthy detection, and SIGTERM shutdown.`);
 } catch (error) {
 	console.error(error.message);
 	if (containerCreated) {

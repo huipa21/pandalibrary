@@ -17,14 +17,13 @@ import (
 
 	"pandalibrary/internal/app"
 	"pandalibrary/internal/auth"
+	"pandalibrary/internal/buildinfo"
 	"pandalibrary/internal/config"
 	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/migrations"
 
 	"golang.org/x/term"
 )
-
-var version = "dev"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
@@ -46,8 +45,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		if len(args) != 1 {
 			return fmt.Errorf("version does not accept arguments")
 		}
-		_, err := fmt.Fprintln(stdout, version)
-		return err
+		return writeVersion(stdout, buildinfo.Current)
 	case "user":
 		return runUser(args[1:], stdout, stderr)
 	case "migrate":
@@ -55,6 +53,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func writeVersion(stdout io.Writer, resolve func() (buildinfo.Info, error)) error {
+	info, err := resolve()
+	if err != nil {
+		return fmt.Errorf("version unavailable: %w", err)
+	}
+	_, err = fmt.Fprintln(stdout, info.Display())
+	return err
 }
 
 func runServe(args []string, stderr io.Writer) error {

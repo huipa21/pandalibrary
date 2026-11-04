@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"pandalibrary/internal/buildinfo"
 )
 
 func TestCommandDispatch(t *testing.T) {
@@ -34,14 +36,29 @@ func TestCommandDispatch(t *testing.T) {
 
 func TestVersionCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if err := run([]string{"version"}, &stdout, &stderr); err != nil {
-		t.Fatalf("version command: %v", err)
-	}
-	if got, want := stdout.String(), version+"\n"; got != want {
-		t.Fatalf("version output = %q, want %q", got, want)
-	}
 	if err := run([]string{"version", "extra"}, &stdout, &stderr); err == nil {
 		t.Fatal("version command accepted extra arguments")
+	}
+	info, err := buildinfo.New(buildinfo.Stamp{
+		Commit: "0123456789abcdef0123456789abcdef01234567", CommitDate: "2026-01-01T00:30:45+09:30",
+		Dirty: "true", Release: "v1.2.3",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeVersion(&stdout, func() (buildinfo.Info, error) { return info, nil }); err != nil {
+		t.Fatalf("version command: %v", err)
+	}
+	if got, want := stdout.String(), "20251231-150045+0123456789ab-dirty (release v1.2.3)\n"; got != want {
+		t.Fatalf("version output = %q, want %q", got, want)
+	}
+	stdout.Reset()
+	err = writeVersion(&stdout, func() (buildinfo.Info, error) {
+		return buildinfo.Info{}, buildinfo.ErrUnavailable
+	})
+	if !errors.Is(err, buildinfo.ErrUnavailable) || !strings.Contains(err.Error(), "version unavailable") ||
+		stdout.Len() != 0 {
+		t.Fatalf("unavailable version: output %q, error %v", stdout.String(), err)
 	}
 }
 

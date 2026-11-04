@@ -51,14 +51,17 @@ jobs:
         run: |
           pnpm --dir web check
           pnpm --dir web test
+          node --test scripts/build.test.mjs
       - name: Build versioned E2E binary
         env:
           RELEASE_VERSION: ${{ github.event.release.tag_name }}
         run: |
           mkdir -p bin dist
-          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${RELEASE_VERSION}" -o bin/pandalibrary ./cmd/pandalibrary
+          node scripts/build-binary.mjs --output bin/pandalibrary --release "$RELEASE_VERSION"
       - name: Install Playwright browser
         run: pnpm --dir web exec playwright install --with-deps chromium
+      - name: Check standalone version footer in a browser
+        run: node web/scripts/build-version-check.mjs
       - name: Run full browser suite against the release binary
         env:
           PANDA_E2E_BINARY: ${{ github.workspace }}/bin/pandalibrary
@@ -96,14 +99,14 @@ jobs:
         run: node web/scripts/upgrade-check.mjs
       - name: Build and verify scratch container
         env:
-          VERSION: ${{ github.event.release.tag_name }}
+          RELEASE_VERSION: ${{ github.event.release.tag_name }}
         run: node web/scripts/container-check.mjs
       - name: Build release binaries
         env:
           RELEASE_VERSION: ${{ github.event.release.tag_name }}
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=${RELEASE_VERSION}" -o dist/pandalibrary-linux-amd64 ./cmd/pandalibrary
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.version=${RELEASE_VERSION}" -o dist/pandalibrary-linux-arm64 ./cmd/pandalibrary
+          GOOS=linux GOARCH=amd64 node scripts/build-binary.mjs --output dist/pandalibrary-linux-amd64 --release "$RELEASE_VERSION"
+          GOOS=linux GOARCH=arm64 node scripts/build-binary.mjs --output dist/pandalibrary-linux-arm64 --release "$RELEASE_VERSION"
       - name: Upload binaries to the published release
         env:
           GH_TOKEN: ${{ github.token }}

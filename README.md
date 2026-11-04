@@ -7,16 +7,37 @@ CBZ; reader support depends on format and browser.
 
 ## Run with a container
 
-Build the image from a release tag or source checkout:
+Build the image from a Git source checkout (Node.js and Docker are required):
 
 ```sh
-docker build --build-arg VERSION=v1.0.0 -t pandalibrary:v1.0.0 .
+node scripts/build-container.mjs --tag pandalibrary:local
 docker volume create pandalibrary-data
 docker run -d --name pandalibrary --restart unless-stopped \
   -p 8080:8080 -v pandalibrary-data:/data \
   -e PANDA_BASE_URL=https://books.example.org \
-  pandalibrary:v1.0.0
+  pandalibrary:local
 ```
+
+The wrapper automatically passes the checked-out commit, its committer date, and
+the tracked/non-ignored untracked dirty state to the image build. Set `CONTAINER_ENGINE=podman`
+to use Podman. For a tagged release, add `--release v1.0.0`; that local Git tag
+must point to `HEAD`. The optional release label must begin with an ASCII letter
+or digit and contain at most 128 ASCII letters, digits, `.`, `_`, `+`, `/`, or `-`.
+
+For a source archive without Git, supply trustworthy provenance explicitly.
+The commit must be a full 40- or 64-character hexadecimal object ID, the date
+must be the commit's RFC3339 committer timestamp with second precision, and
+the dirty state must be `true` or `false`:
+
+```sh
+docker build --build-arg COMMIT="$PANDA_COMMIT" \
+  --build-arg COMMIT_DATE="$PANDA_COMMIT_DATE" --build-arg DIRTY="$PANDA_DIRTY" \
+  -t pandalibrary:local .
+```
+
+An optional `--build-arg RELEASE="$PANDA_RELEASE"` adds the release label.
+Missing or invalid provenance fails the image build; it never creates a fake
+version. The image does not include Git or Node.js.
 
 The image is based on `scratch`, runs as UID/GID `65532:65532`, keeps all persistent
 state under `/data`, and includes a binary `/healthz` healthcheck. The release workflow is
@@ -34,11 +55,17 @@ logs. To create or reset an account from a host binary instead, use the interact
 ./pandalibrary user reset-password --username admin
 ```
 
+Administrators can also manage accounts through the session-authenticated
+[`/api/v1/admin/users` API](docs/prompts/UX7-admin-users-api.md#ux8-api-hand-off).
+Password resets (including the CLI) and account disabling revoke all browser
+sessions and OPDS/KOReader app passwords. Devices must be issued new app passwords.
+Self-service administrator reset/revocation also signs the administrator out.
+
 For container CLI operations, mount the same data volume and override the entrypoint:
 
 ```sh
 docker run --rm -it -v pandalibrary-data:/data --entrypoint /pandalibrary \
-  pandalibrary:v1.0.0 user create --username admin --admin
+  pandalibrary:local user create --username admin --admin
 ```
 
 ## Configuration and deployment
@@ -115,9 +142,15 @@ release has a Linux amd64 asset. Before the first release exists, it generates a
 baseline with fixed test user/library data; later releases automatically use the previous
 published binary.
 
-Release binaries include their release version (`pandalibrary version`). Releases are
-published only when a GitHub Release is published; the workflow validates the browser
-suite, upgrade baseline, and scratch image before attaching Linux amd64/arm64 binaries.
+`pandalibrary version` reports `YYYYMMDD-HHmmss+<12-character-hash>`, using
+the commit's committer timestamp in UTC; a modified checkout adds `-dirty`.
+A release tag is shown separately when supplied. Public `GET /api/v1/version`
+returns the same version plus the full commit hash, UTC RFC3339 `commit_date`,
+boolean `dirty`, and nullable `release`; responses are not cached. If provenance
+is unavailable, the CLI reports an error and the endpoint returns HTTP 503
+rather than an invented version. Releases are published only when a GitHub
+Release is published; the workflow validates the browser suite, upgrade baseline,
+and scratch image before attaching Linux amd64/arm64 binaries.
 
 ## Known limitations
 
@@ -154,8 +187,16 @@ pnpm --dir web build
 ```
 
 Run the app locally with `./pandalibrary serve --data-dir ./data --listen 127.0.0.1:8080`;
-on Windows use `.\pandalibrary.exe`. The development web server proxies `/api`, `/opds`,
-and `/kosync` to `http://127.0.0.1:8080`. `VITE_API_PROXY_TARGET` overrides that backend.
+on Windows use `.\pandalibrary.exe`. After building the web assets,
+`go build ./cmd/pandalibrary`, `task build`, and `go run ./cmd/pandalibrary serve`
+also report the checkout's commit provenance automatically. Go builds use embedded
+VCS metadata; an unstamped `go run` resolves Git only in its source checkout.
+Installed and container binaries never require Git at runtime. Start the frontend
+with `pnpm --dir web dev`; its development server proxies `/api`, `/opds`, and
+`/kosync` to `http://127.0.0.1:8080`. `VITE_API_PROXY_TARGET` overrides that backend.
+For explicitly stamped release binaries, use
+`node scripts/build-binary.mjs --output bin/pandalibrary --release v1.0.0`
+from the tagged checkout; `GOOS` and `GOARCH` can select a target platform.
 Run `pnpm --dir web test:e2e` for the browser suite; CI builds the Go binary and points the
 same suite at its real server and embedded SPA.
 
@@ -164,6 +205,8 @@ Run the release checks locally after building the web assets and binary (PowerSh
 ```powershell
 $env:PANDA_E2E_BINARY = (Resolve-Path .\pandalibrary.exe).Path
 pnpm --dir web test:e2e
+node --test scripts\build.test.mjs
+node web\scripts\build-version-check.mjs
 $env:PANDA_CANDIDATE_BINARY = $env:PANDA_E2E_BINARY
 # Optional: set PANDA_PREVIOUS_BINARY to a downloaded previous-release executable.
 node web\scripts\upgrade-check.mjs

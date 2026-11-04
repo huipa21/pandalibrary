@@ -198,36 +198,23 @@ func (s *Service) CreateUser(ctx context.Context, input CreateUserInput) (User, 
 	if err != nil {
 		return User{}, err
 	}
-	queries := sqlc.New(s.reader)
-	if _, err := queries.AuthGetUserByUsername(ctx, input.Username); err == nil {
-		return User{}, ErrUsernameTaken
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return User{}, fmt.Errorf("check username: %w", err)
-	}
-	if input.Role != "admin" {
-		count, err := queries.AuthCountUsers(ctx)
-		if err != nil {
-			return User{}, fmt.Errorf("check initial user role: %w", err)
-		}
-		if count == 0 {
-			return User{}, ErrFirstUserMustAdmin
-		}
-	}
 	passwordHash, err := s.passwords.hash(ctx, input.Password)
 	if err != nil {
 		return User{}, err
 	}
-	created, err := sqlc.New(s.writer).AuthCreateUser(ctx, sqlc.AuthCreateUserParams{
-		Username: input.Username, DisplayName: input.DisplayName, PasswordHash: passwordHash,
-		Role: input.Role, Locale: input.Locale, CreatedAt: s.now().UnixMilli(), UpdatedAt: s.now().UnixMilli(),
+	var created sqlc.User
+	err = db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+		var err error
+		created, err = s.createUser(ctx, sqlc.New(tx), input, passwordHash)
+		return err
 	})
 	if err != nil {
-		return User{}, fmt.Errorf("create user: %w", err)
+		return User{}, err
 	}
 	return safeUser(created), nil
 }
 
-// ResetPassword replaces a user's password and revokes all existing browser sessions.
+// ResetPassword replaces a password and revokes all browser and app credentials.
 func (s *Service) ResetPassword(ctx context.Context, username, password string) error {
 	user, err := sqlc.New(s.reader).AuthGetUserByUsername(ctx, strings.TrimSpace(username))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -240,22 +227,20 @@ func (s *Service) ResetPassword(ctx context.Context, username, password string) 
 	if err != nil {
 		return err
 	}
-	now := s.now().UnixMilli()
 	return db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
-		if err := queries.AuthUpdatePassword(ctx, sqlc.AuthUpdatePasswordParams{
-			PasswordHash: passwordHash, UpdatedAt: now, ID: user.ID,
-		}); err != nil {
-			return fmt.Errorf("update password: %w", err)
+		current, err := queries.AuthGetUserByUsername(ctx, strings.TrimSpace(username))
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && current.ID != user.ID) {
+			return ErrUserNotFound
 		}
-		if err := queries.AuthRevokeUserSessions(ctx, user.ID); err != nil {
-			return fmt.Errorf("revoke sessions after password reset: %w", err)
+		if err != nil {
+			return fmt.Errorf("find user for password reset: %w", err)
 		}
-		return nil
+		return s.resetPassword(ctx, queries, user.ID, passwordHash)
 	})
 }
 
-// SetDisabled changes the account's disabled state and revokes sessions when disabling.
+// SetDisabled changes the account's disabled state and revokes all credentials when disabling.
 func (s *Service) SetDisabled(ctx context.Context, userID int64, disabled bool) error {
 	now := s.now().UnixMilli()
 	return db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
@@ -275,9 +260,7 @@ func (s *Service) SetDisabled(ctx context.Context, userID int64, disabled bool) 
 			return fmt.Errorf("update user disabled state: %w", err)
 		}
 		if disabled {
-			if err := queries.AuthRevokeUserSessions(ctx, userID); err != nil {
-				return fmt.Errorf("revoke disabled user's sessions: %w", err)
-			}
+			return revokeCredentials(ctx, queries, userID)
 		}
 		return nil
 	})
@@ -312,15 +295,11 @@ func (s *Service) Login(ctx context.Context, username, password, userAgent, ip s
 	if !valid || user.Disabled != 0 {
 		return Session{}, ErrInvalidCredentials
 	}
+	var replacementHash string
 	if s.passwords.needsRehash(user.PasswordHash) {
-		hash, err := s.passwords.hash(ctx, password)
+		replacementHash, err = s.passwords.hash(ctx, password)
 		if err != nil {
 			return Session{}, err
-		}
-		if err := sqlc.New(s.writer).AuthUpdatePassword(ctx, sqlc.AuthUpdatePasswordParams{
-			PasswordHash: hash, UpdatedAt: s.now().UnixMilli(), ID: user.ID,
-		}); err != nil {
-			return Session{}, fmt.Errorf("rehash login password: %w", err)
 		}
 	}
 
@@ -331,12 +310,34 @@ func (s *Service) Login(ctx context.Context, username, password, userAgent, ip s
 	token := base64.RawURLEncoding.EncodeToString(random[:])
 	now := s.now()
 	expires := now.Add(sessionLifetime)
-	if err := sqlc.New(s.writer).AuthCreateSession(ctx, sqlc.AuthCreateSessionParams{
-		TokenHash: hashToken(token), UserID: user.ID, CreatedAt: now.UnixMilli(),
-		ExpiresAt: expires.UnixMilli(), LastSeenAt: now.UnixMilli(),
-		UserAgent: truncateUTF8(userAgent, 256), Ip: truncateUTF8(ip, 64),
-	}); err != nil {
-		return Session{}, fmt.Errorf("create browser session: %w", err)
+	err = db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+		queries := sqlc.New(tx)
+		current, err := queries.AuthGetUserByID(ctx, user.ID)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && (current.Disabled != 0 || current.PasswordHash != user.PasswordHash)) {
+			return ErrInvalidCredentials
+		}
+		if err != nil {
+			return fmt.Errorf("recheck login user: %w", err)
+		}
+		user = current
+		if replacementHash != "" {
+			if err := queries.AuthUpdatePassword(ctx, sqlc.AuthUpdatePasswordParams{
+				PasswordHash: replacementHash, UpdatedAt: now.UnixMilli(), ID: user.ID,
+			}); err != nil {
+				return fmt.Errorf("rehash login password: %w", err)
+			}
+		}
+		if err := queries.AuthCreateSession(ctx, sqlc.AuthCreateSessionParams{
+			TokenHash: hashToken(token), UserID: user.ID, CreatedAt: now.UnixMilli(),
+			ExpiresAt: expires.UnixMilli(), LastSeenAt: now.UnixMilli(),
+			UserAgent: truncateUTF8(userAgent, 256), Ip: truncateUTF8(ip, 64),
+		}); err != nil {
+			return fmt.Errorf("create browser session: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return Session{}, err
 	}
 	return Session{User: safeUser(user), Token: token, ExpiresAt: expires}, nil
 }
@@ -512,9 +513,20 @@ func (s *Service) VerifyAppPassword(ctx context.Context, username, kind, supplie
 }
 
 func normalizeUserInput(input CreateUserInput) (CreateUserInput, error) {
+	input, err := normalizeAccountFields(input)
+	if err != nil {
+		return CreateUserInput{}, err
+	}
+	if err := validatePassword(input.Password); err != nil {
+		return CreateUserInput{}, fmt.Errorf("%w: %v", ErrInvalidUser, err)
+	}
+	return input, nil
+}
+
+func normalizeAccountFields(input CreateUserInput) (CreateUserInput, error) {
 	input.Username = strings.TrimSpace(input.Username)
 	input.DisplayName = strings.TrimSpace(input.DisplayName)
-	if input.Username == "" || len(input.Username) > 64 || !utf8.ValidString(input.Username) {
+	if input.Username == "" || len(input.Username) > 64 || !utf8.ValidString(input.Username) || strings.ContainsRune(input.Username, 0) {
 		return CreateUserInput{}, fmt.Errorf("%w: username must be 1 to 64 UTF-8 bytes", ErrInvalidUser)
 	}
 	if !utf8.ValidString(input.DisplayName) || len(input.DisplayName) > 128 {
@@ -531,9 +543,6 @@ func normalizeUserInput(input CreateUserInput) (CreateUserInput, error) {
 	}
 	if input.Locale != "en" && input.Locale != "zh" {
 		return CreateUserInput{}, fmt.Errorf("%w: locale must be en or zh", ErrInvalidUser)
-	}
-	if err := validatePassword(input.Password); err != nil {
-		return CreateUserInput{}, fmt.Errorf("%w: %v", ErrInvalidUser, err)
 	}
 	return input, nil
 }
