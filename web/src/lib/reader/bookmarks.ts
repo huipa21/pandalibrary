@@ -1,6 +1,9 @@
 import { v7 as uuidv7 } from 'uuid';
 import type { Mutation } from './api.js';
-import { isLocatorForFormat, type Bookmark, type ReaderFormat, type Relocation } from './types.js';
+import {
+	isCfiLocator, isLocatorForFormat, isPdfLocator,
+	type Bookmark, type ReaderFormat, type ReaderLocator, type Relocation
+} from './types.js';
 
 function bytes(value: string): number {
 	return new TextEncoder().encode(value).length;
@@ -11,7 +14,8 @@ export function makeBookmark(
 	fileId: number,
 	location: Relocation,
 	label: string,
-	existing?: Bookmark
+	id = uuidv7(),
+	chapter: string | null = null
 ): Mutation {
 	if (
 		!Number.isFinite(location.fraction) ||
@@ -24,7 +28,7 @@ export function makeBookmark(
 	}
 	return {
 		entity: 'bookmarks',
-		id: existing?.id ?? uuidv7(),
+		id,
 		op: 'upsert',
 		updated_at: Date.now(),
 		data: {
@@ -33,20 +37,22 @@ export function makeBookmark(
 			locator: location.locator,
 			position: location.fraction,
 			label,
-			chapter: existing?.chapter ?? null
+			chapter
 		}
 	};
 }
 
 export function updateBookmarkLabel(
-	bookmarkId: string,
-	bookId: number,
-	fileId: number,
-	location: Relocation,
-	label: string,
-	existing: Bookmark
+	bookmark: Bookmark,
+	label: string
 ): Mutation {
-	return makeBookmark(bookId, fileId, location, label, { ...existing, id: bookmarkId });
+	if (bookmark.book_file_id === null ||
+		(!isCfiLocator(bookmark.locator) && !isPdfLocator(bookmark.locator))) {
+		throw new Error('The bookmarked file or locator is unavailable.');
+	}
+	return makeBookmark(bookmark.book_id, bookmark.book_file_id, {
+		fraction: bookmark.position, locator: bookmark.locator
+	}, label, bookmark.id, bookmark.chapter);
 }
 
 export function deleteBookmark(id: string): Mutation {
@@ -57,7 +63,7 @@ export function bookmarkForPosition(
 	bookmark: Bookmark,
 	fileId: number,
 	format: ReaderFormat
-): boolean {
+): bookmark is Bookmark & { locator: ReaderLocator } {
 	if (bookmark.book_file_id !== fileId || !isLocatorForFormat(bookmark.locator, format)) return false;
 	return true;
 }

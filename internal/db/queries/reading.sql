@@ -23,6 +23,19 @@ AND NOT EXISTS (
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 );
 
+-- name: ReadingVisibleBookmarkFileFormat :one
+SELECT bf.format FROM book_files bf
+JOIN books b ON b.id = bf.book_id
+WHERE bf.id = sqlc.arg(book_file_id) AND b.id = sqlc.arg(book_id)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h
+    WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
+);
+
 -- name: ReadingGetUserBook :one
 SELECT ub.* FROM user_books ub
 JOIN books b ON b.id = ub.book_id
@@ -392,17 +405,21 @@ AND NOT EXISTS (
 );
 
 -- name: ReadingListUserBookmarks :many
-SELECT bm.* FROM bookmarks bm
+SELECT bm.*, b.title AS book_title, b.cover_sha256 AS book_cover_sha256 FROM bookmarks bm
 JOIN books b ON b.id = bm.book_id
 WHERE bm.user_id = sqlc.arg(user_id) AND bm.deleted_at IS NULL
+AND (CAST(sqlc.arg(book_filter) AS INTEGER) = 0 OR bm.book_id = sqlc.arg(book_filter))
+AND (CAST(sqlc.arg(has_cursor) AS INTEGER) = 0
+    OR bm.created_at < sqlc.arg(cursor_created_at)
+    OR (bm.created_at = sqlc.arg(cursor_created_at) AND bm.id < sqlc.arg(cursor_id)))
 AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
 ))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(user_id)
 )
-ORDER BY bm.created_at DESC, bm.id
-LIMIT sqlc.arg(limit) OFFSET sqlc.arg(offset);
+ORDER BY bm.created_at DESC, bm.id DESC
+LIMIT sqlc.arg(limit);
 
 -- name: ReadingListBookmarksByBookID :many
 SELECT bm.* FROM bookmarks bm
@@ -450,7 +467,8 @@ ON CONFLICT(id) DO UPDATE SET
     chapter = excluded.chapter,
     updated_at = excluded.updated_at,
     deleted_at = excluded.deleted_at,
-    rev = excluded.rev;
+    rev = excluded.rev
+WHERE bookmarks.user_id = excluded.user_id AND excluded.updated_at > bookmarks.updated_at;
 
 -- name: ReadingTombstoneBookmark :exec
 UPDATE bookmarks SET updated_at = sqlc.arg(updated_at), deleted_at = sqlc.arg(deleted_at), rev = sqlc.arg(rev)

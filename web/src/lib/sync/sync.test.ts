@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import * as catalog from '#lib/catalog/api.js';
 import type { Book } from '#lib/catalog/types.js';
+import { localBookmarks } from '#lib/bookmarks/offline.js';
 import {
 	activeViewer, AccountChangedError, cursorState, downloadedBooks, downloadedFile,
 	enqueue, outbox, persistPull, recordResults, removeAllBooks, removeBook,
@@ -61,6 +62,75 @@ afterEach(() => {
 });
 
 describe('durable R1 synchronization', () => {
+	it('preserves pre-bookmark version-1 notes and reader settings when reopening the database', async () => {
+		const { bookmarks: _bookmarks, ...oldSnapshot } = pull(2);
+		oldSnapshot.notes.push({
+			id: 'old-note', book_id: 21, highlight_id: null, body_md: 'Keep my note',
+			created_at: timestamp, updated_at: timestamp, deleted_at: null, rev: 1
+		});
+		oldSnapshot.user_settings.push({ key: 'reader.pdf', value: { zoom: 1.5 }, updated_at: timestamp, rev: 2 });
+		await persistPull(1, 0, parsePullResponse(oldSnapshot, 0), true);
+		await setActiveViewer(null);
+		await setActiveViewer(viewer);
+		await persistPull(1, 2, pull(3), false);
+		const state = (await readerState(1, 21)).state;
+		expect(state.bookmarks).toEqual([]);
+		expect(state.notes).toMatchObject([{ id: 'old-note', body_md: 'Keep my note' }]);
+		expect(await rows(1)).toEqual(expect.arrayContaining([
+			expect.objectContaining({ entity: 'user_settings', value: expect.objectContaining({ key: 'reader.pdf', value: { zoom: 1.5 } }) })
+		]));
+	});
+
+	it('persists bookmark pulls, tombstones and queued offline edits without losing older rows', async () => {
+		const bookmark = {
+			id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, book_file_id: 31,
+			locator: { type: 'cfi', value: 'epubcfi(/6/2)' }, position: 0.4, label: 'Saved',
+			chapter: null, created_at: timestamp, updated_at: timestamp, deleted_at: null, rev: 2
+		};
+		const old = pull(1);
+		old.reading_progress.push({
+			book_id: 21, book_file_id: 31, source: 'web', locator: null, percentage: 0.2,
+			device: 'Web', device_id: 'device', updated_at: timestamp, rev: 1
+		});
+		await persistPull(1, 0, old, true);
+		expect((await readerState(1, 21)).state.bookmarks).toEqual([]);
+		const next = pull(2);
+		next.bookmarks.push(bookmark);
+		await persistPull(1, 1, next, false);
+		expect((await readerState(1, 21)).state).toMatchObject({
+			progress: { percentage: 0.2 }, bookmarks: [{ id: bookmark.id, label: 'Saved' }]
+		});
+		const edit: SyncMutation = {
+			entity: 'bookmarks', id: bookmark.id, op: 'upsert', updated_at: Date.parse(timestamp) + 1,
+			data: { book_id: 21, book_file_id: 31, locator: bookmark.locator, position: 0.4, label: 'Offline', chapter: null }
+		};
+		await enqueue(1, edit);
+		await setActiveViewer(null);
+		await setActiveViewer(viewer);
+		expect((await readerState(1, 21)).state.bookmarks[0].label).toBe('Offline');
+		await saveDownload(1, book, file, new Blob(['book']), null);
+		expect(await localBookmarks(1)).toMatchObject([{ id: bookmark.id, label: 'Offline', book: { title: book.title } }]);
+		await enqueue(1, { entity: 'bookmarks', id: bookmark.id, op: 'delete', data: {}, updated_at: edit.updated_at + 1 });
+		expect((await readerState(1, 21)).state.bookmarks).toEqual([]);
+		await setActiveViewer({ ...viewer, id: 2 });
+		expect((await readerState(2, 21)).state.bookmarks).toEqual([]);
+		expect(await localBookmarks(2)).toEqual([]);
+		await setActiveViewer(viewer);
+		const tombstone = pull(3);
+		tombstone.bookmarks.push({ ...bookmark, deleted_at: timestamp, rev: 3 });
+		await persistPull(1, 2, tombstone, false);
+		expect((await rows(1)).find((row) => row.entity === 'bookmarks')?.value).toMatchObject({ deleted_at: timestamp });
+		expect((await readerState(1, 21)).state.bookmarks).toEqual([]);
+	});
+
+	it('accepts old pulls without bookmarks but rejects malformed bookmark revisions', () => {
+		const { bookmarks: _bookmarks, ...old } = pull(0);
+		expect(parsePullResponse(old, 0).bookmarks).toEqual([]);
+		expect(() => parsePullResponse({ ...old, cursor: 1, bookmarks: [{ id: 'bad', rev: 2, updated_at: timestamp }] }, 0))
+			.toThrow('invalid bookmarks revision');
+		expect(() => parsePullResponse({ ...old, bookmarks: null }, 0)).toThrow('missing bookmarks');
+	});
+
 	it('reopens the outbox without changing UUIDs, natural keys, timestamps or tombstones', async () => {
 		const mutations: SyncMutation[] = [
 			progress(),

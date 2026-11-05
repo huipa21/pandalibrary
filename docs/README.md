@@ -13,3 +13,8 @@ The database schema is **not** in the docs. It lives in
 ([ADR-0003](./decisions/0003-auto-applied-migrations.md)).
 
 Agent sessions should start with: this file → `progress/README.md` → their prompt.
+
+Current sidebar/dashboard integration hand-offs:
+[bookmarks and offline sync](./prompts/UX6-bookmarks.md),
+[account administration](./prompts/UX8-admin-users-ui.md), and
+[integration/release verification](./prompts/UX10-layout-integration.md).

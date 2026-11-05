@@ -168,23 +168,22 @@ type AnnotationResult struct {
 
 // BookmarkItem is a bookmark with minimal book information for display.
 type BookmarkItem struct {
-	ID         string          `json:"id"`
-	BookID     int64           `json:"book_id"`
-	BookFileID *int64          `json:"book_file_id"`
-	Locator    json.RawMessage `json:"locator"`
-	Position   float64         `json:"position"`
-	Label      string          `json:"label"`
-	Chapter    *string         `json:"chapter"`
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
-	Book       *BookmarkBookSummary `json:"book"`
+	Bookmark
+	Book BookmarkBookSummary `json:"book"`
 }
 
 // BookmarkBookSummary is minimal book info for bookmark display.
 type BookmarkBookSummary struct {
-	ID           int64  `json:"id"`
-	Title        string `json:"title"`
-	CoverSha256  *string `json:"cover_sha256"`
+	ID       int64   `json:"id"`
+	Title    string  `json:"title"`
+	CoverURL *string `json:"cover_url"`
+}
+
+// BookmarkPageOptions scopes a page to a book when BookID is non-zero.
+type BookmarkPageOptions struct {
+	Limit  int
+	Cursor string
+	BookID int64
 }
 
 // BookmarksListResponse is a paginated response of bookmarks.

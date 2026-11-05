@@ -30,7 +30,8 @@ export class InvalidFileUrlError extends Error {
 }
 
 export async function getBookState(bookId: number): Promise<BookState> {
-	return api.request(`/me/books/${bookId}`);
+	const state = await api.request<BookState & { bookmarks?: BookState['bookmarks'] }>(`/me/books/${bookId}`);
+	return { ...state, bookmarks: state.bookmarks ?? [] };
 }
 
 export async function getSettings(): Promise<Setting[]> {

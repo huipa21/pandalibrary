@@ -170,6 +170,22 @@ try {
 	const setupStatus = await fetch(`http://127.0.0.1:${port}/api/v1/setup`, { signal: AbortSignal.timeout(10_000) });
 	const setup = await setupStatus.json();
 	if (!setupStatus.ok || setup.required !== true) throw new Error('fresh persistent data directory did not require first-run setup');
+	const output = await run(['logs', container]);
+	const setupToken = `${output.stdout}\n${output.stderr}`.match(/"setup_token"\s*:\s*"([^"]+)"/)?.[1];
+	if (!setupToken) throw new Error('fresh container did not log its first-run setup token');
+	const origin = `http://127.0.0.1:${port}`;
+	const credentials = { username: 'container-admin', password: 'container-check-password' };
+	const bootstrap = await fetch(`${origin}/api/v1/setup`, {
+		method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' },
+		body: JSON.stringify({ ...credentials, token: setupToken, locale: 'en' }), signal: AbortSignal.timeout(10_000)
+	});
+	const cookie = bootstrap.headers.get('set-cookie')?.split(';', 1)[0];
+	if (!bootstrap.ok || !cookie) throw new Error(`container setup failed (${bootstrap.status})`);
+	const seeded = await fetch(`${origin}/api/v1/admin/libraries`, {
+		method: 'POST', headers: { Origin: origin, Cookie: cookie, 'Content-Type': 'application/json' },
+		body: JSON.stringify({ name: 'Restart fixture', slug: 'restart-fixture' }), signal: AbortSignal.timeout(10_000)
+	});
+	if (!seeded.ok) throw new Error(`container persistence fixture failed (${seeded.status})`);
 
 	const unavailable = await run([
 		'run', '--rm', '--entrypoint', '/pandalibrary', image,
@@ -187,7 +203,20 @@ try {
 	if (!migrations.stdout.includes('Status: up to date')) {
 		throw new Error(`startup migrations did not finish: ${migrations.stdout}`);
 	}
-	console.log(`Container checks passed: ${expectedCLI}; public version, migrations, health, setup, unhealthy detection, and SIGTERM shutdown.`);
+	await run(['start', container]);
+	await waitForHealth();
+	const retained = await fetch(`http://127.0.0.1:${port}/api/v1/setup`, { signal: AbortSignal.timeout(10_000) });
+	if (!retained.ok || (await retained.json()).required !== false) {
+		throw new Error('persistent database was not usable after restarting the container');
+	}
+	const libraries = await fetch(`${origin}/api/v1/admin/libraries`, {
+		headers: { Cookie: cookie }, signal: AbortSignal.timeout(10_000)
+	});
+	if (!libraries.ok || !(await libraries.json()).items.some((library) => library.slug === 'restart-fixture')) {
+		throw new Error('library and session did not survive the container restart');
+	}
+	await run(['stop', '--time', '20', container]);
+	console.log(`Container checks passed: ${expectedCLI}; public version, migrations, health, setup, unhealthy detection, restart persistence, and SIGTERM shutdown.`);
 } catch (error) {
 	console.error(error.message);
 	if (containerCreated) {

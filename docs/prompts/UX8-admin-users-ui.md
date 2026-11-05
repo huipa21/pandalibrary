@@ -1,6 +1,6 @@
 # UX8: Admin users panel and account selectors
 
-- Status: Ready
+- Status: Done
 - Wave: 2; dependencies merged: UX7; migration: no
 - Branch/worktree: `task/ux8` / `..\pandalibrary-ux8`
 
@@ -48,3 +48,23 @@ both locales. Existing admin imports/providers/maintenance still work.
 Run frontend check, focused units/browser tests and build. Remove stale gap
 wording only from current UI/docs; keep historical W5 hand-off as history.
 Update prompt/progress and record exact results.
+
+## Implementation hand-off
+
+- `/admin/users` loads paged accounts and supports create, profile/role/locale
+  editing, disable/re-enable, confirmed deletion, password reset with matching
+  confirmation and all-credential revocation. Passwords require 12-1024 UTF-8
+  bytes and are cleared on success/cancel, never stored in offline state.
+- Uses the actual UX7 `/reset-password` and `/revoke-credentials` endpoints.
+  Revocation covers sessions and OPDS/KOReader credentials together. Self
+  reset/revocation retires the offline account under the session lock, then
+  redirects to login. Last-admin/self-action conflicts stay explicit.
+- Reusable `UserSelector` requests 25 accounts at a time with cursor paging,
+  readable username/display name and numeric ID submission. Library grants
+  and hide lists use it without eager all-account enumeration.
+- English/Chinese UI, typed API/password validation units and real-server
+  browser coverage verify CRUD, disable/re-enable, reset/login/revoke,
+  self-reset/self-revoke offline invalidation, last-admin rejection, reader
+  denial, both selectors and both locales. Existing imports/providers/jobs
+  remain covered by the full suite. Frontend check, 204 units and build pass;
+  final integration commands are in the UX10 hand-off.

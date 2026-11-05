@@ -62,29 +62,35 @@ func (h *readingHTTP) listBookmarks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	values, valid := h.query(w, r, "limit", "cursor")
+	values, valid := h.query(w, r, "limit", "cursor", "book_id")
 	if !valid {
 		return
 	}
-	limit := int64(20)
-	if raw, exists := values["limit"]; exists && len(raw) == 1 {
-		l, err := strconv.ParseInt(raw[0], 10, 64)
-		if err != nil || l < 1 || l > 100 {
+	options := reading.BookmarkPageOptions{Limit: 20}
+	if raw, exists := values["limit"]; exists {
+		limit, err := strconv.Atoi(raw[0])
+		if err != nil || limit < 1 || limit > 100 {
 			WriteProblem(w, h.logger, http.StatusBadRequest, "The limit must be between 1 and 100.")
 			return
 		}
-		limit = l
+		options.Limit = limit
 	}
-	offset := int64(0)
-	if raw, exists := values["cursor"]; exists && len(raw) == 1 && raw[0] != "" {
-		o, err := strconv.ParseInt(raw[0], 10, 64)
-		if err != nil || o < 0 || strconv.FormatInt(o, 10) != raw[0] {
+	if raw, exists := values["cursor"]; exists {
+		if raw[0] == "" {
 			WriteProblem(w, h.logger, http.StatusBadRequest, "The cursor is invalid.")
 			return
 		}
-		offset = o
+		options.Cursor = raw[0]
 	}
-	result, err := h.service.ListUserBookmarks(r.Context(), viewer, limit, offset)
+	if raw, exists := values["book_id"]; exists {
+		bookID, err := strconv.ParseInt(raw[0], 10, 64)
+		if err != nil || bookID < 1 {
+			WriteProblem(w, h.logger, http.StatusBadRequest, "The book ID is invalid.")
+			return
+		}
+		options.BookID = bookID
+	}
+	result, err := h.service.ListUserBookmarks(r.Context(), viewer, options)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

@@ -81,7 +81,8 @@
 	$effect(() => {
 		const bookId = page.params.bookId ?? '';
 		const fileId = page.params.fileId ?? '';
-		untrack(() => { void openBook(bookId, fileId); });
+		const bookmarkId = page.url.searchParams.get('bookmark');
+		untrack(() => { void openBook(bookId, fileId, bookmarkId); });
 	});
 
 	onMount(() => {
@@ -117,6 +118,10 @@
 
 	beforeNavigate((navigation) => {
 		if (draft && draft.body !== draft.original && !window.confirm(m['reader.note.discard_confirm']())) {
+			navigation.cancel();
+			return;
+		}
+		if (bookmarkDraft && bookmarkDraft.label !== bookmarkDraft.original && !window.confirm(m['ux6.discard_confirm']())) {
 			navigation.cancel();
 			return;
 		}
@@ -179,7 +184,7 @@
 		}
 	}
 
-	async function openBook(rawBookId: string, rawFileId: string) {
+	async function openBook(rawBookId: string, rawFileId: string, bookmarkId: string | null) {
 		const version = ++requestVersion;
 		ready = false;
 		sessionClock?.stop();
@@ -307,6 +312,19 @@
 				}
 			}
 			await restorePosition(currentReader, state.progress, fileId, selectedFormat);
+			if (bookmarkId) {
+				const requested = bookmarks.find((item) => item.id === bookmarkId);
+				if (!requested || !bookmarkForPosition(requested, fileId, selectedFormat)) {
+					actionError = m['ux6.unavailable']();
+				} else {
+					try {
+						await currentReader.goTo(requested.locator);
+					} catch (error) {
+						console.error('Could not open the saved bookmark', error);
+						actionError = m['ux6.jump_failed']();
+					}
+				}
+			}
 			if (version !== requestVersion) return;
 			if (!location) throw new Error('The reader did not report a position.');
 			ready = true;
@@ -569,28 +587,32 @@
 	}
 
 	async function saveBookmark() {
-		if (!book || !file || !location || busy || !reader) return;
+		if (!book || !file || !location || !bookmarkDraft || busy || !reader) return;
 		busy = true;
 		actionError = '';
-		const label = bookmarkDraft?.label ?? '';
-		const id = bookmarkDraft?.id ?? uuidv7();
+		const { id, label, editing } = bookmarkDraft;
+		const savedLocation = location;
 		try {
 			const existing = bookmarks.find((bm) => bm.id === id);
-			const mutation = makeBookmark(book.id, file.id, location, label, existing);
-			await saveMutation(mutation);
+			if (editing && !existing) throw new Error('The bookmark is no longer available.');
+			const mutation = existing
+				? updateBookmarkLabel(existing, label)
+				: makeBookmark(book.id, file.id, savedLocation, label, id);
+			const result = await saveMutation(mutation);
 			const now = new Date(mutation.updated_at).toISOString();
-			const bookmark: Bookmark = {
-				id, book_id: book.id, book_file_id: file.id, locator: location.locator,
-				position: location.fraction, label, chapter: existing?.chapter ?? null,
-				created_at: existing?.created_at ?? now, updated_at: now, deleted_at: null, rev: existing?.rev ?? 0
-			};
+			const bookmark: Bookmark = existing
+				? { ...existing, label, updated_at: now }
+				: {
+					id, book_id: book.id, book_file_id: file.id, locator: savedLocation.locator,
+					position: savedLocation.fraction, label, chapter: null,
+					created_at: now, updated_at: now, deleted_at: null, rev: 0
+				};
 			bookmarks = existing ? bookmarks.map((item) => item.id === bookmark.id ? bookmark : item) : [...bookmarks, bookmark];
 			bookmarkDraft = null;
-			savedMessage = 'Bookmark saved';
-			setTimeout(() => { if (savedMessage === 'Bookmark saved') savedMessage = ''; }, 3000);
+			savedMessage = result === 'queued' ? m['ux6.queued']() : m['ux6.saved']();
 		} catch (error) {
 			if (error instanceof Error && error.message === 'Bookmark exceeds the server limits.') {
-				actionError = 'Bookmark exceeds the server limit';
+				actionError = m['ux6.limit']();
 			} else reportActionError(error);
 		} finally {
 			busy = false;
@@ -607,13 +629,14 @@
 	}
 
 	async function removeBookmark(bookmark: Bookmark) {
-		if (busy || !window.confirm('Delete this bookmark?')) return;
+		if (busy || !window.confirm(m['ux6.delete_confirm']())) return;
 		busy = true;
 		actionError = '';
 		try {
-			await saveMutation(deleteBookmark(bookmark.id));
+			const result = await saveMutation(deleteBookmark(bookmark.id));
 			bookmarks = bookmarks.filter((item) => item.id !== bookmark.id);
 			if (bookmarkDraft?.id === bookmark.id) bookmarkDraft = null;
+			savedMessage = result === 'queued' ? m['ux6.queued']() : m['ux6.deleted']();
 		} catch (error) {
 			reportActionError(error);
 		} finally {
@@ -622,12 +645,15 @@
 	}
 
 	async function jumpToBookmark(bookmark: Bookmark) {
-		if (!reader || !bookmarkForPosition(bookmark, file?.id ?? -1, format ?? 'epub')) return;
+		if (!reader || !file || !format || !bookmarkForPosition(bookmark, file.id, format)) {
+			actionError = m['ux6.unavailable']();
+			return;
+		}
 		try {
-			const locator = bookmark.locator as any;
-			await reader.goTo(locator);
+			await reader.goTo(bookmark.locator);
 		} catch (error) {
-			actionError = 'Could not jump to bookmark';
+			console.error('Could not jump to the saved bookmark', error);
+			actionError = m['ux6.jump_failed']();
 		}
 	}
 
@@ -644,7 +670,7 @@
 {#if loadError}
 	<div class="space-y-4" role="alert">
 		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800">{loadError}</p>
-		<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => openBook(page.params.bookId ?? '', page.params.fileId ?? '')}>{m['reader.retry']()}</button>
+		<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => openBook(page.params.bookId ?? '', page.params.fileId ?? '', page.url.searchParams.get('bookmark'))}>{m['reader.retry']()}</button>
 		<a class="ml-4 underline underline-offset-4 focus-visible:outline-2" href="/read">{m['reader.back_to_books']()}</a>
 	</div>
 {:else if !book || !file || !format}
@@ -817,21 +843,22 @@
 
 		<section aria-labelledby="bookmarks-heading" class="space-y-4">
 			<div class="flex items-center justify-between">
-				<h2 id="bookmarks-heading" class="text-xl font-semibold">Bookmarks</h2>
-				<button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus-visible:outline-2" disabled={!ready || busy} onclick={() => showBookmarks = !showBookmarks}>
-					{showBookmarks ? 'Hide' : 'Show'} ({availableBookmarks.length})
+				<h2 id="bookmarks-heading" class="text-xl font-semibold">{m['ux6.title']()}</h2>
+				<button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus-visible:outline-2" aria-expanded={showBookmarks} disabled={!ready || busy} onclick={() => showBookmarks = !showBookmarks}>
+					{showBookmarks ? m['ux6.hide']() : m['ux6.show']()} ({bookmarks.length})
 				</button>
 			</div>
 			<div class="flex flex-wrap gap-3">
-				<button class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={!ready || busy} onclick={() => bookmarkDraft = { id: uuidv7(), label: '', original: '', editing: false }}>Save Position</button>
+				<button class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={!ready || busy} onclick={() => bookmarkDraft = { id: uuidv7(), label: '', original: '', editing: false }}>{m['ux6.save_position']()}</button>
 				{#if availableBookmarks.length > 0}
-					<select class="rounded-md border border-slate-300 p-2 focus-visible:outline-2" disabled={!ready || busy} onchange={(event) => {
+					<select aria-label={m['ux6.jump']()} class="rounded-md border border-slate-300 p-2 focus-visible:outline-2" disabled={!ready || busy} onchange={(event) => {
 						const bm = availableBookmarks.find((b) => b.id === event.currentTarget.value);
 						if (bm) void jumpToBookmark(bm);
+						event.currentTarget.value = '';
 					}}>
-						<option value="">Jump to bookmark</option>
+						<option value="">{m['ux6.jump']()}</option>
 						{#each availableBookmarks as bookmark (bookmark.id)}
-							<option value={bookmark.id}>{bookmark.label || 'Unnamed'}</option>
+							<option value={bookmark.id}>{bookmark.label || m['ux6.unnamed']()}</option>
 						{/each}
 					</select>
 				{/if}
@@ -839,42 +866,44 @@
 
 			{#if bookmarkDraft}
 				<form class="space-y-3 rounded-md border border-slate-300 bg-slate-50 p-4" onsubmit={(event) => { event.preventDefault(); void saveBookmark(); }}>
-					<h3 class="font-semibold">{bookmarkDraft.editing ? 'Edit Bookmark' : 'New Bookmark'}</h3>
+					<h3 class="font-semibold">{bookmarkDraft.editing ? m['ux6.edit_title']() : m['ux6.new_title']()}</h3>
 					<label class="space-y-1 text-sm font-medium">
-						<span>Label (optional)</span>
+						<span>{m['ux6.label']()}</span>
 						<input
 							type="text"
 							class="block w-full rounded-md border border-slate-300 p-2 focus-visible:outline-2"
-							placeholder="e.g., Chapter 5, Important passage"
 							bind:value={bookmarkDraft.label}
 							maxlength="512"
 							disabled={busy}
 						/>
 					</label>
 					<div class="flex flex-wrap gap-3">
-						<button type="submit" class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={busy}>Save</button>
-						<button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-2" onclick={() => { bookmarkDraft = null; }}>Cancel</button>
+						<button type="submit" class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={busy}>{m['ux6.save']()}</button>
+						<button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-2" disabled={busy} onclick={() => { bookmarkDraft = null; }}>{m['ux6.cancel']()}</button>
 					</div>
 				</form>
 			{/if}
 
-			{#if !availableBookmarks.length}
-				<p class="text-slate-600">No bookmarks</p>
+			{#if !bookmarks.length}
+				<p class="text-slate-600">{m['ux6.empty']()}</p>
 			{:else if showBookmarks}
 				<div class="space-y-3">
-					{#each availableBookmarks as bookmark (bookmark.id)}
+					{#each bookmarks as bookmark (bookmark.id)}
 						<div class="space-y-2 rounded-md border border-slate-200 bg-white p-4">
 							<div class="flex items-start justify-between">
 								<div class="min-w-0 flex-1">
-									<p class="font-semibold">{bookmark.label || 'Unnamed'}</p>
+									<p class="font-semibold">{bookmark.label || m['ux6.unnamed']()}</p>
 									<p class="text-sm text-slate-600">{(Math.round(bookmark.position * 1000) / 10).toFixed(1)}%{bookmark.chapter ? ` — ${bookmark.chapter}` : ''}</p>
+									{#if !bookmarkForPosition(bookmark, file.id, format)}
+										<p class="text-sm text-amber-800">{m['ux6.unavailable']()}</p>
+									{/if}
 								</div>
 								<time class="whitespace-nowrap text-sm text-slate-600">{new Date(bookmark.created_at).toLocaleDateString()}</time>
 							</div>
 							<div class="flex flex-wrap gap-3 text-sm">
-								<button class="underline focus-visible:outline-2" disabled={busy} onclick={() => void jumpToBookmark(bookmark)}>Jump</button>
-								<button class="underline focus-visible:outline-2" disabled={busy} onclick={() => editBookmark(bookmark)}>Edit</button>
-								<button class="underline focus-visible:outline-2" disabled={busy} onclick={() => void removeBookmark(bookmark)}>Delete</button>
+								<button class="underline focus-visible:outline-2" disabled={busy || !bookmarkForPosition(bookmark, file.id, format)} onclick={() => void jumpToBookmark(bookmark)}>{m['ux6.jump']()}</button>
+								<button class="underline focus-visible:outline-2" disabled={busy || bookmark.book_file_id === null} onclick={() => editBookmark(bookmark)}>{m['ux6.edit']()}</button>
+								<button class="underline focus-visible:outline-2" disabled={busy} onclick={() => void removeBookmark(bookmark)}>{m['ux6.delete']()}</button>
 							</div>
 						</div>
 					{/each}

@@ -1,6 +1,6 @@
 # UX6: Saved reading-position bookmarks, reader UI, and cross-book page
 
-- Status: Ready
+- Status: Done
 - Wave: 2; dependencies merged: UX1, UX2
 - Migration: yes, sole writer in this wave (after UX2's migration)
 - Branch/worktree: `task/ux6` / `..\pandalibrary-ux6`
@@ -58,3 +58,27 @@ Run focused Go tests, migration/sqlc checks, Go build/lint/tests, frontend
 check/units/build, and focused real-server reader/bookmark/offline browser
 tests. Record schema/DTO/sync compatibility and exact results in the hand-off;
 update your progress row/log.
+
+## Implementation hand-off
+
+- Migration 00003 stores bookmarks separately from highlights/Favorites.
+  Push/pull and per-book state include `bookmarks`; older clients may omit
+  the field. Version-1 IndexedDB row/outbox stores need no destructive schema
+  migration; tests reopen legacy notes/settings and retain queued bookmark UUIDs.
+- `GET /api/v1/me/bookmarks?limit=20&cursor=...&book_id=...` returns
+  `{items,next_cursor}`. Each item contains `id`, `book_id`, nullable
+  `book_file_id`, `locator`, `position`, `label`, nullable `chapter`,
+  `created_at`, `updated_at`, nullable `deleted_at`, `rev`, and
+  `book:{id,title,cover_url}`. Only visible live rows are listed, ordered by
+  created time/UUID descending. Cursors bind viewer, role and book filter.
+- Locators are `{type:"cfi",value:"epubcfi(...)"}` for reflowable files and
+  `{type:"pdf",page:1,rects?:[...]}` for PDFs; file/format/ownership and size
+  checks remain server-authoritative. Updates use monotonic revisions/LWW,
+  UUID retries are idempotent and tombstones retain 180 days.
+- Reader saves, label-only edits, deletion and exact cross-book opening are
+  bilingual; label edits retain the original locator. Offline changes survive
+  reload and replay after reconnect; account changes isolate data.
+- Validation: focused bookmark/HTTP/maintenance/sync tests, full Go/sqlc gates,
+  frontend check/204 units/build, real PDF/CFI saves/jumps, label-position
+  preservation, offline reload/outbox replay and second-session deletion.
+  Full integration/release commands are recorded in the UX10 hand-off.

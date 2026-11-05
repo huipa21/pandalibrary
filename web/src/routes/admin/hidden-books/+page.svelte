@@ -3,33 +3,37 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
 	import IdForm from '#lib/admin/IdForm.svelte';
+	import UserSelector from '#lib/admin/users/UserSelector.svelte';
 	import PagerFooter from '#lib/admin/PagerFooter.svelte';
 	import { hideBook, listHiddenBooks, unhideBook } from '#lib/admin/api.js';
 	import { adminErrorKey } from '#lib/admin/form.js';
 	import { formatTimestamp } from '#lib/admin/jobs.js';
-	import type { HiddenEntry } from '#lib/admin/types.js';
+	import type { HiddenEntry, User } from '#lib/admin/types.js';
 	import { panelClass, smallDangerButton, smallSecondaryButton } from '#lib/admin/ui.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { translate } from '#lib/paging/translate.js';
 
 	const hidden = new CursorPager<HiddenEntry>();
 	let userID = $state<number | null>(null);
+	let selectedUser = $state<User | null>(null);
 	let notice = $state('');
 	let error = $state('');
 	let unhiding = $state<number | null>(null);
 
 	onDestroy(() => hidden.dispose());
 
-	async function selectUser(id: number): Promise<string | null> {
-		userID = id;
+	async function selectUser(user: User): Promise<string | null> {
+		userID = user.id;
+		selectedUser = user;
 		notice = '';
 		error = '';
-		void hidden.reset((cursor, signal) => listHiddenBooks(id, { cursor, signal }));
+		void hidden.reset((cursor, signal) => listHiddenBooks(user.id, { cursor, signal }));
 		return null;
 	}
 
 	function clearUser() {
 		userID = null;
+		selectedUser = null;
 		notice = '';
 		error = '';
 		void hidden.reset(null);
@@ -85,10 +89,9 @@
 
 	<section class={panelClass} aria-labelledby="hidden-user-heading">
 		<h2 id="hidden-user-heading" class="text-xl font-semibold">{m['admin.hidden.user_heading']()}</h2>
-		<IdForm
+		<UserSelector
 			idPrefix="hidden-user"
 			label={m['admin.hidden.user_id']()}
-			hint={m['admin.access.user_id_hint']()}
 			submitLabel={m['admin.hidden.show']()}
 			busyLabel={m['admin.hidden.show']()}
 			onsubmit={selectUser}
@@ -101,6 +104,7 @@
 				<h2 id="hidden-list-heading" class="text-xl font-semibold">{m['admin.hidden.list_heading']({ user: userID })}</h2>
 				<button type="button" class={smallSecondaryButton} onclick={clearUser}>{m['admin.hidden.close']()}</button>
 			</div>
+			{#if selectedUser}<p class="text-sm text-slate-600">{m['ux8.selected_user']({ username: selectedUser.username, id: selectedUser.id })}</p>{/if}
 			{#if hidden.status === 'error'}
 				<AdminAlert message={translate(adminErrorKey(hidden.error, 'load_hidden'))} error={hidden.error} onretry={() => hidden.retry()} />
 			{:else}

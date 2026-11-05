@@ -31,6 +31,8 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 		`INSERT INTO library_access (library_id, user_id, granted_at) VALUES (10, 2, 1)`,
 		`INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at) VALUES
 			(101, 10, 'Visible', 'visible', 1, 1), (102, 10, 'Hidden', 'hidden', 1, 1)`,
+		`INSERT INTO book_files (id, book_id, sha256, format, size_bytes, original_filename, created_at)
+			VALUES (201, 101, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'pdf', 1, 'book.pdf', 1)`,
 		`INSERT INTO book_hidden (user_id, book_id, hidden_by, created_at) VALUES (2, 102, 1, 1)`,
 	}
 	for _, statement := range seed {
@@ -104,6 +106,25 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 		cookie, "https://books.example")
 	if missingTimestamp.Code != http.StatusBadRequest {
 		t.Fatalf("missing mutation timestamp = %d %s", missingTimestamp.Code, missingTimestamp.Body.String())
+	}
+	bookmarkPush := `{"mutations":[{"entity":"bookmarks","id":"018f0f7e-7b00-7000-8000-000000000001","op":"upsert","data":{"book_id":101,"book_file_id":201,"locator":{"type":"pdf","page":2},"position":0.5,"label":"Here"},"updated_at":100}]}`
+	bookmark := readingHTTPRequest(t, router, http.MethodPost, "/api/v1/sync/push", bookmarkPush, cookie, "https://books.example")
+	if bookmark.Code != http.StatusOK || !strings.Contains(bookmark.Body.String(), `"status":"applied"`) {
+		t.Fatalf("bookmark push = %d %s", bookmark.Code, bookmark.Body.String())
+	}
+	list := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/bookmarks?book_id=101&limit=1", "", cookie, "")
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"title":"Visible"`) ||
+		!strings.Contains(list.Body.String(), `"type":"pdf"`) || !strings.Contains(list.Body.String(), `"next_cursor":null`) {
+		t.Fatalf("bookmark list = %d %s", list.Code, list.Body.String())
+	}
+	for _, query := range []string{"limit=0", "limit=101", "book_id=0", "cursor=bad", "cursor=", "book_id=101&book_id=102", "unknown=1"} {
+		response := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/bookmarks?"+query, "", cookie, "")
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("bookmark query %q = %d %s", query, response.Code, response.Body.String())
+		}
+	}
+	if response := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/bookmarks", "", nil, ""); response.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated bookmarks = %d", response.Code)
 	}
 }
 

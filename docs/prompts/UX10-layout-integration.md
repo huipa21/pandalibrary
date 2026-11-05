@@ -1,6 +1,6 @@
 # UX10: Final layout wiring, visual verification, and regression gate
 
-- Status: Ready
+- Status: Done
 - Wave: 4; dependencies merged: UX1-UX9; migration: no
 - Branch/worktree: `task/ux10` / `..\pandalibrary-ux10`
 
@@ -61,3 +61,52 @@ truthfully; do not declare container/visual checks passed without running them.
 Close only after all requested behavior is integrated, tests pass, current
 docs match, no local dev launcher was committed, and the worktree contains
 only intended changes. Update your prompt/progress row/log with evidence.
+
+## Integration hand-off
+
+- Root footer renders UX9 `BuildVersion`; HOME retains the four primary
+  entries, with secondary/admin routes outside HOME. UX3 shelf navigation
+  has live counts and a shared native-modal creator with Escape/focus return.
+- Fixed cross-feature shelf membership refresh and system/custom page
+  rendering. Dashboard feed pagination now uses bounded SQL keysets.
+- Real-server tests share first-run credentials and run with one worker
+  against a unique temporary database/port. Actions time out after 10 seconds,
+  navigation after 20 seconds; the full verification run has an 8-minute cap.
+  Fixed stale fixtures after replacing the shell placeholder and adding the
+  build footer. Frontend builds complete before Go embed builds/tests.
+- Upgrade baseline checks users/library, shelf membership, highlights/notes,
+  reader settings, stored file metadata and exact file bytes. IndexedDB legacy
+  settings/notes preservation is checked separately by the sync unit suite.
+- Actual scratch-image checks include automatic commit stamping, no Git/PATH,
+  non-root execution, compressed size <=35 MiB, API/CLI provenance, health,
+  setup, migrations, shutdown and database/session persistence after restart.
+  Generated frontend output is excluded from the build context; `.dockerignore`
+  stays LF so Podman on Windows interprets its exclusions correctly.
+- Representative browser screenshots cover populated/empty dashboards,
+  account management, All Books/detail, shelves, bookmarks and notes in both
+  languages, plus desktop/mobile layouts and long bilingual shelf names.
+
+### Verified release gate (2026-11-05)
+
+- `task sqlc:check`, `task build`, `task lint`, `task test`: passed.
+- `pnpm --dir web check`: 0 errors/warnings; `pnpm --dir web test`:
+  26 files, 204 tests passed; `pnpm --dir web build`: passed.
+- `node scripts/build-binary.mjs --output <candidate>` followed by
+  `PANDA_E2E_BINARY=<candidate> pnpm --dir web exec playwright test
+  --global-timeout=480000 --reporter=line`: all 58 tests passed (2.7 minutes).
+  Real-server account/bookmark/shelf workflows supplement existing mocked
+  error/permission fixtures; no failing tests were skipped or retried away.
+- `PANDA_CANDIDATE_BINARY=<candidate> node web/scripts/upgrade-check.mjs`:
+  passed against the generated v1 baseline with all preservation fixtures.
+  No prior published release binary was available.
+- `node --test scripts/build.test.mjs`: 3 passed.
+- `CONTAINER_ENGINE=podman node web/scripts/container-check.mjs`: passed
+  against the actual non-root scratch image, 11.4 MiB compressed, including
+  retained account/session/library after restart. CLI/API stamps match the
+  checkout; the real browser verifies footer/full commit/date.
+- Inspected real account, populated bookmark/dashboard and narrow shelf
+  screenshots. Explicit locale changes verify Chinese rather than merely
+  naming English screenshots as Chinese. A focused real-shelf/locale run
+  also passed after this screenshot assertion was strengthened.
+- Current README, architecture/indexes and UX6/UX8 hand-offs are reconciled.
+  Historical W5 logs remain unchanged; its missing account UI is now supplied.

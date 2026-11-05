@@ -7,9 +7,9 @@
 	interface Props {
 		role: string;
 		pathname: string;
-		/** SHELVES slot. Defaults to the UX1 shelf links; UX3 passes `ShelfNavigation` here. */
+		/** SHELVES slot. Defaults to the UX1 shelf links. */
 		shelves?: Snippet;
-		/** Bottom footer slot reserved for UX9's `BuildVersion`; UX10 wires it. */
+		/** Bottom footer slot for build information. */
 		footer?: Snippet;
 		/** Account controls shown above the footer when the header cannot hold them. */
 		account?: Snippet;
@@ -47,7 +47,7 @@
 		</section>
 	</nav>
 	{@render account?.()}
-	<footer class="shrink-0 border-t border-white/10 px-6 py-3 text-xs text-zinc-500" data-slot="sidebar-footer">
+	<footer class="shrink-0 border-t border-white/10 px-6 py-3 text-xs text-zinc-300" data-slot="sidebar-footer">
 		{@render footer?.()}
 	</footer>
 </div>

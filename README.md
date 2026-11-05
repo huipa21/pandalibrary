@@ -57,6 +57,9 @@ logs. To create or reset an account from a host binary instead, use the interact
 
 Administrators can also manage accounts through the session-authenticated
 [`/api/v1/admin/users` API](docs/prompts/UX7-admin-users-api.md#ux8-api-hand-off).
+The **Admin -> User accounts** panel supports paged accounts, create/edit,
+disable/re-enable, deletion, password reset and credential revocation. Grants
+and hide lists select accounts by username/display name rather than guessed IDs.
 Password resets (including the CLI) and account disabling revoke all browser
 sessions and OPDS/KOReader app passwords. Devices must be issued new app passwords.
 Self-service administrator reset/revocation also signs the administrator out.
@@ -113,6 +116,14 @@ previous release is the rollback path.
   the PWA from a supported browser and explicitly download books for offline reading.
   Progress changes are queued offline and synced after reconnect; storage can be managed
   from the offline page/settings.
+- **Dashboard and bookmarks:** The signed-in home page has configurable reading
+  feeds and shelf sections, including an intentionally empty layout. The sidebar
+  contains All Books, Bookmarks, Notes, live shelf counts and the build version.
+  Its plus button creates manual or rule-based automatic shelves. Reader bookmarks
+  save exact PDF/CFI positions; Bookmarks opens, renames and deletes them across
+  books. Changes survive offline reload and synchronize after reconnect, isolated
+  by account. A bookmark whose original file is unavailable is not opened at a
+  guessed position.
 - **OPDS:** Create an `opds` app password in Settings and configure an OPDS client with
   the catalog URL `https://books.example.org/opds` and the PandaLibrary username plus
   that app password. OPDS uses HTTP Basic authentication; use HTTPS.
@@ -139,7 +150,8 @@ curl --fail https://books.example.org/healthz
 
 The release upgrade check seeds a database with an earlier release binary when that
 release has a Linux amd64 asset. Before the first release exists, it generates a v1-schema
-baseline with fixed test user/library data; later releases automatically use the previous
+baseline with fixed user/library, shelf membership, annotation, note, reader-setting
+and book-file fixtures; later releases automatically use the previous
 published binary.
 
 `pandalibrary version` reports `YYYYMMDD-HHmmss+<12-character-hash>`, using

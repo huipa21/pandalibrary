@@ -41,23 +41,6 @@ export async function listAdminUsers(options: RequestOptions = {}): Promise<Page
 	return api.request(buildAdminUsersPath(options), { signal: options.signal });
 }
 
-/** Collects every user for selectors, guarding against a repeated cursor. */
-export async function listAllAdminUsers(signal?: AbortSignal): Promise<User[]> {
-	const users: User[] = [];
-	const seen = new Set<string>();
-	let cursor: string | null = null;
-	do {
-		const page: Page<User> = await listAdminUsers({ cursor, limit: MAX_PAGE_SIZE, signal });
-		users.push(...page.items);
-		cursor = page.next_cursor;
-		if (cursor !== null) {
-			if (seen.has(cursor)) throw new Error('The users API returned a repeated pagination cursor.');
-			seen.add(cursor);
-		}
-	} while (cursor !== null);
-	return users;
-}
-
 export async function createUser(username: string, displayName: string, password: string, role: string, locale: string): Promise<User> {
 	return (
 		await api.request<{ user: User }>('/admin/users', {
@@ -82,15 +65,11 @@ export async function deleteUser(id: number): Promise<void> {
 }
 
 export async function resetUserPassword(id: number, password: string): Promise<void> {
-	await api.request<{ reset: boolean }>(`/admin/users/${id}/password`, { method: 'POST', body: { password } });
-}
-
-export async function revokeUserSessions(id: number): Promise<void> {
-	await api.request<{ revoked: boolean }>(`/admin/users/${id}/sessions`, { method: 'POST' });
+	await api.request<{ reset: boolean }>(`/admin/users/${id}/reset-password`, { method: 'POST', body: { password } });
 }
 
 export async function revokeUserCredentials(id: number): Promise<void> {
-	await api.request<{ revoked: boolean }>(`/admin/users/${id}/credentials`, { method: 'POST' });
+	await api.request<{ revoked: boolean }>(`/admin/users/${id}/revoke-credentials`, { method: 'POST', body: {} });
 }
 
 export async function listAdminLibraries(options: RequestOptions = {}): Promise<Page<Library>> {

@@ -28,7 +28,9 @@
 		try {
 			const [all, viewer] = await Promise.all([listAllShelves(current.signal), getSessionViewer()]);
 			if (current.signal.aborted) return;
-			shelves = all.filter((shelf) => offersShelfManagement(shelf, viewer));
+			shelves = all.filter((shelf) =>
+				offersShelfManagement(shelf, viewer) && shelf.mode !== 'automatic' && shelf.system_key !== 'unshelved'
+			);
 			if (!shelves.some((shelf) => String(shelf.id) === selected)) selected = '';
 			status = 'ready';
 		} catch (cause) {
@@ -47,6 +49,7 @@
 		error = '';
 		try {
 			await addBookToShelf(shelf.id, bookId);
+			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
 			notice = m['shelves.book.added']({ name: shelf.name });
 		} catch (cause) {
 			error = translate(shelfErrorKey(cause, 'add_book'));

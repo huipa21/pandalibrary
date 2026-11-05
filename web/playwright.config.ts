@@ -33,6 +33,7 @@ if (realServer) {
 }
 
 export default defineConfig({
+	workers: realServer ? 1 : undefined,
 	globalSetup: realServer ? './scripts/e2e-server.mjs' : undefined,
 	webServer: realServer
 		? undefined
@@ -41,6 +42,6 @@ export default defineConfig({
 				url: origin,
 				reuseExistingServer: !process.env.CI
 			},
-	use: { baseURL: origin },
+	use: { baseURL: origin, actionTimeout: 10_000, navigationTimeout: 20_000 },
 	testMatch: '**/*.e2e.{ts,js}'
 });

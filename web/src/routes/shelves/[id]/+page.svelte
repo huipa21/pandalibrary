@@ -45,6 +45,8 @@
 	let requestVersion = 0;
 
 	const manageable = $derived(shelf !== null && offersShelfManagement(shelf, viewer));
+	const editable = $derived(manageable && !shelf?.system_key);
+	const membershipEditable = $derived(manageable && shelf?.mode !== 'automatic' && shelf?.system_key !== 'unshelved');
 
 	$effect(() => {
 		const id = page.params.id ?? '';
@@ -116,6 +118,7 @@
 		notice = '';
 		try {
 			shelf = await updateShelf(shelf.id, { name: value.name, description: value.description });
+			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
 			editing = false;
 			notice = m['shelves.edit.success']();
 			return null;
@@ -132,6 +135,7 @@
 		notice = '';
 		try {
 			await deleteShelf(shelf.id);
+			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
 			await goto('/shelves');
 		} catch (cause) {
 			actionError = translate(shelfErrorKey(cause, 'delete'));
@@ -148,6 +152,7 @@
 		notice = '';
 		try {
 			await removeBookFromShelf(id, book.id);
+			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
 			notice = m['shelves.books.removed']();
 			await refreshAfterMembershipChange(id);
 		} catch (cause) {
@@ -177,6 +182,7 @@
 		addError = '';
 		try {
 			await addBookToShelf(id, result.id);
+			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
 			addNotice = m['shelves.add.added']({ title: result.title });
 			await refreshAfterMembershipChange(id);
 		} catch (cause) {
@@ -218,7 +224,7 @@
 		{#if notice}<p class="rounded-md bg-green-50 p-3 text-green-800" role="status">{notice}</p>{/if}
 		{#if actionError}<p class="rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">{actionError}</p>{/if}
 
-		{#if manageable}
+		{#if editable}
 			<section class="space-y-4 rounded-lg border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="edit-shelf-heading">
 				<h2 id="edit-shelf-heading" class="text-xl font-semibold">{m['shelves.edit.heading']()}</h2>
 				{#if editing}
@@ -279,7 +285,7 @@
 					{#each books.items as book (book.id)}
 						<BookCard {book} {mode}>
 							{#snippet actions()}
-								{#if manageable}
+								{#if membershipEditable}
 									<button
 										class="text-sm text-red-800 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
 										aria-label={m['shelves.books.remove_label']({ title: book.title })}
@@ -313,7 +319,7 @@
 			{/if}
 		</section>
 
-		{#if manageable}
+		{#if membershipEditable}
 			<section class="space-y-4 rounded-lg border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="add-books-heading">
 				<h2 id="add-books-heading" class="text-xl font-semibold">{m['shelves.add.heading']()}</h2>
 				<form role="search" aria-labelledby="add-books-heading" class="flex flex-wrap items-end gap-3" onsubmit={findCandidates} novalidate>

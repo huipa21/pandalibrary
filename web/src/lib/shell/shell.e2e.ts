@@ -15,6 +15,13 @@ async function authenticate(page: Page, role = 'user', locale = 'en') {
 		}],
 		next_cursor: null
 	} }));
+	for (const [key, id] of [['unshelved', 8], ['favorites', 9]] as const) {
+		await page.route(`**/api/v1/shelves/system/${key}`, (route) => route.fulfill({ json: { shelf: {
+			id, kind: 'private', mode: 'system', system_key: key, owner_id: 1, name: key,
+			description: null, created_by: 1, visible_book_count: 0,
+			created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z'
+		} } }));
+	}
 	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: {
 		items: [{ id: 1, name: 'Fiction', slug: 'fiction', created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z' }],
 		next_cursor: null
@@ -72,7 +79,8 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 
 	const shelves = sidebar.getByRole('region', { name: 'Shelves' });
 	await expect(shelves.getByRole('link', { name: /Weekend reads/ })).toHaveAttribute('href', '/shelves/7');
-	await expect(shelves.getByRole('link', { name: 'New shelf' })).toHaveAttribute('href', '/shelves');
+	await expect(shelves.getByRole('button', { name: 'New shelf' })).toBeVisible();
+	await expect(shelves.getByRole('link', { name: /Favorites/ })).toHaveCount(1);
 	await expect(page.locator('[data-slot="sidebar-footer"]')).toBeVisible();
 
 	await expect(page.getByRole('heading', { name: 'All Books', level: 1 })).toBeVisible();
@@ -111,7 +119,7 @@ test('administrators see the Admin entry with localized Chinese navigation', asy
 	const sidebar = page.getByRole('navigation', { name: '主导航' });
 	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', '书签', '笔记']);
 	await expect(sidebar.getByRole('link', { name: '管理', exact: true })).toHaveAttribute('href', '/admin');
-	await expect(sidebar.getByRole('link', { name: '新建书架' })).toBeVisible();
+	await expect(sidebar.getByRole('button', { name: '新建书架' })).toBeVisible();
 	await expect(sidebar.getByRole('link', { name: '仪表盘' })).toHaveAttribute('aria-current', 'page');
 });
 

@@ -5,6 +5,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { setLocale, type Locale } from '#lib/paraglide/runtime.js';
 	import { ApiError, api } from '#lib/api/client.js';
+	import BuildVersion from '#lib/buildinfo/BuildVersion.svelte';
 	import AppShell from '#lib/shell/AppShell.svelte';
 	import ShelfNavigation from '#lib/shelves/ShelfNavigation.svelte';
 	import { activateOffline, deactivateOffline, offlineStatus, rememberedViewer, syncNow } from '#lib/sync/client.js';
@@ -115,6 +116,9 @@
 <AppShell pathname={page.url.pathname} {viewer} onlogout={logout}>
 	{#snippet shelves()}
 		<ShelfNavigation pathname={page.url.pathname} />
+	{/snippet}
+	{#snippet footer()}
+		<BuildVersion />
 	{/snippet}
 
 	{#if authError}

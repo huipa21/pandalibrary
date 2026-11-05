@@ -352,6 +352,11 @@ func (m *Maintenance) cleanupExpiredAt(ctx context.Context, instant time.Time) e
 	`, tombstoneCutoff); err != nil {
 		return rollback(tx, fmt.Errorf("prune highlight tombstones: %w", err))
 	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM bookmarks WHERE deleted_at IS NOT NULL AND deleted_at < ?
+	`, tombstoneCutoff); err != nil {
+		return rollback(tx, fmt.Errorf("prune bookmark tombstones: %w", err))
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit expired-state cleanup: %w", err)
 	}

@@ -1,4 +1,4 @@
-import { api, type JsonValue } from '#lib/api/client.js';
+import { api } from '#lib/api/client.js';
 import type { Bookmark } from '#lib/reader/types.js';
 
 export interface BookmarksListResponse {
@@ -6,19 +6,9 @@ export interface BookmarksListResponse {
 	next_cursor: string | null;
 }
 
-export interface BookmarkItem {
-	id: string;
-	book_id: number;
-	book_file_id: number | null;
-	locator: JsonValue;
-	position: number;
-	label: string;
-	chapter: string | null;
-	created_at: string;
-	updated_at: string;
-	deleted_at: string | null;
-	rev: number;
-	book?: BookmarkBookSummary;
+export interface BookmarkItem extends Bookmark {
+	book: BookmarkBookSummary | null;
+	availableOffline?: boolean;
 }
 
 export interface BookmarkBookSummary {
@@ -41,17 +31,20 @@ export function bookmarkLabelIssue(label: string): BookmarkLabelIssue | null {
 }
 
 export async function listBookmarks(
-	limit: number = 20,
+	limit = 20,
 	cursor?: string,
 	bookId?: number,
 	signal?: AbortSignal
 ): Promise<BookmarksListResponse> {
+	if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 ||
+		(bookId !== undefined && (!Number.isSafeInteger(bookId) || bookId < 1))) {
+		throw new RangeError('Invalid bookmark page options.');
+	}
 	const params = new URLSearchParams();
-	params.set('limit', Math.max(1, Math.min(100, limit)).toString());
+	params.set('limit', limit.toString());
 	if (cursor) params.set('cursor', cursor);
-	if (bookId) params.set('book_id', bookId.toString());
-	
-	return api.request<BookmarksListResponse>(`/api/v1/me/bookmarks?${params}`, { signal });
+	if (bookId !== undefined) params.set('book_id', bookId.toString());
+	return api.request<BookmarksListResponse>(`/me/bookmarks?${params}`, { signal });
 }
 
 export function bookmarkPositionPercent(position: number): number | null {

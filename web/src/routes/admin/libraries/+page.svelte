@@ -2,7 +2,7 @@
 	import { onDestroy, onMount, tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
-	import IdForm from '#lib/admin/IdForm.svelte';
+	import UserSelector from '#lib/admin/users/UserSelector.svelte';
 	import LibraryForm from '#lib/admin/LibraryForm.svelte';
 	import PagerFooter from '#lib/admin/PagerFooter.svelte';
 	import {
@@ -241,14 +241,13 @@
 				<button type="button" class={smallSecondaryButton} onclick={() => selectLibrary(null)}>{m['admin.access.close']()}</button>
 			</div>
 			<p class={warningBox}>{m['admin.access.admin_note']()}</p>
-			<IdForm
+			<UserSelector
 				idPrefix="grant-user"
 				label={m['admin.access.user_id']()}
-				hint={m['admin.access.user_id_hint']()}
 				submitLabel={m['admin.access.grant']()}
 				busyLabel={m['admin.access.granting']()}
 				resetOnSuccess
-				onsubmit={grant}
+				onsubmit={(user) => grant(user.id)}
 			/>
 			{#if accessNotice}<p class="text-sm text-green-700" role="status">{accessNotice}</p>{/if}
 			{#if accessError}<AdminAlert message={accessError} />{/if}

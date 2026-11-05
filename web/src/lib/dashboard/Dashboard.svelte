@@ -39,8 +39,6 @@
 	let createdShelfId: number | null = null;
 	let shelfStates = $state<Record<string, ShelfState>>({});
 	let creatorOpen = $state(false);
-	let creatorHost = $state<HTMLDivElement | null>(null);
-	let creatorTrigger: HTMLElement | null = null;
 	let requestVersion = 0;
 	let configVersion = 0;
 	let metadataVersion = 0;
@@ -259,33 +257,12 @@
 		}
 	}
 
-	async function openShelfCreator() {
-		creatorTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+	function openShelfCreator() {
 		creatorOpen = true;
-		await tick();
-		const dialog = creatorHost?.querySelector('dialog');
-		if (!dialog || !mounted || !creatorOpen) {
-			console.error('The shelf creation dialog is unavailable.');
-			creatorOpen = false;
-			actionError = m['ux5.shelves_failed']();
-			return;
-		}
-		// UX3 renders an open dialog; promote it to a native modal for focus containment.
-		dialog.close();
-		dialog.setAttribute('aria-label', m['ux3.shelves.create_dialog_title']());
-		dialog.showModal();
-		dialog.addEventListener('keydown', (event) => {
-			if (event.key !== 'Escape') return;
-			event.preventDefault();
-			event.stopPropagation();
-			if (!dialog.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled) closeShelfCreator();
-		}, { capture: true });
-		dialog.querySelector<HTMLElement>('input:not([disabled])')?.focus();
 	}
 
 	function closeShelfCreator() {
 		creatorOpen = false;
-		void tick().then(() => creatorTrigger?.focus());
 	}
 
 	function shelfCreated(shelf: Shelf) {
@@ -342,7 +319,7 @@
 			<p class="mt-2 text-slate-600">{m['ux5.description']()}</p>
 		</div>
 		<div class="flex items-center gap-2">
-			<button class="rounded-md border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700" onclick={() => void openShelfCreator()}>{m['ux5.create_shelf']()}</button>
+			<button class="rounded-md border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700" onclick={openShelfCreator}>{m['ux5.create_shelf']()}</button>
 			<button bind:this={gear} class="grid size-10 place-items-center rounded-md border border-slate-300 text-slate-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50" aria-label={m['ux5.configure']()} title={m['ux5.configure']()} disabled={!layout?.valid || loading || saving} onclick={() => void openConfiguration()}>
 				<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" /><path d="m19.4 15 1.1 1.9-2 2-1.9-1.1a8.6 8.6 0 0 1-2 .8l-.5 2.2h-2.8l-.5-2.2a8.6 8.6 0 0 1-2-.8l-1.9 1.1-2-2L6 15a8.6 8.6 0 0 1-.8-2L3 12.5V9.7l2.2-.5a8.6 8.6 0 0 1 .8-2L4.9 5.3l2-2 1.9 1.1a8.6 8.6 0 0 1 2-.8l.5-2.1h2.8l.5 2.1a8.6 8.6 0 0 1 2 .8l1.9-1.1 2 2-1.1 1.9a8.6 8.6 0 0 1 .8 2l2.1.5v2.8l-2.1.5a8.6 8.6 0 0 1-.8 2Z" /></svg>
 			</button>
@@ -455,7 +432,7 @@
 				{#if shelfPager.hasMore}
 					<button class="text-sm font-medium text-emerald-800 underline focus-visible:outline-2 disabled:opacity-50" disabled={saving || shelfPager.loadingMore} onclick={() => void moreShelves()}>{m['ux5.shelves_more']()}</button>
 				{/if}
-				<button class="block text-sm font-medium text-emerald-800 underline focus-visible:outline-2" disabled={saving} onclick={() => void openShelfCreator()}>{m['ux5.create_shelf']()}</button>
+				<button class="block text-sm font-medium text-emerald-800 underline focus-visible:outline-2" disabled={saving} onclick={openShelfCreator}>{m['ux5.create_shelf']()}</button>
 			</div>
 
 			<div class="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-4">
@@ -467,9 +444,7 @@
 {/if}
 
 {#if creatorOpen}
-	<div bind:this={creatorHost}>
-		<ShelfCreateDialog open={true} onclose={closeShelfCreator} oncreated={shelfCreated} />
-	</div>
+	<ShelfCreateDialog open={true} onclose={closeShelfCreator} oncreated={shelfCreated} />
 {/if}
 
 <style>

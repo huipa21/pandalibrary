@@ -77,6 +77,22 @@ flowchart LR
 One process handles everything. There are no external services other than the optional
 metadata providers.
 
+The authenticated root is the configurable dashboard. A persistent sidebar
+contains the four HOME destinations, live system/custom shelves, shelf creation
+and the public build stamp; narrow viewports use a focus-trapped drawer.
+Dashboard feeds paginate through visibility-filtered SQL keysets, not an
+in-memory list of every book. Account administration is confined to the admin
+area, with paged identity selectors for grants/hide lists and server-authoritative
+lockout guards.
+
+Saved-position bookmarks are distinct from Favorites and annotations. Their
+UUIDs, file-specific PDF/CFI locators, revisions and deletion tombstones use the
+same push/pull and account-scoped durable outbox as existing reading state.
+The IndexedDB generic row/outbox stores remain schema version 1; old snapshots
+without bookmarks mean an empty bookmark collection without discarding notes,
+highlights or settings. Self password reset/revocation retires the active offline
+account before redirecting to login.
+
 ## 3. Repository layout
 
 ```

@@ -249,6 +249,9 @@ export async function persistPull(
 		for (const value of response.highlights) {
 			await result(store.put({ account, entity: 'highlights', key: value.id, value } satisfies StoredRow));
 		}
+		for (const value of response.bookmarks) {
+			await result(store.put({ account, entity: 'bookmarks', key: value.id, value } satisfies StoredRow));
+		}
 		for (const value of response.notes) {
 			await result(store.put({ account, entity: 'notes', key: value.id, value } satisfies StoredRow));
 		}

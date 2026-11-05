@@ -176,13 +176,18 @@ func TestCleanupExpiredBoundariesAndSyncInvariants(t *testing.T) {
 		VALUES ('00000000-0000-7000-8000-000000000002', 1, 1,
 			'00000000-0000-7000-8000-000000000001', ?, ?, ?, 9)
 	`, tombstone, tombstone, tombstone)
+	exec(`
+		INSERT INTO bookmarks (id, user_id, book_id, locator, created_at, updated_at, deleted_at, rev)
+		VALUES ('00000000-0000-7000-8000-000000000003', 1, 1, '{}', ?, ?, ?, 10),
+		       ('00000000-0000-7000-8000-000000000004', 1, 1, '{}', ?, ?, NULL, 11)
+	`, tombstone, tombstone, tombstone, now, now)
 	exec(`INSERT INTO highlights_fts (rowid, text, user_id, book_id) VALUES (1, 'old text', 1, 1)`)
 	exec(`INSERT INTO notes_fts (rowid, body, highlight_text, user_id, book_id) VALUES (1, 'old', 'old text', 1, 1)`)
 	if err := fixture.service.cleanupExpired(ctx); err != nil {
 		t.Fatal(err)
 	}
 	var expiredSessions, retainedSessions, expiredMetadata, retainedMetadata int
-	var completedImports, activeImports, highlights, notes, searchRows, syncRevision int
+	var completedImports, activeImports, highlights, notes, bookmarks, searchRows, syncRevision int
 	for _, check := range []struct {
 		query string
 		args  []any
@@ -196,6 +201,7 @@ func TestCleanupExpiredBoundariesAndSyncInvariants(t *testing.T) {
 		{`SELECT count(*) FROM import_jobs WHERE status='processing'`, nil, &activeImports},
 		{`SELECT count(*) FROM highlights`, nil, &highlights},
 		{`SELECT count(*) FROM notes`, nil, &notes},
+		{`SELECT count(*) FROM bookmarks`, nil, &bookmarks},
 		{`SELECT (SELECT count(*) FROM highlights_fts) + (SELECT count(*) FROM notes_fts)`, nil, &searchRows},
 		{`SELECT value FROM sync_counter WHERE id=1`, nil, &syncRevision},
 	} {
@@ -204,10 +210,10 @@ func TestCleanupExpiredBoundariesAndSyncInvariants(t *testing.T) {
 		}
 	}
 	if expiredSessions != 0 || retainedSessions != 1 || expiredMetadata != 0 || retainedMetadata != 1 ||
-		completedImports != 0 || activeImports != 1 || highlights != 0 || notes != 0 || searchRows != 0 || syncRevision != 0 {
-		t.Fatalf("cleanup results: sessions=%d/%d metadata=%d/%d imports=%d/%d tombstones=%d/%d fts=%d rev=%d",
+		completedImports != 0 || activeImports != 1 || highlights != 0 || notes != 0 || bookmarks != 1 || searchRows != 0 || syncRevision != 0 {
+		t.Fatalf("cleanup results: sessions=%d/%d metadata=%d/%d imports=%d/%d tombstones=%d/%d bookmarks=%d fts=%d rev=%d",
 			expiredSessions, retainedSessions, expiredMetadata, retainedMetadata, completedImports,
-			activeImports, highlights, notes, searchRows, syncRevision)
+			activeImports, highlights, notes, bookmarks, searchRows, syncRevision)
 	}
 }
 

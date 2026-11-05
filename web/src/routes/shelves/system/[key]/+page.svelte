@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { page } from '$app/state';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
@@ -13,20 +13,32 @@
 	const pager = new CursorPager<Book>();
 	let shelf = $state<Shelf | null>(null);
 	let error = $state('');
+	let requestVersion = 0;
 
 	const key = $derived(page.params.key as string);
 
-	onMount(() => {
-		void loadShelf();
+	$effect(() => {
+		const current = key;
+		untrack(() => void loadShelf(current));
 	});
 
-	onDestroy(() => pager.dispose());
+	onDestroy(() => {
+		requestVersion += 1;
+		pager.dispose();
+	});
 
-	async function loadShelf() {
+	async function loadShelf(current: string) {
+		const version = ++requestVersion;
+		error = '';
+		shelf = null;
+		void pager.reset(null);
 		try {
-			shelf = await getSystemShelf(key);
-			await pager.reset((cursor, signal) => listSystemShelfBooks(key, { cursor, signal }));
+			const loaded = await getSystemShelf(current);
+			if (version !== requestVersion) return;
+			shelf = loaded;
+			await pager.reset((cursor, signal) => listSystemShelfBooks(current, { cursor, signal }));
 		} catch (cause) {
+			if (version !== requestVersion) return;
 			error = translate(shelfErrorKey(cause, 'load'));
 			console.error('Failed to load system shelf:', cause);
 		}
@@ -45,7 +57,7 @@
 	{#if error}
 		<div class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">
 			<p>{error}</p>
-			<button class="mt-2 underline underline-offset-4 focus-visible:outline-2" onclick={() => void loadShelf()}>{m['shelves.retry']()}</button>
+			<button class="mt-2 underline underline-offset-4 focus-visible:outline-2" onclick={() => void loadShelf(key)}>{m['shelves.retry']()}</button>
 		</div>
 	{:else if !shelf}
 		<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>

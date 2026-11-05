@@ -1,19 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { realAdmin, signInRealAdmin } from '../real-auth.js';
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
 
 test('real server persists configured shelves and an empty layout across devices', async ({ page, browser }) => {
 	test.setTimeout(90_000);
-	const tokenFile = process.env.PANDA_E2E_SETUP_TOKEN_FILE;
-	if (!tokenFile) throw new Error('Real-server setup token file is not configured.');
-	const token = (await readFile(tokenFile, 'utf8')).trim();
-	await page.goto('/setup');
-	await page.getByLabel('One-time setup token').fill(token);
-	await page.getByLabel('Username').fill('dashboard-admin');
-	await page.getByLabel('Password').fill('dashboard-test-password');
-	await page.getByRole('button', { name: 'Create administrator' }).click();
-	await expect(page).toHaveURL('/');
+	await signInRealAdmin(page);
 	await expect(page.locator('[data-dashboard-section]')).toHaveCount(3);
 
 	await page.getByRole('button', { name: 'Configure dashboard' }).click();
@@ -42,8 +34,8 @@ test('real server persists configured shelves and an empty layout across devices
 	try {
 		const otherPage = await other.newPage();
 		await otherPage.goto('/login');
-		await otherPage.getByLabel('Username').fill('dashboard-admin');
-		await otherPage.getByLabel('Password').fill('dashboard-test-password');
+		await otherPage.getByLabel('Username').fill(realAdmin.username);
+		await otherPage.getByLabel('Password').fill(realAdmin.password);
 		await otherPage.getByRole('button', { name: 'Sign in' }).click();
 		await expect(otherPage).toHaveURL('/');
 		await expect(otherPage.getByRole('heading', { name: 'Real server shelf' })).toBeVisible();

@@ -10,10 +10,15 @@ import (
 )
 
 const dashboardContinueReadingBooks = `-- name: DashboardContinueReadingBooks :many
-SELECT b.id FROM books b
+SELECT b.id, rp.updated_at AS sort_time FROM books b
 JOIN reading_progress rp ON rp.book_id = b.id
 WHERE rp.user_id = ?1
 AND rp.percentage > 0 AND rp.percentage < 1
+AND NOT EXISTS (
+    SELECT 1 FROM user_books ub
+    WHERE ub.user_id = ?1 AND ub.book_id = b.id
+      AND ub.status IN ('finished', 'abandoned')
+)
 AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -22,27 +27,45 @@ AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = ?1
 )
-ORDER BY rp.updated_at DESC, b.id ASC
+AND (CAST(?3 AS INTEGER) = 0
+    OR rp.updated_at < CAST(?4 AS INTEGER)
+    OR (rp.updated_at = CAST(?4 AS INTEGER) AND b.id < ?3))
+ORDER BY rp.updated_at DESC, b.id DESC
+LIMIT CAST(?5 AS INTEGER)
 `
 
 type DashboardContinueReadingBooksParams struct {
-	UserID  int64
-	IsAdmin int64
+	UserID    int64
+	IsAdmin   int64
+	AfterID   int64
+	AfterTime int64
+	PageSize  int64
 }
 
-func (q *Queries) DashboardContinueReadingBooks(ctx context.Context, arg DashboardContinueReadingBooksParams) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, dashboardContinueReadingBooks, arg.UserID, arg.IsAdmin)
+type DashboardContinueReadingBooksRow struct {
+	ID       int64
+	SortTime int64
+}
+
+func (q *Queries) DashboardContinueReadingBooks(ctx context.Context, arg DashboardContinueReadingBooksParams) ([]DashboardContinueReadingBooksRow, error) {
+	rows, err := q.db.QueryContext(ctx, dashboardContinueReadingBooks,
+		arg.UserID,
+		arg.IsAdmin,
+		arg.AfterID,
+		arg.AfterTime,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int64{}
+	items := []DashboardContinueReadingBooksRow{}
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var i DashboardContinueReadingBooksRow
+		if err := rows.Scan(&i.ID, &i.SortTime); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -54,7 +77,7 @@ func (q *Queries) DashboardContinueReadingBooks(ctx context.Context, arg Dashboa
 }
 
 const dashboardReadBooks = `-- name: DashboardReadBooks :many
-SELECT b.id FROM books b
+SELECT b.id, CAST(COALESCE(ub.finished_at, ub.updated_at) AS INTEGER) AS sort_time FROM books b
 JOIN user_books ub ON ub.user_id = ?1 AND ub.book_id = b.id AND ub.status = 'finished'
 WHERE (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -64,27 +87,45 @@ AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = ?1
 )
-ORDER BY COALESCE(ub.finished_at, ub.updated_at) DESC, b.id ASC
+AND (CAST(?3 AS INTEGER) = 0
+    OR COALESCE(ub.finished_at, ub.updated_at) < CAST(?4 AS INTEGER)
+    OR (COALESCE(ub.finished_at, ub.updated_at) = CAST(?4 AS INTEGER) AND b.id < ?3))
+ORDER BY COALESCE(ub.finished_at, ub.updated_at) DESC, b.id DESC
+LIMIT CAST(?5 AS INTEGER)
 `
 
 type DashboardReadBooksParams struct {
-	UserID  int64
-	IsAdmin int64
+	UserID    int64
+	IsAdmin   int64
+	AfterID   int64
+	AfterTime int64
+	PageSize  int64
 }
 
-func (q *Queries) DashboardReadBooks(ctx context.Context, arg DashboardReadBooksParams) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, dashboardReadBooks, arg.UserID, arg.IsAdmin)
+type DashboardReadBooksRow struct {
+	ID       int64
+	SortTime int64
+}
+
+func (q *Queries) DashboardReadBooks(ctx context.Context, arg DashboardReadBooksParams) ([]DashboardReadBooksRow, error) {
+	rows, err := q.db.QueryContext(ctx, dashboardReadBooks,
+		arg.UserID,
+		arg.IsAdmin,
+		arg.AfterID,
+		arg.AfterTime,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int64{}
+	items := []DashboardReadBooksRow{}
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var i DashboardReadBooksRow
+		if err := rows.Scan(&i.ID, &i.SortTime); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -96,7 +137,7 @@ func (q *Queries) DashboardReadBooks(ctx context.Context, arg DashboardReadBooks
 }
 
 const dashboardRecentlyAddedBooks = `-- name: DashboardRecentlyAddedBooks :many
-SELECT b.id FROM books b
+SELECT b.id, b.created_at AS sort_time FROM books b
 WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?2
@@ -105,27 +146,45 @@ AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = ?2
 )
-ORDER BY b.created_at DESC, b.id ASC
+AND (CAST(?3 AS INTEGER) = 0
+    OR b.created_at < CAST(?4 AS INTEGER)
+    OR (b.created_at = CAST(?4 AS INTEGER) AND b.id < ?3))
+ORDER BY b.created_at DESC, b.id DESC
+LIMIT CAST(?5 AS INTEGER)
 `
 
 type DashboardRecentlyAddedBooksParams struct {
-	IsAdmin int64
-	UserID  int64
+	IsAdmin   int64
+	UserID    int64
+	AfterID   int64
+	AfterTime int64
+	PageSize  int64
 }
 
-func (q *Queries) DashboardRecentlyAddedBooks(ctx context.Context, arg DashboardRecentlyAddedBooksParams) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, dashboardRecentlyAddedBooks, arg.IsAdmin, arg.UserID)
+type DashboardRecentlyAddedBooksRow struct {
+	ID       int64
+	SortTime int64
+}
+
+func (q *Queries) DashboardRecentlyAddedBooks(ctx context.Context, arg DashboardRecentlyAddedBooksParams) ([]DashboardRecentlyAddedBooksRow, error) {
+	rows, err := q.db.QueryContext(ctx, dashboardRecentlyAddedBooks,
+		arg.IsAdmin,
+		arg.UserID,
+		arg.AfterID,
+		arg.AfterTime,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int64{}
+	items := []DashboardRecentlyAddedBooksRow{}
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var i DashboardRecentlyAddedBooksRow
+		if err := rows.Scan(&i.ID, &i.SortTime); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -137,7 +196,7 @@ func (q *Queries) DashboardRecentlyAddedBooks(ctx context.Context, arg Dashboard
 }
 
 const dashboardUnreadBooks = `-- name: DashboardUnreadBooks :many
-SELECT b.id FROM books b
+SELECT b.id, b.title AS sort_title FROM books b
 LEFT JOIN user_books ub ON ub.user_id = ?1 AND ub.book_id = b.id
 WHERE (ub.user_id IS NULL OR ub.status = 'unread')
 AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
@@ -148,27 +207,46 @@ AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = ?1
 )
+AND (CAST(?3 AS INTEGER) = 0
+    OR b.title COLLATE NOCASE > CAST(?4 AS TEXT) COLLATE NOCASE
+    OR (b.title COLLATE NOCASE = CAST(?4 AS TEXT) COLLATE NOCASE
+        AND b.id > ?3))
 ORDER BY b.title COLLATE NOCASE, b.id ASC
+LIMIT CAST(?5 AS INTEGER)
 `
 
 type DashboardUnreadBooksParams struct {
-	UserID  int64
-	IsAdmin int64
+	UserID     int64
+	IsAdmin    int64
+	AfterID    int64
+	AfterTitle string
+	PageSize   int64
 }
 
-func (q *Queries) DashboardUnreadBooks(ctx context.Context, arg DashboardUnreadBooksParams) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, dashboardUnreadBooks, arg.UserID, arg.IsAdmin)
+type DashboardUnreadBooksRow struct {
+	ID        int64
+	SortTitle string
+}
+
+func (q *Queries) DashboardUnreadBooks(ctx context.Context, arg DashboardUnreadBooksParams) ([]DashboardUnreadBooksRow, error) {
+	rows, err := q.db.QueryContext(ctx, dashboardUnreadBooks,
+		arg.UserID,
+		arg.IsAdmin,
+		arg.AfterID,
+		arg.AfterTitle,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int64{}
+	items := []DashboardUnreadBooksRow{}
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var i DashboardUnreadBooksRow
+		if err := rows.Scan(&i.ID, &i.SortTitle); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -180,7 +258,7 @@ func (q *Queries) DashboardUnreadBooks(ctx context.Context, arg DashboardUnreadB
 }
 
 const dashboardWantToReadBooks = `-- name: DashboardWantToReadBooks :many
-SELECT b.id FROM books b
+SELECT b.id, ub.updated_at AS sort_time FROM books b
 JOIN user_books ub ON ub.user_id = ?1 AND ub.book_id = b.id AND ub.status = 'want_to_read'
 WHERE (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -190,27 +268,45 @@ AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = ?1
 )
-ORDER BY ub.updated_at DESC, b.id ASC
+AND (CAST(?3 AS INTEGER) = 0
+    OR ub.updated_at < CAST(?4 AS INTEGER)
+    OR (ub.updated_at = CAST(?4 AS INTEGER) AND b.id < ?3))
+ORDER BY ub.updated_at DESC, b.id DESC
+LIMIT CAST(?5 AS INTEGER)
 `
 
 type DashboardWantToReadBooksParams struct {
-	UserID  int64
-	IsAdmin int64
+	UserID    int64
+	IsAdmin   int64
+	AfterID   int64
+	AfterTime int64
+	PageSize  int64
 }
 
-func (q *Queries) DashboardWantToReadBooks(ctx context.Context, arg DashboardWantToReadBooksParams) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, dashboardWantToReadBooks, arg.UserID, arg.IsAdmin)
+type DashboardWantToReadBooksRow struct {
+	ID       int64
+	SortTime int64
+}
+
+func (q *Queries) DashboardWantToReadBooks(ctx context.Context, arg DashboardWantToReadBooksParams) ([]DashboardWantToReadBooksRow, error) {
+	rows, err := q.db.QueryContext(ctx, dashboardWantToReadBooks,
+		arg.UserID,
+		arg.IsAdmin,
+		arg.AfterID,
+		arg.AfterTime,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int64{}
+	items := []DashboardWantToReadBooksRow{}
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var i DashboardWantToReadBooksRow
+		if err := rows.Scan(&i.ID, &i.SortTime); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

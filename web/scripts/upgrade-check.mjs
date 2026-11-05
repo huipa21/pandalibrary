@@ -1,10 +1,10 @@
 import { execFile, spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
-import { argon2Sync } from 'node:crypto';
+import { argon2Sync, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 
 const candidate = process.env.PANDA_CANDIDATE_BINARY;
@@ -15,6 +15,9 @@ const dataDir = await mkdtemp(join(tmpdir(), 'pandalibrary-upgrade-'));
 const logs = new Map();
 let active;
 const execute = promisify(execFile);
+const fixtureBytes = Buffer.from('%PDF-1.4\nupgrade-preserved-file\n%%EOF\n');
+const fixtureHash = createHash('sha256').update(fixtureBytes).digest('hex');
+const fixturePath = join(dataDir, 'files', fixtureHash.slice(0, 2), `${fixtureHash}.pdf`);
 
 async function createBaseline() {
 	const migration = await readFile(new URL('../../internal/db/migrations/00001_init.sql', import.meta.url), 'utf8');
@@ -45,10 +48,30 @@ async function createBaseline() {
 		database.exec(`
 			INSERT INTO libraries (name, slug, created_at, updated_at)
 			VALUES ('Upgrade Fixture', 'upgrade-fixture', 1700000000000, 1700000000000);
+			INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at)
+			VALUES (1, 1, 'Preserved book', 'preserved book', 1700000000000, 1700000000000);
+			INSERT INTO shelves (id, kind, owner_id, name, created_by, created_at, updated_at)
+			VALUES (1, 'private', 1, 'Preserved shelf', 1, 1700000000000, 1700000000000);
+			INSERT INTO shelf_books (shelf_id, book_id, position, added_by, added_at)
+			VALUES (1, 1, 0, 1, 1700000000000);
+			INSERT INTO highlights (id, user_id, book_id, locator, text, created_at, updated_at, rev)
+			VALUES ('018bcfe5-6800-7000-8000-000000000001', 1, 1, '{"type":"pdf","page":1}',
+				'Preserved annotation', 1700000000000, 1700000000000, 1);
+			INSERT INTO notes (id, user_id, book_id, highlight_id, body_md, created_at, updated_at, rev)
+			VALUES ('018bcfe5-6800-7000-8000-000000000002', 1, 1,
+				'018bcfe5-6800-7000-8000-000000000001', 'Preserved note', 1700000000000, 1700000000000, 2);
+			INSERT INTO user_settings (user_id, key, value, updated_at, rev)
+			VALUES (1, 'reader.pdf', '{"zoom":1.5,"theme":"dark"}', 1700000000000, 3);
+			UPDATE sync_counter SET value = 3;
 		`);
+		database.prepare(`INSERT INTO book_files
+			(id, book_id, sha256, format, size_bytes, original_filename, created_at)
+			VALUES (1, 1, ?, 'pdf', ?, 'preserved.pdf', 1700000000000)`).run(fixtureHash, fixtureBytes.length);
 	} finally {
 		database.close();
 	}
+	await mkdir(join(dataDir, 'files', fixtureHash.slice(0, 2)), { recursive: true });
+	await writeFile(fixturePath, fixtureBytes);
 }
 
 function safeLogs(binary) {
@@ -195,11 +218,29 @@ try {
 		throw new Error('pre-existing library was not usable after candidate startup');
 	}
 	await stop(upgraded);
+	if (!previous) {
+		const database = new DatabaseSync(join(dataDir, 'pandalibrary.db'));
+		try {
+			for (const [sql, expected] of [
+				["SELECT name AS value FROM shelves WHERE id = 1", 'Preserved shelf'],
+				["SELECT book_id AS value FROM shelf_books WHERE shelf_id = 1", 1],
+				["SELECT text AS value FROM highlights WHERE user_id = 1", 'Preserved annotation'],
+				["SELECT body_md AS value FROM notes WHERE user_id = 1", 'Preserved note'],
+				["SELECT value FROM user_settings WHERE user_id = 1 AND key = 'reader.pdf'", '{"zoom":1.5,"theme":"dark"}'],
+				["SELECT sha256 AS value FROM book_files WHERE id = 1", fixtureHash]
+			]) {
+				if (database.prepare(sql).get()?.value !== expected) throw new Error(`upgrade lost fixture: ${sql}`);
+			}
+		} finally {
+			database.close();
+		}
+		if (!(await readFile(fixturePath)).equals(fixtureBytes)) throw new Error('upgrade changed the preserved book file');
+	}
 	const { stdout } = await execute(candidate, ['migrate', 'status'], {
 		env: { ...process.env, PANDA_DATA_DIR: dataDir }, timeout: 20_000
 	});
 	if (!stdout.includes('Status: up to date')) throw new Error(`startup migrations remain pending: ${stdout}`);
-	console.log('Upgrade check passed: candidate startup is healthy and retained the prior library.');
+	console.log(`Upgrade check passed: healthy startup and retained user/library${previous ? '' : ', shelf membership, annotations, notes, reader settings and file bytes'}.`);
 } catch (error) {
 	if (active) await stop({ child: active });
 	const output = [...logs.entries()].map(([binary]) => safeLogs(binary)).filter(Boolean).join('\n');

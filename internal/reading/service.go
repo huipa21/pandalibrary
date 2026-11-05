@@ -9,7 +9,6 @@ import (
 	"io"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -910,16 +909,20 @@ func (s *Service) applyMutation(
 			if !exists {
 				return reject("bookmark does not exist")
 			}
+			if existing.DeletedAt.Valid {
+				return stale()
+			}
 			return s.deleteBookmark(ctx, q, tx, viewer, existing, updatedAt)
 		}
 		var data bookmarkData
 		if err := decodeMutationData(mutation.Data, &data); err != nil {
 			return reject("bookmark data is invalid")
 		}
-		if data.BookID < 1 || !validOptionalJSON(data.Locator, maxLocatorBytes) ||
-			len(data.Locator) == 0 || !json.Valid(data.Locator) ||
+		if data.BookID < 1 || data.BookFileID == nil || *data.BookFileID < 1 ||
+			len(data.Locator) == 0 || len(data.Locator) > maxLocatorBytes ||
 			math.IsNaN(data.Position) || math.IsInf(data.Position, 0) || data.Position < 0 || data.Position > 1 ||
-			len(data.Label) > 512 || data.Chapter != nil && len(*data.Chapter) > 512 {
+			len(data.Label) > 512 || strings.ContainsRune(data.Label, 0) ||
+			data.Chapter != nil && (len(*data.Chapter) > 512 || strings.ContainsRune(*data.Chapter, 0)) {
 			return reject("bookmark fields are invalid")
 		}
 		if exists && existing.BookID != data.BookID {
@@ -930,15 +933,18 @@ func (s *Service) applyMutation(
 		} else if err != nil {
 			return "", "", err
 		}
-		if data.BookFileID != nil {
-			if _, err := q.ReadingVisibleBookFile(ctx, sqlc.ReadingVisibleBookFileParams{
-				BookID: data.BookID, BookFileID: *data.BookFileID, UserID: viewer.UserID,
-				IsAdmin: adminFlag(viewer),
-			}); errors.Is(err, sql.ErrNoRows) {
-				return reject("book file is unavailable")
-			} else if err != nil {
-				return "", "", fmt.Errorf("check bookmark book file: %w", err)
-			}
+		format, err := q.ReadingVisibleBookmarkFileFormat(ctx, sqlc.ReadingVisibleBookmarkFileFormatParams{
+			BookID: data.BookID, BookFileID: *data.BookFileID, UserID: viewer.UserID,
+			IsAdmin: adminFlag(viewer),
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return reject("book file is unavailable")
+		}
+		if err != nil {
+			return "", "", fmt.Errorf("check bookmark book file: %w", err)
+		}
+		if !validBookmarkLocator(data.Locator, format) {
+			return reject("bookmark locator is invalid for the book file")
 		}
 		createdAt := now
 		if exists {
@@ -1289,61 +1295,4 @@ func (s *Service) SearchAnnotations(
 
 func escapeLike(value string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
-}
-
-// ListUserBookmarks returns paginated bookmarks for the authenticated user across all books.
-func (s *Service) ListUserBookmarks(ctx context.Context, viewer Viewer, limit int64, offset int64) (BookmarksListResponse, error) {
-	response := BookmarksListResponse{Items: []BookmarkItem{}}
-	if err := checkViewer(viewer); err != nil {
-		return response, err
-	}
-	if limit < 1 || limit > 100 {
-		return response, fmt.Errorf("%w: limit must be between 1 and 100", ErrInvalid)
-	}
-	if offset < 0 {
-		return response, fmt.Errorf("%w: offset must be non-negative", ErrInvalid)
-	}
-	err := readSnapshot(ctx, s.reader, func(tx *sql.Tx) error {
-		q := sqlc.New(tx)
-		bookmarks, err := q.ReadingListUserBookmarks(ctx, sqlc.ReadingListUserBookmarksParams{
-			UserID: viewer.UserID, IsAdmin: adminFlag(viewer), Limit: limit + 1, Offset: offset,
-		})
-		if err != nil {
-			return fmt.Errorf("list user bookmarks: %w", err)
-		}
-		hasMore := int64(len(bookmarks)) > limit
-		if hasMore {
-			bookmarks = bookmarks[:limit]
-		}
-		for _, bm := range bookmarks {
-			book, err := q.CatalogGetBook(ctx, sqlc.CatalogGetBookParams{
-				BookID: bm.BookID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
-			})
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("get bookmark book: %w", err)
-			}
-			var bookSummary *BookmarkBookSummary
-			if err == nil {
-				bookSummary = &BookmarkBookSummary{
-					ID: book.ID, Title: book.Title, CoverSha256: nullableString(book.CoverSha256),
-				}
-			}
-			response.Items = append(response.Items, BookmarkItem{
-				ID: bm.ID, BookID: bm.BookID, BookFileID: nullableInt(bm.BookFileID),
-				Locator: json.RawMessage(bm.Locator), Position: bm.Position, Label: bm.Label,
-				Chapter: nullableString(bm.Chapter), CreatedAt: timestamp(bm.CreatedAt),
-				UpdatedAt: timestamp(bm.UpdatedAt), Book: bookSummary,
-			})
-		}
-		if hasMore {
-			nextOffset := offset + limit
-			cursor := strconv.FormatInt(nextOffset, 10)
-			response.NextCursor = &cursor
-		}
-		return nil
-	})
-	if err != nil {
-		return BookmarksListResponse{}, err
-	}
-	return response, nil
 }

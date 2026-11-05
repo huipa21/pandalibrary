@@ -40,7 +40,7 @@ function zip(entries: Record<string, string | Buffer>): Buffer {
 	return Buffer.concat([...local, directory, end]);
 }
 
-export function epubFixture(): Buffer {
+export function epubFixture(title = 'Fixture Book'): Buffer {
 	const image = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXcAAAAASUVORK5CYII=';
 	return zip({
 		mimetype: 'application/epub+zip',
@@ -51,7 +51,7 @@ export function epubFixture(): Buffer {
 		'OEBPS/book.opf': `<?xml version="1.0"?>
 			<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
 				<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-					<dc:identifier id="id">9780306406157</dc:identifier><dc:title>Fixture Book</dc:title><dc:language>en</dc:language>
+					<dc:identifier id="id">9780306406157</dc:identifier><dc:title>${title}</dc:title><dc:language>en</dc:language>
 				</metadata>
 				<manifest>
 					<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>

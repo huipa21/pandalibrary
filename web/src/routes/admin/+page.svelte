@@ -36,6 +36,7 @@
 	<section class={panelClass} aria-labelledby="admin-accounts-heading">
 		<h2 id="admin-accounts-heading" class="text-xl font-semibold">{m['admin.accounts.heading']()}</h2>
 		<p class="text-slate-700">{m['admin.accounts.cli']()}</p>
+		<a class={`rounded-sm underline ${focusRing}`} href="/admin/users">{m['ux8.manage_accounts']()}</a>
 		<ul class="list-disc space-y-1 pl-6 text-sm text-slate-700">
 			<li><code class="rounded bg-slate-100 px-1">pandalibrary user create --username &lt;name&gt;</code></li>
 			<li><code class="rounded bg-slate-100 px-1">pandalibrary user reset-password --username &lt;name&gt;</code></li>

@@ -8,6 +8,17 @@ async function authenticate(page: Page, role = 'admin', locale = 'en') {
 	await page.route('**/api/v1/auth/me', (route) =>
 		route.fulfill({ json: { user: { id: 1, username: 'admin', display_name: 'Admin', role, locale } } })
 	);
+	await page.route('**/api/v1/admin/users?*', (route) =>
+		route.fulfill({
+			json: {
+				items: [1, 5, 9, 404].map((id) => ({
+					id, username: `user${id}`, display_name: '', role: id === 1 ? 'admin' : 'user',
+					locale: 'en', disabled: false, created_at: stamp, updated_at: stamp
+				})),
+				next_cursor: null
+			}
+		})
+	);
 	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 }
 
@@ -100,10 +111,10 @@ test('manages libraries and access grants with conflicts', async ({ page }) => {
 	await page.getByRole('button', { name: 'Manage access Main', exact: true }).click();
 	const accessPanel = page.getByRole('region', { name: 'Access to “Main”' });
 	await expect(accessPanel.getByRole('cell', { name: '7', exact: true })).toBeVisible();
-	await accessPanel.getByLabel('User ID').fill('1');
+	await accessPanel.getByLabel('User ID').selectOption('1');
 	await accessPanel.getByRole('button', { name: 'Grant access' }).click();
 	await expect(accessPanel.getByText('Access could not be granted. Administrators already see every library.')).toBeVisible();
-	await accessPanel.getByLabel('User ID').fill('9');
+	await accessPanel.getByLabel('User ID').selectOption('9');
 	await accessPanel.getByRole('button', { name: 'Grant access' }).click();
 	await expect(accessPanel.getByText('User #9 can now see “Main”.')).toBeVisible();
 	await expect(accessPanel.getByRole('cell', { name: '9', exact: true })).toBeVisible();
@@ -135,11 +146,11 @@ test('hides and unhides a book for a user', async ({ page }) => {
 	});
 
 	await page.goto('/admin/hidden-books');
-	await page.getByLabel('User ID').fill('404');
+	await page.getByLabel('User ID').selectOption('404');
 	await page.getByRole('button', { name: 'Show hidden books' }).click();
 	await expect(page.getByText('No user has this ID.')).toBeVisible();
 
-	await page.getByLabel('User ID').fill('5');
+	await page.getByLabel('User ID').selectOption('5');
 	await page.getByRole('button', { name: 'Show hidden books' }).click();
 	await expect(page.getByRole('heading', { name: 'Books hidden from user #5' })).toBeVisible();
 	await expect(page.getByRole('cell', { name: '30', exact: true })).toBeVisible();

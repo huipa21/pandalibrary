@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { createShelf, MAX_SHELF_NAME_BYTES, MAX_SHELF_DESCRIPTION_BYTES } from './api.js';
+	import { fieldErrorKey, validateShelfDraft } from './form.js';
+	import { translate } from '#lib/paging/translate.js';
 	import type { Shelf, ShelfInput, ShelfMode, RuleSet } from './types.js';
 
 	interface Props {
@@ -19,16 +20,18 @@
 	let rules = $state<RuleSet>({ match: 'all', conditions: [] });
 	let isSubmitting = $state(false);
 	let error = $state('');
-	let originalFocusElement: HTMLElement | null = null;
 	let dialogElement = $state<HTMLDialogElement | null>(null);
-
-	// Form validation
 	let errors = $state<Record<string, string>>({});
 
-	onMount(() => {
-		originalFocusElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+	$effect(() => {
+		if (!open || !dialogElement) return;
+		const dialog = dialogElement;
+		const originalFocusElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		dialog.showModal();
+		dialog.querySelector<HTMLInputElement>('#shelf_name')?.focus();
 		return () => {
-			originalFocusElement?.focus();
+			if (dialog.open) dialog.close();
+			if (originalFocusElement?.isConnected) originalFocusElement.focus();
 		};
 	});
 
@@ -46,14 +49,13 @@
 	function validateForm(): boolean {
 		const newErrors: Record<string, string> = {};
 
-		if (!name.trim()) {
-			newErrors.name = 'Shelf name is required.';
-		}
+		const draft = validateShelfDraft({ name, description });
+		if (!draft.ok) newErrors[draft.error === 'description_too_long' ? 'description' : 'name'] = translate(fieldErrorKey(draft.error));
 
 		// Validate rules if automatic
 		if (mode === 'automatic') {
 			if (rules.conditions.length === 0) {
-				newErrors.rules = 'At least one condition is required for automatic shelves.';
+				newErrors.rules = m['ux3.shelves.rules_invalid']();
 			}
 		}
 
@@ -91,14 +93,9 @@
 		}
 	}
 
-	function handleDialogClose() {
-		onclose();
-	}
-
-	function handleKeyDown(event: KeyboardEvent) {
-		if (event.key === 'Escape') {
-			onclose();
-		}
+	function cancel(event: Event) {
+		event.preventDefault();
+		if (!isSubmitting) onclose();
 	}
 
 	function addCondition() {
@@ -121,20 +118,14 @@
 		}
 	}
 
-	function handleBackgroundClick(event: MouseEvent) {
-		if (event.target === event.currentTarget) {
-			onclose();
-		}
-	}
 </script>
 
 {#if open}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="presentation" onclick={handleBackgroundClick}>
 		<dialog
 			bind:this={dialogElement}
-			class="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 shadow-lg"
-			open={open}
-			onkeydown={handleKeyDown}
+			class="fixed inset-0 m-auto max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 text-slate-950 shadow-lg"
+			aria-label={m['ux3.shelves.create_dialog_title']()}
+			oncancel={cancel}
 		>
 			<h2 class="text-lg font-semibold">{m['ux3.shelves.create_dialog_title']()}</h2>
 			<p class="mt-1 text-sm text-slate-600">{m['ux3.shelves.create_dialog_description']()}</p>
@@ -190,6 +181,7 @@
 						rows="3"
 						class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:bg-slate-100"
 					></textarea>
+					{#if errors.description}<p class="mt-1 text-xs text-red-800" role="alert">{errors.description}</p>{/if}
 				</div>
 
 				<!-- Privacy -->
@@ -356,5 +348,10 @@
 				</div>
 			</form>
 		</dialog>
-	</div>
 {/if}
+
+<style>
+	dialog::backdrop {
+		background: rgb(15 23 42 / 0.6);
+	}
+</style>

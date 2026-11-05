@@ -702,40 +702,68 @@ func (q *Queries) ReadingListSettings(ctx context.Context, userID int64) ([]User
 }
 
 const readingListUserBookmarks = `-- name: ReadingListUserBookmarks :many
-SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm
+SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev, b.title AS book_title, b.cover_sha256 AS book_cover_sha256 FROM bookmarks bm
 JOIN books b ON b.id = bm.book_id
 WHERE bm.user_id = ?1 AND bm.deleted_at IS NULL
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) = 0 OR bm.book_id = ?2)
+AND (CAST(?3 AS INTEGER) = 0
+    OR bm.created_at < ?4
+    OR (bm.created_at = ?4 AND bm.id < ?5))
+AND (CAST(?6 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
 ))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
 )
-ORDER BY bm.created_at DESC, bm.id
-LIMIT ?4 OFFSET ?3
+ORDER BY bm.created_at DESC, bm.id DESC
+LIMIT ?7
 `
 
 type ReadingListUserBookmarksParams struct {
-	UserID  int64
-	IsAdmin int64
-	Offset  int64
-	Limit   int64
+	UserID          int64
+	BookFilter      int64
+	HasCursor       int64
+	CursorCreatedAt int64
+	CursorID        string
+	IsAdmin         int64
+	Limit           int64
 }
 
-func (q *Queries) ReadingListUserBookmarks(ctx context.Context, arg ReadingListUserBookmarksParams) ([]Bookmark, error) {
+type ReadingListUserBookmarksRow struct {
+	Seq             int64
+	ID              string
+	UserID          int64
+	BookID          int64
+	BookFileID      sql.NullInt64
+	Locator         string
+	Position        float64
+	Label           string
+	Chapter         sql.NullString
+	CreatedAt       int64
+	UpdatedAt       int64
+	DeletedAt       sql.NullInt64
+	Rev             int64
+	BookTitle       string
+	BookCoverSha256 sql.NullString
+}
+
+func (q *Queries) ReadingListUserBookmarks(ctx context.Context, arg ReadingListUserBookmarksParams) ([]ReadingListUserBookmarksRow, error) {
 	rows, err := q.db.QueryContext(ctx, readingListUserBookmarks,
 		arg.UserID,
+		arg.BookFilter,
+		arg.HasCursor,
+		arg.CursorCreatedAt,
+		arg.CursorID,
 		arg.IsAdmin,
-		arg.Offset,
 		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Bookmark{}
+	items := []ReadingListUserBookmarksRow{}
 	for rows.Next() {
-		var i Bookmark
+		var i ReadingListUserBookmarksRow
 		if err := rows.Scan(
 			&i.Seq,
 			&i.ID,
@@ -750,6 +778,8 @@ func (q *Queries) ReadingListUserBookmarks(ctx context.Context, arg ReadingListU
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.Rev,
+			&i.BookTitle,
+			&i.BookCoverSha256,
 		); err != nil {
 			return nil, err
 		}
@@ -1452,6 +1482,7 @@ ON CONFLICT(id) DO UPDATE SET
     updated_at = excluded.updated_at,
     deleted_at = excluded.deleted_at,
     rev = excluded.rev
+WHERE bookmarks.user_id = excluded.user_id AND excluded.updated_at > bookmarks.updated_at
 `
 
 type ReadingUpsertBookmarkParams struct {
@@ -1829,4 +1860,37 @@ func (q *Queries) ReadingVisibleBookmarkCount(ctx context.Context, arg ReadingVi
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const readingVisibleBookmarkFileFormat = `-- name: ReadingVisibleBookmarkFileFormat :one
+SELECT bf.format FROM book_files bf
+JOIN books b ON b.id = bf.book_id
+WHERE bf.id = ?1 AND b.id = ?2
+AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = ?4
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h
+    WHERE h.book_id = b.id AND h.user_id = ?4
+)
+`
+
+type ReadingVisibleBookmarkFileFormatParams struct {
+	BookFileID int64
+	BookID     int64
+	IsAdmin    int64
+	UserID     int64
+}
+
+func (q *Queries) ReadingVisibleBookmarkFileFormat(ctx context.Context, arg ReadingVisibleBookmarkFileFormatParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, readingVisibleBookmarkFileFormat,
+		arg.BookFileID,
+		arg.BookID,
+		arg.IsAdmin,
+		arg.UserID,
+	)
+	var format string
+	err := row.Scan(&format)
+	return format, err
 }

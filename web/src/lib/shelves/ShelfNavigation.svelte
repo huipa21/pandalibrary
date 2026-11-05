@@ -19,6 +19,7 @@
 	let loadingSystemShelves = $state(true);
 	let systemShelvesError = $state('');
 	let dialogOpen = $state(false);
+	let loadVersion = 0;
 
 	onMount(() => {
 		void loadSystemAndCustomShelves();
@@ -29,38 +30,34 @@
 
 		window.addEventListener('pandalibrary-shelves-changed', handleShelvesChanged);
 		return () => {
+			loadVersion += 1;
 			window.removeEventListener('pandalibrary-shelves-changed', handleShelvesChanged);
 			pager.dispose();
 		};
 	});
 
 	async function loadSystemAndCustomShelves() {
+		const version = ++loadVersion;
+		loadingSystemShelves = true;
+		systemShelvesError = '';
 		try {
-			loadingSystemShelves = true;
-			systemShelvesError = '';
-
-			// Load system shelves
-			try {
-				unshelvedShelf = await getSystemShelf('unshelved');
-			} catch (e) {
-				console.error('Failed to load unshelved shelf:', e);
-			}
-
-			try {
-				favoritesShelf = await getSystemShelf('favorites');
-			} catch (e) {
-				console.error('Failed to load favorites shelf:', e);
-			}
-
-			// Load custom shelves
+			const [unshelved, favorites] = await Promise.all([
+				getSystemShelf('unshelved'),
+				getSystemShelf('favorites')
+			]);
+			if (version !== loadVersion) return;
 			await pager.reset((cursor, signal) => listShelves({ cursor, signal }));
-			// Filter out system shelves (they have system_key set)
+			if (version !== loadVersion) return;
+			if (pager.status === 'error') throw pager.error;
+			unshelvedShelf = unshelved;
+			favoritesShelf = favorites;
 			customShelves = pager.items.filter((s) => !s.system_key);
 		} catch (e) {
+			if (version !== loadVersion) return;
 			console.error('Failed to load shelves:', e);
 			systemShelvesError = m['ux1.shelves.error']();
 		} finally {
-			loadingSystemShelves = false;
+			if (version === loadVersion) loadingSystemShelves = false;
 		}
 	}
 
@@ -139,7 +136,7 @@
 </section>
 
 <!-- Create Dialog -->
-<ShelfCreateDialog open={dialogOpen} onclose={() => { dialogOpen = false; }} oncreated={() => { void loadSystemAndCustomShelves(); }} />
+<ShelfCreateDialog open={dialogOpen} onclose={() => { dialogOpen = false; }} oncreated={() => {}} />
 
 <style>
 </style>

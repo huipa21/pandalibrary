@@ -41,7 +41,7 @@ export function replayMutations(
 	let userBook = base.user_book;
 	let progress = base.progress;
 	const highlights = new Map(base.highlights.map((item) => [item.id, item]));
-	const bookmarks = new Map(base.bookmarks.map((item) => [item.id, item]));
+	const bookmarks = new Map((base.bookmarks ?? []).map((item) => [item.id, item]));
 	const notes = new Map(base.notes.map((item) => [item.id, item]));
 	const settings = new Map(baseSettings.map((item) => [item.key, item]));
 

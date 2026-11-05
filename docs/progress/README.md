@@ -53,14 +53,28 @@ below are local to this follow-up; merge a wave before starting the next.
 | 1 | UX9 | Commit-based dev/image version | baseline | [UX9](../prompts/UX9-build-version.md) | Done | `master` | Public version API/CLI, stamped builds, and standalone footer; UX10 wires it |
 | 2 | UX3 | Sidebar shelves and reusable shelf UI | UX1, UX2 | [UX3](../prompts/UX3-shelf-navigation-ui.md) | Done | `task/ux3` | Reused by dashboard |
 | 2 | UX4 | Dashboard feeds API | UX2 | [UX4](../prompts/UX4-dashboard-feeds-api.md) | Done | `task/ux4` | Keyset pagination, visibility-safe SQL, hand-off ready for UX5 |
-| 2 | UX6 | Bookmarks and offline reader sync | UX1, UX2 | [UX6](../prompts/UX6-bookmarks.md) | Ready | `task/ux6` | Migration 00003 (renumbered after UX2's 00002 on merge) |
-| 2 | UX8 | Admin users UI and selectors | UX7 | [UX8](../prompts/UX8-admin-users-ui.md) | Ready | `task/ux8` | Admin area only |
+| 2 | UX6 | Bookmarks and offline reader sync | UX1, UX2 | [UX6](../prompts/UX6-bookmarks.md) | Done | `master` | Validated saved positions, paged visible list, durable offline replay and exact PDF/CFI jumps |
+| 2 | UX8 | Admin users UI and selectors | UX7 | [UX8](../prompts/UX8-admin-users-ui.md) | Done | `master` | Complete account lifecycle, self-session retirement and paged identity selectors |
 | 3 | UX5 | Configurable dashboard | UX3, UX4 | [UX5](../prompts/UX5-configurable-dashboard.md) | Done | `master` | Full frontend check, units, build and dashboard browser tests pass |
-| 4 | UX10 | Integration and verification gate | UX1-UX9 | [UX10](../prompts/UX10-layout-integration.md) | Ready | `task/ux10` | Real-browser, upgrade and image verification |
+| 4 | UX10 | Integration and verification gate | UX1-UX9 | [UX10](../prompts/UX10-layout-integration.md) | Done | `master` | 58 browser / 204 unit tests, Go/sqlc gates, v1 preservation and actual 11.4 MiB scratch image/restart pass |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-05 — UX6/UX8/UX10 — Completed saved-position validation/pagination,
+  exact PDF/CFI jumps, durable account-isolated bookmark sync, admin account
+  lifecycle/self-session retirement and paged identity selectors. Integrated
+  footer/live shelves/native shelf dialog; replaced dashboard's unbounded
+  pagination with SQL keysets. All 58 real-server browser tests, 204 frontend
+  units, frontend check/build, SQL generation and Go build/lint/tests pass.
+  V1 upgrade retains users, library, shelf membership, annotations, notes,
+  reader settings and file bytes. Actual Podman scratch image is 11.4 MiB;
+  provenance, health, shutdown, migrations and account/session/library restart
+  persistence pass. Browser screenshots cover both actual locales and responsive
+  layouts. Fixed stale test selectors/setup isolation, bounded browser actions,
+  sequenced embed builds, and LF container exclusions for generated assets.
+  Exact commands and first-release baseline limitations are in UX10.
 
 - 2026-11-04 — UX5 — Finished on `master`: minimal cross-task fixes (admin user
   form submit/validation, shelf dialog focus return, bookmark typing/i18n,

@@ -5,18 +5,24 @@ import {
 	buildAdminLibrariesPath,
 	buildHiddenBooksPath,
 	buildImportsPath,
+	createUser,
 	createLibrary,
+	deleteUser,
 	deleteLibrary,
 	grantLibraryAccess,
 	hideBook,
 	listAllAdminLibraries,
 	listImports,
+	listAdminUsers,
 	listMaintenanceJobs,
 	listProviders,
 	revokeLibraryAccess,
+	revokeUserCredentials,
+	resetUserPassword,
 	runMaintenanceJob,
 	unhideBook,
 	updateLibrary,
+	updateUser,
 	updateProvider,
 	uploadBook
 } from './api.js';
@@ -82,6 +88,30 @@ describe('library and access requests', () => {
 		request.mockResolvedValue({ hidden: false });
 		await unhideBook(7, 30);
 		expect(request).toHaveBeenLastCalledWith('/admin/users/7/hidden-books/30', { method: 'DELETE' });
+	});
+
+	describe('account requests', () => {
+		it('uses the UX7 endpoints and sends only the documented fields', async () => {
+			const request = vi.spyOn(api, 'request').mockResolvedValue({ items: [], next_cursor: null });
+			await listAdminUsers({ cursor: 'next', limit: 25 });
+			expect(request.mock.calls[0][0]).toBe('/admin/users?limit=25&cursor=next');
+			request.mockResolvedValue({ user: { id: 7 } });
+			await createUser('reader', 'Reader', 'a long password', 'user', 'zh');
+			expect(request).toHaveBeenLastCalledWith('/admin/users', {
+				method: 'POST', body: { username: 'reader', display_name: 'Reader', password: 'a long password', role: 'user', locale: 'zh' }
+			});
+			await updateUser(7, { display_name: '', disabled: false });
+			expect(request).toHaveBeenLastCalledWith('/admin/users/7', { method: 'PATCH', body: { display_name: '', disabled: false } });
+			request.mockResolvedValue({ reset: true });
+			await resetUserPassword(7, 'replacement password');
+			expect(request).toHaveBeenLastCalledWith('/admin/users/7/reset-password', { method: 'POST', body: { password: 'replacement password' } });
+			request.mockResolvedValue({ revoked: true });
+			await revokeUserCredentials(7);
+			expect(request).toHaveBeenLastCalledWith('/admin/users/7/revoke-credentials', { method: 'POST', body: {} });
+			request.mockResolvedValue({ deleted: true });
+			await deleteUser(7);
+			expect(request).toHaveBeenLastCalledWith('/admin/users/7', { method: 'DELETE' });
+		});
 	});
 
 	it('follows library cursors and rejects a repeated cursor', async () => {

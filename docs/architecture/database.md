@@ -45,6 +45,9 @@ erDiagram
   books ||--o{ shelf_books : on
   users ||--o{ user_books : "status/rating"
   users ||--o{ reading_progress : position
+  users ||--o{ bookmarks : saves
+  books ||--o{ bookmarks : bookmarked
+  book_files |o--o{ bookmarks : "saved locator file"
   book_files |o--o{ reading_progress : "locator file"
   users ||--o{ kosync_progress : "raw KOReader"
   users ||--o{ highlights : makes
@@ -76,6 +79,19 @@ erDiagram
   - The kosync hash is `sha256(md5hex(secret))` because KOReader only sends the MD5.
 
 ### Configuration
+
+Bookmark migration [00003](../../internal/db/migrations/00003_bookmarks.sql)
+adds saved reading positions independently of highlights: client UUIDv7 identity,
+book/file references, validated JSON locator, fraction, label/chapter, timestamps,
+revision and deletion tombstone. User/book deletion cascades; file deletion sets
+the file reference to null, making the bookmark unavailable rather than guessing
+a replacement. Live cross-book lists use `(created_at DESC, id DESC)` SQL
+keysets with viewer/filter-bound opaque cursors. Maintenance retains tombstones
+for 180 days, consistent with existing synced annotations.
+
+Dashboard feed cursors use bounded SQL timestamp/ID or title/ID keysets and are
+bound to the viewer/feed. Changing an anchor row cannot reintroduce every book
+through an unbounded in-memory prefetch.
 
 - **`server_settings`** is a JSON key-value store. Keys include `default_library_id`,
   `registration` (always closed in v1), `backup.keep`, `opds.page_size` and

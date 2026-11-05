@@ -369,6 +369,8 @@ test('counts active reading time and flushes a session on deliberate close', asy
 	await page.clock.install();
 	const state = await setupReader(page, 'fb2', fb2Fixture());
 	await page.goto('/read/21/31');
+	await page.bringToFront();
+	await expect.poll(() => page.evaluate(() => document.hidden)).toBe(false);
 	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 	await page.clock.fastForward(31_000);
 	await page.getByRole('button', { name: 'Close reader' }).click();

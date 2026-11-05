@@ -11,11 +11,13 @@ import {
 	providerDraft,
 	providerFieldErrorKey,
 	suggestSlug,
+	userPatch,
+	validateUserDraft,
 	validBaseURL,
 	validateLibraryDraft,
 	type AdminAction
 } from './form.js';
-import type { Library, ProviderSettings } from './types.js';
+import type { Library, ProviderSettings, User } from './types.js';
 
 const problem = (status: number) => new ApiError(status, '', '{}', { status });
 const has = (messages: Record<string, string>, key: string) => Object.hasOwn(messages, key);
@@ -59,6 +61,26 @@ describe('provider patches', () => {
 	it('preserves a stored token by omitting it', () => {
 		const result = buildProviderPatch(provider(), { ...providerDraft(provider()), priority: '5' });
 		expect(result).toEqual({ ok: true, patch: { priority: 5 }, disablesCredentialProvider: false, removesToken: false });
+	});
+
+	describe('account drafts', () => {
+		const user: User = {
+			id: 7, username: 'reader', display_name: 'Reader', role: 'user', locale: 'en',
+			disabled: false, created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z'
+		};
+		const draft = { username: 'reader', displayName: 'Reader', password: 'twelve bytes!', role: 'user', locale: 'en' };
+
+		it('validates UTF-8 byte lengths using the server password limits', () => {
+			expect(validateUserDraft({ ...draft, password: '12345678901' }, true)).toMatchObject({ error: 'password_too_short' });
+			expect(validateUserDraft({ ...draft, password: '书'.repeat(4) }, true).ok).toBe(true);
+			expect(validateUserDraft({ ...draft, password: 'x'.repeat(1025) }, true)).toMatchObject({ error: 'password_too_long' });
+			expect(validateUserDraft({ ...draft, password: 'x'.repeat(1024) }, true).ok).toBe(true);
+		});
+
+		it('only sends changed account fields and can clear a display name', () => {
+			expect(userPatch(user, { ...draft, password: '', displayName: '' })).toEqual({ ok: true, patch: { display_name: '' } });
+			expect(userPatch(user, { ...draft, password: '' })).toMatchObject({ ok: false, error: 'no_changes' });
+		});
 	});
 
 	it('removes a token with explicit null and requires disabling a credentialed provider', () => {

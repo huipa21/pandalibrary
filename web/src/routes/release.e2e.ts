@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { realAdmin, signInRealAdmin } from '../lib/real-auth.js';
 import { epubFixture } from '../lib/reader/fixtures';
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
@@ -15,17 +15,7 @@ async function bookFrame(page: import('@playwright/test').Page) {
 
 test('real server setup, admin library creation, and login', async ({ page }) => {
 	test.setTimeout(90_000);
-	const tokenFile = process.env.PANDA_E2E_SETUP_TOKEN_FILE;
-	if (!tokenFile) throw new Error('real-server setup token file is not configured');
-	const setupToken = (await readFile(tokenFile, 'utf8')).trim();
-
-	await page.goto('/setup');
-	await expect(page.locator('body')).toContainText('One-time setup token');
-	await page.getByLabel('One-time setup token').fill(setupToken);
-	await page.getByLabel('Username').fill('release-admin');
-	await page.getByLabel('Password').fill('release-test-password');
-	await page.getByRole('button', { name: 'Create administrator' }).click();
-	await expect(page).toHaveURL('/');
+	await signInRealAdmin(page);
 	await expect(page.getByRole('link', { name: 'Admin', exact: true })).toBeVisible();
 
 	await page.goto('/admin/libraries');
@@ -134,8 +124,8 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 
 	await page.getByRole('button', { name: 'Sign out' }).click();
 	await expect(page).toHaveURL('/login');
-	await page.getByLabel('Username').fill('release-admin');
-	await page.getByLabel('Password').fill('release-test-password');
+	await page.getByLabel('Username').fill(realAdmin.username);
+	await page.getByLabel('Password').fill(realAdmin.password);
 	await page.getByRole('button', { name: 'Sign in' }).click();
 	await expect(page).toHaveURL('/');
 	await expect(page.getByRole('link', { name: 'Admin', exact: true })).toBeVisible();

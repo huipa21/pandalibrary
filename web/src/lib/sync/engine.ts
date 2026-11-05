@@ -1,6 +1,6 @@
 import { api } from '#lib/api/client.js';
 import type { JsonValue } from '#lib/api/client.js';
-import type { Highlight, Note, Setting } from '#lib/reader/types.js';
+import type { Bookmark, Highlight, Note, Setting } from '#lib/reader/types.js';
 import {
 	activeViewer,
 	AccountChangedError,
@@ -100,6 +100,15 @@ function validHighlight(value: unknown): value is Highlight {
 		typeof value.created_at === 'string' && nullableString(value.deleted_at);
 }
 
+function validBookmark(value: unknown): value is Bookmark {
+	return isRecord(value) && validRevision(value) && typeof value.id === 'string' && value.id.length > 0 &&
+		typeof value.book_id === 'number' && Number.isSafeInteger(value.book_id) && value.book_id > 0 &&
+		nullableNumber(value.book_file_id) && isJson(value.locator) &&
+		typeof value.position === 'number' && Number.isFinite(value.position) &&
+		value.position >= 0 && value.position <= 1 && typeof value.label === 'string' &&
+		nullableString(value.chapter) && typeof value.created_at === 'string' && nullableString(value.deleted_at);
+}
+
 function validNote(value: unknown): value is Note {
 	return isRecord(value) && validRevision(value) && typeof value.id === 'string' && value.id.length > 0 &&
 		typeof value.book_id === 'number' && Number.isSafeInteger(value.book_id) && value.book_id > 0 &&
@@ -117,6 +126,7 @@ function isPullResponse(value: Record<string, unknown>): value is Record<string,
 		Array.isArray(value.user_books) && value.user_books.every(validUserBook) &&
 		Array.isArray(value.reading_progress) && value.reading_progress.every(validProgress) &&
 		Array.isArray(value.highlights) && value.highlights.every(validHighlight) &&
+		Array.isArray(value.bookmarks) && value.bookmarks.every(validBookmark) &&
 		Array.isArray(value.notes) && value.notes.every(validNote) &&
 		Array.isArray(value.user_settings) && value.user_settings.every(validSetting);
 }
@@ -146,10 +156,11 @@ export function parsePullResponse(value: unknown, requestedCursor: number): Pull
 		!Number.isSafeInteger(value.cursor) || value.cursor < requestedCursor) {
 		throw new SyncProtocolError('The server returned an invalid pull cursor.');
 	}
+	const normalized: Record<string, unknown> = { ...value, bookmarks: value.bookmarks === undefined ? [] : value.bookmarks };
 	const high = value.cursor;
-	const collections = ['user_books', 'reading_progress', 'highlights', 'notes', 'user_settings'] as const;
+	const collections = ['user_books', 'reading_progress', 'highlights', 'bookmarks', 'notes', 'user_settings'] as const;
 	for (const entity of collections) {
-		const rows = value[entity];
+		const rows = normalized[entity];
 		if (!Array.isArray(rows)) throw new SyncProtocolError(`The pull response is missing ${entity}.`);
 		const keys = new Set<string>();
 		for (const row of rows) {
@@ -166,14 +177,14 @@ export function parsePullResponse(value: unknown, requestedCursor: number): Pull
 			}
 			if (keys.has(String(key))) throw new SyncProtocolError(`The pull response contains duplicate ${entity} keys.`);
 			keys.add(String(key));
-			if ((entity === 'highlights' || entity === 'notes') &&
+			if ((entity === 'highlights' || entity === 'bookmarks' || entity === 'notes') &&
 				(typeof row.book_id !== 'number' || !Number.isSafeInteger(row.book_id) || row.book_id < 1)) {
 				throw new SyncProtocolError(`The pull response contains an invalid ${entity} book.`);
 			}
 		}
 	}
-	if (!isPullResponse(value)) throw new SyncProtocolError('The pull response contains an invalid row.');
-	return value;
+	if (!isPullResponse(normalized)) throw new SyncProtocolError('The pull response contains an invalid row.');
+	return normalized;
 }
 
 function nextBatch(entries: OutboxEntry[]): OutboxEntry[] {
