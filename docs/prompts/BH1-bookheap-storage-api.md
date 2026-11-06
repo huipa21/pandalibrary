@@ -154,21 +154,26 @@ endpoint (BH2), import job processing, catalog visibility code.
 
 ## Acceptance criteria
 
-- [ ] Upload stores exactly one file in the heap folder and one row with
+- [x] Upload stores exactly one file in the heap folder and one row with
       metadata/cover. Duplicate/oversize/unsupported/invalid-name uploads
       leave no file behind and return the documented status.
-- [ ] Copying epub/pdf/cbz fixtures (from `internal/extract/testdata` or
+- [x] Copying epub/pdf/cbz fixtures (from `internal/extract/testdata` or
       `internal/importer` tests), a nested folder, a dot file, a symlink, an
       unknown extension, a corrupt `.epub` and a just-modified file into the
       heap, then scanning, yields the correct rows and counts. A second scan is
       all `unchanged`. Deleting a file on disk and rescanning removes its row.
-- [ ] Concurrency: double scan start returns the running scan; parallel
+- [x] Concurrency: double scan start returns the running scan; parallel
       identical uploads produce one item; shutdown during a scan is clean.
-- [ ] Non-admin and unauthenticated requests get 403/401; mutations without
+- [x] Non-admin and unauthenticated requests get 403/401; mutations without
       cookie protection are rejected.
-- [ ] Orphan sweep keeps heap covers and has an overlap guard. Migration
+- [x] Orphan sweep keeps heap covers and has an overlap guard. Migration
       up/down/up preserves import jobs.
-- [ ] `task sqlc:check lint test build` passes.
+- [x] `task sqlc:check lint test build` passes.
+
+Verification: the real-server suite scans EPUB, PDF and CBZ fixtures and checks
+the second scan. The Linux scan tests exercised a real symlink. `task build`
+wrote its executable outside the checkout to preserve the existing ignored
+binary.
 
 ## Validation commands
 

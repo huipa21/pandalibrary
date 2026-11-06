@@ -59,8 +59,12 @@ func TestWatcherStartupScanAndOutcomes(t *testing.T) {
 				return false
 			}
 		}
-		_, err = os.Stat(filepath.Join(f.service.options.DropDir, "corrupt.epub"))
-		return os.IsNotExist(err)
+		for _, name := range []string{"book.epub", filepath.Join("other", "duplicate.epub"), "corrupt.epub"} {
+			if _, err := os.Stat(filepath.Join(f.service.options.DropDir, name)); !os.IsNotExist(err) {
+				return false
+			}
+		}
+		return true
 	})
 	rows, err := sqlc.New(f.db.Reader).ImportHistory(context.Background(), sqlc.ImportHistoryParams{PageLimit: 10})
 	if err != nil {

@@ -469,6 +469,30 @@ func TestAssignConcurrentQueuesOnce(t *testing.T) {
 	}
 }
 
+// Regression: workers looked up hooks under the importer lock while holding the writer
+// transaction, and enqueue held that lock while waiting for the writer, so a large assign
+// with running workers deadlocked.
+func TestAssignWhileImporterRuns(t *testing.T) {
+	f := newAssignFixture(t)
+	f.start(t)
+	shelf := f.shelf(t, admin, catalog.ShelfInput{Kind: "private", Name: "Live"})
+	names := make([]string, 0, 150)
+	for index := range 150 {
+		names = append(names, "live-"+strconv.Itoa(index)+".epub")
+	}
+	ids := f.items(t, names...)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	results, err := f.service.Assign(ctx, admin, ids, 1, []int64{shelf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertAllOK(t, results, ids)
+	for index, id := range ids {
+		f.waitGone(t, id, names[index])
+	}
+}
+
 func TestAssignRecoversAfterRestart(t *testing.T) {
 	databases, blobs, root := openAssignDB(t)
 	first := newAssignServices(t, databases, blobs, root)

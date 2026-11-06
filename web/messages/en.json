@@ -1154,5 +1154,6 @@
 	"bh4.scan.duplicates": "Duplicates: {count}",
 	"bh4.scan.invalid": "Invalid: {count}",
 	"bh4.scan.skipped": "Skipped: {count}",
-	"bh4.scan.in_progress": "Still being written: {count}"
+	"bh4.scan.in_progress": "Still being written: {count}",
+	"bh5.imports.source.bookheap": "Bookheap"
 }

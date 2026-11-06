@@ -58,8 +58,11 @@ type Service struct {
 	workers    sync.WaitGroup
 	dropMu     sync.Mutex
 	dropQueued map[string]bool
-	hooks      map[string]Hook
-	recovered  []recoveredJob
+	// hooksMu guards hooks separately from mu: workers look hooks up while holding a
+	// writer transaction, and enqueueWith holds mu while waiting for the writer.
+	hooksMu   sync.RWMutex
+	hooks     map[string]Hook
+	recovered []recoveredJob
 }
 
 type Job struct {

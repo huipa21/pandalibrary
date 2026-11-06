@@ -42,7 +42,7 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 		mimeType: 'application/epub+zip',
 		buffer: epubFixture()
 	});
-	await page.getByRole('button', { name: 'Upload', exact: true }).click();
+	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(page.getByText(/Upload accepted as job #/)).toBeVisible();
 	const imported = await expect
 		.poll(async () => page.evaluate(async () => {

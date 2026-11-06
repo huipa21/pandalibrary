@@ -312,11 +312,14 @@ func TestScanIndexesHeapAndRemovesMissingFiles(t *testing.T) {
 	f.write(t, "notes.txt", []byte("hello"), old)
 	f.write(t, ".hidden.epub", testEPUB(t, "hidden"), old)
 	f.write(t, "fresh.epub", testEPUB(t, "fresh"), 0)
-	symlink := os.Symlink(filepath.Join(f.heap, "top.epub"), filepath.Join(f.heap, "link.epub")) == nil
+	symlinkErr := os.Symlink(filepath.Join(f.heap, "top.epub"), filepath.Join(f.heap, "link.epub"))
+	if symlinkErr != nil {
+		t.Logf("symlink scan case unavailable: %v", symlinkErr)
+	}
 
 	scan := f.scan(t)
 	skipped := int64(1)
-	if symlink {
+	if symlinkErr == nil {
 		skipped = 2
 	}
 	if scan.Status != ScanCompleted || scan.Added != 4 || scan.Invalid != 1 || scan.Duplicates != 1 || scan.InProgress != 1 ||
@@ -371,12 +374,16 @@ func TestScanLifecycle(t *testing.T) {
 	for index := range 50 {
 		f.write(t, "dir/file"+string(rune('a'+index%26))+string(rune('a'+index/26))+".epub", testEPUB(t, string(rune(index))), time.Hour)
 	}
+	// Keep the first scan from finishing before the second start request.
+	f.service.commitMu.Lock()
 	first, started, err := f.service.StartScan(admin)
 	if err != nil || !started {
+		f.service.commitMu.Unlock()
 		t.Fatalf("start: %v %v", started, err)
 	}
 	again, started, err := f.service.StartScan(admin)
-	if err != nil || (started && again.ID == first.ID) {
+	f.service.commitMu.Unlock()
+	if err != nil || started || again.ID != first.ID {
 		t.Fatalf("restart: %+v %v %v", again, started, err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

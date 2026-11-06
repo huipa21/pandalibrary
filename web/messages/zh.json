@@ -1154,5 +1154,6 @@
 	"bh4.scan.duplicates": "重复：{count}",
 	"bh4.scan.invalid": "无效：{count}",
 	"bh4.scan.skipped": "跳过：{count}",
-	"bh4.scan.in_progress": "仍在写入：{count}"
+	"bh4.scan.in_progress": "仍在写入：{count}",
+	"bh5.imports.source.bookheap": "书堆"
 }

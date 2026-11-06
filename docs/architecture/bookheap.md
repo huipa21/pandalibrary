@@ -181,4 +181,36 @@ items into normal import jobs with source `bookheap`
   `failed`; `duplicate` → `duplicate`; pending/processing jobs are left alone.
 - **Locks.** `commitMu` → importer mutex → writer transaction. The `Imported`
   hook runs inside the importer transaction and never takes `commitMu`.
+  Hook lookup (`importer.Service.hook`) uses a separate `hooksMu`, never the
+  importer mutex: a worker looks up the hook while it holds the writer
+  transaction, so taking the importer mutex there deadlocked against an
+  enqueue waiting for the writer (found by BH5; regression test
+  `TestAssignWhileImporterRuns`).
   Scan and delete keep skipping `queued`/`importing` rows.
+
+## Workflow and verification (BH5)
+
+1. An admin uploads files with the header **Upload** button (multi-select,
+   per-file results, duplicates reported) or copies them into the heap folder
+   and presses **Scan** on the Bookheap page.
+2. The Bookheap page lists items with status, filters and search; selection
+   survives paging ("Load more"). **Assign…** picks a library and manual
+   shelves; **Delete…** removes files and rows.
+3. Assigned items import through the normal importer (source `bookheap` in
+   Admin → Imports), are added to the chosen shelves, and leave the heap
+   folder. Duplicates and failures stay in the heap with a reason; failed
+   items can be assigned again.
+
+Readers see neither the Upload button nor the Bookheap link, and every heap
+API returns 403 for them. Backups cover the database (including
+`bookheap_items`), not the heap folder's files; an item whose file is gone is
+dropped by the next scan.
+
+Checks against the real server:
+`web/src/routes/bookheap.e2e.ts` (Playwright, `PANDA_E2E_BINARY`) covers
+upload, scan, assignment across pages onto a library and shelf, search and
+import history, delete, reader denial and the unchanged drop folder.
+`web/scripts/bookheap-restart-check.mjs` kills the server during a 150-item
+assignment and requires a pending or processing job in the stopped database.
+It restarts on the same data, reassigns what is left and checks that the heap,
+import jobs, library, shelf and folder agree.

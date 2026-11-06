@@ -1,6 +1,6 @@
 # BH4: Bookheap page, navigation entry, Scan, and bulk Assign/Delete
 
-- Status: Done (`task/bh4`; Assign mocked until BH2 merges)
+- Status: Done (`task/bh4`; live assignment verified by BH5)
 - Wave: 2; dependencies merged: BH1, BH3
 - Can run in parallel with: BH2 (code the assign call against the plan
   contract; mock it in tests until BH2 merges)

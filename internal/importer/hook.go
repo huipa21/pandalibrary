@@ -24,8 +24,8 @@ type Hook interface {
 	// and search index are written. An error rolls the import back and fails the job.
 	// It must use only tx for database work.
 	Imported(ctx context.Context, tx *sql.Tx, job Job, bookID int64, payload json.RawMessage) error
-	// Finished runs after the job reached imported, duplicate or failed and the staged
-	// file was cleaned up, including for jobs finished before a restart.
+	// Finished runs after the job reaches imported, duplicate or failed, before staged
+	// file and manifest cleanup, including for jobs finished before a restart.
 	Finished(ctx context.Context, job Job, payload json.RawMessage) error
 	// Recover runs once at Start, after manifest recovery, before workers start.
 	Recover(ctx context.Context) error
@@ -45,6 +45,8 @@ func (s *Service) SetHook(source string, hook Hook) error {
 	if s.started || s.stopped {
 		return errors.New("importer hooks must be registered before start")
 	}
+	s.hooksMu.Lock()
+	defer s.hooksMu.Unlock()
 	if s.hooks == nil {
 		s.hooks = make(map[string]Hook)
 	}
@@ -56,8 +58,8 @@ func (s *Service) SetHook(source string, hook Hook) error {
 }
 
 func (s *Service) hook(source string) Hook {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.hooksMu.RLock()
+	defer s.hooksMu.RUnlock()
 	return s.hooks[source]
 }
 

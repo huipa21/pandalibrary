@@ -201,17 +201,17 @@ test('uploads a book and polls import history until it finishes', async ({ page 
 	await expect(page.getByText('could not read [drop]/old.cbz')).toBeVisible();
 	await expect(page.getByText('Drop folder')).toBeVisible();
 
-	await page.getByRole('button', { name: 'Upload', exact: true }).click();
+	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(page.getByText('Choose a library.')).toBeVisible();
 	await expect(page.getByText('Choose a file to upload.')).toBeVisible();
 
 	await page.getByLabel('Library').selectOption({ label: 'Main' });
 	await page.getByLabel('Book file').setInputFiles({ name: 'huge.epub', mimeType: 'application/epub+zip', buffer: Buffer.from('big') });
-	await page.getByRole('button', { name: 'Upload', exact: true }).click();
+	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(page.getByText('This file is larger than the server allows.')).toBeVisible();
 
 	await page.getByLabel('Book file').setInputFiles({ name: 'Dune.epub', mimeType: 'application/epub+zip', buffer: Buffer.from('epub') });
-	await page.getByRole('button', { name: 'Upload', exact: true }).click();
+	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(page.getByText('Upload accepted as job #5 (Dune.epub): Waiting.')).toBeVisible();
 	expect(multipart).toContain('name="library_id"');
 	expect(multipart).toContain('name="file"; filename="Dune.epub"');
