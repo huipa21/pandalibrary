@@ -82,6 +82,7 @@ variables.
 | `PANDA_LISTEN` | `:8080` | HTTP listen address |
 | `PANDA_BASE_URL` | unset | Public origin; enables secure cookies on HTTPS and validates origins |
 | `PANDA_DROP_DIR` | `<data-dir>/drop` | Watched import folder |
+| `PANDA_BOOKHEAP_DIR` | `<data-dir>/bookheap` | Admin staging folder for unsorted books; must not overlap the drop folder or `files/`, `covers/`, `tmp/`, `backups/` |
 | `PANDA_DROP_POLL` | `0` | Optional polling fallback for network mounts; use a duration of at least `1s` |
 | `PANDA_TRUSTED_PROXIES` | unset | Comma-separated CIDRs allowed to set forwarded headers |
 | `PANDA_MAX_UPLOAD_MB` | `1024` | Maximum request size in MiB |

@@ -15,6 +15,7 @@ import (
 
 	"pandalibrary/internal/auth"
 	"pandalibrary/internal/blobstore"
+	"pandalibrary/internal/bookheap"
 	"pandalibrary/internal/catalog"
 	"pandalibrary/internal/config"
 	"pandalibrary/internal/db"
@@ -40,6 +41,7 @@ type application struct {
 	scheduler   *jobs.Scheduler
 	maintenance *jobs.Maintenance
 	importer    *importer.Service
+	bookheap    *bookheap.Service
 	ready       atomic.Bool
 	logger      *slog.Logger
 }
@@ -51,13 +53,20 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if cfg.BookheapDir == "" {
+		cfg.BookheapDir = filepath.Join(cfg.DataDir, "bookheap")
+	}
 	for _, directory := range []string{
 		cfg.DataDir, filepath.Join(cfg.DataDir, "files"), filepath.Join(cfg.DataDir, "covers"),
-		filepath.Join(cfg.DataDir, "tmp"), filepath.Join(cfg.DataDir, "backups"), cfg.DropDir,
+		filepath.Join(cfg.DataDir, "tmp"), filepath.Join(cfg.DataDir, "backups"), cfg.DropDir, cfg.BookheapDir,
 	} {
 		if err := os.MkdirAll(directory, 0o750); err != nil {
 			return nil, fmt.Errorf("create runtime directory %q: %w", directory, err)
 		}
+	}
+	// Re-check now that every directory exists so symlinks are resolved.
+	if err := config.ValidateBookheapDir(cfg.DataDir, cfg.DropDir, cfg.BookheapDir); err != nil {
+		return nil, err
 	}
 	path := filepath.Join(cfg.DataDir, "pandalibrary.db")
 	databases, err := db.Open(ctx, path)
@@ -65,8 +74,16 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		return nil, fmt.Errorf("open application database: %w", err)
 	}
 	var maintenance *jobs.Maintenance
+	var bookheapService *bookheap.Service
 	defer func() {
 		if returnErr != nil {
+			if bookheapService != nil {
+				stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+				if err := bookheapService.Close(stopCtx); err != nil {
+					returnErr = errors.Join(returnErr, err)
+				}
+				cancel()
+			}
 			if maintenance != nil {
 				stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 				if err := maintenance.Stop(stopCtx); err != nil {
@@ -116,6 +133,9 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err := maintenance.Register(scheduler); err != nil {
 		return nil, fmt.Errorf("register maintenance jobs: %w", err)
 	}
+	if err := maintenance.GuardDirectory(cfg.BookheapDir); err != nil {
+		return nil, fmt.Errorf("guard bookheap directory: %w", err)
+	}
 	catalogService, err := catalog.NewService(databases.Writer, databases.Reader, blobs)
 	if err != nil {
 		return nil, fmt.Errorf("configure catalog: %w", err)
@@ -158,11 +178,19 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure importer: %w", err)
 	}
+	bookheapService, err = bookheap.New(bookheap.Options{
+		Writer: databases.Writer, Reader: databases.Reader, Blobs: blobs, Dir: cfg.BookheapDir,
+		MaxBytes: cfg.MaxUploadBytes, Logger: logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure bookheap: %w", err)
+	}
 	app := &application{
 		databases:   databases,
 		scheduler:   scheduler,
 		maintenance: maintenance,
 		importer:    importService,
+		bookheap:    bookheapService,
 		logger:      logger,
 	}
 	app.handler, err = httpapi.NewRouter(httpapi.RouterOptions{
@@ -177,6 +205,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.ExportMount(exportService, authentication, logger),
 			httpapi.SearchMount(searchService, authentication, logger),
 			httpapi.ImportMount(importService, catalogService, authentication, logger),
+			httpapi.BookheapMount(bookheapService, authentication, logger),
 			httpapi.ShelfMount(catalogService, authentication, logger),
 			httpapi.DashboardMount(catalogService, authentication, logger),
 			httpapi.KOSyncMount(kosyncService, authentication, logger),
@@ -199,6 +228,9 @@ func (a *application) close() error {
 	defer cancel()
 	if err := a.importer.Stop(stopCtx); err != nil {
 		return fmt.Errorf("stop importer before closing database: %w", err)
+	}
+	if err := a.bookheap.Close(stopCtx); err != nil {
+		return fmt.Errorf("stop bookheap before closing database: %w", err)
 	}
 	if err := a.scheduler.Stop(stopCtx); err != nil {
 		return err
@@ -281,6 +313,9 @@ func (a *application) serve(ctx context.Context, listener net.Listener) error {
 		stopErr = errors.Join(stopErr, err)
 	}
 	if err := a.importer.Stop(stopCtx); err != nil {
+		stopErr = errors.Join(stopErr, err)
+	}
+	if err := a.bookheap.Close(stopCtx); err != nil {
 		stopErr = errors.Join(stopErr, err)
 	}
 	if err := a.scheduler.Stop(stopCtx); err != nil {

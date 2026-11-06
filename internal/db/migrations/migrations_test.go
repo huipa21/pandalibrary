@@ -237,6 +237,91 @@ func TestShelfModesMigrationPreservesDataAndProvisionsFavorites(t *testing.T) {
 	}
 	assertState("after re-up")
 }
+func TestBookheapMigrationPreservesImportJobs(t *testing.T) {
+	ctx := context.Background()
+	databases, databasePath := openTestDB(t)
+	v3 := newTestRunner(t, databases.Writer, databasePath, embeddedPrefixFS(t, 3), DefaultOptions())
+	if err := v3.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (1, 'admin', 'x', 'admin', 1, 1)`,
+		`INSERT INTO libraries (id, name, slug, created_at, updated_at) VALUES (10, 'Main', 'main', 1, 1)`,
+		`INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at) VALUES (101, 10, 'A', 'a', 1, 1)`,
+		`INSERT INTO import_jobs (id, source, library_id, user_id, original_name, sha256, status, error, book_id, created_at, finished_at)
+			VALUES (1, 'upload', 10, 1, 'a.epub', NULL, 'imported', NULL, 101, 5, 6),
+			(2, 'drop_folder', 10, NULL, 'b.epub', NULL, 'failed', 'bad', NULL, 7, 8)`,
+	} {
+		if _, err := databases.Writer.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	jobs := func() string {
+		t.Helper()
+		rows, err := databases.Writer.QueryContext(ctx, `SELECT id, source, original_name, status, coalesce(error, ''), coalesce(book_id, 0), created_at FROM import_jobs ORDER BY id`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var result []string
+		for rows.Next() {
+			var id, bookID, created int64
+			var source, name, status, message string
+			if err := rows.Scan(&id, &source, &name, &status, &message, &bookID, &created); err != nil {
+				t.Fatal(err)
+			}
+			result = append(result, fmt.Sprintf("%d|%s|%s|%s|%s|%d|%d", id, source, name, status, message, bookID, created))
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return strings.Join(result, ";")
+	}
+	before := jobs()
+	runner := newTestRunner(t, databases.Writer, databasePath, embedded, DefaultOptions())
+	if err := runner.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobs(); got != before {
+		t.Fatalf("jobs after up = %s, want %s", got, before)
+	}
+	if _, err := databases.Writer.ExecContext(ctx, `INSERT INTO import_jobs (id, source, library_id, original_name, status, created_at)
+		VALUES (3, 'bookheap', 10, 'c.epub', 'pending', 9)`); err != nil {
+		t.Fatalf("bookheap import source rejected: %v", err)
+	}
+	if _, err := databases.Writer.ExecContext(ctx, `INSERT INTO bookheap_items
+		(rel_path, file_name, size_bytes, mtime_ns, title, source, status, import_job_id, created_at, updated_at)
+		VALUES ('c.epub', 'c.epub', 1, 1, 'C', 'scan', 'queued', 3, 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO bookheap_items (rel_path, file_name, size_bytes, mtime_ns, title, source, created_at, updated_at) VALUES ('c.epub', 'c', 1, 1, 'C', 'scan', 1, 1)`,
+		`INSERT INTO bookheap_items (rel_path, file_name, size_bytes, mtime_ns, title, source, authors, created_at, updated_at) VALUES ('d.epub', 'd', 1, 1, 'D', 'scan', '{}', 1, 1)`,
+		`INSERT INTO bookheap_items (rel_path, file_name, size_bytes, mtime_ns, title, source, status, created_at, updated_at) VALUES ('e.epub', 'e', 1, 1, 'E', 'scan', 'gone', 1, 1)`,
+		`INSERT INTO import_jobs (source, library_id, original_name, created_at) VALUES ('other', 10, 'x', 1)`,
+	} {
+		if _, err := databases.Writer.ExecContext(ctx, statement); err == nil {
+			t.Fatalf("constraint not enforced: %s", statement)
+		}
+	}
+	if err := runner.DownTo(ctx, 3); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := jobs(), before+";3|upload|c.epub|pending||0|9"; got != want {
+		t.Fatalf("jobs after down = %s, want %s", got, want)
+	}
+	if err := runner.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var indexes int
+	if err := databases.Writer.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'import_jobs' AND name IN ('import_jobs_status_created', 'import_jobs_created')`).Scan(&indexes); err != nil || indexes != 2 {
+		t.Fatalf("import job indexes = %d, %v", indexes, err)
+	}
+	if got, want := jobs(), before+";3|upload|c.epub|pending||0|9"; got != want {
+		t.Fatalf("jobs after re-up = %s, want %s", got, want)
+	}
+}
+
 func TestUpgradeCreatesBackup(t *testing.T) {
 	ctx := context.Background()
 	databases, databasePath := openTestDB(t)
@@ -479,7 +564,7 @@ func newTestRunner(t *testing.T, writer *sql.DB, path string, files fs.FS, optio
 	return runner
 }
 
-const embeddedLatest = 3
+const embeddedLatest = 4
 
 // embeddedPrefixFS returns the embedded migrations up to and including version max, with a matching sum.
 func embeddedPrefixFS(t *testing.T, max int) fstest.MapFS {

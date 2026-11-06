@@ -23,3 +23,22 @@ func WriteProblem(w http.ResponseWriter, logger *slog.Logger, status int, detail
 		logger.Error("write problem response", "error", err)
 	}
 }
+
+// WriteProblemWith writes a problem response with RFC 9457 extension members.
+// Extensions never replace the standard members.
+func WriteProblemWith(w http.ResponseWriter, logger *slog.Logger, status int, detail string, extensions map[string]any) {
+	body := make(map[string]any, len(extensions)+4)
+	for key, value := range extensions {
+		body[key] = value
+	}
+	delete(body, "detail")
+	body["type"], body["title"], body["status"] = "about:blank", http.StatusText(status), status
+	if detail != "" {
+		body["detail"] = detail
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		logger.Error("write problem response", "error", err)
+	}
+}

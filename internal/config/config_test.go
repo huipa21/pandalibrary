@@ -14,7 +14,7 @@ func clearEnvironment(t *testing.T) {
 	for _, key := range []string{
 		"PANDA_DATA_DIR", "PANDA_LISTEN", "PANDA_DROP_DIR", "PANDA_BASE_URL",
 		"PANDA_TRUSTED_PROXIES", "PANDA_MAX_UPLOAD_MB", "PANDA_LOG_LEVEL",
-		"PANDA_DROP_POLL",
+		"PANDA_DROP_POLL", "PANDA_BOOKHEAP_DIR",
 	} {
 		t.Setenv(key, "")
 	}
@@ -95,6 +95,72 @@ func TestParseHealthcheckListen(t *testing.T) {
 	}
 	if _, err := ParseHealthcheckListen([]string{"extra"}, io.Discard); err == nil {
 		t.Fatal("unexpected argument accepted")
+	}
+}
+
+func TestBookheapDirDefaultsAndOverrides(t *testing.T) {
+	clearEnvironment(t)
+	data := t.TempDir()
+	cfg, err := Parse([]string{"--data-dir", data}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(data, "bookheap"); cfg.BookheapDir != want || !filepath.IsAbs(cfg.BookheapDir) {
+		t.Fatalf("default bookheap dir = %q, want %q", cfg.BookheapDir, want)
+	}
+	environment := filepath.Join(t.TempDir(), "heap-env")
+	t.Setenv("PANDA_BOOKHEAP_DIR", environment)
+	if cfg, err = Parse([]string{"--data-dir", data}, io.Discard); err != nil || cfg.BookheapDir != environment {
+		t.Fatalf("environment bookheap dir = %q, %v", cfg.BookheapDir, err)
+	}
+	flagDir := filepath.Join(t.TempDir(), "heap-flag")
+	if cfg, err = Parse([]string{"--data-dir", data, "--bookheap-dir", flagDir}, io.Discard); err != nil || cfg.BookheapDir != flagDir {
+		t.Fatalf("flag bookheap dir = %q, %v", cfg.BookheapDir, err)
+	}
+	t.Setenv("PANDA_BOOKHEAP_DIR", "")
+	if cfg, err = Parse([]string{"--data-dir", data, "--bookheap-dir", "relative-heap"}, io.Discard); err != nil || !filepath.IsAbs(cfg.BookheapDir) {
+		t.Fatalf("relative bookheap dir = %q, %v", cfg.BookheapDir, err)
+	}
+}
+
+func TestValidateBookheapDirRejectsOverlaps(t *testing.T) {
+	clearEnvironment(t)
+	root := t.TempDir()
+	data := filepath.Join(root, "data")
+	drop := filepath.Join(root, "drop")
+	valid := []string{
+		filepath.Join(data, "bookheap"),
+		filepath.Join(root, "heap"),
+		filepath.Join(data, "heap", "nested"),
+	}
+	for _, heap := range valid {
+		if err := ValidateBookheapDir(data, drop, heap); err != nil {
+			t.Errorf("ValidateBookheapDir(%q) = %v, want nil", heap, err)
+		}
+	}
+	invalid := map[string]string{
+		data:                                     "data directory",
+		root:                                     "data directory",
+		drop:                                     "drop directory",
+		filepath.Join(drop, "heap"):              "drop directory",
+		filepath.Join(data, "files"):             "files",
+		filepath.Join(data, "covers", "ab"):      "covers",
+		filepath.Join(data, "tmp"):               "tmp",
+		filepath.Join(data, "backups", "x", "y"): "backups",
+	}
+	for heap, want := range invalid {
+		err := ValidateBookheapDir(data, drop, heap)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("ValidateBookheapDir(%q) = %v, want error mentioning %q", heap, err, want)
+		}
+	}
+	// A heap that contains the drop directory is rejected too.
+	if err := ValidateBookheapDir(data, filepath.Join(root, "heap", "drop"), filepath.Join(root, "heap")); err == nil {
+		t.Error("heap containing the drop directory was accepted")
+	}
+	if _, err := Parse([]string{"--data-dir", data, "--bookheap-dir", filepath.Join(data, "covers")}, io.Discard); err == nil ||
+		!strings.Contains(err.Error(), "bookheap") {
+		t.Fatalf("Parse accepted an overlapping bookheap directory: %v", err)
 	}
 }
 

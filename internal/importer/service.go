@@ -104,13 +104,22 @@ func New(options Options) (*Service, error) {
 			return nil, err
 		}
 	}
+	registry, err := NewRegistry()
+	if err != nil {
+		return nil, err
+	}
+	return &Service{options: options, registry: registry, done: make(chan struct{}), wake: make(chan struct{}, 1), rescan: make(chan struct{}, 1), dropQueued: make(map[string]bool)}, nil
+}
+
+// NewRegistry returns an extract registry with every supported ebook format registered.
+func NewRegistry() (*extract.Registry, error) {
 	registry := extract.NewRegistry(0)
 	for _, register := range []func(*extract.Registry) error{epub.Register, pdf.Register, mobi.Register, fb2.Register, cbz.Register} {
 		if err := register(registry); err != nil {
 			return nil, err
 		}
 	}
-	return &Service{options: options, registry: registry, done: make(chan struct{}), wake: make(chan struct{}, 1), rescan: make(chan struct{}, 1), dropQueued: make(map[string]bool)}, nil
+	return registry, nil
 }
 
 func ValidFilename(name string) bool {

@@ -24,6 +24,7 @@ type Config struct {
 	DataDir        string
 	Listen         string
 	DropDir        string
+	BookheapDir    string
 	DropPoll       time.Duration
 	BaseURL        *url.URL
 	TrustedProxies []netip.Prefix
@@ -38,6 +39,7 @@ func Parse(args []string, output io.Writer) (Config, error) {
 	dataDir := flags.String("data-dir", envOr("PANDA_DATA_DIR", "/data"), "runtime data directory")
 	listen := flags.String("listen", envOr("PANDA_LISTEN", ":8080"), "HTTP listen address")
 	dropDir := flags.String("drop-dir", os.Getenv("PANDA_DROP_DIR"), "import drop directory")
+	bookheapDir := flags.String("bookheap-dir", os.Getenv("PANDA_BOOKHEAP_DIR"), "bookheap staging directory (default <data-dir>/bookheap)")
 	dropPoll := flags.String("drop-poll", envOr("PANDA_DROP_POLL", "0"), "drop polling fallback interval (0 disables; otherwise at least 1s)")
 	baseURL := flags.String("base-url", os.Getenv("PANDA_BASE_URL"), "public base URL")
 	proxies := flags.String("trusted-proxies", os.Getenv("PANDA_TRUSTED_PROXIES"), "comma-separated trusted proxy CIDRs")
@@ -57,6 +59,16 @@ func Parse(args []string, output io.Writer) (Config, error) {
 	}
 	if *dropDir == "" {
 		*dropDir = filepath.Join(*dataDir, "drop")
+	}
+	if *bookheapDir == "" {
+		*bookheapDir = filepath.Join(*dataDir, "bookheap")
+	}
+	heapDir, err := filepath.Abs(*bookheapDir)
+	if err != nil {
+		return Config{}, fmt.Errorf("resolve bookheap directory: %w", err)
+	}
+	if err := ValidateBookheapDir(*dataDir, *dropDir, heapDir); err != nil {
+		return Config{}, err
 	}
 	pollInterval, err := time.ParseDuration(*dropPoll)
 	if err != nil || pollInterval < 0 || pollInterval > 0 && pollInterval < time.Second {
@@ -82,12 +94,64 @@ func Parse(args []string, output io.Writer) (Config, error) {
 		DataDir:        *dataDir,
 		Listen:         *listen,
 		DropDir:        *dropDir,
+		BookheapDir:    heapDir,
 		DropPoll:       pollInterval,
 		BaseURL:        publicURL,
 		TrustedProxies: trustedProxies,
 		MaxUploadBytes: uploadMiB * bytesPerMiB,
 		LogLevel:       level,
 	}, nil
+}
+
+// ValidateBookheapDir rejects a heap directory that equals, contains or is inside
+// the drop directory or a storage root (<data-dir>/{files,covers,tmp,backups}),
+// or that equals or contains the data (database) directory. Existing paths are
+// compared after resolving symbolic links.
+func ValidateBookheapDir(dataDir, dropDir, heapDir string) error {
+	heap, err := resolvePath(heapDir)
+	if err != nil {
+		return fmt.Errorf("resolve bookheap directory: %w", err)
+	}
+	data, err := resolvePath(dataDir)
+	if err != nil {
+		return fmt.Errorf("resolve data directory: %w", err)
+	}
+	if within(data, heap) {
+		return errors.New("invalid bookheap directory: it must not equal or contain the data directory")
+	}
+	guarded := map[string]string{"drop directory": dropDir}
+	for _, name := range []string{"files", "covers", "tmp", "backups"} {
+		guarded["data "+name+" directory"] = filepath.Join(dataDir, name)
+	}
+	for label, path := range guarded {
+		resolved, err := resolvePath(path)
+		if err != nil {
+			return fmt.Errorf("resolve %s: %w", label, err)
+		}
+		if within(heap, resolved) || within(resolved, heap) {
+			return fmt.Errorf("invalid bookheap directory: it must not equal, contain or be inside the %s", label)
+		}
+	}
+	return nil
+}
+
+func resolvePath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		return resolved, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	return absolute, nil
+}
+
+// within reports whether path equals or is inside parent.
+func within(path, parent string) bool {
+	relative, err := filepath.Rel(parent, path)
+	return err == nil && (relative == "." || filepath.IsLocal(relative))
 }
 
 // ParseHealthcheckListen loads the local listen address for the healthcheck command.

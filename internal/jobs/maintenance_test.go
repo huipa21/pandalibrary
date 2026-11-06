@@ -518,6 +518,44 @@ func TestOrphanSweepPreservesImportsSpoolAndConfiguredDrop(t *testing.T) {
 	}
 }
 
+func TestOrphanSweepKeepsBookheapCoversAndHonorsGuardedDirectories(t *testing.T) {
+	fixture := newMaintenanceFixture(t)
+	coverHash := strings.Repeat("c", 64)
+	bookHash := strings.Repeat("d", 64)
+	cover := filepath.Join(fixture.dataDir, "covers", "cc", coverHash+".jpg")
+	thumbnail := filepath.Join(fixture.dataDir, "covers", "cc", coverHash+"-w400.jpg")
+	book := filepath.Join(fixture.dataDir, "files", "dd", bookHash+".epub")
+	for _, path := range []string{cover, thumbnail, book} {
+		writeOldMaintenanceFile(t, path)
+	}
+	if _, err := fixture.databases.Writer.Exec(`INSERT INTO bookheap_items
+		(rel_path, file_name, size_bytes, mtime_ns, sha256, title, cover_sha256, source, status, created_at, updated_at)
+		VALUES ('a.epub', 'a.epub', 1, 1, ?, 'A', ?, 'scan', 'ready', 1, 1)`, bookHash, coverHash); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.sweepOrphans(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for path, wantPresent := range map[string]bool{cover: true, thumbnail: true, book: false} {
+		if _, err := os.Stat(path); (err == nil) != wantPresent {
+			t.Errorf("%s exists = %v, want %v", path, err == nil, wantPresent)
+		}
+	}
+
+	if _, err := fixture.databases.Writer.Exec(`DELETE FROM bookheap_items`); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.GuardDirectory(filepath.Join(fixture.dataDir, "covers", "cc")); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.sweepOrphans(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(cover); err != nil {
+		t.Fatalf("sweep removed a file inside a guarded directory: %v", err)
+	}
+}
+
 func TestOrphanSweepDoesNotFollowShardSymlinks(t *testing.T) {
 	fixture := newMaintenanceFixture(t)
 	outside := t.TempDir()

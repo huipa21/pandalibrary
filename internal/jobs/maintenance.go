@@ -69,6 +69,9 @@ type Maintenance struct {
 	writer  *sql.DB
 	dataDir string
 	dropDir string
+	// guarded are extra user-content directories (such as the bookheap) that
+	// must never overlap a storage root swept for orphans.
+	guarded []string
 	blobs   *blobstore.Store
 	logger  *slog.Logger
 
@@ -669,6 +672,10 @@ func (m *Maintenance) sweepOrphans(ctx context.Context) (returnErr error) {
 			m.logger.Warn("orphan storage root overlaps configured drop directory; skipping sweep", "storage", category)
 			continue
 		}
+		if m.overlapsGuarded(storagePath) {
+			m.logger.Warn("orphan storage root overlaps a guarded content directory; skipping sweep", "storage", category)
+			continue
+		}
 		storage, err := openStorageDirectory(root, category)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -685,6 +692,35 @@ func (m *Maintenance) sweepOrphans(ctx context.Context) (returnErr error) {
 		}
 	}
 	return nil
+}
+
+// GuardDirectory registers a user-content directory (for example the bookheap)
+// that the orphan sweep must never treat as, or overlap with, a storage root.
+func (m *Maintenance) GuardDirectory(path string) error {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve guarded directory: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		absolute = resolved
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("resolve guarded directory links: %w", err)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.guarded = append(m.guarded, absolute)
+	return nil
+}
+
+func (m *Maintenance) overlapsGuarded(storagePath string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, guarded := range m.guarded {
+		if pathsOverlap(storagePath, guarded) {
+			return true
+		}
+	}
+	return false
 }
 
 func pathsOverlap(a, b string) bool {
@@ -819,9 +855,10 @@ func (m *Maintenance) removeOrphan(ctx context.Context, root *os.Root, name, has
 	if err := tx.QueryRowContext(ctx, `
 		SELECT EXISTS(SELECT 1 FROM book_files WHERE sha256 = ?)
 			OR EXISTS(SELECT 1 FROM books WHERE cover_sha256 = ?)
+			OR (? = 'cover' AND EXISTS(SELECT 1 FROM bookheap_items WHERE cover_sha256 = ?))
 			OR EXISTS(SELECT 1 FROM import_jobs WHERE status IN ('pending', 'processing')
 				AND (? = 'cover' OR sha256 = ?))
-	`, hash, hash, kind, hash).Scan(&referenced); err != nil {
+	`, hash, hash, kind, hash, kind, hash).Scan(&referenced); err != nil {
 		return false, rollback(tx, fmt.Errorf("check orphan references: %w", err))
 	}
 	deleted := false

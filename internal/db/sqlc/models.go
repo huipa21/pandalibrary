@@ -90,6 +90,33 @@ type BookTag struct {
 	TagID  int64
 }
 
+type BookheapItem struct {
+	ID                int64
+	RelPath           string
+	FileName          string
+	SizeBytes         int64
+	MtimeNs           int64
+	Sha256            sql.NullString
+	Format            sql.NullString
+	Title             string
+	Authors           string
+	Language          sql.NullString
+	Series            sql.NullString
+	SeriesIndex       sql.NullFloat64
+	CoverSha256       sql.NullString
+	Source            string
+	Status            string
+	Error             sql.NullString
+	DuplicateOfBookID sql.NullInt64
+	DuplicateOfItemID sql.NullInt64
+	TargetLibraryID   sql.NullInt64
+	TargetShelfIds    string
+	ImportJobID       sql.NullInt64
+	AddedBy           sql.NullInt64
+	CreatedAt         int64
+	UpdatedAt         int64
+}
+
 type Bookmark struct {
 	Seq        int64
 	ID         string
