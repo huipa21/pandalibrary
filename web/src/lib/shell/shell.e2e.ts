@@ -117,7 +117,8 @@ test('administrators see the Admin entry with localized Chinese navigation', asy
 	await authenticate(page, 'admin', 'zh');
 	await page.goto('/');
 	const sidebar = page.getByRole('navigation', { name: '主导航' });
-	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', '书签', '笔记']);
+	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', /^书堆/, '书签', '笔记']);
+	await expect(sidebar.getByRole('link', { name: /^书堆/ })).toHaveAttribute('href', '/bookheap');
 	await expect(sidebar.getByRole('link', { name: '管理', exact: true })).toHaveAttribute('href', '/admin');
 	await expect(sidebar.getByRole('button', { name: '新建书架' })).toBeVisible();
 	await expect(sidebar.getByRole('link', { name: '仪表盘' })).toHaveAttribute('aria-current', 'page');

@@ -19,7 +19,6 @@ import (
 
 	"pandalibrary/internal/blobstore"
 	"pandalibrary/internal/catalog"
-	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/sqlc"
 	"pandalibrary/internal/extract"
 	"pandalibrary/internal/extract/cbz"
@@ -59,6 +58,8 @@ type Service struct {
 	workers    sync.WaitGroup
 	dropMu     sync.Mutex
 	dropQueued map[string]bool
+	hooks      map[string]Hook
+	recovered  []recoveredJob
 }
 
 type Job struct {
@@ -83,6 +84,7 @@ type manifest struct {
 	DropSize  int64                `json:"drop_size,omitempty"`
 	DropMtime int64                `json:"drop_mtime,omitempty"`
 	Failure   string               `json:"failure,omitempty"`
+	Hook      json.RawMessage      `json:"hook,omitempty"`
 }
 
 func New(options Options) (*Service, error) {
@@ -172,36 +174,7 @@ func (s *Service) QueueUpload(ctx context.Context, viewer catalog.Viewer, librar
 }
 
 func (s *Service) enqueue(ctx context.Context, source string, libraryID, userID int64, name string, input manifest) (Job, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.stopped || s.runContext != nil && s.runContext.Err() != nil {
-		return Job{}, ErrStopped
-	}
-	var row sqlc.ImportJob
-	err := db.WithTx(ctx, s.options.Writer, func(tx *sql.Tx) error {
-		var err error
-		row, err = sqlc.New(tx).ImportCreateJob(ctx, sqlc.ImportCreateJobParams{
-			Source: source, LibraryID: libraryID, UserID: nullableID(userID), OriginalName: name,
-			Sha256: text(input.Staged.SHA256), CreatedAt: time.Now().UnixMilli(),
-		})
-		if err != nil {
-			return err
-		}
-		return s.writeManifest(row.ID, input)
-	})
-	if err != nil {
-		return Job{}, err
-	}
-	if input.DropPath != "" {
-		s.dropMu.Lock()
-		s.dropQueued[input.DropPath] = true
-		s.dropMu.Unlock()
-	}
-	select {
-	case s.wake <- struct{}{}:
-	default:
-	}
-	return jobDTO(row), nil
+	return s.enqueueWith(ctx, source, libraryID, userID, name, input, nil)
 }
 
 func (s *Service) History(ctx context.Context, viewer catalog.Viewer, before int64, limit int) (catalog.Page[Job], error) {
@@ -245,6 +218,9 @@ func (s *Service) Start(parent context.Context) error {
 	if err := s.recoverManifests(parent); err != nil {
 		return err
 	}
+	s.recoverHooks(parent)
+	recovered := s.recovered
+	s.recovered = nil
 	watcher, err := s.newWatcher()
 	if err != nil {
 		return err
@@ -253,6 +229,10 @@ func (s *Service) Start(parent context.Context) error {
 	s.cancel = cancel
 	s.runContext = ctx
 	s.started = true
+	if len(recovered) > 0 {
+		s.workers.Add(1)
+		go func() { defer s.workers.Done(); s.runRecovered(recovered) }()
+	}
 	s.workers.Add(1)
 	go func() { defer s.workers.Done(); s.watch(ctx, watcher) }()
 	for range 2 {

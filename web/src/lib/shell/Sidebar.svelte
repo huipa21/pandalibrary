@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
-	import { homeNavigation, isActive, navigationFor, type NavigationItem } from '#lib/nav.js';
+	import { homeNavigationFor, isActive, navigationFor, type NavigationItem } from '#lib/nav.js';
+	import BookheapCount from '#lib/bookheap/BookheapCount.svelte';
 	import SidebarShelves from './SidebarShelves.svelte';
 
 	interface Props {
@@ -23,7 +24,12 @@
 		{#each items as item (item.id)}
 			<li>
 				<a class="shell-link" href={item.href} aria-current={isActive(item, pathname) ? 'page' : undefined}>
-					{item.label()}
+					{#if item.id === 'bookheap'}
+						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
+						<BookheapCount />
+					{:else}
+						{item.label()}
+					{/if}
 				</a>
 			</li>
 		{/each}
@@ -34,7 +40,7 @@
 	<nav aria-label={m['auth.navigation.label']()} class="shell-scroll min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-3 py-4">
 		<section class="shell-section" aria-labelledby="sidebar-home-heading">
 			<h2 id="sidebar-home-heading" class="shell-heading">{m['ux1.nav.home_heading']()}</h2>
-			{@render links(homeNavigation)}
+			{@render links(homeNavigationFor(role))}
 		</section>
 		{#if shelves}
 			{@render shelves()}

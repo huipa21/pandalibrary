@@ -180,7 +180,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	}
 	bookheapService, err = bookheap.New(bookheap.Options{
 		Writer: databases.Writer, Reader: databases.Reader, Blobs: blobs, Dir: cfg.BookheapDir,
-		MaxBytes: cfg.MaxUploadBytes, Logger: logger,
+		MaxBytes: cfg.MaxUploadBytes, Logger: logger, Importer: importService, Catalog: catalogService,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure bookheap: %w", err)
@@ -206,6 +206,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.SearchMount(searchService, authentication, logger),
 			httpapi.ImportMount(importService, catalogService, authentication, logger),
 			httpapi.BookheapMount(bookheapService, authentication, logger),
+			httpapi.BookheapAssignMount(bookheapService, authentication, logger),
 			httpapi.ShelfMount(catalogService, authentication, logger),
 			httpapi.DashboardMount(catalogService, authentication, logger),
 			httpapi.KOSyncMount(kosyncService, authentication, logger),

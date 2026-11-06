@@ -68,13 +68,36 @@ the next.
 |---|---|---|---|---|---|---|---|
 | 1 | BH1 | Heap folder, index table, upload/list/delete/scan API | baseline | [BH1](../prompts/BH1-bookheap-storage-api.md) | Done | `task/bh1` | Migration 00004; delete adds `changed`/`failed` codes |
 | 1 | BH3 | Header Upload button and upload dialog | baseline | [BH3](../prompts/BH3-upload-dialog.md) | Done | `task/bh3` | Mocked against plan contract; BH5 verifies live |
-| 2 | BH2 | Bulk assign to library + shelves via importer | BH1 | [BH2](../prompts/BH2-bookheap-assign-api.md) | Ready | `task/bh2` | No migration |
-| 2 | BH4 | Bookheap page, nav, Scan, bulk Assign/Delete | BH1, BH3 | [BH4](../prompts/BH4-bookheap-page.md) | Ready | `task/bh4` | Assign mocked until BH2 merges |
+| 2 | BH2 | Bulk assign to library + shelves via importer | BH1 | [BH2](../prompts/BH2-bookheap-assign-api.md) | Done | `task/bh2` | No migration; adds per-item `changed`/`failed`; importer hook |
+| 2 | BH4 | Bookheap page, nav, Scan, bulk Assign/Delete | BH1, BH3 | [BH4](../prompts/BH4-bookheap-page.md) | Done | `task/bh4` | Assign mocked until BH2 merges; Queued/Importing filter merged client-side |
 | 3 | BH5 | Real-server integration, docs, release gates | BH1-BH4 | [BH5](../prompts/BH5-bookheap-integration.md) | Ready | `task/bh5` | Runs alone |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-06 — BH2 — Added `POST /api/v1/admin/bookheap/assign`: whole-request
+  library/shelf validation (manual, writable, not another user's private
+  shelf; Favorites allowed), then per item a same-file check, `importer.Stage`
+  copy and a `bookheap` import job queued in the same transaction that marks
+  the item `queued`. A narrow `importer.Hook` (Started / Imported in the book
+  transaction / Finished / Recover) adds books to still-writable shelves,
+  deletes the row, removes the unchanged heap file after commit, and records
+  duplicates/failures (files kept, retryable). Startup reconciles
+  queued/importing rows. Catalog exports `CheckAssignableShelf` and
+  `AddAssignedBookTx`. Per-item codes add `changed`/`failed`. Upload/drop
+  importer tests unchanged; `task sqlc:check lint test build` passes.
+
+- 2026-11-06 — BH4 — Added the admin-only `/bookheap` page and HOME entry
+  (after All Books, with a ready-count badge): Scan with live progress and
+  summary, Upload via BH3's dialog, URL-synced status filter and debounced
+  search, Load more paging with totals, rows with cover/metadata/status/reason
+  and duplicate links, cross-page selection (500 cap), bulk Assign (library +
+  writable manual shelves, skips non-assignable items) and confirmed Delete
+  with per-item results, and bounded polling while items are queued/importing.
+  Assign is mocked against the plan contract until BH2 merges. BH1 filters a
+  single status, so Queued/Importing is merged client-side. Check, unit tests,
+  build and the mocked browser suite pass.
 
 - 2026-11-06 — BH1 — Added `PANDA_BOOKHEAP_DIR` (default `<data>/bookheap`,
   overlap-validated), migration 00004 (`bookheap_items`, `import_jobs.source`
