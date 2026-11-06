@@ -42,20 +42,13 @@ describe('public build version', () => {
 		expect(versionErrorState(new ApiError(503, '', ''), true)).toBe('error');
 	});
 
-	it('renders the readable version and accessible full commit, UTC date, and release', () => {
+	it('renders a short date and commit hash without an expandable details drawer', () => {
 		const state: VersionState = { status: 'ready', info };
 		const { body } = render(BuildVersionView, { props: { state, onretry: () => {} } });
 		expect(body).toContain('Build version');
-		expect(body).toContain('Version 20251231-150045+0123456789ab-dirty');
-		expect(body).toContain(info.commit);
-		expect(body).toContain(`datetime="${info.commit_date}"`);
-		expect(body).toContain('Uncommitted changes');
-		expect(body).toContain('v1.2.3');
-		const noRelease = render(BuildVersionView, {
-			props: { state: { status: 'ready', info: { ...info, dirty: false, release: null } }, onretry: () => {} }
-		}).body;
-		expect(noRelease).toContain('No');
-		expect(noRelease).not.toContain('v1.2.3');
+		expect(body).toContain('Version 251231-0123456');
+		expect(body).not.toContain('<details');
+		expect(body).not.toContain(info.commit);
 	});
 
 	it('renders loading, offline, and failure states with retry', () => {
