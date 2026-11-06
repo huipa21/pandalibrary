@@ -40,7 +40,7 @@ test('renders localized loading, API error, and empty library states', async ({ 
 	await page.goto('/libraries');
 	await expect(page.getByRole('main').getByRole('status')).toHaveText('正在加载目录…');
 	await expect(page.getByRole('alert')).toContainText('目录请求失败');
-	await page.getByRole('button', { name: '重试' }).click();
+	await page.getByRole('main').getByRole('button', { name: '重试' }).click();
 	await expect(page.getByText('你的账户目前无法访问任何书库。')).toBeVisible();
 });
 

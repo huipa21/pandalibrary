@@ -329,7 +329,7 @@ test('readers see neither Upload nor Bookheap and the heap API refuses them', as
 		await reader.getByLabel('Password', { exact: true }).fill('bh5-reader-password');
 		await reader.getByRole('button', { name: 'Sign in', exact: true }).click();
 		await expect(reader).toHaveURL('/');
-		await expect(reader.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
+		await expect(reader.getByRole('heading', { name: 'Dashboard', level: 1 })).toHaveClass('sr-only');
 		await expect(reader.getByRole('banner').getByRole('button', { name: 'Upload' })).toHaveCount(0);
 		await expect(reader.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: /^Bookheap/ })).toHaveCount(0);
 		for (const path of ['/api/v1/admin/bookheap/items', '/api/v1/admin/bookheap/scan']) {

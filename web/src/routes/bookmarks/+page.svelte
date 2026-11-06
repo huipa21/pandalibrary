@@ -99,11 +99,8 @@
 	<title>{m['ux6.title']()} · {m['common.app_name']()}</title>
 </svelte:head>
 
-<section class="mx-auto max-w-4xl space-y-6" aria-labelledby="bookmarks-heading">
-	<header>
-		<h1 id="bookmarks-heading" class="text-3xl font-semibold tracking-tight">{m['ux6.title']()}</h1>
-		<p class="mt-2 text-slate-600">{m['ux6.description']()}</p>
-	</header>
+<section class="space-y-6" aria-labelledby="bookmarks-heading">
+	<h1 id="bookmarks-heading" class="sr-only">{m['ux6.title']()}</h1>
 	{#if offline}<p class="rounded-md bg-amber-50 p-3 text-sm text-amber-950" role="status">{m['ux6.offline_list']()}</p>{/if}
 	{#if notice}<p class="text-sm text-green-700" role="status">{notice}</p>{/if}
 	{#if actionError}<p class="rounded-md bg-red-50 p-3 text-red-800" role="alert">{actionError}</p>{/if}

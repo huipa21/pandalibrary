@@ -120,6 +120,11 @@ body {
 		color: var(--color-white);
 		text-decoration: underline;
 	}
+
+	.shell-control[aria-current='page'] {
+		color: var(--color-emerald-300);
+		font-weight: 600;
+	}
 }
 
 /* Unlayered so they win over the search box's light utility classes inside the dark header. */

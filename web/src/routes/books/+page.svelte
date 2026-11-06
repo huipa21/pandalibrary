@@ -12,9 +12,6 @@
 </svelte:head>
 
 <section class="space-y-8">
-	<header class="space-y-2">
-		<h1 class="text-3xl font-semibold tracking-tight">{m['ux1.books.title']()}</h1>
-		<p class="text-slate-600">{m['ux1.books.description']()}</p>
-	</header>
-	<BookBrowser {scope} />
+	<h1 class="sr-only">{m['ux1.books.title']()}</h1>
+	<BookBrowser {scope} showHeading={false} />
 </section>

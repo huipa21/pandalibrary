@@ -68,7 +68,7 @@
 </script>
 
 <section class="space-y-6">
-	<h1 class="text-3xl font-semibold tracking-tight">{title}</h1>
+	<h1 class="sr-only">{title}</h1>
 	{#if error}
 		<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">
 			<p>{error}</p>

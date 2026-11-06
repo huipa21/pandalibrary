@@ -178,19 +178,20 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await expect(page.getByLabel('Name')).toHaveValue('');
 
 	await page.goto('/shelves/8');
-	await expect(page.getByRole('heading', { name: 'Staff picks' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Staff picks' })).toHaveClass('sr-only');
 	await expect(page.getByRole('heading', { name: 'A Book' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: /Remove “A Book”/ })).toHaveCount(0);
 
 	await page.goto('/shelves/7');
+	await page.getByText('Shelf details', { exact: true }).click();
 	await expect(page.getByText('Old notes')).toBeVisible();
 	await page.getByRole('button', { name: 'Edit details' }).click();
 	await expect(page.getByLabel('Name')).toHaveValue('Favorites');
 	await page.getByLabel('Name').fill('Best books');
 	await page.getByLabel('Description (optional)').fill('');
 	await page.getByRole('button', { name: 'Save changes' }).click();
-	await expect(page.getByRole('heading', { name: 'Best books', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Best books', level: 1 })).toHaveClass('sr-only');
 	await expect(page.getByText('Shelf updated.')).toBeVisible();
 	await expect(page.getByText('Old notes')).toHaveCount(0);
 	expect(patches).toEqual([{ name: 'Best books', description: null }]);

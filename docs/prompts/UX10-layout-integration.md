@@ -31,8 +31,9 @@ tests and coordinate any necessary owned-area changes after owners are done.
    reader sizing, dialog escape/focus return, and independent scrolling.
 4. Exercise real flows: create manual/automatic shelf using sidebar; manually
    add/remove books; update rule input data and see automatic results; verify
-   Unshelved/Favorites/counts; add shelf from dashboard; add/reorder/remove all
-   dashboard sections, reload and verify zero persists; restore intentionally.
+   Unshelved/Favorites/counts; add an existing shelf to the dashboard;
+   add/reorder/remove all dashboard sections, reload and verify zero persists;
+   restore intentionally.
 5. Verify per-user default feeds and accurate resume, save/edit/delete bookmark
    online/offline and sync to another session, account switching, hidden-book
    counts/feeds, and denial for ordinary users reaching account admin APIs.

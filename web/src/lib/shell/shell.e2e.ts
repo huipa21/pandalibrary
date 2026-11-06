@@ -83,7 +83,7 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 	await expect(shelves.getByRole('link', { name: /Favorites/ })).toHaveCount(1);
 	await expect(page.locator('[data-slot="sidebar-footer"]')).toBeVisible();
 
-	await expect(page.getByRole('heading', { name: 'All Books', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'All Books', level: 1 })).toHaveClass('sr-only');
 	await expect(page.getByRole('heading', { name: 'A Book' })).toBeVisible();
 	await expect(page.getByLabel('Author')).toHaveValue('4');
 	expect(bookQueries[0].has('library_id')).toBe(false);
@@ -110,7 +110,7 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 
 	await sidebar.getByRole('link', { name: 'Dashboard' }).click();
 	await expect(page).toHaveURL('/');
-	await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toHaveClass('sr-only');
 });
 
 test('administrators see the Admin entry with localized Chinese navigation', async ({ page }) => {
@@ -129,7 +129,7 @@ test('mobile drawer toggles by keyboard, traps focus, closes on Escape and navig
 	await mockCatalog(page);
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/');
-	await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toHaveClass('sr-only');
 
 	const toggle = page.getByRole('button', { name: 'Open navigation menu' });
 	await expect(toggle).toHaveAttribute('aria-expanded', 'false');

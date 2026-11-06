@@ -43,10 +43,7 @@
 </svelte:head>
 
 <section class="space-y-6" aria-labelledby="bookheap-heading">
-	<header class="space-y-2">
-		<h1 id="bookheap-heading" class="text-3xl font-semibold tracking-tight">{m['bh4.title']()}</h1>
-		{#if access === 'admin'}<p class="text-slate-600">{m['bh4.description']()}</p>{/if}
-	</header>
+	<h1 id="bookheap-heading" class="sr-only">{m['bh4.title']()}</h1>
 	{#if access === 'loading'}
 		<p class="text-slate-600" role="status">{m['admin.checking']()}</p>
 	{:else if access === 'error'}

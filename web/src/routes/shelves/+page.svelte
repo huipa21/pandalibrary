@@ -46,10 +46,7 @@
 </svelte:head>
 
 <section class="space-y-10" aria-labelledby="shelves-heading">
-	<header class="space-y-2">
-		<h1 id="shelves-heading" class="text-3xl font-semibold tracking-tight">{m['shelves.title']()}</h1>
-		<p class="text-slate-600">{m['shelves.description']()}</p>
-	</header>
+	<h1 id="shelves-heading" class="sr-only">{m['shelves.title']()}</h1>
 
 	<section class="space-y-4 rounded-lg border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="create-shelf-heading">
 		<h2 id="create-shelf-heading" class="text-xl font-semibold">{m['shelves.create.heading']()}</h2>

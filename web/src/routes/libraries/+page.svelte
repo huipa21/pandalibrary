@@ -59,10 +59,7 @@
 </script>
 
 <section class="space-y-8">
-	<header>
-		<h1 class="text-3xl font-semibold tracking-tight">{m['catalog.home.title']()}</h1>
-		<p class="mt-2 text-slate-600">{m['catalog.home.description']()}</p>
-	</header>
+	<h1 class="sr-only">{m['catalog.home.title']()}</h1>
 
 	{#if error}
 		<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">

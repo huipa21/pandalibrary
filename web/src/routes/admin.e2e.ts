@@ -43,7 +43,7 @@ test('administrators reach the admin area in Chinese', async ({ page }) => {
 	await authenticate(page, 'admin', 'zh');
 	await page.goto('/');
 	await page.getByRole('link', { name: '管理', exact: true }).click();
-	await expect(page.getByRole('heading', { level: 1, name: '管理' })).toBeVisible();
+	await expect(page.getByRole('heading', { level: 1, name: '管理' })).toHaveClass('sr-only');
 	await expect(page.getByRole('navigation', { name: '管理分区' })).toBeVisible();
 	await expect(page.getByText('pandalibrary user create --username <name>')).toBeVisible();
 });

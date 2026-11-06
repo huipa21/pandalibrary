@@ -8,13 +8,18 @@ test('real server persists configured shelves and an empty layout across devices
 	await signInRealAdmin(page);
 	await expect(page.locator('[data-dashboard-section]')).toHaveCount(3);
 
-	await page.getByRole('button', { name: 'Configure dashboard' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Configure dashboard' });
-	await dialog.getByRole('button', { name: 'Create shelf', exact: true }).click();
+	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'New shelf' }).click();
 	const creator = page.getByRole('dialog', { name: 'Create shelf' });
 	await creator.getByLabel('Shelf name').fill('Real server shelf');
 	await creator.getByRole('button', { name: 'Create shelf', exact: true }).click();
+	await expect(creator).toBeHidden();
+	await page.getByRole('button', { name: 'Configure dashboard' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Configure dashboard' });
 	const select = dialog.getByLabel('Choose an existing shelf');
+	await expect(select).toBeEnabled();
+	while (await select.locator('option', { hasText: 'Real server shelf' }).count() === 0) {
+		await dialog.getByRole('button', { name: 'Load more shelves' }).click();
+	}
 	await expect(select.locator('option', { hasText: 'Real server shelf' })).toHaveCount(1);
 	await select.selectOption({ label: 'Real server shelf' });
 	await dialog.getByRole('button', { name: 'Add shelf section' }).click();

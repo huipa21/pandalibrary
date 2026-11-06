@@ -17,10 +17,7 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="admin-heading">
-	<header class="space-y-2">
-		<h1 id="admin-heading" class="text-3xl font-semibold tracking-tight">{m['admin.title']()}</h1>
-		<p class="text-slate-600">{m['admin.description']()}</p>
-	</header>
+	<h1 id="admin-heading" class="sr-only">{m['admin.title']()}</h1>
 
 	<ul class="grid gap-3 sm:grid-cols-2">
 		{#each cards as card (card.href)}

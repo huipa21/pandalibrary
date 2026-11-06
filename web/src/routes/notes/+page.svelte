@@ -159,10 +159,7 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="notes-heading">
-	<header class="space-y-2">
-		<h1 id="notes-heading" class="text-3xl font-semibold tracking-tight">{m['notes.title']()}</h1>
-		<p class="text-slate-600">{m['notes.description']()}</p>
-	</header>
+	<h1 id="notes-heading" class="sr-only">{m['notes.title']()}</h1>
 
 	<form role="search" aria-label={m['notes.landmark']()} class="flex flex-wrap items-end gap-3" onsubmit={submit} novalidate>
 		<label class="grid min-w-0 flex-1 gap-1 text-sm font-medium" for="notes-query">

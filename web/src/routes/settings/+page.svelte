@@ -111,10 +111,7 @@
 </script>
 
 <section class="space-y-10">
-	<div>
-		<h1 class="text-3xl font-semibold tracking-tight">{m['auth.settings.title']()}</h1>
-		<p class="mt-2 text-slate-600">{m['auth.settings.description']()}</p>
-	</div>
+	<h1 class="sr-only">{m['auth.settings.title']()}</h1>
 	{#if error}
 		<p class="rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">{error}</p>
 	{/if}

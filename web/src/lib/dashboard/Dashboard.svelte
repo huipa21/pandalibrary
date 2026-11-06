@@ -5,7 +5,6 @@
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { SyncError } from '#lib/reader/api.js';
 	import { getShelf, listShelves } from '#lib/shelves/api.js';
-	import ShelfCreateDialog from '#lib/shelves/ShelfCreateDialog.svelte';
 	import type { Shelf } from '#lib/shelves/types.js';
 	import { offlineStatus } from '#lib/sync/client.js';
 	import { uniquePages } from './api.js';
@@ -33,22 +32,17 @@
 	let selectedBuiltin = $state('');
 	let selectedShelf = $state('');
 	let shelfError = $state('');
-	let shelfNotice = $state('');
 	let shelfBusy = $state(false);
-	let createdShelf = $state<Shelf | null>(null);
-	let createdShelfId: number | null = null;
 	let shelfStates = $state<Record<string, ShelfState>>({});
-	let creatorOpen = $state(false);
 	let requestVersion = 0;
 	let configVersion = 0;
 	let metadataVersion = 0;
-	let createdVersion = 0;
 	let mounted = true;
 	let deferredRefresh = false;
 	const shelfPager = new CursorPager<Shelf>();
 	const choices = $derived.by(() => {
 		const seen = new Set<number>();
-		return [ ...(createdShelf ? [createdShelf] : []), ...shelfPager.items ].filter((shelf) => {
+		return shelfPager.items.filter((shelf) => {
 			if (!Number.isSafeInteger(shelf.id) || shelf.id < 1 || seen.has(shelf.id)) return false;
 			seen.add(shelf.id);
 			return !draft.includes(shelfSection(shelf.id));
@@ -84,7 +78,6 @@
 			requestVersion += 1;
 			configVersion += 1;
 			metadataVersion += 1;
-			createdVersion += 1;
 			unsubscribe();
 			shelfPager.dispose();
 			navigator.serviceWorker?.removeEventListener('message', onSyncMessage);
@@ -93,7 +86,7 @@
 	});
 
 	function refreshAfterSync() {
-		if (saving || configOpen || creatorOpen) {
+		if (saving || configOpen) {
 			deferredRefresh = true;
 		} else {
 			void refreshLayout(false);
@@ -152,28 +145,10 @@
 	}
 
 	async function refreshShelfOptions() {
-		const version = ++createdVersion;
-		const createdId = createdShelfId;
-		const [created] = await Promise.all([
-			createdId
-				? getShelf(createdId).then(
-					(shelf) => ({ shelf, error: null }),
-					(error: unknown) => ({ shelf: null, error })
-				)
-				: Promise.resolve(null),
-			shelfPager.reset(uniquePages((cursor, signal) => listShelves({ cursor, signal, limit: 30 })))
-		]);
-		if (!mounted || version !== createdVersion) return;
+		const version = configVersion;
+		await shelfPager.reset(uniquePages((cursor, signal) => listShelves({ cursor, signal, limit: 30 })));
+		if (!mounted || !configOpen || version !== configVersion) return;
 		if (shelfPager.status === 'error') console.error('Could not load dashboard shelf choices', shelfPager.error);
-		if (created?.shelf) {
-			createdShelf = created.shelf;
-		} else if (created) {
-			console.error('Could not check the newly created shelf', created.error);
-			createdShelf = null;
-			createdShelfId = null;
-			if (selectedShelf === String(createdId)) selectedShelf = '';
-			shelfError = m['ux5.shelf_selection_failed']();
-		}
 	}
 
 	async function moreShelves() {
@@ -181,16 +156,13 @@
 		if (shelfPager.moreError) console.error('Could not load more dashboard shelves', shelfPager.moreError);
 	}
 
-	async function openConfiguration(created?: Shelf) {
+	async function openConfiguration() {
 		if (!layout?.valid || saving) return;
 		configVersion += 1;
 		draft = [...layout.sections];
 		selectedBuiltin = '';
-		selectedShelf = created ? String(created.id) : '';
-		createdShelf = created ?? null;
-		createdShelfId = created?.id ?? null;
+		selectedShelf = '';
 		shelfError = '';
-		shelfNotice = created ? m['ux5.shelf_created']() : '';
 		actionError = '';
 		configOpen = true;
 		void refreshShelfOptions();
@@ -208,7 +180,6 @@
 		configVersion += 1;
 		shelfBusy = false;
 		metadataVersion += 1;
-		createdVersion += 1;
 		shelfPager.dispose();
 		gear?.focus();
 		if (deferredRefresh) {
@@ -243,36 +214,14 @@
 			setShelfState(section, { status: 'ready', shelf });
 			draft = [...draft, section];
 			selectedShelf = '';
-			shelfNotice = '';
 		} catch (error) {
 			if (!mounted || !configOpen || version !== configVersion) return;
 			console.error('Could not add the selected dashboard shelf', error);
 			shelfError = m['ux5.shelf_selection_failed']();
-			createdShelf = null;
-			createdShelfId = null;
 			selectedShelf = '';
 			void refreshShelfOptions();
 		} finally {
 			if (mounted && version === configVersion) shelfBusy = false;
-		}
-	}
-
-	function openShelfCreator() {
-		creatorOpen = true;
-	}
-
-	function closeShelfCreator() {
-		creatorOpen = false;
-	}
-
-	function shelfCreated(shelf: Shelf) {
-		createdShelf = shelf;
-		createdShelfId = shelf.id;
-		selectedShelf = String(shelf.id);
-		shelfNotice = m['ux5.shelf_created']();
-		if (!configOpen) {
-			if (layout?.valid) void openConfiguration(shelf);
-			else notice = m['ux5.shelf_created']();
 		}
 	}
 
@@ -312,19 +261,13 @@
 	}
 </script>
 
-<section class="space-y-6" data-dashboard>
-	<header class="flex flex-wrap items-start justify-between gap-4">
-		<div>
-			<h1 class="text-3xl font-semibold tracking-tight">{m['ux1.dashboard.title']()}</h1>
-			<p class="mt-2 text-slate-600">{m['ux5.description']()}</p>
-		</div>
-		<div class="flex items-center gap-2">
-			<button class="rounded-md border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700" onclick={openShelfCreator}>{m['ux5.create_shelf']()}</button>
-			<button bind:this={gear} class="grid size-10 place-items-center rounded-md border border-slate-300 text-slate-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50" aria-label={m['ux5.configure']()} title={m['ux5.configure']()} disabled={!layout?.valid || loading || saving} onclick={() => void openConfiguration()}>
-				<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" /><path d="m19.4 15 1.1 1.9-2 2-1.9-1.1a8.6 8.6 0 0 1-2 .8l-.5 2.2h-2.8l-.5-2.2a8.6 8.6 0 0 1-2-.8l-1.9 1.1-2-2L6 15a8.6 8.6 0 0 1-.8-2L3 12.5V9.7l2.2-.5a8.6 8.6 0 0 1 .8-2L4.9 5.3l2-2 1.9 1.1a8.6 8.6 0 0 1 2-.8l.5-2.1h2.8l.5 2.1a8.6 8.6 0 0 1 2 .8l1.9-1.1 2 2-1.1 1.9a8.6 8.6 0 0 1 .8 2l2.1.5v2.8l-2.1.5a8.6 8.6 0 0 1-.8 2Z" /></svg>
-			</button>
-		</div>
-	</header>
+<section class="space-y-6" aria-labelledby="dashboard-heading" data-dashboard>
+	<h1 id="dashboard-heading" class="sr-only">{m['ux1.dashboard.title']()}</h1>
+	<div class="flex justify-end">
+		<button bind:this={gear} class="grid size-10 place-items-center rounded-md border border-slate-300 text-slate-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50" aria-label={m['ux5.configure']()} title={m['ux5.configure']()} disabled={!layout?.valid || loading || saving} onclick={() => void openConfiguration()}>
+			<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" /><path d="m19.4 15 1.1 1.9-2 2-1.9-1.1a8.6 8.6 0 0 1-2 .8l-.5 2.2h-2.8l-.5-2.2a8.6 8.6 0 0 1-2-.8l-1.9 1.1-2-2L6 15a8.6 8.6 0 0 1-.8-2L3 12.5V9.7l2.2-.5a8.6 8.6 0 0 1 .8-2L4.9 5.3l2-2 1.9 1.1a8.6 8.6 0 0 1 2-.8l.5-2.1h2.8l.5 2.1a8.6 8.6 0 0 1 2 .8l1.9-1.1 2 2-1.1 1.9a8.6 8.6 0 0 1 .8 2l2.1.5v2.8l-2.1.5a8.6 8.6 0 0 1-.8 2Z" /></svg>
+		</button>
+	</div>
 
 	{#if notice}<p class="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900" role="status">{notice}</p>{/if}
 	{#if conflict}
@@ -417,7 +360,6 @@
 					</select>
 					<button class="rounded-md border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 focus-visible:outline-2 disabled:opacity-40" disabled={saving || shelfBusy || !selectedShelf} onclick={() => void addShelf()}>{m['ux5.add_shelf']()}</button>
 				</div>
-				{#if shelfNotice}<p class="text-sm text-emerald-800" role="status">{shelfNotice}</p>{/if}
 				{#if shelfError}<p class="text-sm text-red-800" role="alert">{shelfError}</p>{/if}
 				{#if shelfPager.status === 'loading'}
 					<p class="text-sm text-slate-600" role="status">{m['ux5.shelves_loading']()}</p>
@@ -432,7 +374,6 @@
 				{#if shelfPager.hasMore}
 					<button class="text-sm font-medium text-emerald-800 underline focus-visible:outline-2 disabled:opacity-50" disabled={saving || shelfPager.loadingMore} onclick={() => void moreShelves()}>{m['ux5.shelves_more']()}</button>
 				{/if}
-				<button class="block text-sm font-medium text-emerald-800 underline focus-visible:outline-2" disabled={saving} onclick={openShelfCreator}>{m['ux5.create_shelf']()}</button>
 			</div>
 
 			<div class="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-4">
@@ -441,10 +382,6 @@
 			</div>
 		</div>
 	</dialog>
-{/if}
-
-{#if creatorOpen}
-	<ShelfCreateDialog open={true} onclose={closeShelfCreator} oncreated={shelfCreated} />
 {/if}
 
 <style>

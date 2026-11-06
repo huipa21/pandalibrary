@@ -21,6 +21,7 @@
 		updateShelf
 	} from '#lib/shelves/api.js';
 	import { offersShelfManagement, shelfErrorKey, type ShelfFormValue } from '#lib/shelves/form.js';
+	import ShelfDescription from '#lib/shelves/ShelfDescription.svelte';
 	import ShelfForm from '#lib/shelves/ShelfForm.svelte';
 	import type { SessionViewer, Shelf } from '#lib/shelves/types.js';
 
@@ -211,14 +212,14 @@
 	<article class="space-y-10" aria-labelledby="shelf-heading">
 		<header class="space-y-3">
 			<a class="text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href="/shelves">{m['shelves.back']()}</a>
+			<h1 id="shelf-heading" class="sr-only">{shelf.name}</h1>
 			<div class="flex flex-wrap items-center gap-3">
-				<h1 id="shelf-heading" class="min-w-0 text-3xl font-semibold tracking-tight break-words">{shelf.name}</h1>
 				<span class="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">
 					{shelf.kind === 'shared' ? m['shelves.kind.shared']() : m['shelves.kind.private']()}
 				</span>
+				<p class="text-sm text-slate-500">{m['shelves.book_count']({ count: shelf.visible_book_count })}</p>
 			</div>
-			{#if shelf.description}<p class="whitespace-pre-wrap text-slate-700">{shelf.description}</p>{/if}
-			<p class="text-sm text-slate-500">{m['shelves.book_count']({ count: shelf.visible_book_count })}</p>
+			{#if shelf.description}<ShelfDescription description={shelf.description} />{/if}
 		</header>
 
 		{#if notice}<p class="rounded-md bg-green-50 p-3 text-green-800" role="status">{notice}</p>{/if}

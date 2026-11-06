@@ -69,10 +69,7 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="search-heading">
-	<header class="space-y-2">
-		<h1 id="search-heading" class="text-3xl font-semibold tracking-tight">{m['search.title']()}</h1>
-		<p class="text-slate-600">{m['search.description']()}</p>
-	</header>
+	<h1 id="search-heading" class="sr-only">{m['search.title']()}</h1>
 
 	<form role="search" aria-label={m['search.landmark']()} class="flex flex-wrap items-end gap-3" onsubmit={submit} novalidate>
 		<label class="grid min-w-0 flex-1 gap-1 text-sm font-medium" for="search-query">

@@ -33,9 +33,9 @@ admin, reader, sync schema, backend, or build files.
    Missing setting alone means defaults. A saved `sections:[]` means no
    sections, not missing data. Corrupt/unsupported values show an explicit
    recover/reset action instead of silently restoring defaults.
-4. Expose both Add shelf section (select an existing shelf) and Create shelf
-   (UX3's ShelfCreateDialog). After creation offer/add its shelf section and
-   honor the user's selection. Preserve the shared
+4. Expose Add shelf section to select an existing shelf. Create shelves with
+   the sidebar's SHELVES plus button, then select them in the gear dialog;
+   do not duplicate shelf creation on the dashboard. Preserve the shared
    `pandalibrary-shelves-changed` refresh event. Deleted/inaccessible shelf
    sections show a removable unavailable state without leaking metadata.
 5. Each row handles initial load, real empty data, partial failures, retry,
@@ -43,9 +43,9 @@ admin, reader, sync schema, backend, or build files.
    must not erase the other rows. Avoid unbounded fetches or nested viewport
    scroll traps; provide keyboard-operable row navigation/load more.
 6. Distinguish an empty configured dashboard from a dashboard whose feeds are
-   empty; keep gear/Create shelf actions available in both. Respect narrow
-   layouts, accessible headings/dialog focus, both locales, account switches,
-   offline notices, and unsuccessful sync/conflict results.
+   empty; keep the gear and sidebar shelf-creation action available in both.
+   Respect narrow layouts, accessible headings/dialog focus, both locales,
+   account switches, offline notices, and unsuccessful sync/conflict results.
 
 ## Acceptance and validation
 
@@ -62,7 +62,7 @@ commands/results and update your prompt/progress row/log.
 - The root page now renders independently loaded dashboard rows with the three
   first-use defaults and a gear dialog for adding, removing, and ordering all
   five built-in feeds and permitted numeric shelves. The shared UX3 shelf
-  creator is used from both the page and configuration dialog.
+  creator is opened using the sidebar's SHELVES plus button.
 - `dashboard.layout.v1` is account-scoped and uses the existing durable
   settings/outbox sync. An explicitly empty layout stays empty; invalid or
   unsupported layouts require an explicit reset. Unsynchronized offline data,
@@ -70,8 +70,8 @@ commands/results and update your prompt/progress row/log.
   silently replaced. Continue Reading resolves the exact saved, supported file.
 - Rows fetch at most 12 books per page and start near the viewport. Shelf
   selection is paged, metadata checks are bounded, stale requests are ignored,
-  and inaccessible shelves show a generic removable state. The UX3 dialog is
-  promoted to a native modal by its dashboard parent without changing UX3.
+  and inaccessible shelves show a generic removable state. The sidebar opens
+  the UX3 shelf creator as a native modal.
 
 ### Validation (2026-11-04)
 

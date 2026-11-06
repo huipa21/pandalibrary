@@ -6,6 +6,7 @@
 	import { translate } from '#lib/paging/translate.js';
 	import { getSystemShelf, listSystemShelfBooks } from '#lib/shelves/api.js';
 	import { shelfErrorKey } from '#lib/shelves/form.js';
+	import ShelfDescription from '#lib/shelves/ShelfDescription.svelte';
 	import BookCard from '#lib/catalog/BookCard.svelte';
 	import type { Shelf } from '#lib/shelves/types.js';
 	import type { Book } from '#lib/catalog/types.js';
@@ -63,11 +64,9 @@
 		<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 	{:else}
 		<header class="space-y-2">
-			<h1 class="text-3xl font-semibold tracking-tight">{systemShelfTitle(key)}</h1>
-			{#if shelf.description}
-				<p class="whitespace-pre-wrap text-slate-600">{shelf.description}</p>
-			{/if}
+			<h1 class="sr-only">{systemShelfTitle(key)}</h1>
 			<p class="text-sm text-slate-500">{m['shelves.book_count']({ count: shelf.visible_book_count })}</p>
+			{#if shelf.description}<ShelfDescription description={shelf.description} />{/if}
 		</header>
 
 		{#if pager.status === 'error'}

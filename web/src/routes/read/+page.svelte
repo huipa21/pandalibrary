@@ -77,10 +77,7 @@
 </script>
 
 <section class="space-y-6">
-	<header class="space-y-2">
-		<h1 class="text-3xl font-semibold tracking-tight">{m['reader.launch.title']()}</h1>
-		<p class="text-slate-600">{m['reader.launch.description']()}</p>
-	</header>
+	<h1 class="sr-only">{m['reader.launch.title']()}</h1>
 	{#if offline}<p class="text-sm text-slate-600">{m['offline.only_downloaded']()}</p>{/if}
 	{#if loading}
 		<p role="status" class="text-slate-600">{m['reader.loading']()}</p>

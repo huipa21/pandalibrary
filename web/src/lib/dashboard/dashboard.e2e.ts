@@ -216,7 +216,8 @@ test('defaults, keyboard dialog behavior, reorder, and a persisted empty dashboa
 	await page.reload();
 	await expect(page.getByRole('heading', { name: 'Your dashboard has no sections.' })).toBeVisible();
 	await expect(sections).toHaveCount(0);
-	await expect(page.getByRole('button', { name: 'Create shelf', exact: true })).toBeVisible();
+	await expect(page.getByRole('main').getByRole('button', { name: 'Create shelf', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'New shelf' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Configure dashboard' })).toBeEnabled();
 	expect(server.settings.get(1)?.value).toEqual({ version: 1, sections: [] });
 });
@@ -241,13 +242,27 @@ test('invalid layouts require explicit recovery and rejected saves remain visibl
 	expect(server.settings.get(1)?.value.sections).toHaveLength(3);
 });
 
-test('adds permitted shelves, honors the choice after creation, and removes unavailable shelves', async ({ page }) => {
+test('adds shelves created in the sidebar and removes unavailable shelves', async ({ page }) => {
 	const server = state();
 	server.shelves.set(9, shelf(9, 'Hidden private name'));
 	server.hidden.add(9);
 	await mockApi(page, server);
 	await page.goto('/');
+	const createButton = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'New shelf' });
+	await createButton.click();
+	const creator = page.getByRole('dialog', { name: 'Create shelf' });
+	await expect(creator).toBeVisible();
+	expect(await creator.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+	await page.keyboard.press('Escape');
+	await expect(creator).toBeHidden();
+	await expect(createButton).toBeFocused();
+	await createButton.click();
+	await creator.getByLabel('Shelf name').fill('Newly created');
+	await creator.getByRole('button', { name: 'Create shelf', exact: true }).click();
+	await expect(creator).toBeHidden();
+
 	const dialog = await openConfig(page);
+	await expect(dialog.getByRole('button', { name: 'Create shelf', exact: true })).toHaveCount(0);
 	const select = dialog.getByLabel('Choose an existing shelf');
 	await expect(select.locator('option')).toContainText(['Select an option', 'Favorites', 'Automatic picks']);
 	await expect(select).not.toContainText('Hidden private name');
@@ -255,19 +270,6 @@ test('adds permitted shelves, honors the choice after creation, and removes unav
 	await dialog.getByRole('button', { name: 'Add shelf section' }).click();
 	await expect(dialog.locator('[data-config-section="shelf:8"]')).toContainText('Automatic picks');
 
-	await dialog.getByRole('button', { name: 'Create shelf', exact: true }).click();
-	const creator = page.getByRole('dialog', { name: 'Create shelf' });
-	await expect(creator).toBeVisible();
-	expect(await creator.evaluate((node) => node.contains(document.activeElement))).toBe(true);
-	await page.keyboard.press('Escape');
-	await expect(creator).toBeHidden();
-	await expect(dialog.getByRole('button', { name: 'Create shelf', exact: true })).toBeFocused();
-	await dialog.getByRole('button', { name: 'Create shelf', exact: true }).click();
-	await expect(creator).toBeVisible();
-	await creator.getByLabel('Shelf name').fill('Newly created');
-	await creator.getByRole('button', { name: 'Create shelf', exact: true }).click();
-	await expect(creator).toBeHidden();
-	await expect(dialog.getByText(/Shelf created/)).toBeVisible();
 	await expect(select.locator('option', { hasText: 'Newly created' })).toHaveCount(1);
 	await select.selectOption('7');
 	await dialog.getByRole('button', { name: 'Add shelf section' }).click();
@@ -292,21 +294,23 @@ test('adds permitted shelves, honors the choice after creation, and removes unav
 		.not.toContain('shelf:20');
 });
 
-test('offers a newly created shelf outside the first page and pages shelf choices', async ({ page }) => {
+test('pages shelf choices including a shelf created in the sidebar', async ({ page }) => {
 	const server = state();
 	server.paginateShelves = true;
 	server.shelves.set(25, shelf(25, 'Later shelf'));
 	await mockApi(page, server);
 	await page.goto('/');
-	await page.getByRole('main').getByRole('button', { name: 'Create shelf', exact: true }).click();
+	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'New shelf' }).click();
 	const creator = page.getByRole('dialog', { name: 'Create shelf' });
 	await creator.getByLabel('Shelf name').fill('Created outside first page');
 	await creator.getByRole('button', { name: 'Create shelf', exact: true }).click();
-	const dialog = page.getByRole('dialog', { name: 'Configure dashboard' });
+	await expect(creator).toBeHidden();
+	const dialog = await openConfig(page);
 	const select = dialog.getByLabel('Choose an existing shelf');
-	await expect(select.locator('option', { hasText: 'Created outside first page' })).toHaveCount(1);
-	await expect(select).toHaveValue('20');
+	await expect(select.locator('option', { hasText: 'Created outside first page' })).toHaveCount(0);
+	await expect(select).toHaveValue('');
 	await dialog.getByRole('button', { name: 'Load more shelves' }).click();
+	await expect(select.locator('option', { hasText: 'Created outside first page' })).toHaveCount(1);
 	await expect(select.locator('option', { hasText: 'Later shelf' })).toHaveCount(1);
 	expect(server.shelfRequests).toContain('shelves/+cursor=');
 	await select.selectOption('25');
@@ -490,7 +494,7 @@ test('localizes controls and fits a narrow viewport', async ({ page }) => {
 	await mockApi(page, server);
 	await page.setViewportSize({ width: 360, height: 740 });
 	await page.goto('/');
-	await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toHaveClass('sr-only');
 	await page.getByRole('button', { name: '配置仪表盘' }).click();
 	await expect(page.getByRole('dialog', { name: '配置仪表盘' })).toBeVisible();
 	expect(await page.evaluate(() => document.documentElement.scrollWidth))

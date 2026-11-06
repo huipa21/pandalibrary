@@ -9,7 +9,7 @@
 	import type { Book, BookFilters, BookSort, CatalogEntity, EntityKind } from './types.js';
 	import BookCard from './BookCard.svelte';
 
-	let { scope }: { scope: BookFilters } = $props();
+	let { scope, showHeading = true }: { scope: BookFilters; showHeading?: boolean } = $props();
 	let books = $state<Book[]>([]);
 	let nextCursor = $state<string | null>(null);
 	let loading = $state(true);
@@ -149,7 +149,7 @@
 
 <section class="space-y-5" aria-labelledby="book-results-heading">
 	<div class="flex flex-wrap items-end justify-between gap-4">
-		<h2 id="book-results-heading" class="text-xl font-semibold">{m['catalog.books.title']()}</h2>
+		<h2 id="book-results-heading" class={showHeading ? 'text-xl font-semibold' : 'sr-only'}>{m['catalog.books.title']()}</h2>
 		<div class="flex flex-wrap items-end gap-3">
 			{#if filterable}
 				<div class="flex flex-wrap gap-3" role="group" aria-label={m['catalog.books.filter_group']()}>

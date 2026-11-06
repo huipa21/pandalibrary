@@ -34,6 +34,8 @@ These are explicit defaults, not claims that the screenshot specifies them:
    author, series, tag, reader, search, stats, settings, language, offline,
    logout, and admin features through secondary navigation/header controls.
    The screenshot's Libraries/Magic Shelves groups are not extra requirements.
+   Navigation pages omit redundant visible titles and introductions while
+   retaining accessible headings and a consistent content alignment.
 3. SHELVES contains Unshelved, Favorites, then permitted custom shelves. Its
    title has an accessible right-aligned plus button. Any signed-in user can
    create private shelves; existing shared-shelf permissions remain unchanged.
@@ -52,7 +54,7 @@ These are explicit defaults, not claims that the screenshot specifies them:
 7. "Sorts" means dashboard sections, not only a sort-order dropdown. First-use
    defaults, in order: Continue Reading, Recently Added, Read. The top-right
    gear opens section configuration. Users can add/remove/reorder sections,
-   add shelf sections, and create a shelf through the same reusable shelf form.
+   add existing shelf sections, and create shelves with the sidebar plus button.
    An explicitly saved empty list stays empty after reload and across devices.
 8. Continue Reading uses the viewer's nonzero, incomplete progress, excluding
    finished/abandoned books; newest progress first. Recently Added uses book

@@ -296,9 +296,14 @@ test('real sidebar shelves, automatic rule changes, favorites and bilingual resp
 		expect((await page.request.patch(`/api/v1/admin/users/${user.id}`, { data: { locale } })).ok()).toBe(true);
 		for (const route of ['/books', `/books/${book.id}`, '/shelves', '/bookmarks', '/notes', '/admin/users']) {
 			await page.goto(`${locale === 'zh' ? '/zh' : ''}${route}`);
-			await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toBeVisible();
+			const heading = page.getByRole('main').getByRole('heading', { level: 1 });
+			if (route === `/books/${book.id}` || route === '/admin/users') {
+				await expect(heading).toBeVisible();
+			} else {
+				await expect(heading).toHaveClass('sr-only');
+			}
 			if (route === '/bookmarks') {
-				await expect(page.getByRole('heading', { name: locale === 'zh' ? '书签' : 'Bookmarks', exact: true })).toBeVisible();
+				await expect(page.getByRole('heading', { name: locale === 'zh' ? '书签' : 'Bookmarks', exact: true })).toHaveClass('sr-only');
 			}
 			expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 			await page.screenshot({ path: info.outputPath(`${locale}-${route.replaceAll('/', '-')}.png`), fullPage: true });
@@ -306,7 +311,7 @@ test('real sidebar shelves, automatic rule changes, favorites and bilingual resp
 	}
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/zh/shelves');
-	await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toBeVisible();
+	await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toHaveClass('sr-only');
 	await page.screenshot({ path: info.outputPath('shelves-mobile-zh.png'), fullPage: true });
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 	expect((await page.request.patch(`/api/v1/admin/users/${user.id}`, { data: { locale: 'en' } })).ok()).toBe(true);

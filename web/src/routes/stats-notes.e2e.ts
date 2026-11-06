@@ -63,7 +63,7 @@ test('stats use local inclusive dates and the browser timezone, with accessible 
 	await page.goto('/');
 	await page.getByRole('link', { name: 'Stats', exact: true }).click();
 	await expect(page).toHaveURL(/\/stats$/);
-	await expect(page.getByRole('heading', { name: 'Reading stats' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Reading stats' })).toHaveClass('sr-only');
 
 	await expect.poll(() => requests.length).toBe(1);
 	const initial = requests[0];

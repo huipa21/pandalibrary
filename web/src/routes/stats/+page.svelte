@@ -120,10 +120,7 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="stats-heading">
-	<header class="space-y-2">
-		<h1 id="stats-heading" class="text-3xl font-semibold tracking-tight">{m['stats.title']()}</h1>
-		<p class="text-slate-600">{m['stats.description']()}</p>
-	</header>
+	<h1 id="stats-heading" class="sr-only">{m['stats.title']()}</h1>
 
 	<form class="space-y-4 rounded-md border border-slate-200 bg-white p-4" onsubmit={submit} novalidate>
 		<fieldset class="space-y-3">
