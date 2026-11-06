@@ -128,3 +128,57 @@ row. Covers become eligible for the orphan sweep once unreferenced.
 - `duplicateOf(ctx, queries, sha, beforeID)` returns `*DuplicateError`.
 - Keep the importer independent of this package (pass an interface into the
   importer hook) to avoid an import cycle: `bookheap` imports `importer`.
+
+## Assignment (BH2)
+
+`POST /api/v1/admin/bookheap/assign` (admin, cookie-protected) turns heap
+items into normal import jobs with source `bookheap`
+(`internal/bookheap/assign*.go`, `internal/httpapi/bookheap_assign.go`).
+
+- **Whole-request checks first.** `ids` 1..500 unique positive, `shelf_ids`
+  0..20 unique positive (omitted = `[]`), the library must exist (404), and
+  every shelf must pass `catalog.CheckAssignableShelf`: visible (404), manual
+  (automatic → 400), writable by the viewer, and not another user's private
+  shelf even for admins (400). Favorites is allowed; Unshelved has no ID.
+  Shelf failures are problems with a `shelf_id` extension. Nothing is queued
+  on failure.
+- **Per item** (request order): only `ready`/`failed` items qualify
+  (`not_assignable` otherwise, `not_found` if missing). The file is opened
+  through the heap `os.Root` and must match the stored size/mtime; it is
+  copied with `importer.Stage`, then re-checked (same file, size, mtime and
+  the staged SHA-256 equals the indexed one). A mismatch discards the staging
+  copy, records "The file changed on disk; run a scan to refresh it." on the
+  item and returns `changed`. Under `commitMu`, `importer.QueueHooked`
+  creates the job and, in the same transaction, flips the row to `queued`
+  (conditional on `ready`/`failed` and the same size/mtime) with
+  `target_library_id`, `target_shelf_ids`, `import_job_id` and a cleared
+  error. Losing that race returns `not_assignable` and queues nothing, so
+  concurrent assignments queue an item once. Unexpected errors return
+  `failed` and are logged.
+- **Import hook.** The importer has one source-specific `importer.Hook`
+  (`SetHook("bookheap", …)` before `Start`; upload and drop jobs never call
+  it). The manifest carries `{item_id, rel_path, size, mtime_ns, shelf_ids}`.
+  - `Started`: the item becomes `importing` when a worker claims the job.
+  - `Imported`: inside the transaction that creates the book (after the file
+    row and search index), adds the book to each target shelf through
+    `catalog.AddAssignedBookTx` as the assigning user (role re-read; disabled
+    or deleted users skip all shelves). Shelves that were deleted or became
+    non-writable are skipped and the count is logged. Then the heap row is
+    deleted. Any other error rolls back the import and fails the job.
+  - `Finished` (after the job is final, before the manifest is removed):
+    `imported` removes the heap file under `commitMu` only if size/mtime (and
+    `os.SameFile` with the staged file, when this process queued it) still
+    match; otherwise the file is kept and a warning logged. A row that a scan
+    re-created for the removed path is deleted. `duplicate` sets the item to
+    `duplicate` with `duplicate_of_book_id`; `failed` sets `failed` with the
+    safe error. Files are kept for both and failed items can be retried.
+- **Restart.** `processing` jobs return to `pending` (existing importer
+  behavior) and the hook runs again. Manifests of jobs that finished before
+  the restart run `Finished` and then cleanup from a background goroutine
+  after `Start`, so the hook is at-least-once and idempotent. `Recover` runs
+  in `Start` and reconciles every `queued`/`importing` row: job missing →
+  `failed` ("The import job was lost; assign the item again."); job `failed` →
+  `failed`; `duplicate` → `duplicate`; pending/processing jobs are left alone.
+- **Locks.** `commitMu` → importer mutex → writer transaction. The `Imported`
+  hook runs inside the importer transaction and never takes `commitMu`.
+  Scan and delete keep skipping `queued`/`importing` rows.

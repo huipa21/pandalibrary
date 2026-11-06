@@ -1,6 +1,6 @@
 # BH4: Bookheap page, navigation entry, Scan, and bulk Assign/Delete
 
-- Status: Ready (re-read BH1 and BH3 hand-offs before starting)
+- Status: Done (`task/bh4`; Assign mocked until BH2 merges)
 - Wave: 2; dependencies merged: BH1, BH3
 - Can run in parallel with: BH2 (code the assign call against the plan
   contract; mock it in tests until BH2 merges)
@@ -117,16 +117,16 @@ other routes.
 
 ## Acceptance criteria
 
-- [ ] Unit tests: nav order/role filtering, selection model (page toggle,
+- [x] Unit tests: nav order/role filtering, selection model (page toggle,
       cross-page persistence, 500 cap, filter reset), assignable/skipped
       counting, assign/delete result mapping, scan polling state machine,
       URL query sync.
-- [ ] Mocked browser test: admin nav order; empty state; scan running →
+- [x] Mocked browser test: admin nav order; empty state; scan running →
       completed summary → list refresh; filter/search/paging; select across
       pages → Assign with library + shelves → queued → item disappears after
       polling; Delete with confirmation; duplicate link; non-admin forbidden
       and no nav entry; Upload button opens BH3's dialog.
-- [ ] `pnpm --dir web check`, `pnpm --dir web test`, `pnpm --dir web build`
+- [x] `pnpm --dir web check`, `pnpm --dir web test`, `pnpm --dir web build`
       pass; existing shell/shelf browser tests still pass.
 
 ## Validation commands
@@ -142,3 +142,55 @@ pnpm --dir web test:e2e -- src/lib/bookheap src/lib/shell/shell.e2e.ts
 
 Record the components/exports, any contract mismatch found against BH1/BH2,
 and test results here. Update your progress row and append a dated log.
+
+### BH4 hand-off (2026-11-06)
+
+**Route and navigation.** `/bookheap` (`web/src/routes/bookheap/+page.svelte`)
+checks the session viewer and shows `admin.forbidden` to non-admins; the page
+itself is `BookheapPage.svelte`. `nav.ts` adds the admin-only `bookheap` HOME
+entry and `homeNavigationFor(role)`; `Sidebar.svelte` renders it with
+`BookheapCount.svelte` (ready-item badge from `status=ready&limit=1` `total`,
+refreshed on `pandalibrary-bookheap-changed`, silent on errors).
+
+**Exports in `web/src/lib/bookheap/`** (BH3 exports unchanged):
+
+- `api.ts`: `HEAP_PAGE_SIZE` (50), `MAX_BULK_IDS` (500), `MAX_ASSIGN_SHELVES`
+  (20), `HeapScan`, `HeapPage`, `HeapItemResult`, `HeapAssignResult`,
+  `buildHeapItemsPath`, `listHeapItems`, `getHeapItem`, `startHeapScan`,
+  `getHeapScan`, `deleteHeapItems`, `assignHeapItems`, `heapThumbnailUrl`.
+- `query.ts`: URL sync (`heapQueryFromSearch`/`heapQueryToSearch`) and
+  `fetchHeapPage` (merges `queued` + `importing` for the combined filter).
+- `selection.svelte.ts`: `HeapSelection` (500 cap, page toggle, `sync`),
+  `partitionAssignable`, `isAssignable`, `isActive`.
+- `heap-list.svelte.ts`: `HeapList` (Load more paging, in-place `refresh()` of
+  the shown pages, stale responses dropped).
+- `scan.svelte.ts`: `ScanController` (start/attach/poll with `BoundedPoller`,
+  `stalled` after the budget, retry).
+- `results.ts`: per-item code → message mapping; `targets.ts`: writable manual
+  shelves (Favorites + shared + own private; no automatic/Unshelved).
+- Components: `BookheapPage`, `ScanControl`, `HeapItemRow`, `AssignDialog`,
+  `DeleteDialog`, `BulkResults`, `HeapDialog`, `BookheapCount`. Upload reuses
+  BH3's `UploadDialog`.
+
+**Contract notes / mismatches.**
+
+- BH1's list endpoint accepts a single `status`. The plan's Queued/Importing
+  filter (`status=active` in the page URL) is done client-side by paging both
+  statuses and merging by `created_at desc, id desc` with a composite cursor.
+  If BH2/BH5 adds a multi-status filter, `fetchHeapPage` can call it directly.
+- Assign uses the plan contract (`POST /admin/bookheap/assign`
+  `{ids, library_id, shelf_ids}` → `202 {results:[{id, ok, error,
+  import_job_id}]}`); it is mocked only. 404 → "library or shelf no longer
+  exists", 400/422 → "cannot receive these books". Per-item codes
+  `not_found`, `not_assignable`, others → generic failure. BH5 must verify it
+  against BH2's real endpoint. BH2 (done) matches this contract and adds the
+  per-item codes `changed` and `failed` (generic failures here); shelf
+  problems carry a `shelf_id` extension.
+- Delete shows `busy`/`not_found` specifically; `changed`/`failed` are generic.
+- Missing per-item results are reported as failures, not successes.
+
+**Tests.** Unit: `nav.test.ts` (order, role filtering, bh4 en/zh key parity),
+`query`, `selection`, `results`, `scan`, `heap-list`, `targets` tests.
+Browser (mocked): `src/lib/bookheap/bookheap.e2e.ts` (6 tests); the Chinese
+admin shell test now expects 书堆 in HOME. `pnpm --dir web check`, `test`,
+`build` and the full mocked Playwright suite pass.

@@ -1,6 +1,6 @@
 # BH2: Bulk assignment of heap items to a library and shelves
 
-- Status: Ready (re-read BH1's hand-off before starting)
+- Status: Done
 - Wave: 2; dependencies merged: BH1
 - Can run in parallel with: BH4
 - Migration: no (BH1 already added the columns and the `bookheap` import source)
@@ -134,3 +134,60 @@ task lint test build
 Record the exact request/response examples, the per-item error codes, the
 hook design, and the restart behavior here. Update the BH4 prompt if the
 contract changed. Update your progress row and append a dated log.
+
+### BH2 hand-off (2026-11-06)
+
+**Request / response.**
+
+```http
+POST /api/v1/admin/bookheap/assign
+Content-Type: application/json
+
+{"ids": [12, 13, 99, 14], "library_id": 1, "shelf_ids": [4, 7]}
+```
+
+```http
+HTTP/1.1 202 Accepted
+
+{"results": [
+  {"id": 12, "ok": true,  "error": null,             "import_job_id": 301},
+  {"id": 13, "ok": true,  "error": null,             "import_job_id": 302},
+  {"id": 99, "ok": false, "error": "not_found",      "import_job_id": null},
+  {"id": 14, "ok": false, "error": "changed",        "import_job_id": null}
+]}
+```
+
+Whole-request problems (nothing queued):
+
+- `400`: bad JSON, unknown field, wrong type, `ids` not 1..500 unique
+  positive, `shelf_ids` not 0..20 unique positive (`0` = Unshelved is
+  rejected here), automatic shelf, another user's private shelf, or a shelf
+  the viewer cannot write. Shelf problems carry `"shelf_id": <id>`.
+- `404`: missing library, or a missing/invisible shelf (with `shelf_id`).
+- `401`/`403`: not signed in / not admin / cross-site. `503` while stopping.
+
+**Per-item codes.** `not_found` (no such item), `not_assignable` (status is
+not `ready`/`failed`, including an item a concurrent request just queued),
+`changed` (file missing, replaced or different from the index; the item gets
+the error "The file changed on disk; run a scan to refresh it."), `failed`
+(unexpected error, logged). This adds `changed` and `failed` to the plan's
+`not_found`/`not_assignable`; BH4 already treats unknown codes as generic
+failures.
+
+**Hook design.** `importer.Hook` (`Started`, `Imported` in the book
+transaction, `Finished` after the job is final and before manifest cleanup,
+`Recover` at `Start`) registered with `importer.SetHook("bookheap", …)`;
+jobs are created with `importer.QueueHooked`, which runs a callback in the
+job-creating transaction and stores an opaque payload in the manifest.
+Upload and drop-folder jobs never call hooks; their tests are unchanged.
+Catalog exports `CheckAssignableShelf` and `AddAssignedBookTx`, which reuse
+the `PutShelfBook` rules (now shared through `putShelfBook`).
+
+**Restart behavior.** Pending/processing jobs resume and the hooks run as
+usual. Jobs that finished before the restart run `Finished` and cleanup after
+`Start` (at-least-once, idempotent), so an imported file is removed and a
+failed/duplicate item gets its final status. `Recover` marks `queued`/
+`importing` items whose job is gone as `failed` ("The import job was lost;
+assign the item again.") and syncs those whose job already finished.
+
+Details: [architecture/bookheap.md](../architecture/bookheap.md#assignment-bh2).

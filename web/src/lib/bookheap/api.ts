@@ -1,5 +1,5 @@
-import { ApiError, type ProblemDetails } from '#lib/api/client.js';
-import type { HeapItem } from './types.js';
+import { api, ApiError, type ProblemDetails } from '#lib/api/client.js';
+import type { HeapItem, HeapItemStatus } from './types.js';
 
 export const BOOKHEAP_FILES_PATH = '/api/v1/admin/bookheap/files';
 
@@ -106,4 +106,116 @@ export function uploadHeapFile(
 		form.append('file', file, file.name);
 		request.send(form);
 	});
+}
+
+// ---- BH4: list, scan, delete and assign (plan contract; assign is BH2's endpoint) ----
+
+/** Path below `/api/v1` used with the shared JSON client. */
+const BOOKHEAP_API = '/admin/bookheap';
+export const HEAP_PAGE_SIZE = 50;
+/** Server limit for bulk delete/assign requests. */
+export const MAX_BULK_IDS = 500;
+/** Server limit for shelves in one assign request. */
+export const MAX_ASSIGN_SHELVES = 20;
+
+export type HeapScanStatus = 'running' | 'completed' | 'failed';
+
+/** In-memory scan status from `GET/POST /api/v1/admin/bookheap/scan`. */
+export interface HeapScan {
+	readonly id: number;
+	readonly status: HeapScanStatus;
+	readonly started_at: string;
+	readonly finished_at: string | null;
+	readonly added: number;
+	readonly updated: number;
+	readonly removed: number;
+	readonly unchanged: number;
+	readonly invalid: number;
+	readonly duplicates: number;
+	readonly skipped: number;
+	readonly in_progress: number;
+	readonly error: string | null;
+}
+
+export interface HeapPage {
+	readonly items: HeapItem[];
+	readonly next_cursor: string | null;
+	readonly total: number;
+}
+
+export interface HeapListOptions {
+	readonly status?: HeapItemStatus;
+	readonly q?: string;
+	readonly limit?: number;
+	readonly cursor?: string | null;
+	readonly signal?: AbortSignal;
+}
+
+/** Per-item outcome of a bulk request. */
+export interface HeapItemResult {
+	readonly id: number;
+	readonly ok: boolean;
+	readonly error: string | null;
+}
+
+export interface HeapAssignResult extends HeapItemResult {
+	readonly import_job_id: number | null;
+}
+
+export interface HeapAssignInput {
+	readonly ids: readonly number[];
+	readonly library_id: number;
+	readonly shelf_ids: readonly number[];
+}
+
+export function buildHeapItemsPath({ status, q, limit = HEAP_PAGE_SIZE, cursor }: Omit<HeapListOptions, 'signal'> = {}): string {
+	const params = new URLSearchParams();
+	if (status) params.set('status', status);
+	const query = q?.trim();
+	if (query) params.set('q', query);
+	params.set('limit', String(Math.max(1, Math.min(limit, 100))));
+	if (cursor !== undefined && cursor !== null) params.set('cursor', cursor);
+	return `${BOOKHEAP_API}/items?${params.toString()}`;
+}
+
+export async function listHeapItems(options: HeapListOptions = {}): Promise<HeapPage> {
+	return api.request<HeapPage>(buildHeapItemsPath(options), { signal: options.signal });
+}
+
+export async function getHeapItem(id: number, signal?: AbortSignal): Promise<HeapItem> {
+	return (await api.request<{ item: HeapItem }>(`${BOOKHEAP_API}/items/${id}`, { signal })).item;
+}
+
+/** Starts a scan, or returns the one already running. */
+export async function startHeapScan(): Promise<HeapScan> {
+	return (await api.request<{ scan: HeapScan }>(`${BOOKHEAP_API}/scan`, { method: 'POST' })).scan;
+}
+
+/** Latest scan of this server process, or null when none ran yet. */
+export async function getHeapScan(signal?: AbortSignal): Promise<HeapScan | null> {
+	return (await api.request<{ scan: HeapScan | null }>(`${BOOKHEAP_API}/scan`, { signal })).scan;
+}
+
+export async function deleteHeapItems(ids: readonly number[]): Promise<HeapItemResult[]> {
+	return (
+		await api.request<{ results: HeapItemResult[] }>(`${BOOKHEAP_API}/items/delete`, {
+			method: 'POST',
+			body: { ids: [...ids] }
+		})
+	).results;
+}
+
+export async function assignHeapItems({ ids, library_id, shelf_ids }: HeapAssignInput): Promise<HeapAssignResult[]> {
+	return (
+		await api.request<{ results: HeapAssignResult[] }>(`${BOOKHEAP_API}/assign`, {
+			method: 'POST',
+			body: { ids: [...ids], library_id, shelf_ids: [...shelf_ids] }
+		})
+	).results;
+}
+
+/** Thumbnail URL for a heap item's cover, or null when it has none. */
+export function heapThumbnailUrl(item: Pick<HeapItem, 'has_cover' | 'cover_url'>): string | null {
+	if (!item.has_cover || !item.cover_url) return null;
+	return `${item.cover_url}${item.cover_url.includes('?') ? '&' : '?'}thumbnail=1`;
 }

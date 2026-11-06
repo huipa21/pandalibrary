@@ -22,9 +22,14 @@ export interface NavigationItem {
 export const homeNavigation: readonly NavigationItem[] = [
 	{ id: 'dashboard', href: '/', label: m['ux1.nav.dashboard'], match: 'exact' },
 	{ id: 'books', href: '/books', label: m['ux1.nav.all_books'], match: 'exact' },
+	{ id: 'bookheap', href: '/bookheap', label: m['bh4.nav.bookheap'], role: 'admin' },
 	{ id: 'bookmarks', href: '/bookmarks', label: m['ux1.nav.bookmarks'] },
 	{ id: 'notes', href: '/notes', label: m['notes.nav'] }
 ];
+
+export function homeNavigationFor(role: string | null | undefined): readonly NavigationItem[] {
+	return homeNavigation.filter((item) => item.role === undefined || item.role === role);
+}
 
 /** Secondary destinations that keep every existing feature reachable from the sidebar. */
 export const navigation: readonly NavigationItem[] = [

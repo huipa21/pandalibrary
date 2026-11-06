@@ -196,78 +196,82 @@ func (s *Service) PutShelfBook(ctx context.Context, viewer Viewer, shelfID, book
 		if err := checkManualMembership(shelf); err != nil {
 			return err
 		}
-		if _, err := visibleBook(ctx, queries, viewer, bookID); err != nil {
-			return err
+		return putShelfBook(ctx, queries, viewer, shelfID, bookID, position, s.now().UnixMilli())
+	})
+}
+
+// putShelfBook adds or moves a visible book on a shelf the caller already authorized.
+func putShelfBook(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelfID, bookID int64, position *int64, now int64) error {
+	if _, err := visibleBook(ctx, queries, viewer, bookID); err != nil {
+		return err
+	}
+	members, err := orderedShelfMembers(ctx, queries, viewer, shelfID)
+	if err != nil {
+		return err
+	}
+	memberIndex, visibleIndex, visibleCount := -1, -1, 0
+	for index, member := range members {
+		if member.BookID == bookID {
+			memberIndex, visibleIndex = index, visibleCount
 		}
-		members, err := orderedShelfMembers(ctx, queries, viewer, shelfID)
-		if err != nil {
-			return err
+		if member.IsVisible != 0 {
+			visibleCount++
 		}
-		memberIndex, visibleIndex, visibleCount := -1, -1, 0
-		for index, member := range members {
-			if member.BookID == bookID {
-				memberIndex, visibleIndex = index, visibleCount
-			}
-			if member.IsVisible != 0 {
-				visibleCount++
-			}
-		}
-		now := s.now().UnixMilli()
-		if memberIndex >= 0 && position == nil {
-			changed, err := saveShelfOrder(ctx, queries, shelfID, members)
-			if err != nil {
-				return err
-			}
-			return touchShelf(ctx, queries, shelfID, now, changed)
-		}
-		desired := visibleCount
-		if memberIndex >= 0 {
-			desired--
-		}
-		if position != nil && *position < int64(desired) {
-			desired = int(*position)
-		}
-		if memberIndex >= 0 && visibleIndex == desired {
-			changed, err := saveShelfOrder(ctx, queries, shelfID, members)
-			if err != nil {
-				return err
-			}
-			return touchShelf(ctx, queries, shelfID, now, changed)
-		}
-		member := sqlc.ShelfOrderedMembersRow{BookID: bookID, IsVisible: 1}
-		if memberIndex >= 0 {
-			member = members[memberIndex]
-			members = append(members[:memberIndex], members[memberIndex+1:]...)
-		}
-		insertAt, visible := len(members), 0
-		for index, existing := range members {
-			if existing.IsVisible == 0 {
-				continue
-			}
-			if visible == desired {
-				insertAt = index
-				break
-			}
-			visible++
-		}
-		members = append(members, sqlc.ShelfOrderedMembersRow{})
-		copy(members[insertAt+1:], members[insertAt:])
-		members[insertAt] = member
-		if memberIndex < 0 {
-			if err := queries.ShelfInsertBook(ctx, sqlc.ShelfInsertBookParams{
-				ShelfID: shelfID, BookID: bookID, Position: int64(insertAt),
-				AddedBy: sql.NullInt64{Int64: viewer.UserID, Valid: true}, AddedAt: now,
-			}); err != nil {
-				return fmt.Errorf("add shelf book: %w", err)
-			}
-			members[insertAt].Position = int64(insertAt)
-		}
+	}
+	if memberIndex >= 0 && position == nil {
 		changed, err := saveShelfOrder(ctx, queries, shelfID, members)
 		if err != nil {
 			return err
 		}
-		return touchShelf(ctx, queries, shelfID, now, changed || memberIndex < 0)
-	})
+		return touchShelf(ctx, queries, shelfID, now, changed)
+	}
+	desired := visibleCount
+	if memberIndex >= 0 {
+		desired--
+	}
+	if position != nil && *position < int64(desired) {
+		desired = int(*position)
+	}
+	if memberIndex >= 0 && visibleIndex == desired {
+		changed, err := saveShelfOrder(ctx, queries, shelfID, members)
+		if err != nil {
+			return err
+		}
+		return touchShelf(ctx, queries, shelfID, now, changed)
+	}
+	member := sqlc.ShelfOrderedMembersRow{BookID: bookID, IsVisible: 1}
+	if memberIndex >= 0 {
+		member = members[memberIndex]
+		members = append(members[:memberIndex], members[memberIndex+1:]...)
+	}
+	insertAt, visible := len(members), 0
+	for index, existing := range members {
+		if existing.IsVisible == 0 {
+			continue
+		}
+		if visible == desired {
+			insertAt = index
+			break
+		}
+		visible++
+	}
+	members = append(members, sqlc.ShelfOrderedMembersRow{})
+	copy(members[insertAt+1:], members[insertAt:])
+	members[insertAt] = member
+	if memberIndex < 0 {
+		if err := queries.ShelfInsertBook(ctx, sqlc.ShelfInsertBookParams{
+			ShelfID: shelfID, BookID: bookID, Position: int64(insertAt),
+			AddedBy: sql.NullInt64{Int64: viewer.UserID, Valid: true}, AddedAt: now,
+		}); err != nil {
+			return fmt.Errorf("add shelf book: %w", err)
+		}
+		members[insertAt].Position = int64(insertAt)
+	}
+	changed, err := saveShelfOrder(ctx, queries, shelfID, members)
+	if err != nil {
+		return err
+	}
+	return touchShelf(ctx, queries, shelfID, now, changed || memberIndex < 0)
 }
 
 // RemoveShelfBook idempotently removes a visible book from a managed shelf.

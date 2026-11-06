@@ -1,7 +1,7 @@
 import en from '../../messages/en.json';
 import zh from '../../messages/zh.json';
 import { describe, expect, it } from 'vitest';
-import { homeNavigation, isActive, isImmersiveRoute, navigation, navigationFor } from './nav.js';
+import { homeNavigation, homeNavigationFor, isActive, isImmersiveRoute, navigation, navigationFor } from './nav.js';
 
 const item = (id: string) => [...homeNavigation, ...navigation].find((entry) => entry.id === id)!;
 
@@ -22,13 +22,20 @@ describe('navigationFor', () => {
 });
 
 describe('homeNavigation', () => {
-	it('lists Dashboard, All Books, Bookmarks, and Notes in order', () => {
+	it('lists Dashboard, All Books, Bookheap, Bookmarks, and Notes in order', () => {
 		expect(homeNavigation.map((entry) => [entry.id, entry.href])).toEqual([
 			['dashboard', '/'],
 			['books', '/books'],
+			['bookheap', '/bookheap'],
 			['bookmarks', '/bookmarks'],
 			['notes', '/notes']
 		]);
+	});
+
+	it('shows Bookheap right after All Books only to administrators', () => {
+		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'bookheap', 'bookmarks', 'notes']);
+		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'bookmarks', 'notes']);
+		expect(homeNavigationFor(null).some((entry) => entry.id === 'bookheap')).toBe(false);
 	});
 });
 
@@ -53,6 +60,8 @@ describe('isActive', () => {
 		expect(isActive(item('libraries'), '/library/3')).toBe(true);
 		expect(isActive(item('libraries'), '/books')).toBe(false);
 		expect(isActive(item('admin'), '/admin/users')).toBe(true);
+		expect(isActive(item('bookheap'), '/bookheap')).toBe(true);
+		expect(isActive(item('bookheap'), '/books')).toBe(false);
 	});
 });
 
@@ -61,6 +70,15 @@ describe('isImmersiveRoute', () => {
 		expect(isImmersiveRoute('/read/21/31')).toBe(true);
 		expect(isImmersiveRoute('/read')).toBe(false);
 		expect(isImmersiveRoute('/books/21')).toBe(false);
+	});
+});
+
+describe('bh4 translations', () => {
+	it('defines the same non-empty Bookheap page keys in English and Chinese', () => {
+		const keys = (messages: Record<string, string>) => Object.keys(messages).filter((key) => key.startsWith('bh4.'));
+		expect(keys(en).length).toBeGreaterThan(0);
+		expect(keys(zh).sort()).toEqual(keys(en).sort());
+		for (const key of keys(zh)) expect((zh as Record<string, string>)[key].trim()).not.toBe('');
 	});
 });
 

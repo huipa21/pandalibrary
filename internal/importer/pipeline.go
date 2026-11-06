@@ -20,6 +20,9 @@ import (
 
 func (s *Service) process(ctx context.Context, row sqlc.ImportJob) {
 	input, err := s.readManifest(row.ID)
+	if err == nil {
+		s.hookStarted(ctx, row, input)
+	}
 	if err == nil && input.Failure != "" {
 		err = errors.New(input.Failure)
 	}
@@ -38,6 +41,7 @@ func (s *Service) process(ctx context.Context, row sqlc.ImportJob) {
 	}
 	finished, err := sqlc.New(s.options.Reader).ImportJob(ctx, row.ID)
 	if err == nil {
+		s.hookFinished(finished, input)
 		err = s.cleanup(finished, input)
 	}
 	if err != nil {
@@ -110,6 +114,11 @@ func (s *Service) importBook(ctx context.Context, row sqlc.ImportJob, input mani
 		}
 		if err := search.IndexBook(ctx, tx, bookID); err != nil {
 			return err
+		}
+		if hook := s.hook(row.Source); hook != nil {
+			if err := hook.Imported(ctx, tx, jobDTO(row), bookID, input.Hook); err != nil {
+				return err
+			}
 		}
 		return s.finish(ctx, queries, row.ID, "imported", bookID, 0, "")
 	})

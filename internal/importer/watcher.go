@@ -375,6 +375,11 @@ func (s *Service) recoverManifests(ctx context.Context) error {
 			s.dropMu.Unlock()
 		}
 		if row.Status != "pending" && row.Status != "processing" {
+			if s.hooks[row.Source] != nil {
+				// Finished must run before cleanup removes the manifest; both run after Start.
+				s.recovered = append(s.recovered, recoveredJob{row: row, input: input})
+				continue
+			}
 			if err := s.cleanup(row, input); err != nil {
 				s.options.Logger.Error("recover import cleanup", "job_id", id, "error", err)
 			}

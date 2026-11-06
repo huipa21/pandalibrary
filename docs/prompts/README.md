@@ -68,5 +68,5 @@ hand-offs and update its prompts if the contracts changed.
 | BH1 | [BH1-bookheap-storage-api.md](./BH1-bookheap-storage-api.md) | Ready |
 | BH2 | [BH2-bookheap-assign-api.md](./BH2-bookheap-assign-api.md) | Ready |
 | BH3 | [BH3-upload-dialog.md](./BH3-upload-dialog.md) | Done |
-| BH4 | [BH4-bookheap-page.md](./BH4-bookheap-page.md) | Ready |
+| BH4 | [BH4-bookheap-page.md](./BH4-bookheap-page.md) | Done |
 | BH5 | [BH5-bookheap-integration.md](./BH5-bookheap-integration.md) | Ready |

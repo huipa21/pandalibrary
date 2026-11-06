@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -63,6 +64,9 @@ type Options struct {
 	Dir      string
 	MaxBytes int64
 	Logger   *slog.Logger
+	// Importer and Catalog enable assignment; both are optional for heap-only use.
+	Importer *importer.Service
+	Catalog  *catalog.Service
 }
 
 // Service owns the heap folder, its index rows and the background scan.
@@ -74,6 +78,13 @@ type Service struct {
 	maxBytes int64
 	logger   *slog.Logger
 	registry *extract.Registry
+	importer *importer.Service
+	catalog  *catalog.Service
+
+	// assigned remembers the heap file staged for each job queued by this process so
+	// completion can confirm it removes the same file (os.SameFile).
+	assignMu sync.Mutex
+	assigned map[int64]fs.FileInfo
 
 	// commitMu serializes duplicate checks, file naming, renames, row writes and
 	// deletions so concurrent uploads, scans and deletes see a consistent heap.
@@ -119,11 +130,19 @@ func New(options Options) (*Service, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{
+	service := &Service{
 		writer: options.Writer, reader: options.Reader, blobs: options.Blobs, dir: dir,
 		maxBytes: options.MaxBytes, logger: options.Logger, registry: registry,
+		importer: options.Importer, catalog: options.Catalog,
 		ctx: ctx, cancel: cancel, now: time.Now, settle: 10 * time.Second,
-	}, nil
+	}
+	if options.Importer != nil {
+		if err := options.Importer.SetHook(ImportSource, assignHook{service: service}); err != nil {
+			cancel()
+			return nil, fmt.Errorf("register bookheap import hook: %w", err)
+		}
+	}
+	return service, nil
 }
 
 // Dir returns the absolute heap directory.
