@@ -2,7 +2,7 @@
 
 | Folder | Purpose |
 |---|---|
-| [architecture/](./architecture/) | Current design: [system](./architecture/system.md), [database](./architecture/database.md), [migrations](./architecture/migrations.md) |
+| [architecture/](./architecture/) | Current design: [system](./architecture/system.md), [database](./architecture/database.md), [migrations](./architecture/migrations.md), [bookheap](./architecture/bookheap.md) |
 | [decisions/](./decisions/README.md) | ADRs: why things are the way they are |
 | [plans/](./plans/README.md) | Numbered steps: which tasks run in parallel and which run alone |
 | [prompts/](./prompts/README.md) | One self-contained implementation prompt per task (written first, then implemented) |

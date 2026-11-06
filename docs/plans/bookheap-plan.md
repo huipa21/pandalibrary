@@ -1,8 +1,8 @@
 # Bookheap: header upload, staging folder, scan, and bulk assignment
 
-Status: Ready for implementation. Requested 2026-11-06.
+Status: Done (BH1-BH5 complete 2026-11-06; see the BH5 hand-off). Requested 2026-11-06.
 Baseline: `2566569` (`master`). These are local issue specifications; nothing
-is published to GitHub. Implementation is not part of this planning change.
+is published to GitHub. See the BH5 hand-off for verification and follow-ups.
 
 ## Request (as given)
 

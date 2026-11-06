@@ -143,6 +143,7 @@
 	function sourceLabel(source: string): string {
 		if (source === 'upload') return m['admin.imports.source.upload']();
 		if (source === 'drop_folder') return m['admin.imports.source.drop_folder']();
+		if (source === 'bookheap') return m['bh5.imports.source.bookheap']();
 		return source;
 	}
 

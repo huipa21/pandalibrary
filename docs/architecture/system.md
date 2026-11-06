@@ -2,6 +2,7 @@
 
 Status: accepted design, implementation in progress. The database design is in
 [database.md](./database.md), the migration process in [migrations.md](./migrations.md),
+the admin Bookheap staging area in [bookheap.md](./bookheap.md),
 and the initial migration in [00001_init.sql](../../internal/db/migrations/00001_init.sql).
 Decisions are recorded in
 [../decisions](../decisions/README.md); the task breakdown is in
@@ -127,7 +128,7 @@ pandalibrary/
 │  ├─ build/                      # adapter-static output (git-ignored)
 │  └─ embed.go                    # package webui: //go:embed all:build  (go:embed cannot use ../)
 ├─ docs/
-│  ├─ architecture/               # system.md, database.md, migrations.md
+│  ├─ architecture/               # system.md, database.md, migrations.md, bookheap.md
 │  ├─ decisions/                  # ADRs (NNNN-title.md)
 │  ├─ plans/                      # task breakdown, dependency graph, numbered steps
 │  ├─ prompts/                    # one implementation prompt per plan task

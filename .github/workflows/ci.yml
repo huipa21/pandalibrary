@@ -101,6 +101,10 @@ jobs:
         env:
           PANDA_E2E_BINARY: ${{ github.workspace }}/bin/pandalibrary
         run: pnpm --dir web test:e2e
+      - name: Check Bookheap assignments survive a restart
+        env:
+          PANDA_E2E_BINARY: ${{ github.workspace }}/bin/pandalibrary
+        run: node web/scripts/bookheap-restart-check.mjs
       - name: Keep browser diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

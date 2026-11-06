@@ -233,7 +233,8 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 	const data = await version.json() as { commit: string; commit_date: string; version: string };
 	expect(data.commit).toBe(execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim());
 	expect(new Date(data.commit_date).toISOString()).toBe(new Date(execFileSync('git', ['show', '-s', '--format=%cI', 'HEAD'], { encoding: 'utf8' }).trim()).toISOString());
-	await expect(page.locator('[data-slot="sidebar-footer"]')).toContainText(data.version);
+	const compactVersion = `${data.commit_date.slice(2, 10).replaceAll('-', '')}-${data.commit.slice(0, 7)}`;
+	await expect(page.locator('[data-slot="sidebar-footer"]')).toContainText(compactVersion);
 	await page.screenshot({ path: info.outputPath('dashboard-desktop.png'), fullPage: true });
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.getByRole('button', { name: 'Open navigation menu' }).click();

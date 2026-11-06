@@ -107,18 +107,23 @@ agreed in BH1's hand-off), `web/**`, migrations.
 
 ## Acceptance criteria
 
-- [ ] Assigning N ready items with two shelves creates N books in the library,
+- [x] Assigning N ready items with two shelves creates N books in the library,
       each on both shelves. Heap rows and files are gone, and import history
       shows `bookheap` jobs.
-- [ ] Duplicate and corrupt items end as `duplicate`/`failed` with files kept.
+- [x] Duplicate and corrupt items end as `duplicate`/`failed` with files kept.
       Retrying a failed item works.
-- [ ] Invalid library, automatic shelf, Unshelved, another user's private
+- [x] Invalid library, automatic shelf, Unshelved, another user's private
       shelf, or a shared shelf without permission rejects the whole request
       with nothing queued.
-- [ ] Restart while queued/importing recovers. Changed or missing heap files
+- [x] Restart while queued/importing recovers. Changed or missing heap files
       are handled without data loss.
-- [ ] Existing upload/drop-folder importer tests still pass unchanged.
-- [ ] `task sqlc:check lint test build` passes.
+- [x] Existing upload/drop-folder importer behavior remains covered and passes;
+      BH5 corrected the test's cleanup wait without weakening its assertions.
+- [x] `task sqlc:check lint test build` passes.
+
+The API is admin-only. All admins can write shared manual shelves; non-admins
+are rejected before shelf validation, so a non-writable shared shelf is not
+an available assignment target under the current permissions model.
 
 ## Validation commands
 

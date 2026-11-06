@@ -67,14 +67,38 @@ the next.
 | Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
 | 1 | BH1 | Heap folder, index table, upload/list/delete/scan API | baseline | [BH1](../prompts/BH1-bookheap-storage-api.md) | Done | `task/bh1` | Migration 00004; delete adds `changed`/`failed` codes |
-| 1 | BH3 | Header Upload button and upload dialog | baseline | [BH3](../prompts/BH3-upload-dialog.md) | Done | `task/bh3` | Mocked against plan contract; BH5 verifies live |
+| 1 | BH3 | Header Upload button and upload dialog | baseline | [BH3](../prompts/BH3-upload-dialog.md) | Done | `task/bh3` | Upload verified against the real server by BH5 |
 | 2 | BH2 | Bulk assign to library + shelves via importer | BH1 | [BH2](../prompts/BH2-bookheap-assign-api.md) | Done | `task/bh2` | No migration; adds per-item `changed`/`failed`; importer hook |
-| 2 | BH4 | Bookheap page, nav, Scan, bulk Assign/Delete | BH1, BH3 | [BH4](../prompts/BH4-bookheap-page.md) | Done | `task/bh4` | Assign mocked until BH2 merges; Queued/Importing filter merged client-side |
-| 3 | BH5 | Real-server integration, docs, release gates | BH1-BH4 | [BH5](../prompts/BH5-bookheap-integration.md) | Ready | `task/bh5` | Runs alone |
+| 2 | BH4 | Bookheap page, nav, Scan, bulk Assign/Delete | BH1, BH3 | [BH4](../prompts/BH4-bookheap-page.md) | Done | `task/bh4` | Live assignment verified by BH5; Queued/Importing filter merged client-side |
+| 3 | BH5 | Real-server integration, docs, release gates | BH1-BH4 | [BH5](../prompts/BH5-bookheap-integration.md) | Done | `task/bh5` | Fixed hook-lookup deadlock; 6 real-server E2E + restart check |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-06 — BH5 verification — Added real-server PDF/CBZ scan coverage and
+  a deterministic concurrent-scan assertion. The restart check now crashes
+  the server only after observing an active job and verifies that a pending
+  or processing job remains on disk before restarting. Fixed a drop-folder
+  test race by waiting for all source-file cleanup before checking archives.
+  The focused Bookheap browser suites passed 12 tests and clean up their own
+  fixtures. The restart check passed on Windows and Linux, and the Linux scan
+  tests exercised symlink rejection.
+
+- 2026-11-06 — BH5 — Integration gate. Added the real-server suite
+  `bookheap.e2e.ts` (6 tests: header upload, scan, assign across pages to a
+  library and shelf, delete, reader denial, drop folder) and
+  `web/scripts/bookheap-restart-check.mjs` (stops the server during a
+  150-item assignment and verifies consistency after restart; also in CI).
+  Fixed an importer deadlock: hook lookup took the importer mutex inside the
+  writer transaction while enqueue held it waiting for the writer. Hooks now
+  use `hooksMu`, with regression test `TestAssignWhileImporterRuns`. Also
+  fixed the "Bookheap" import-source label and existing E2E locators that
+  BH3's header Upload made ambiguous, and aligned the footer-version test
+  with master's compact version. Gates pass: Go, web 252 unit tests,
+  E2E 74/74, and a Podman image build (Docker unavailable).
+  Follow-up (high): EPUB/FB2/MOBI imports with an unknown identifier scheme
+  fail the `book_identifiers` CHECK for every source.
 
 - 2026-11-06 — BH2 — Added `POST /api/v1/admin/bookheap/assign`: whole-request
   library/shelf validation (manual, writable, not another user's private

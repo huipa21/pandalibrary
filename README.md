@@ -97,9 +97,12 @@ the application or its first-run setup to the public internet without TLS and an
 administrator setup plan.
 
 Persist `/data` across container replacement. The application stores the SQLite database,
-content-addressed book files and covers, import drop folder, and backups there. The
-automatic maintenance job retains seven verified database backups; it does not replace an
-off-site backup of both the database and book/cover files.
+content-addressed book files and covers, import drop folder, Bookheap folder, and backups
+there. The automatic maintenance job retains seven verified database backups; it does not
+replace an off-site backup of both the database and book/cover files. Database backups
+include the Bookheap index but not the files waiting in the Bookheap folder; back that
+folder up separately if it holds books you have no other copy of. After a restore, run
+**Scan** on the Bookheap page to re-index it.
 
 To restore, stop the server, restore the database and matching `files/` and `covers/`
 directories from the same backup point, then start with the matching or a newer binary.
@@ -113,6 +116,18 @@ previous release is the rollback path.
   into `PANDA_DROP_DIR` are also imported after they remain stable for three seconds.
   Subdirectories named for a library slug route imports to that library; root-level drops
   require a configured default library. Import history and failures are visible in Admin.
+- **Bookheap (admins):** The header **Upload** button sends one or more books to the
+  Bookheap, a staging folder (`PANDA_BOOKHEAP_DIR`, default `<data-dir>/bookheap`) for
+  books that are not in a library yet. Files can also be copied into that folder directly
+  (subfolders are fine) and indexed with **Scan** on the Bookheap page. The page shows each
+  file's title, format and status (Ready, Duplicate, Invalid, Queued/Importing, Failed);
+  select items across pages, then **Assign…** them to a library and optional manual
+  shelves, or **Delete…** them. Assigned books import like any other upload (source
+  "Bookheap" in Admin → Imports) and their files leave the heap; duplicates and failures
+  stay with a reason, and failed items can be assigned again. Readers never see the heap.
+  In a container the default heap is inside the `/data` volume, owned by UID/GID
+  `65532:65532`; when mounting a separate folder, make it writable by that user and keep
+  it outside the drop folder and `files/`, `covers/`, `tmp/`, `backups/`.
 - **Read and offline:** Open a book from the catalog to use the browser reader. Install
   the PWA from a supported browser and explicitly download books for offline reading.
   Progress changes are queued offline and synced after reconnect; storage can be managed
@@ -223,11 +238,14 @@ node web\scripts\build-version-check.mjs
 $env:PANDA_CANDIDATE_BINARY = $env:PANDA_E2E_BINARY
 # Optional: set PANDA_PREVIOUS_BINARY to a downloaded previous-release executable.
 node web\scripts\upgrade-check.mjs
+node web\scripts\bookheap-restart-check.mjs
 node web\scripts\container-check.mjs
 ```
 
 Real-server tests allocate an unused loopback port and isolated temporary data, then stop
-the server and remove that data on teardown. Redacted server diagnostics are saved under
+the server and remove that data on teardown. The Bookheap restart check kills the server
+during a 150-book assignment, verifies an unfinished job on disk, restarts it on the same
+data, and checks that the heap, import jobs, library, shelf and heap folder agree. Redacted server diagnostics are saved under
 `web/test-results/`. `PANDA_E2E_PORT` can override the allocated port. Container checks use
 Docker by default; set `CONTAINER_ENGINE=podman` for Podman (the checker explicitly builds
 Docker-format metadata to preserve the healthcheck).
