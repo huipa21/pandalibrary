@@ -4,6 +4,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { isImmersiveRoute } from '#lib/nav.js';
 	import SearchBox from '#lib/search/SearchBox.svelte';
+	import UploadButton from '#lib/bookheap/UploadButton.svelte';
 	import AccountControls from './AccountControls.svelte';
 	import Sidebar from './Sidebar.svelte';
 	import { focusableWithin, nextTrappedFocus } from './focus.js';
@@ -110,6 +111,9 @@
 				<div class="shell-search min-w-0">
 					<SearchBox />
 				</div>
+			{/if}
+			{#if viewer?.role === 'admin' && !immersive}
+				<UploadButton />
 			{/if}
 			<div class={viewer ? 'hidden lg:block' : ''}>
 				<AccountControls {pathname} {viewer} {onlogout} variant="header" />

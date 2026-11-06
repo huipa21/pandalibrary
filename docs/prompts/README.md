@@ -18,8 +18,9 @@ reflect what earlier tasks actually built.
 
 Prompts are kept after completion as a record of what was asked.
 
-The [sidebar/dashboard follow-up](../plans/sidebar-dashboard-plan.md) is a
-complete requested planning batch: its prompts are drafted together with
+The [sidebar/dashboard follow-up](../plans/sidebar-dashboard-plan.md) and the
+[bookheap follow-up](../plans/bookheap-plan.md) are complete requested planning
+batches: their prompts are drafted together with
 explicit contracts. Before launching a later wave, read the merged dependency
 hand-offs and update its prompts if the contracts changed.
 
@@ -64,3 +65,8 @@ hand-offs and update its prompts if the contracts changed.
 | UX8 | [UX8-admin-users-ui.md](./UX8-admin-users-ui.md) | Done |
 | UX9 | [UX9-build-version.md](./UX9-build-version.md) | Done |
 | UX10 | [UX10-layout-integration.md](./UX10-layout-integration.md) | Done |
+| BH1 | [BH1-bookheap-storage-api.md](./BH1-bookheap-storage-api.md) | Ready |
+| BH2 | [BH2-bookheap-assign-api.md](./BH2-bookheap-assign-api.md) | Ready |
+| BH3 | [BH3-upload-dialog.md](./BH3-upload-dialog.md) | Done |
+| BH4 | [BH4-bookheap-page.md](./BH4-bookheap-page.md) | Ready |
+| BH5 | [BH5-bookheap-integration.md](./BH5-bookheap-integration.md) | Ready |

@@ -58,9 +58,46 @@ below are local to this follow-up; merge a wave before starting the next.
 | 3 | UX5 | Configurable dashboard | UX3, UX4 | [UX5](../prompts/UX5-configurable-dashboard.md) | Done | `master` | Full frontend check, units, build and dashboard browser tests pass |
 | 4 | UX10 | Integration and verification gate | UX1-UX9 | [UX10](../prompts/UX10-layout-integration.md) | Done | `master` | 58 browser / 204 unit tests, Go/sqlc gates, v1 preservation and actual 11.4 MiB scratch image/restart pass |
 
+## Bookheap follow-up board
+
+Plan, decisions, API contract and ownership rules:
+[bookheap-plan.md](../plans/bookheap-plan.md). Merge a wave before starting
+the next.
+
+| Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
+|---|---|---|---|---|---|---|---|
+| 1 | BH1 | Heap folder, index table, upload/list/delete/scan API | baseline | [BH1](../prompts/BH1-bookheap-storage-api.md) | Done | `task/bh1` | Migration 00004; delete adds `changed`/`failed` codes |
+| 1 | BH3 | Header Upload button and upload dialog | baseline | [BH3](../prompts/BH3-upload-dialog.md) | Done | `task/bh3` | Mocked against plan contract; BH5 verifies live |
+| 2 | BH2 | Bulk assign to library + shelves via importer | BH1 | [BH2](../prompts/BH2-bookheap-assign-api.md) | Ready | `task/bh2` | No migration |
+| 2 | BH4 | Bookheap page, nav, Scan, bulk Assign/Delete | BH1, BH3 | [BH4](../prompts/BH4-bookheap-page.md) | Ready | `task/bh4` | Assign mocked until BH2 merges |
+| 3 | BH5 | Real-server integration, docs, release gates | BH1-BH4 | [BH5](../prompts/BH5-bookheap-integration.md) | Ready | `task/bh5` | Runs alone |
+
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-06 — BH1 — Added `PANDA_BOOKHEAP_DIR` (default `<data>/bookheap`,
+  overlap-validated), migration 00004 (`bookheap_items`, `import_jobs.source`
+  accepts `bookheap`), the `internal/bookheap` service (streamed upload with
+  duplicate/sniff checks and collision-free naming, list/get/cover, bulk delete,
+  background scan with settle/depth/entry limits) and admin-only endpoints.
+  Maintenance guards the heap folder and keeps heap covers. Delete reports
+  `changed`/`failed` besides `busy`/`not_found`; scan state is in memory.
+  vet, staticcheck, sqlc diff, tests and build pass.
+- 2026-11-06 — BH3 — Added the admin-only header Upload button and the
+  multi-file Bookheap upload dialog (drop zone, Select files, Clear, per-row
+  remove, dedupe by name/size/mtime, extension and 1 GiB pre-filters, XHR
+  uploads two at a time with progress, localized 409/413/415/401/403/network
+  results, Retry failed, View Bookheap, confirmed abort on close). One shared
+  queue (`uploadQueue`) keeps non-done rows until reload, so BH4 can reuse it.
+  Mocked against the plan contract only; BH5 must verify against BH1's real
+  endpoint. Check, unit tests, build and the bookheap/shell browser tests pass.
+
+- 2026-11-06 — BH plan — Drafted the bookheap follow-up (BH1-BH5): header
+  Upload dialog, admin-only staging folder (`PANDA_BOOKHEAP_DIR`, default
+  `<data>/bookheap`) indexed in `bookheap_items`, background Scan, and bulk
+  assignment through the importer (library required, shelves optional).
+  Waves: BH1||BH3, then BH2||BH4, then BH5.
 
 - 2026-11-05 — UX6/UX8/UX10 — Completed saved-position validation/pagination,
   exact PDF/CFI jumps, durable account-isolated bookmark sync, admin account
