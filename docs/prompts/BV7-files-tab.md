@@ -1,6 +1,6 @@
 # BV7: Files tab
 
-- Status: Ready
+- Status: Done
 - Wave: 2. Dependencies merged: BV1, BV3, BV4
 - Can run in parallel with: BV5, BV6, BV8, BV9
 - Branch/worktree: `task/bv7` / `..\pandalibrary-bv7`
@@ -111,9 +111,9 @@ re-extraction.
 
 ## Acceptance criteria
 
-- [ ] Screenshot-6 structure (minus write-back) in app style.
-- [ ] Offline save/remove works exactly as before, now from this tab.
-- [ ] Progress is shown only on the file the saved progress points at.
+- [x] Screenshot-6 structure (minus write-back) in app style.
+- [x] Offline save/remove works exactly as before, now from this tab.
+- [x] Progress is shown only on the file the saved progress points at.
 
 ## Validation commands (targeted only)
 
@@ -125,5 +125,7 @@ pnpm --dir web exec playwright test src/lib/bookview/files/files.e2e.ts src/lib/
 
 ## Hand-off
 
-Set this prompt to Done and update the BV7 row/log. Tell BV10 whether
-`offline.e2e.ts` selectors moved.
+`offline.e2e.ts` now visits `/books/21/files` and saves from the selected
+file's actions menu. The legacy Details section remains for BV6 to remove.
+Removal retains the legacy book-wide behavior, with the existing confirmation
+explicitly warning that all downloaded files for the book will be removed.
