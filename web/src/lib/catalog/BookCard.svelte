@@ -14,7 +14,7 @@
 	{#if mode === 'grid'}
 		<CoverActions {book} variant="grid" />
 		<div class="space-y-2 p-4">
-			<h3 class="font-semibold leading-snug">
+			<h3 class="line-clamp-3 font-semibold leading-snug break-words" title={book.title}>
 				<a class="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={`/books/${book.id}`}>
 					{book.title}
 				</a>
@@ -33,7 +33,7 @@
 	{:else}
 		<CoverActions {book} variant="list" />
 		<div class="min-w-0 space-y-2">
-			<h3 class="font-semibold leading-snug">
+			<h3 class="line-clamp-2 font-semibold leading-snug break-words" title={book.title}>
 				<a class="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={`/books/${book.id}`}>
 					{book.title}
 				</a>

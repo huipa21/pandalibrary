@@ -34,6 +34,18 @@
 	const activeTab = $derived(bookTabFromPath(page.url.pathname));
 	const neighbors = $derived(browseNeighbors(bookId));
 	const backHref = $derived(neighbors?.href ?? '/books');
+	let tabNav: HTMLElement | undefined = $state();
+
+	// Keep the active tab visible when the tab strip overflows on narrow screens.
+	$effect(() => {
+		void activeTab;
+		const current = tabNav?.querySelector<HTMLElement>('[aria-current="page"]');
+		if (!tabNav || !current || tabNav.scrollWidth <= tabNav.clientWidth) return;
+		const left = current.offsetLeft - tabNav.offsetLeft;
+		if (left < tabNav.scrollLeft || left + current.offsetWidth > tabNav.scrollLeft + tabNav.clientWidth) {
+			tabNav.scrollLeft = left - (tabNav.clientWidth - current.offsetWidth) / 2;
+		}
+	});
 
 	function back(event: MouseEvent) {
 		if (!backUsesHistory || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -68,7 +80,7 @@
 <svelte:window onkeydown={shortcut} />
 
 <div class="sticky top-shell-header z-20 flex items-center gap-3 rounded-t-2xl border-b border-slate-200 bg-white px-2 sm:px-4">
-	<nav class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" aria-label={m['bv4.tabs.label']()}>
+	<nav bind:this={tabNav} class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" aria-label={m['bv4.tabs.label']()}>
 		<a
 			class="flex shrink-0 items-center gap-1 rounded-md px-2 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-600"
 			href={backHref}

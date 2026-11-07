@@ -102,10 +102,12 @@
 		{/if}
 		{#if context.book && summary && loadedBookId === context.book.id}
 			{#key context.book.id}
-				<div class="grid min-w-0 gap-5 lg:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)_18rem]">
+				<div class="grid min-w-0 gap-5 md:grid-cols-2 2xl:grid-cols-[18rem_minmax(0,1fr)_18rem]">
 					<LogSummary bookId={context.book.id} {summary} {userBook} />
-					<SessionsTable bookId={context.book.id} title={context.book.title} {timezone} {refreshVersion} />
-					<div class="grid min-w-0 gap-5 sm:grid-cols-2 lg:col-span-2 xl:col-span-1 xl:grid-cols-1 xl:content-start">
+					<div class="min-w-0 md:order-last md:col-span-2 2xl:order-none 2xl:col-span-1">
+						<SessionsTable bookId={context.book.id} title={context.book.title} {timezone} {refreshVersion} />
+					</div>
+					<div class="grid min-w-0 gap-5 content-start">
 						<AttemptsCard attempts={summary.attempts} />
 						<RecordsCard {summary} />
 					</div>
