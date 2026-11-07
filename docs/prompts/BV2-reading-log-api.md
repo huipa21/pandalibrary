@@ -1,6 +1,6 @@
 # BV2: Per-book reading log API – summary, sessions page, delete session
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline `72c469c`
 - Can run in parallel with: BV1, BV3, BV4
 - Branch/worktree: `task/bv2` / `..\pandalibrary-bv2`
@@ -127,10 +127,10 @@ UI (BV6, BV8), a stored attempts model, editing sessions (only add via
 
 ## Acceptance criteria
 
-- [ ] All three endpoints match the plan contract. The attempt derivation is a
+- [x] All three endpoints match the plan contract. The attempt derivation is a
       pure, table-tested function.
-- [ ] Timezone-correct day bucketing (test with a non-UTC zone across midnight).
-- [ ] No migration. Existing reading/stats tests are unchanged and pass.
+- [x] Timezone-correct day bucketing (test with a non-UTC zone across midnight).
+- [x] No migration. Existing reading/stats tests are unchanged and pass.
 
 ## Validation commands (targeted only)
 

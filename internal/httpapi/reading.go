@@ -30,6 +30,9 @@ func ReadingMount(service *reading.Service, authentication *auth.Service, logger
 		router.Group(func(secured chi.Router) {
 			secured.Use(SessionMiddleware(authentication, logger))
 			secured.Get("/api/v1/me/books/{id}", handler.getBookState)
+			secured.Get("/api/v1/me/books/{id}/reading-summary", handler.getReadingSummary)
+			secured.Get("/api/v1/me/books/{id}/sessions", handler.listBookSessions)
+			secured.With(cookieProtection).Delete("/api/v1/me/books/{id}/sessions/{sessionId}", handler.deleteBookSession)
 			secured.Get("/api/v1/me/bookmarks", handler.listBookmarks)
 			secured.Get("/api/v1/me/settings", handler.listSettings)
 			secured.With(cookieProtection).Post("/api/v1/sync/push", handler.push)
@@ -182,6 +185,115 @@ func (h *readingHTTP) searchAnnotations(w http.ResponseWriter, r *http.Request) 
 	h.writeJSON(w, http.StatusOK, struct {
 		Items []reading.AnnotationResult `json:"items"`
 	}{Items: items})
+}
+
+func (h *readingHTTP) bookID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	raw := chi.URLParam(r, "id")
+	bookID, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || bookID < 1 || strconv.FormatInt(bookID, 10) != raw {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "The book ID is invalid.")
+		return 0, false
+	}
+	return bookID, true
+}
+
+// timezoneParameter returns the requested IANA zone, defaulting to UTC when absent.
+func timezoneParameter(values url.Values) string {
+	if raw, exists := values["timezone"]; exists {
+		return raw[0]
+	}
+	return "UTC"
+}
+
+func (h *readingHTTP) getReadingSummary(w http.ResponseWriter, r *http.Request) {
+	viewer, ok := h.viewer(w, r)
+	if !ok {
+		return
+	}
+	bookID, ok := h.bookID(w, r)
+	if !ok {
+		return
+	}
+	values, valid := h.query(w, r, "timezone")
+	if !valid {
+		return
+	}
+	summary, err := h.service.GetReadingSummary(r.Context(), viewer, bookID, timezoneParameter(values))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, struct {
+		Summary reading.ReadingSummary `json:"summary"`
+	}{Summary: summary})
+}
+
+func (h *readingHTTP) listBookSessions(w http.ResponseWriter, r *http.Request) {
+	viewer, ok := h.viewer(w, r)
+	if !ok {
+		return
+	}
+	bookID, ok := h.bookID(w, r)
+	if !ok {
+		return
+	}
+	values, valid := h.query(w, r, "range", "timezone", "limit", "cursor")
+	if !valid {
+		return
+	}
+	rangeName := reading.SessionRangeAll
+	if raw, exists := values["range"]; exists {
+		switch raw[0] {
+		case reading.SessionRangeAll, reading.SessionRange30Days, reading.SessionRange90Days, reading.SessionRangeYear:
+			rangeName = raw[0]
+		default:
+			WriteProblem(w, h.logger, http.StatusBadRequest, "The range must be all, 30d, 90d, or year.")
+			return
+		}
+	}
+	limit := 25
+	if raw, exists := values["limit"]; exists {
+		parsed, err := strconv.Atoi(raw[0])
+		if err != nil || parsed < 1 || parsed > 100 || strconv.Itoa(parsed) != raw[0] {
+			WriteProblem(w, h.logger, http.StatusBadRequest, "The limit must be between 1 and 100.")
+			return
+		}
+		limit = parsed
+	}
+	var cursor string
+	if raw, exists := values["cursor"]; exists {
+		if raw[0] == "" {
+			WriteProblem(w, h.logger, http.StatusBadRequest, "The cursor is invalid.")
+			return
+		}
+		cursor = raw[0]
+	}
+	page, err := h.service.ListBookSessions(r.Context(), viewer, bookID, rangeName, timezoneParameter(values), limit, cursor)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, page)
+}
+
+func (h *readingHTTP) deleteBookSession(w http.ResponseWriter, r *http.Request) {
+	viewer, ok := h.viewer(w, r)
+	if !ok {
+		return
+	}
+	bookID, ok := h.bookID(w, r)
+	if !ok {
+		return
+	}
+	if _, valid := h.query(w, r); !valid {
+		return
+	}
+	if err := h.service.DeleteBookSession(r.Context(), viewer, bookID, chi.URLParam(r, "sessionId")); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *readingHTTP) viewer(w http.ResponseWriter, r *http.Request) (reading.Viewer, bool) {
