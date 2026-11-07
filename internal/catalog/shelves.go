@@ -213,6 +213,43 @@ func (s *Service) GetShelf(ctx context.Context, viewer Viewer, id int64) (Shelf,
 	})
 }
 
+// maximumBookShelves caps the shelves returned by ListBookShelves.
+const maximumBookShelves = 200
+
+// ListBookShelves returns the manual shelves visible to the viewer (as in ListShelves)
+// that contain a visible book, sorted by case-insensitive name and ID. Automatic
+// shelves and the virtual Unshelved view are excluded. A missing or invisible book
+// is ErrNotFound.
+func (s *Service) ListBookShelves(ctx context.Context, viewer Viewer, bookID int64) ([]Shelf, error) {
+	if err := checkViewer(viewer); err != nil {
+		return nil, err
+	}
+	if bookID < 1 {
+		return nil, invalid("book ID is invalid")
+	}
+	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) ([]Shelf, error) {
+		if _, err := visibleBook(ctx, queries, viewer, bookID); err != nil {
+			return nil, err
+		}
+		rows, err := queries.ShelfListContainingBook(ctx, sqlc.ShelfListContainingBookParams{
+			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, BookID: bookID,
+			PageSize: maximumBookShelves,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list book shelves: %w", err)
+		}
+		items := make([]Shelf, 0, len(rows))
+		for _, row := range rows {
+			shelf, err := shelfWithCount(ctx, queries, viewer, row)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, shelf)
+		}
+		return items, nil
+	})
+}
+
 // CreateShelf creates a private shelf for the viewer, or a shared shelf for an admin.
 // Automatic shelves must be private and are populated live from their rules.
 func (s *Service) CreateShelf(ctx context.Context, viewer Viewer, input ShelfInput) (Shelf, error) {

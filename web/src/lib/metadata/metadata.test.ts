@@ -34,7 +34,9 @@ const pdf = (id: number, size = 1024): BookFile => ({
 	id,
 	format: 'pdf',
 	size_bytes: size,
-	download_url: `/api/v1/books/${id}/files/${id}?v=${'a'.repeat(64)}`
+	download_url: `/api/v1/books/${id}/files/${id}?v=${'a'.repeat(64)}`,
+	original_filename: `book-${id}.pdf`,
+	created_at: '2026-11-01T00:00:00Z'
 });
 
 const book = (overrides: Partial<Book> = {}): Book => ({

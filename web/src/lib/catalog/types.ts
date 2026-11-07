@@ -39,6 +39,10 @@ export interface BookFile {
 	readonly format: string;
 	readonly size_bytes: number;
 	readonly download_url: string;
+	/** Base name of the uploaded file; never contains a directory path. */
+	readonly original_filename: string;
+	/** RFC3339 UTC time the file was added. */
+	readonly created_at: string;
 }
 
 export interface FieldSource {

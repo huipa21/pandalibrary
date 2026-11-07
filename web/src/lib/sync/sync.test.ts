@@ -16,7 +16,10 @@ import type { OfflineViewer, PullResponse, SyncMutation } from './types.js';
 
 const viewer: OfflineViewer = { id: 1, username: 'reader', display_name: '', role: 'user', locale: 'en' };
 const timestamp = '2026-11-03T00:00:00.000Z';
-const file = { id: 31, format: 'fb2', size_bytes: 4, download_url: `/api/v1/books/21/files/31?v=${'a'.repeat(64)}` };
+const file = {
+	id: 31, format: 'fb2', size_bytes: 4, download_url: `/api/v1/books/21/files/31?v=${'a'.repeat(64)}`,
+	original_filename: 'book.fb2', created_at: '2026-11-01T00:00:00Z'
+};
 const book: Book = {
 	id: 21, library_id: 1, title: 'Offline book', sort_title: 'Offline book', subtitle: null,
 	description: null, language: 'en', publisher: null, published_date: null, page_count: null,

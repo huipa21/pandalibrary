@@ -219,9 +219,17 @@ func TestCatalogHTTPVisibilityAndRouting(t *testing.T) {
 			if len(page.Items) != len(test.want) {
 				t.Fatalf("visible books = %+v, want %v", page.Items, test.want)
 			}
-			for _, secret := range []string{"password_hash", "original_filename", `"sha256":`, `"token_hash":`} {
+			for _, secret := range []string{"password_hash", `"sha256":`, `"token_hash":`, `\\`, "..", `\r`} {
 				if strings.Contains(response.Body.String(), secret) {
 					t.Errorf("book list exposed %q: %s", secret, response.Body.String())
+				}
+			}
+			for _, item := range page.Items {
+				for _, file := range item.Files {
+					if file.OriginalFilename == "" || strings.ContainsAny(file.OriginalFilename, `/\`) ||
+						file.CreatedAt.Location() != time.UTC || file.CreatedAt.UnixMilli() != 1 {
+						t.Errorf("book %d file = %+v", item.ID, file)
+					}
 				}
 			}
 			for i, id := range test.want {
@@ -237,6 +245,11 @@ func TestCatalogHTTPVisibilityAndRouting(t *testing.T) {
 	} {
 		response := fixture.request(http.MethodGet, target, nil, fixture.reader, map[string]string{"If-None-Match": "*"})
 		requireProblem(t, response, http.StatusNotFound)
+	}
+	detail := fixture.request(http.MethodGet, "/api/v1/books/101", nil, fixture.reader, nil)
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(),
+		`"original_filename":"evil__Injected.epub","created_at":"1970-01-01T00:00:00.001Z"}`) {
+		t.Fatalf("book detail file fields = %d %s", detail.Code, detail.Body.String())
 	}
 	authors := fixture.request(http.MethodGet, "/api/v1/authors", nil, fixture.reader, nil)
 	if authors.Code != http.StatusOK || strings.Contains(authors.Body.String(), "Secret Author") ||
