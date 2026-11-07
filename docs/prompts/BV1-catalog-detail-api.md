@@ -1,6 +1,6 @@
 # BV1: Catalog API – file name/added date and shelves containing a book
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline `72c469c`
 - Can run in parallel with: BV2, BV3, BV4
 - Branch/worktree: `task/bv1` / `..\pandalibrary-bv1`

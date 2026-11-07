@@ -60,12 +60,15 @@ type Identifier struct {
 	Value  string `json:"value"`
 }
 
-// BookFile is the public representation of a stored book format.
+// BookFile is the public representation of a stored book format. OriginalFilename
+// is always a base name without directories; CreatedAt is the UTC added time.
 type BookFile struct {
-	ID          int64  `json:"id"`
-	Format      string `json:"format"`
-	SizeBytes   int64  `json:"size_bytes"`
-	DownloadURL string `json:"download_url"`
+	ID               int64     `json:"id"`
+	Format           string    `json:"format"`
+	SizeBytes        int64     `json:"size_bytes"`
+	DownloadURL      string    `json:"download_url"`
+	OriginalFilename string    `json:"original_filename"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // FieldSource describes provenance. SourceRef and ChosenBy may be null.

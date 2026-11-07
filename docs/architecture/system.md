@@ -228,7 +228,8 @@ keyset cursors (`?cursor=…&limit=…`).
 |---|---|---|
 | `/api/v1/auth/*` | none / session | `POST login`, `POST logout`, `GET me` |
 | `/api/v1/setup` | none / setup token | `GET` first-run status; `POST` creates the first admin only while `users` is empty |
-| `/api/v1/libraries`, `/books`, `/authors`, `/series`, `/tags`, `/shelves` | session | Catalog browse/filter/sort; writes admin-only (shelves: owner or admin) |
+| `/api/v1/libraries`, `/books`, `/authors`, `/series`, `/tags`, `/shelves` | session | Catalog browse/filter/sort; writes admin-only (shelves: owner or admin). Each book `files[]` item has `id`, `format`, `size_bytes`, `download_url`, `original_filename` (base name only; `<title>.<format>` when unknown) and `created_at` (RFC3339 UTC) |
+| `/api/v1/books/{id}/shelves` | session | `GET` `{"shelves": Shelf[]}`: the viewer-visible **manual** shelves (custom manual + Favorites; never automatic or Unshelved) containing the book, sorted by name (case-insensitive) then ID, capped at 200; same `Shelf` DTO and visibility as `/shelves`. 404 when the book is missing or invisible, 400 for an invalid ID or any query parameter |
 | `/api/v1/books/{id}/files/{fileId}` | session | Stream the file (Range and SHA-256 ETag; immutable caching only for hash-versioned URLs) |
 | `/api/v1/books/{id}/cover?w=400` | session | Cover/thumbnail; `PUT` uploads a cover (admin; pdf.js-rendered PDF covers) |
 | `/api/v1/uploads` | admin | Multipart streaming upload → import job; `POST /books/{id}/files` adds a format |

@@ -80,7 +80,7 @@ the next. Only BV10 runs the full verification gate.
 
 | Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
-| 1 | BV1 | Catalog API: file name/added, shelves containing a book | baseline | [BV1](../prompts/BV1-catalog-detail-api.md) | Ready | `task/bv1` | |
+| 1 | BV1 | Catalog API: file name/added, shelves containing a book | baseline | [BV1](../prompts/BV1-catalog-detail-api.md) | Done | `task/bv1` | No migration; control chars in file names become `_` |
 | 1 | BV2 | Per-book reading log API + web client | baseline | [BV2](../prompts/BV2-reading-log-api.md) | Ready | `task/bv2` | |
 | 1 | BV3 | Cover kit: generated cover, format badge, hover actions | baseline | [BV3](../prompts/BV3-cover-kit.md) | Done | `master` | Cover kit and card integration; targeted checks pass |
 | 1 | BV4 | Details shell: route group, tabs, contexts, prev/next | baseline | [BV4](../prompts/BV4-details-shell.md) | Ready | `task/bv4` | |
@@ -94,6 +94,17 @@ the next. Only BV10 runs the full verification gate.
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BV1 — Book `files[]` items now carry `original_filename` and
+  `created_at` (all `Book` producers share `hydrateBook`). The name is a base
+  name: `\` normalized to `/`, drive prefix and directories stripped, control
+  characters replaced with `_`; empty/unusable names fall back to
+  `<title>.<format>`. Added `GET /api/v1/books/{id}/shelves` (manual shelves
+  only, `/shelves` visibility and counts, name/ID order, cap 200, 404 for an
+  invisible book) via the new `ShelfListContainingBook` query; no migration.
+  Web: `BookFile` fields, `getBookShelves`, and updated type-checked fixtures
+  (e2e route mocks untouched). Contract deviation: none beyond the control
+  character replacement.
 
 - 2026-11-07 — BV3 — Implemented deterministic, contrast-checked title covers,
   format badges, hover/focus/touch actions, the shared interactive kit, and

@@ -86,3 +86,15 @@ UPDATE shelf_books SET position = ? WHERE shelf_id = ? AND book_id = ?;
 
 -- name: ShelfRemoveBook :execrows
 DELETE FROM shelf_books WHERE shelf_id = ? AND book_id = ?;
+
+-- name: ShelfListContainingBook :many
+SELECT s.* FROM shelves s
+WHERE s.mode = 'manual'
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR s.kind = 'shared'
+    OR (s.kind = 'private' AND s.owner_id = CAST(sqlc.arg(user_id) AS INTEGER)))
+AND (s.system_key IS NULL OR s.owner_id = CAST(sqlc.arg(user_id) AS INTEGER))
+AND EXISTS (
+    SELECT 1 FROM shelf_books sb WHERE sb.shelf_id = s.id AND sb.book_id = sqlc.arg(book_id)
+)
+ORDER BY s.name COLLATE NOCASE, s.id
+LIMIT CAST(sqlc.arg(page_size) AS INTEGER);

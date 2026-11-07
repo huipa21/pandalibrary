@@ -192,6 +192,66 @@ func (q *Queries) ShelfList(ctx context.Context, arg ShelfListParams) ([]Shelf, 
 	return items, nil
 }
 
+const shelfListContainingBook = `-- name: ShelfListContainingBook :many
+SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules FROM shelves s
+WHERE s.mode = 'manual'
+AND (CAST(?1 AS INTEGER) = 1 OR s.kind = 'shared'
+    OR (s.kind = 'private' AND s.owner_id = CAST(?2 AS INTEGER)))
+AND (s.system_key IS NULL OR s.owner_id = CAST(?2 AS INTEGER))
+AND EXISTS (
+    SELECT 1 FROM shelf_books sb WHERE sb.shelf_id = s.id AND sb.book_id = ?3
+)
+ORDER BY s.name COLLATE NOCASE, s.id
+LIMIT CAST(?4 AS INTEGER)
+`
+
+type ShelfListContainingBookParams struct {
+	IsAdmin  int64
+	UserID   int64
+	BookID   int64
+	PageSize int64
+}
+
+func (q *Queries) ShelfListContainingBook(ctx context.Context, arg ShelfListContainingBookParams) ([]Shelf, error) {
+	rows, err := q.db.QueryContext(ctx, shelfListContainingBook,
+		arg.IsAdmin,
+		arg.UserID,
+		arg.BookID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Shelf{}
+	for rows.Next() {
+		var i Shelf
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.OwnerID,
+			&i.Name,
+			&i.Description,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Mode,
+			&i.SystemKey,
+			&i.Rules,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const shelfNameTaken = `-- name: ShelfNameTaken :one
 SELECT count(*) FROM shelves
 WHERE kind = ?1 AND name = ?2 COLLATE NOCASE

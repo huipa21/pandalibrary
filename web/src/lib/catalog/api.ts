@@ -1,4 +1,5 @@
 import { api } from '#lib/api/client.js';
+import type { Shelf } from '#lib/shelves/types.js';
 import type {
 	Book,
 	BookFilters,
@@ -64,6 +65,15 @@ export async function listBooks(
 export async function getBook(id: number): Promise<Book> {
 	const response = await api.request<{ book: Book }>(`/books/${id}`);
 	return response.book;
+}
+
+/** Lists the viewer-visible manual shelves (including Favorites) that contain a book. */
+export async function getBookShelves(bookId: number, signal?: AbortSignal): Promise<Shelf[]> {
+	const response = await api.request<{ shelves: Shelf[] }>(
+		`/books/${bookId}/shelves`,
+		signal === undefined ? {} : { signal }
+	);
+	return response.shelves;
 }
 
 export async function listEntities(

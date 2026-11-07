@@ -8,7 +8,9 @@ const file: BookFile = {
 	id: 3,
 	format: 'epub',
 	size_bytes: 10,
-	download_url: `/api/v1/books/2/files/3?v=${hash}`
+	download_url: `/api/v1/books/2/files/3?v=${hash}`,
+	original_filename: 'book.epub',
+	created_at: '2026-11-01T00:00:00Z'
 };
 const mutation: Mutation = {
 	entity: 'notes',

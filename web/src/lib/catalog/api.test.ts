@@ -1,8 +1,47 @@
 import en from '../../../messages/en.json';
 import zh from '../../../messages/zh.json';
-import { describe, expect, it } from 'vitest';
-import { buildBooksPath, buildPagePath, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from './api';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { api } from '#lib/api/client.js';
+import type { Shelf } from '#lib/shelves/types.js';
+import { buildBooksPath, buildPagePath, DEFAULT_PAGE_SIZE, getBookShelves, MAX_PAGE_SIZE } from './api';
 import { allowsCatalogFilters, bookFiltersFromSearch, hasNextPage, selectedSort, setCatalogFilter } from './query';
+
+afterEach(() => vi.restoreAllMocks());
+
+describe('getBookShelves', () => {
+	const shelf: Shelf = {
+		id: 7,
+		kind: 'private',
+		mode: 'manual',
+		system_key: 'favorites',
+		rules: null,
+		owner_id: 1,
+		name: 'Favorites',
+		description: null,
+		created_by: 1,
+		visible_book_count: 2,
+		created_at: '2026-11-03T00:00:00Z',
+		updated_at: '2026-11-03T00:00:00Z'
+	};
+
+	it('requests the book shelves endpoint and unwraps the shelves envelope', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ shelves: [shelf] });
+		const controller = new AbortController();
+
+		await expect(getBookShelves(21)).resolves.toEqual([shelf]);
+		await expect(getBookShelves(22, controller.signal)).resolves.toEqual([shelf]);
+
+		expect(request.mock.calls).toEqual([
+			['/books/21/shelves', {}],
+			['/books/22/shelves', { signal: controller.signal }]
+		]);
+	});
+
+	it('propagates request failures', async () => {
+		vi.spyOn(api, 'request').mockRejectedValue(new Error('not found'));
+		await expect(getBookShelves(404)).rejects.toThrow('not found');
+	});
+});
 
 describe('catalog API helpers', () => {
 	it('uses the bounded default page size and preserves opaque cursors', () => {
