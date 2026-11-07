@@ -126,6 +126,38 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 	if response := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/bookmarks", "", nil, ""); response.Code != http.StatusUnauthorized {
 		t.Errorf("unauthenticated bookmarks = %d", response.Code)
 	}
+
+	states := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/book-states?ids=101,102,999,101", "", cookie, "")
+	if states.Code != http.StatusOK ||
+		!strings.Contains(states.Body.String(), `"items":[{"book_id":101,"status":"reading","percentage":null,"book_file_id":null,"updated_at":"`) ||
+		strings.Count(states.Body.String(), `"book_id"`) != 1 {
+		t.Fatalf("book states = %d %s", states.Code, states.Body.String())
+	}
+	empty := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/book-states?ids=999", "", cookie, "")
+	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), `"items":[]`) {
+		t.Fatalf("empty book states = %d %s", empty.Code, empty.Body.String())
+	}
+	maxIDs := make([]string, reading.MaxBookStateIDs)
+	for i := range maxIDs {
+		maxIDs[i] = "101"
+	}
+	if response := readingHTTPRequest(t, router, http.MethodGet,
+		"/api/v1/me/book-states?ids="+strings.Join(maxIDs, ","), "", cookie, ""); response.Code != http.StatusOK {
+		t.Errorf("book states at the limit = %d %s", response.Code, response.Body.String())
+	}
+	for _, query := range []string{
+		"", "ids=", "ids=0", "ids=-1", "ids=abc", "ids=1.5", "ids=01", "ids=1,,2", "ids=1,", "ids=+1",
+		"ids=" + strings.Join(append(maxIDs, "102"), ","), "ids=1&ids=2", "ids=1&other=2",
+	} {
+		response := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/book-states?"+query, "", cookie, "")
+		if response.Code != http.StatusBadRequest ||
+			response.Header().Get("Content-Type") != "application/problem+json" {
+			t.Errorf("book states query %q = %d %s", query, response.Code, response.Body.String())
+		}
+	}
+	if response := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/book-states?ids=101", "", nil, ""); response.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated book states = %d", response.Code)
+	}
 }
 
 func readingHTTPRequest(
