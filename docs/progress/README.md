@@ -85,7 +85,7 @@ the next. Only BV10 runs the full verification gate.
 | 1 | BV3 | Cover kit: generated cover, format badge, hover actions | baseline | [BV3](../prompts/BV3-cover-kit.md) | Done | `master` | Cover kit and card integration; targeted checks pass |
 | 1 | BV4 | Details shell: route group, tabs, contexts, prev/next | baseline | [BV4](../prompts/BV4-details-shell.md) | Done | `task/bv4` | `getBookContext()` shape in the log |
 | 2 | BV5 | Quick view drawer | BV1, BV3 | [BV5](../prompts/BV5-quick-view.md) | Ready | `task/bv5` | |
-| 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Ready | `task/bv6` | |
+| 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Done | `task/bv6` | Offline Details is read-only; legacy file controls stay until BV7 |
 | 2 | BV7 | Files tab | BV1, BV3, BV4 | [BV7](../prompts/BV7-files-tab.md) | Ready | `task/bv7` | |
 | 2 | BV8 | Reading Log tab | BV2-BV4 | [BV8](../prompts/BV8-reading-log-tab.md) | Ready | `task/bv8` | |
 | 2 | BV9 | Highlights tab + reader `?highlight=` | BV3, BV4 | [BV9](../prompts/BV9-highlights-tab.md) | Ready | `task/bv9` | |
@@ -94,6 +94,15 @@ the next. Only BV10 runs the full verification gate.
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BV6 — Rebuilt Details as a responsive cover/actions column,
+  editable reading state and review, reading summary, details/editions panels,
+  and related-book carousel. Book-level reviews use synced notes and all edits
+  notify other views. Offline Details loads synchronized state and cached cover,
+  with edits read-only and network-only sections hidden. Legacy per-file
+  read/download/offline actions and inline Add to shelf remain until BV7
+  replaces them. No backend or dependency changes. Validation: `pnpm check`,
+  57 focused book-view unit tests and 29 mocked browser tests passed.
 
 - 2026-11-07 — BV3 — Implemented deterministic, contrast-checked title covers,
   format badges, hover/focus/touch actions, the shared interactive kit, and

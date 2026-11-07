@@ -8,7 +8,10 @@ type Mutation = {
 
 async function setup(page: Page) {
 	const bytes = pdfFixture();
-	const file = { id: 31, format: 'pdf', size_bytes: bytes.length, download_url: `/api/v1/books/21/files/31?v=${'a'.repeat(64)}` };
+	const file = {
+		id: 31, format: 'pdf', size_bytes: bytes.length, download_url: `/api/v1/books/21/files/31?v=${'a'.repeat(64)}`,
+		original_filename: 'offline.pdf', created_at: '2026-11-03T00:00:00Z'
+	};
 	const book = {
 		id: 21, library_id: 1, title: 'Offline Fixture', sort_title: 'Offline Fixture', subtitle: null,
 		description: null, language: 'en', publisher: null, published_date: null, page_count: null,
@@ -54,9 +57,16 @@ async function setup(page: Page) {
 		if (path === '/books/21/cover') {
 			return route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>' });
 		}
+		if (path === '/libraries/1') return route.fulfill({ json: { library: { id: 1, name: 'Offline library', slug: 'offline', created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z' } } });
+		if (path === '/shelves') return route.fulfill({ json: { items: [], next_cursor: null } });
 		if (path === '/me/books/21') {
 			return route.fulfill({ json: { user_book: null, progress: state.progress, highlights: [], notes: state.notes } });
 		}
+		if (path === '/me/books/21/reading-summary') return route.fulfill({ json: { summary: {
+			progress: 0, sessions: 0, total_seconds: 0, average_seconds: 0, active_days: 0, span_days: 0,
+			first_read_at: null, last_read_at: null, pace_percent_per_hour: null, estimated_seconds_left: null,
+			records: { longest_session: null, best_day: null, longest_streak_days: 0 }, attempts: [], days: []
+		} } });
 		if (path === '/me/settings') return route.fulfill({ json: { settings: [] } });
 		if (path === '/sync/push') {
 			state.calls.push('push');
@@ -116,6 +126,29 @@ async function download(page: Page) {
 		}
 	});
 }
+
+test('book details use synced state and the cached cover while offline', async ({ page, context }) => {
+	const state = await setup(page);
+	state.rev = 1;
+	state.notes.push({
+		id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, highlight_id: null,
+		body_md: 'A synchronized review', created_at: '2026-11-03T00:00:00Z',
+		updated_at: '2026-11-03T00:00:00Z', deleted_at: null, rev: 1
+	});
+	await download(page);
+	await expect(page.getByText('No reading sessions yet.', { exact: true })).toBeVisible();
+	state.online = false;
+	await context.setOffline(true);
+	await page.goto('/books/21');
+	await expect(page.getByRole('heading', { name: 'Offline Fixture' })).toBeVisible();
+	await expect(page.getByText('A synchronized review', { exact: true })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Back to library' })).toHaveAttribute('href', '/library/1');
+	await expect(page.getByRole('img', { name: 'Offline Fixture' })).toHaveAttribute('src', /^blob:/);
+	await expect(page.getByRole('region', { name: 'Your reading' })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Download', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
+	await expect(page.getByText('Reading details are read-only while offline.')).toBeVisible();
+});
 
 test('offline progress and notes survive reload and reconnect pushes then pulls without Background Sync', async ({ page, context }) => {
 	const state = await setup(page);

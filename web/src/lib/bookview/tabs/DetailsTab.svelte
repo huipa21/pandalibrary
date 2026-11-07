@@ -1,45 +1,160 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { untrack } from 'svelte';
 	import { ApiError } from '#lib/api/client.js';
-	import * as m from '#lib/paraglide/messages.js';
 	import type { BookFile } from '#lib/catalog/types.js';
-	import { readerFormat } from '#lib/reader/index.js';
+	import * as m from '#lib/paraglide/messages.js';
+	import { readerFormat } from '#lib/reader/types.js';
 	import AddToShelf from '#lib/shelves/AddToShelf.svelte';
 	import { currentAccount, offlineStatus } from '#lib/sync/client.js';
 	import { downloadedBooks, OfflineStorageError, removeBook } from '#lib/sync/db.js';
 	import { downloadForOffline } from '#lib/sync/library.js';
+	import BookCover from '../BookCover.svelte';
+	import Icon from '../Icon.svelte';
+	import ReadStatusMenu from '../ReadStatusMenu.svelte';
 	import { getBookContext } from '../book-context.svelte.js';
+	import { sortedFormats } from '../cover.js';
+	import { BOOK_STATE_CHANGED_EVENT, type BookStateChangedDetail } from '../events.js';
+	import { formatSize } from '../format.js';
+	import { readTarget } from '../read.js';
+	import DetailsHero from '../details/DetailsHero.svelte';
+	import DetailsPanel from '../details/DetailsPanel.svelte';
+	import EditionsCard from '../details/EditionsCard.svelte';
+	import ReadingCard from '../details/ReadingCard.svelte';
+	import RelatedBooks from '../details/RelatedBooks.svelte';
+	import SynopsisCard from '../details/SynopsisCard.svelte';
+	import { loadDetailsState, loadRelated, type DetailsState, type RelatedBooks as RelatedBookLists } from '../details/details-data.js';
 
-	// BV6 replaces this tab; until then it is the former /books/[id] page body.
 	const context = getBookContext();
 	const book = $derived(context.book);
+	const bookId = $derived(book?.id ?? null);
 	const offline = $derived(context.offline);
-	const coverSource = $derived(context.coverSource);
-	const coverError = $derived(context.coverError);
-	const canEditMetadata = $derived(context.canEditMetadata);
 	const savedFileIds = $derived(context.savedFileIds);
+	let details = $state<DetailsState | null>(null);
+	let detailsLoading = $state(true);
+	let detailsError = $state('');
+	let detailsRevision = $state(0);
+	let detailsBookId: number | null = null;
+	let related = $state<RelatedBookLists | null>(null);
+	let relatedError = $state('');
+	let relatedRevision = $state(0);
+	let readBusy = $state(false);
+	let readError = $state('');
 	let downloadBusy = $state<number | null>(null);
 	let offlineNotice = $state('');
 	let offlineError = $state('');
+	const detailsReady = $derived(details !== null && !detailsLoading && !detailsError);
+	const readable = $derived(book?.files.some((file) => readerFormat(file.format) !== null) ?? false);
+	const primaryFile = $derived.by(() => {
+		if (!book) return null;
+		const preferred = sortedFormats(book.files)[0];
+		return book.files.find((file) => file.format.trim().toLowerCase() === preferred) ?? book.files[0] ?? null;
+	});
+
+	$effect(() => {
+		bookId;
+		offlineNotice = '';
+		offlineError = '';
+		readError = '';
+	});
+
+	$effect(() => {
+		const id = bookId;
+		const isOffline = offline;
+		detailsRevision;
+		if (id === null) return;
+		const controller = new AbortController();
+		if (detailsBookId !== id) {
+			details = null;
+			detailsBookId = id;
+		}
+		detailsLoading = true;
+		detailsError = '';
+		void loadDetailsState(id, controller.signal, isOffline).then(
+			(state) => {
+				if (controller.signal.aborted) return;
+				details = state;
+				detailsLoading = false;
+			},
+			(cause: unknown) => {
+				if (controller.signal.aborted) return;
+				console.error('Could not load book reading details', cause);
+				detailsError = m['bv6.state_error']();
+				detailsLoading = false;
+			}
+		);
+		return () => controller.abort();
+	});
+
+	$effect(() => {
+		const id = bookId;
+		const isOffline = offline;
+		relatedRevision;
+		const current = untrack(() => context.book);
+		related = null;
+		relatedError = '';
+		if (id === null || isOffline || !current || current.id !== id) return;
+		const controller = new AbortController();
+		void loadRelated(current, controller.signal).then(
+			(value) => {
+				if (!controller.signal.aborted) related = value;
+			},
+			(cause: unknown) => {
+				if (controller.signal.aborted) return;
+				console.error('Could not load related books', cause);
+				relatedError = m['bv6.related_error']();
+			}
+		);
+		return () => controller.abort();
+	});
+
+	$effect(() => {
+		const id = bookId;
+		const changed = (event: Event) => {
+			const detail = (event as CustomEvent<BookStateChangedDetail | null>).detail;
+			if (id !== null && detail?.bookId === id) detailsRevision += 1;
+		};
+		window.addEventListener(BOOK_STATE_CHANGED_EVENT, changed);
+		return () => window.removeEventListener(BOOK_STATE_CHANGED_EVENT, changed);
+	});
+
+	async function read() {
+		if (!book || !readable || readBusy) return;
+		const current = $state.snapshot(book);
+		readBusy = true;
+		readError = '';
+		try {
+			const target = await readTarget(current, currentAccount());
+			if (!target) throw new Error('No readable book file is available.');
+			if (bookId !== current.id) return;
+			await goto(`/read/${target.bookId}/${target.fileId}`);
+		} catch (cause) {
+			console.error('Could not open the book for reading', cause);
+			if (bookId === current.id) readError = m['bv3.read_failed']();
+		} finally {
+			readBusy = false;
+		}
+	}
 
 	async function download(file: BookFile) {
 		if (!book || downloadBusy !== null) return;
+		const current = $state.snapshot(book);
 		downloadBusy = file.id;
 		offlineError = '';
 		offlineNotice = '';
 		try {
-			const currentBook = $state.snapshot(book);
-			const currentFile = currentBook.files.find((item) => item.id === file.id);
-			if (!currentFile) throw new OfflineStorageError('The selected book file is missing.');
-			await downloadForOffline(currentAccount(), currentBook, currentFile);
-			const stored = (await downloadedBooks(currentAccount())).find((item) => item.book.id === currentBook.id);
+			const selected = current.files.find((item) => item.id === file.id);
+			if (!selected) throw new OfflineStorageError('The selected book file is missing.');
+			await downloadForOffline(currentAccount(), current, selected);
+			const stored = (await downloadedBooks(currentAccount())).find((item) => item.book.id === current.id);
+			if (bookId !== current.id) return;
 			context.savedFileIds = stored?.fileIds ?? [];
 			offlineNotice = m['offline.download_success']();
 		} catch (cause) {
 			console.error('Could not download the book for offline reading', cause);
+			if (bookId !== current.id) return;
 			offlineError = m['offline.download_failure']();
-			if (cause instanceof ApiError && (cause.status === 403 || cause.status === 404)) {
-				context.savedFileIds = [];
-			}
+			if (cause instanceof ApiError && (cause.status === 403 || cause.status === 404)) context.savedFileIds = [];
 		} finally {
 			downloadBusy = null;
 		}
@@ -47,199 +162,150 @@
 
 	async function removeDownload() {
 		if (!book || !window.confirm(m['offline.storage.remove_confirm']())) return;
+		const id = book.id;
 		try {
-			await removeBook(currentAccount(), book.id);
+			await removeBook(currentAccount(), id);
+			if (bookId !== id) return;
 			context.savedFileIds = [];
 			offlineNotice = m['offline.storage.removed']();
 			offlineError = '';
 			if (offline) await context.reload();
 		} catch (cause) {
 			console.error('Could not remove the downloaded book', cause);
-			offlineError = m['offline.storage.failure']();
-		}
-	}
-
-	function formatSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		const units = ['KB', 'MB', 'GB', 'TB'];
-		let size = bytes / 1024;
-		let unit = 0;
-		while (size >= 1024 && unit < units.length - 1) {
-			size /= 1024;
-			unit += 1;
-		}
-		return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(size)} ${units[unit]}`;
-	}
-
-	function roleLabel(role: string): string {
-		switch (role) {
-			case 'author': return m['catalog.book.role.author']();
-			case 'translator': return m['catalog.book.role.translator']();
-			case 'editor': return m['catalog.book.role.editor']();
-			case 'illustrator': return m['catalog.book.role.illustrator']();
-			default: return role;
+			if (bookId === id) offlineError = m['offline.storage.failure']();
 		}
 	}
 </script>
 
 {#if book}
-	<article class="space-y-8">
-		<header class="space-y-3">
-			<a class="text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href={`/library/${book.library_id}`}>
-				{m['catalog.back_to_library']()}
-			</a>
-			<h1 class="text-3xl font-semibold tracking-tight">{book.title}</h1>
-			{#if book.subtitle}<p class="text-xl text-slate-600">{book.subtitle}</p>{/if}
-			{#if canEditMetadata && !offline}
-				<a class="inline-block rounded-md border border-slate-300 px-3 py-2 text-sm font-medium focus-visible:outline-2" href={`/books/${book.id}/edit`}>
-					{m['metadata.edit.link']()}
-				</a>
-			{/if}
-		</header>
+	<article class="min-w-0 space-y-8">
 		{#if offlineNotice}<p role="status" class="rounded-md bg-green-50 p-3 text-green-800">{offlineNotice}</p>{/if}
 		{#if offlineError}<p role="alert" class="rounded-md bg-red-50 p-3 text-red-800">{offlineError}</p>{/if}
+		{#if offline}<p class="text-sm text-slate-500">{m['bv6.offline_read_only']()}</p>{/if}
+		{#if detailsError}
+			<div class="flex flex-wrap items-center gap-3 rounded-md bg-red-50 p-3 text-sm text-red-800" role="alert">
+				<span>{detailsError}</span>
+				<button type="button" class="font-semibold underline" onclick={() => (detailsRevision += 1)}>{m['catalog.retry']()}</button>
+			</div>
+		{/if}
 
-		<div class="grid gap-8 md:grid-cols-[minmax(12rem,18rem)_1fr]">
-			<aside class="space-y-3">
-				{#if coverSource}
-					<img class="w-full rounded-lg bg-slate-100 object-contain" src={coverSource} alt={book.title} />
-				{:else}
-					<div class="flex aspect-[3/4] items-center justify-center rounded-lg bg-slate-100 p-4 text-center text-slate-500">
-						{m['catalog.book.cover_unavailable']()}
+		<div class="grid min-w-0 gap-6 md:grid-cols-[minmax(12rem,18rem)_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)_20rem]">
+			<aside class="min-w-0 space-y-3">
+				<BookCover id={book.id} title={book.title} authors={book.authors.map((author) => author.name)} coverUrl={context.coverSource} files={book.files} size="lg" badge loading="eager" />
+				{#if context.coverError}<p class="text-sm text-amber-800">{context.coverError}</p>{/if}
+				{#if book.cover_source}<p class="text-xs text-slate-500">{m['catalog.book.cover_source']()}: {book.cover_source}</p>{/if}
+				<div class="flex items-center gap-2">
+					<button type="button" class="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60" disabled={!readable || readBusy} onclick={read}>
+						<Icon name="book-open" class="size-4" />
+						{details?.progress && details.progress.percentage > 0 ? m['bv6.resume']() : m['bv6.read']()}
+					</button>
+					{#if detailsReady && details && !offline}
+						<ReadStatusMenu bookId={book.id} userBook={details.userBook} reread={(details.summary?.attempts.length ?? 0) > 1} variant="icon" />
+					{/if}
+				</div>
+				{#if readError}<p class="text-sm text-red-800" role="alert">{readError}</p>{/if}
+				{#if !offline}
+					<div class="flex flex-wrap gap-2">
+						{#if primaryFile}
+							<div class="relative flex min-w-0">
+								<a class="inline-flex items-center gap-1 rounded-l-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100" class:rounded-r-lg={book.files.length === 1} href={primaryFile.download_url}>
+									<Icon name="download" class="size-4" /> {m['catalog.book.download']()}
+								</a>
+								{#if book.files.length > 1}
+									<details class="relative">
+										<summary class="flex h-full cursor-pointer list-none items-center rounded-r-lg border border-l-0 border-slate-300 px-2 hover:bg-slate-100" aria-label={m['bv6.download_formats']()}><Icon name="chevron-down" class="size-4" /></summary>
+										<ul class="absolute top-full left-0 z-10 mt-1 min-w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+											{#each book.files as file (file.id)}
+												<li><a class="block rounded px-3 py-2 text-sm hover:bg-slate-100" href={file.download_url} title={file.original_filename}>{m['bv6.download_format']({ format: file.format.toUpperCase() })}</a></li>
+											{/each}
+										</ul>
+									</details>
+								{/if}
+							</div>
+						{/if}
+						<a class="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100" href="#book-shelf"><Icon name="folder-plus" class="size-4" /> {m['shelves.book.add']()}</a>
 					</div>
+					{#if context.canEditMetadata}
+						<a class="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100" href={`/books/${book.id}/edit`}><Icon name="pencil" class="size-4" /> {m['metadata.edit.link']()}</a>
+					{/if}
 				{/if}
-				{#if coverError}<p class="text-sm text-amber-800">{coverError}</p>{/if}
-				{#if book.cover_source}
-					<p class="text-sm text-slate-600">{m['catalog.book.cover_source']()}: {book.cover_source}</p>
-				{/if}
+				<a class="block text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href={`/library/${book.library_id}`}>{m['catalog.back_to_library']()}</a>
 			</aside>
 
-			<div class="space-y-8">
-				<section aria-labelledby="book-details-heading" class="space-y-3">
-					<h2 id="book-details-heading" class="text-xl font-semibold">{m['catalog.book.details']()}</h2>
-					<dl class="grid gap-x-4 gap-y-3 sm:grid-cols-[max-content_1fr]">
-						{#if book.authors.length}
-							<dt class="font-medium">{m['catalog.book.contributors']()}</dt>
-							<dd>
-								<ul class="space-y-1">
-									{#each book.authors as author (author.id)}
-										<li>
-											<a class="underline-offset-4 hover:underline" href={`/authors/${author.id}`}>{author.name}</a>
-											<span class="text-slate-600">({roleLabel(author.role)})</span>
-										</li>
-									{/each}
-								</ul>
-							</dd>
-						{/if}
-						{#if book.series}
-							<dt class="font-medium">{m['catalog.book.series']()}</dt>
-							<dd>
-								<a class="underline-offset-4 hover:underline" href={`/series/${book.series.id}`}>{book.series.name}</a>
-								{#if book.series.index !== null}<span class="text-slate-600"> · {book.series.index}</span>{/if}
-							</dd>
-						{/if}
-						{#if book.language}
-							<dt class="font-medium">{m['catalog.book.language']()}</dt><dd>{book.language}</dd>
-						{/if}
-						{#if book.publisher}
-							<dt class="font-medium">{m['catalog.book.publisher']()}</dt><dd>{book.publisher}</dd>
-						{/if}
-						{#if book.published_date}
-							<dt class="font-medium">{m['catalog.book.published']()}</dt><dd>{book.published_date}</dd>
-						{/if}
-						{#if book.page_count !== null}
-							<dt class="font-medium">{m['catalog.book.page_count']()}</dt><dd>{book.page_count}</dd>
-						{/if}
-					</dl>
-					{#if book.description}
-						<div class="pt-2">
-							<h3 class="font-medium">{m['catalog.book.description']()}</h3>
-							<p class="mt-2 whitespace-pre-wrap leading-7 text-slate-700">{book.description}</p>
-						</div>
-					{/if}
-				</section>
+			<div class="min-w-0 space-y-6">
+				<DetailsHero {book} details={detailsReady ? details : null} {offline} />
+				<SynopsisCard bookId={book.id} description={book.description} review={details?.review ?? null} ready={detailsReady} failed={!!detailsError} {offline} />
+				{#if detailsReady && details?.summary}<ReadingCard bookId={book.id} summary={details.summary} />{/if}
+			</div>
 
-				{#if book.tags.length}
-					<section aria-labelledby="book-tags-heading" class="space-y-2">
-						<h2 id="book-tags-heading" class="font-semibold">{m['catalog.book.tags']()}</h2>
-						<ul class="flex flex-wrap gap-2">
-							{#each book.tags as tag (tag.id)}
-								<li><a class="rounded-full border border-slate-300 px-3 py-1 text-sm underline-offset-4 hover:underline" href={`/tags/${tag.id}`}>{tag.name}</a></li>
-							{/each}
-						</ul>
-					</section>
-				{/if}
-
-				<section aria-labelledby="book-files-heading" class="space-y-3">
-					<h2 id="book-files-heading" class="text-xl font-semibold">{m['catalog.book.files']()}</h2>
-					{#if book.files.length}
-						<ul class="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
-							{#each book.files as file (file.id)}
-								<li class="flex flex-wrap items-center justify-between gap-3 p-4">
-									<span class="font-medium">{file.format.toUpperCase()} · {formatSize(file.size_bytes)}</span>
-									<div class="flex flex-wrap items-center gap-3">
-										{#if savedFileIds.includes(file.id)}
-											<span class="text-sm text-green-700">{m['offline.downloaded']()}</span>
-										{/if}
-										{#if readerFormat(file.format)}
-											<a class="text-sm font-medium underline focus-visible:outline-2" href={`/read/${book.id}/${file.id}`}>
-												{m['reader.launch.open']()} {file.format.toUpperCase()}
-											</a>
-										{/if}
-										{#if !offline}
-											<a class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={file.download_url}>
-												{m['catalog.book.download']()}
-											</a>
-										{/if}
-										{#if $offlineStatus.available}
-											<button
-												class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium focus-visible:outline-2 disabled:opacity-60"
-												disabled={offline || !$offlineStatus.online || downloadBusy !== null}
-												onclick={() => download(file)}
-											>
-												{downloadBusy === file.id ? m['offline.downloading']() : m['offline.download']()}
-											</button>
-										{/if}
-									</div>
-								</li>
-							{/each}
-						</ul>
-					{:else}
-						<p class="text-slate-600">{m['catalog.book.no_files']()}</p>
-					{/if}
-					{#if savedFileIds.length}
-						<button class="text-sm font-medium text-red-700 underline focus-visible:outline-2" onclick={removeDownload}>
-							{m['offline.storage.remove']()}
-						</button>
-					{/if}
-				</section>
-
-				{#if !offline}
-					<AddToShelf bookId={book.id} />
-				{/if}
-
+			<aside class="grid min-w-0 content-start gap-6 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1">
+				<DetailsPanel {book} {primaryFile} userBook={details?.userBook ?? null} ready={detailsReady} {offline} />
+				<EditionsCard {book} progress={details?.progress ?? null} />
 				{#if book.identifiers.length}
-					<section aria-labelledby="book-identifiers-heading" class="space-y-2">
-						<h2 id="book-identifiers-heading" class="font-semibold">{m['catalog.book.identifiers']()}</h2>
-						<ul class="space-y-1">
+					<section class="min-w-0 space-y-2 rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="book-identifiers-heading">
+						<h2 id="book-identifiers-heading" class="text-xs font-semibold tracking-wider text-slate-500 uppercase">{m['catalog.book.identifiers']()}</h2>
+						<ul class="space-y-1 text-sm text-slate-700 [overflow-wrap:anywhere]">
 							{#each book.identifiers as identifier (`${identifier.scheme}:${identifier.value}`)}
 								<li><span class="font-medium">{identifier.scheme}:</span> {identifier.value}</li>
 							{/each}
 						</ul>
 					</section>
 				{/if}
-
 				{#if book.field_sources.length}
-					<details class="rounded-md border border-slate-200 bg-white p-4">
-						<summary class="cursor-pointer font-semibold focus-visible:outline-2">{m['catalog.book.provenance']()}</summary>
-						<ul class="mt-3 space-y-2 text-sm text-slate-600">
+					<details class="min-w-0 rounded-2xl border border-slate-200 bg-white p-5">
+						<summary class="cursor-pointer text-sm font-semibold text-slate-700 focus-visible:outline-2">{m['catalog.book.provenance']()}</summary>
+						<ul class="mt-3 space-y-2 text-sm text-slate-600 [overflow-wrap:anywhere]">
 							{#each book.field_sources as source (`${source.field}:${source.source}:${source.chosen_at}`)}
-								<li>{source.field}: {source.source}{#if source.source_ref} · {source.source_ref}{/if}</li>
+								<li>{source.field}: {source.source}{#if source.source_ref}{' · '}{source.source_ref}{/if}</li>
 							{/each}
 						</ul>
 					</details>
 				{/if}
-			</div>
+			</aside>
 		</div>
+
+		{#if related}<RelatedBooks {related} />{/if}
+		{#if relatedError}
+			<div class="flex flex-wrap items-center gap-3 text-sm text-red-800" role="alert">
+				<span>{relatedError}</span>
+				<button type="button" class="font-semibold underline" onclick={() => (relatedRevision += 1)}>{m['catalog.retry']()}</button>
+			</div>
+		{/if}
+
+		<section class="space-y-3" aria-labelledby="book-files-heading">
+			<h2 id="book-files-heading" class="text-xl font-semibold">{m['catalog.book.files']()}</h2>
+			{#if book.files.length}
+				<ul class="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
+					{#each book.files as file (file.id)}
+						<li class="flex flex-wrap items-center justify-between gap-3 p-4">
+							<span class="min-w-0 font-medium [overflow-wrap:anywhere]">{file.format.toUpperCase()} · {formatSize(file.size_bytes)}{#if file.original_filename}{' · '}{file.original_filename}{/if}</span>
+							<div class="flex flex-wrap items-center gap-3">
+								{#if savedFileIds.includes(file.id)}<span class="text-sm text-green-700">{m['offline.downloaded']()}</span>{/if}
+								{#if readerFormat(file.format)}
+									<a class="text-sm font-medium underline focus-visible:outline-2" href={`/read/${book.id}/${file.id}`}>{m['reader.launch.open']()} {file.format.toUpperCase()}</a>
+								{/if}
+								{#if !offline && book.files.length > 1}
+									<a class="text-sm font-medium underline focus-visible:outline-2" href={file.download_url}>{m['bv6.download_format']({ format: file.format.toUpperCase() })}</a>
+								{/if}
+								{#if $offlineStatus.available}
+									<button class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium focus-visible:outline-2 disabled:opacity-60" disabled={offline || !$offlineStatus.online || downloadBusy !== null} onclick={() => download(file)}>
+										{downloadBusy === file.id ? m['offline.downloading']() : m['offline.download']()}
+									</button>
+								{/if}
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="text-slate-600">{m['catalog.book.no_files']()}</p>
+			{/if}
+			{#if savedFileIds.length}
+				<button class="text-sm font-medium text-red-700 underline focus-visible:outline-2" onclick={removeDownload}>{m['offline.storage.remove']()}</button>
+			{/if}
+		</section>
+
+		{#if !offline}
+			<div id="book-shelf" class="scroll-mt-24"><AddToShelf bookId={book.id} /></div>
+		{/if}
 	</article>
 {/if}
