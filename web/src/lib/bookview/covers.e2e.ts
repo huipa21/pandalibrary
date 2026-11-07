@@ -232,6 +232,8 @@ test('reveals keyboard and hover actions, dispatches info, and resumes the saved
 	await expect(page.locator('html')).toHaveAttribute('data-quick-book', '2');
 	await expect(page.locator('html')).toHaveAttribute('data-quick-book-provided', 'true');
 	await expect(page.locator('html')).toHaveAttribute('data-quick-trigger', 'true');
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog')).toHaveCount(0);
 
 	await generated.getByRole('link', { name: 'Open book details' }).focus();
 	await expect(generated.getByRole('link', { name: 'Open book details' })).toHaveAccessibleDescription('Generated Book');
@@ -402,6 +404,8 @@ test.describe('touch devices', () => {
 			viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth
 		}));
 		expect(listWidths.content).toBeLessThanOrEqual(listWidths.viewport);
+		await page.keyboard.press('Escape');
+		await expect(page.getByRole('dialog')).toHaveCount(0);
 		await generated.getByRole('link', { name: 'Open book details' }).tap();
 		await expect(page).toHaveURL(/\/books\/2$/);
 		const widths = await page.evaluate(() => ({
