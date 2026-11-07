@@ -253,3 +253,54 @@ test('offers shared shelves to administrators and reports shelf permission failu
 	await expect(page.getByText('已添加到“Staff picks”。')).toBeVisible();
 	expect(attempts).toBe(2);
 });
+
+async function expectStandardTiles(page: Page, count: number) {
+	const covers = page.locator('ul.book-grid > li .book-cover');
+	await expect(covers).toHaveCount(count);
+	const geometry = await covers.evaluateAll((elements) => ({
+		widths: elements.map((element) => element.getBoundingClientRect().width),
+		standard: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--spacing-book')) *
+			Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+	}));
+	expect(geometry.standard).toBe(208);
+	expect(geometry.widths).toEqual(Array.from({ length: count }, () => geometry.standard));
+}
+
+async function expectFluidTwoColumns(page: Page) {
+	await page.setViewportSize({ width: 360, height: 800 });
+	await expect(page.locator('ul.book-grid')).toHaveCSS('grid-template-columns', /^\d+(?:\.\d+)?px \d+(?:\.\d+)?px$/);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+}
+
+test('manual and system shelves use the standard tile grid', async ({ page }) => {
+	await authenticate(page);
+	const books = [1, 2, 3, 4, 5].map((index) => ({ ...book, id: 60 + index, title: `Shelf Book ${index}`, sort_title: `Shelf Book ${index}` }));
+	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [shelf(7, 'Favorites', 'private', books.length)], next_cursor: null } }));
+	await page.route('**/api/v1/shelves/7', (route) => route.fulfill({ json: { shelf: shelf(7, 'Favorites', 'private', books.length) } }));
+	await page.route('**/api/v1/shelves/7/books?*', (route) => route.fulfill({ json: { items: books, next_cursor: null } }));
+	await page.route('**/api/v1/shelves/system/favorites', (route) => route.fulfill({ json: { shelf: {
+		...shelf(12, 'favorites', 'private', books.length), mode: 'system', system_key: 'favorites'
+	} } }));
+	await page.route('**/api/v1/shelves/system/favorites/books?*', (route) => route.fulfill({ json: { items: books, next_cursor: null } }));
+
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/shelves/7');
+	await expect(page.getByTitle('Shelf Book 1', { exact: true })).toHaveAttribute('href', '/books/61');
+	await expectStandardTiles(page, books.length);
+	const tile = page.locator('ul.book-grid > li').first();
+	const remove = tile.getByRole('button', { name: 'Remove “Shelf Book 1” from this shelf' });
+	await expect(remove).toHaveText('Remove from shelf');
+	await expect(remove).toHaveCSS('font-size', '12px');
+	const [tileBox, removeBox] = await Promise.all([tile.boundingBox(), remove.boundingBox()]);
+	if (!tileBox || !removeBox) throw new Error('Missing shelf tile layout.');
+	expect(removeBox.width).toBe(tileBox.width);
+	expect(removeBox.y).toBeGreaterThan(tileBox.y + tileBox.width * 1.5);
+	await expectFluidTwoColumns(page);
+
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/shelves/system/favorites');
+	await expect(page.getByTitle('Shelf Book 1', { exact: true })).toHaveAttribute('href', '/books/61');
+	await expectStandardTiles(page, books.length);
+	await expect(page.locator('ul.book-grid li li')).toHaveCount(0);
+	await expectFluidTwoColumns(page);
+});

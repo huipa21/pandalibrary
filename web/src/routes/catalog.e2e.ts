@@ -140,3 +140,38 @@ test('filters and sorts with server cursors, then opens a hash-versioned downloa
 		'/api/v1/books/21/files/31?v=abc123'
 	);
 });
+
+test('All Books uses the standard tile grid', async ({ page }) => {
+	await authenticate(page);
+	const books = Array.from({ length: 6 }, (_, index) => ({
+		id: 100 + index, library_id: 1, title: `Grid Book ${index + 1}`, sort_title: `Grid Book ${index + 1}`,
+		subtitle: null, description: null, language: null, publisher: null, published_date: null,
+		page_count: null, cover_url: null, cover_source: null,
+		authors: [{ id: 4, name: 'A Writer', role: 'author', position: 0 }],
+		series: null, tags: [], identifiers: [], files: [], field_sources: [],
+		created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z'
+	}));
+	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	for (const entity of ['authors', 'series', 'tags']) {
+		await page.route(`**/api/v1/${entity}**`, (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	}
+	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: books, next_cursor: null } }));
+
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/books');
+	const grid = page.locator('ul.book-grid');
+	await expect(grid.getByTitle('Grid Book 1', { exact: true })).toHaveAttribute('href', '/books/100');
+	const covers = grid.locator(':scope > li .book-cover');
+	await expect(covers).toHaveCount(books.length);
+	const geometry = await covers.evaluateAll((elements) => ({
+		widths: elements.map((element) => element.getBoundingClientRect().width),
+		standard: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--spacing-book')) *
+			Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+	}));
+	expect(geometry.standard).toBe(208);
+	expect(geometry.widths).toEqual(books.map(() => geometry.standard));
+
+	await page.setViewportSize({ width: 360, height: 800 });
+	await expect(grid).toHaveCSS('grid-template-columns', /^\d+(?:\.\d+)?px \d+(?:\.\d+)?px$/);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+});

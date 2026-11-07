@@ -424,13 +424,55 @@ test('keeps feeds independent, pages with opaque cursors, and resumes the exact 
 	await recent.getByRole('button', { name: 'Retry' }).click();
 	await expect(recent.getByText('No books in this section yet.')).toBeVisible();
 
-	server.progressFile = null;
-	await continuing.getByRole('button', { name: 'Resume reading' }).first().click();
-	await expect(continuing.getByText(/saved reading file is missing or unsupported/)).toBeVisible();
-	await expect(continuing.getByRole('link', { name: 'Choose a format' })).toHaveAttribute('href', '/books/21');
-	server.progressFile = 12;
-	await continuing.getByRole('button', { name: 'Resume reading' }).first().click();
+	await expect(continuing.getByRole('button', { name: 'Resume reading' })).toHaveCount(0);
+	const first = continuing.locator('li').filter({ has: page.getByTitle('First Book', { exact: true }) });
+	await first.locator('div.cover-frame').hover();
+	await first.getByRole('button', { name: 'Read First Book' }).click();
 	await expect(page).toHaveURL('/read/21/12');
+});
+
+test('opens the first readable format when the saved file is missing', async ({ page }) => {
+	const server = state();
+	server.progressFile = null;
+	await mockApi(page, server);
+	await page.goto('/');
+	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
+	const first = continuing.locator('li').filter({ has: page.getByTitle('First Book', { exact: true }) });
+	await first.locator('div.cover-frame').hover();
+	await first.getByRole('button', { name: 'Read First Book' }).click();
+	await expect(page).toHaveURL('/read/21/11');
+});
+
+test('renders cover-only tiles at the standard width without clipping the lift', async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const server = state();
+	await mockApi(page, server);
+	await page.goto('/');
+	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
+	const scroller = continuing.getByRole('region');
+	const tile = continuing.locator('li').filter({ has: page.getByTitle('First Book', { exact: true }) });
+	await expect(tile).toBeVisible();
+	const standard = await page.evaluate(() => {
+		const probe = document.createElement('div');
+		probe.style.width = 'var(--spacing-book)';
+		document.body.append(probe);
+		const width = probe.getBoundingClientRect().width;
+		probe.remove();
+		return width;
+	});
+	expect(standard).toBeGreaterThan(0);
+	expect((await tile.boundingBox())?.width).toBeCloseTo(standard, 0);
+	await expect(tile.getByRole('button', { name: /^Resume/ })).toHaveCount(0);
+	await expect(tile.getByRole('alert')).toHaveCount(0);
+
+	const frame = tile.locator('div.cover-frame');
+	await frame.hover();
+	await expect.poll(() => frame.evaluate((node) => getComputedStyle(node).transform))
+		.toBe('matrix(1, 0, 0, 1, 0, -4)');
+	const frameBox = await frame.boundingBox();
+	const scrollerBox = await scroller.boundingBox();
+	expect(frameBox && scrollerBox && frameBox.y >= scrollerBox.y).toBe(true);
+	expect(frameBox && scrollerBox && frameBox.y + frameBox.height <= scrollerBox.y + scrollerBox.height).toBe(true);
 });
 
 test('opens a cover status menu beyond the dashboard scroller', async ({ page }) => {

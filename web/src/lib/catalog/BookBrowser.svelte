@@ -259,7 +259,7 @@
 	{:else if books.length === 0}
 		<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['catalog.books.empty']()}</p>
 	{:else}
-		<ul class={mode === 'grid' ? 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4' : 'space-y-3'}>
+		<ul class={mode === 'grid' ? 'book-grid' : 'space-y-3'}>
 			{#each books as book (book.id)}
 				<BookCard {book} {mode} />
 			{/each}

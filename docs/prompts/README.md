@@ -87,6 +87,6 @@ hand-offs and update its prompts if the contracts changed.
 | BC3 | [BC3-cloth-cover.md](./BC3-cloth-cover.md) | Done |
 | BC4 | [BC4-cover-tile.md](./BC4-cover-tile.md) | Done |
 | BC5 | [BC5-bookheap-covers.md](./BC5-bookheap-covers.md) | Ready |
-| BC6 | [BC6-dashboard-tiles.md](./BC6-dashboard-tiles.md) | Ready |
-| BC7 | [BC7-catalog-grids.md](./BC7-catalog-grids.md) | Ready |
+| BC6 | [BC6-dashboard-tiles.md](./BC6-dashboard-tiles.md) | Done |
+| BC7 | [BC7-catalog-grids.md](./BC7-catalog-grids.md) | Done |
 | BC8 | [BC8-integration.md](./BC8-integration.md) | Ready |

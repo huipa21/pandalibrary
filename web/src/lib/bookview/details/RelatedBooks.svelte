@@ -35,7 +35,7 @@
 			</div>
 		</div>
 		{#if books.length}
-			<ul bind:this={carousel} class="flex max-w-full gap-3 overflow-x-auto pb-2 [&>li]:w-36 [&>li]:shrink-0">
+			<ul bind:this={carousel} class="flex max-w-full gap-5 overflow-x-auto pt-1 pb-3 [&>li]:w-36 [&>li]:shrink-0 sm:[&>li]:w-book">
 				{#each books as book (book.id)}
 					<BookCard {book} />
 				{/each}

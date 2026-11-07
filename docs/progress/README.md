@@ -104,13 +104,42 @@ the next. Only BC8 runs the full verification gate.
 | 1 | BC3 | Cloth generated cover + `--spacing-book` / `--aspect-book` tokens | baseline | [BC3](../prompts/BC3-cloth-cover.md) | Done | `master` (uncommitted) | 158 / 257.5 px covers; 13rem token |
 | 2 | BC4 | Cover tile: lift, status badge, hover progress, cover-only cards | BC1-BC3 | [BC4](../prompts/BC4-cover-tile.md) | Done | `master` (uncommitted) | Cover-only cards; actions retained for BC6; BC2 prerequisite applied |
 | 2 | BC5 | Bookheap grid view + unified heap covers | BC3 | [BC5](../prompts/BC5-bookheap-covers.md) | Done | `master` (uncommitted) | Saved Grid/List; shared covers; 208 px grid tiles; targeted gates pass |
-| 3 | BC6 | Dashboard rows: no Resume button, standard width | BC4 | [BC6](../prompts/BC6-dashboard-tiles.md) | Ready | `task/bc6` | |
-| 3 | BC7 | All Books / shelves / related: standard grid | BC4 | [BC7](../prompts/BC7-catalog-grids.md) | Ready | `task/bc7` | |
+| 3 | BC6 | Dashboard rows: no Resume button, standard width | BC4 | [BC6](../prompts/BC6-dashboard-tiles.md) | Done | `master` (uncommitted) | Cover-only rows at `w-book`; Play resumes; `ux5.resume*` keys removed |
+| 3 | BC7 | All Books / shelves / related: standard grid | BC4 | [BC7](../prompts/BC7-catalog-grids.md) | Done | `master` (uncommitted) | `.book-grid` everywhere; related carousel `w-book`; compact shelf remove button |
 | 4 | BC8 | Integration, real-server E2E, visual QA, full gate | BC1-BC7 | [BC8](../prompts/BC8-integration.md) | Ready | `task/bc8` | |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BC7 — Grid mode in `BookBrowser` (All Books and
+  library/author/series/tag pages), the manual shelf and the system shelf
+  now use `.book-grid`; list mode is unchanged. The system shelf no longer
+  wraps `BookCard` in a second `<li>`. The manual shelf's remove action is a
+  full-tile-width `text-xs` trash icon + text button under the cover (list
+  mode keeps the underlined link style); it is not cramped at 360 or
+  1440 px, so no tile-menu follow-up is needed. The related-books carousel
+  uses `gap-5 pt-1 pb-3`, `w-36` tiles and `sm:w-book`, so the hover lift is
+  not clipped. Related-books E2E selectors now use the link `title` because
+  BC4 renamed cover links to "Open book details". New E2E assertions: 208 px
+  (`--spacing-book`) covers at 1440 px on All Books, manual and system
+  shelves and related books; a 2-column grid and no overflow at 360 px.
+  Svelte check (0/0) and the 14 targeted browser tests passed, run on an
+  isolated preview port because BC6 was running concurrently in this checkout.
+
+- 2026-11-07 — BC6 — Dashboard rows now render cover-only `BookCard`s:
+  the Continue Reading Resume snippet, `resume()`, its busy/error state and
+  the `goto`/`resumeFile` imports are gone; Play on the tile resumes the saved
+  file or falls back to the first readable format via `readTarget`. Rows use
+  `flex gap-5 pt-1 pb-3`, `w-36` below `sm` and `w-book` (208 px) above, so
+  the 4 px lift is not clipped; scroll buttons and the 80% step are unchanged.
+  `DashboardRow` no longer takes the unused `account` prop (call site in
+  `Dashboard.svelte` updated). Removed `ux5.resume`, `ux5.resuming`,
+  `ux5.resume_missing`, `ux5.resume_failed` and `ux5.choose_format` (en/zh);
+  `dashboard/resume.ts` is kept for `bookview/read.ts`. The real-server spec
+  never used the Resume button, so it needed no change. Svelte check (0/0), dashboard
+  Vitest (17) and `dashboard.e2e.ts` (14, incl. new missing-file fallback and
+  1440 px width/lift-clipping cases) passed.
 
 - 2026-11-07 — BC4 — Added cover-only grid cards with hover/focus lift,
   localized status badges and progress, persistent touch controls, and

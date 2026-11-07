@@ -1,6 +1,6 @@
 # BC6: Dashboard rows — remove Resume button, standard tile width
 
-- Status: Ready
+- Status: Done
 - Wave: 3. Dependencies merged: BC4 (and therefore BC1-BC3)
 - Can run in parallel with: BC7
 - Branch/worktree: `task/bc6` / `..\pandalibrary-bc6`
@@ -58,8 +58,8 @@ file uses them; check with `rg`).
 
 ## Acceptance criteria
 
-- [ ] R2 and R3 on the dashboard; R7 width.
-- [ ] No unused imports or messages remain.
+- [x] R2 and R3 on the dashboard; R7 width.
+- [x] No unused imports or messages remain.
 
 ## Validation commands (targeted only)
 

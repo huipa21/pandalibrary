@@ -82,11 +82,9 @@
 		{:else if pager.empty}
 			<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['shelves.empty']()}</p>
 		{:else}
-			<ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+			<ul class="book-grid">
 				{#each pager.items as book (book.id)}
-					<li>
-						<BookCard {book} />
-					</li>
+					<BookCard {book} />
 				{/each}
 			</ul>
 			{#if pager.hasMore}

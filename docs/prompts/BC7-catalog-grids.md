@@ -1,6 +1,6 @@
 # BC7: All Books, entity pages, shelves and related books — standard grid
 
-- Status: Ready
+- Status: Done
 - Wave: 3. Dependencies merged: BC4 (and therefore BC1-BC3)
 - Can run in parallel with: BC6
 - Branch/worktree: `task/bc7` / `..\pandalibrary-bc7`
@@ -59,10 +59,10 @@ Every catalog grid and carousel uses the same tile size as the dashboard.
 
 ## Acceptance criteria
 
-- [ ] At 1440 px the dashboard, All Books, author/series/tag/library pages,
+- [x] At 1440 px the dashboard, All Books, author/series/tag/library pages,
       manual and system shelves, related books and the Bookheap grid tiles
       have the same cover width.
-- [ ] No horizontal overflow at 360 px.
+- [x] No horizontal overflow at 360 px.
 
 ## Validation commands (targeted only)
 

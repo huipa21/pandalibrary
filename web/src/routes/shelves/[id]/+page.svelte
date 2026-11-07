@@ -5,6 +5,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
+	import Icon from '#lib/bookview/Icon.svelte';
 	import type { Book } from '#lib/catalog/types.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { requestErrorKind } from '#lib/paging/errors.js';
@@ -285,17 +286,22 @@
 			{:else if books.empty}
 				<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['shelves.books.empty']()}</p>
 			{:else}
-				<ul class={mode === 'grid' ? 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4' : 'space-y-3'}>
+				<ul class={mode === 'grid' ? 'book-grid' : 'space-y-3'}>
 					{#each books.items as book (book.id)}
 						<BookCard {book} {mode}>
 							{#snippet actions()}
 								{#if membershipEditable}
 									<button
-										class="text-sm text-red-800 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
+										class={mode === 'grid'
+											? 'inline-flex w-full items-center justify-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60'
+											: 'text-sm text-red-800 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60'}
 										aria-label={m['shelves.books.remove_label']({ title: book.title })}
 										disabled={removing !== null}
 										onclick={() => removeBook(book)}
-									>{removing === book.id ? m['shelves.books.removing']() : m['shelves.books.remove']()}</button>
+									>
+										{#if mode === 'grid'}<Icon name="trash" class="size-3.5 shrink-0" />{/if}
+										<span class="min-w-0 truncate">{removing === book.id ? m['shelves.books.removing']() : m['shelves.books.remove']()}</span>
+									</button>
 								{/if}
 							{/snippet}
 						</BookCard>

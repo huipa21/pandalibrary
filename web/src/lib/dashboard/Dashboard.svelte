@@ -302,7 +302,7 @@
 		{:else}
 			<div class="space-y-5">
 				{#each layout.sections as id (id)}
-					<DashboardRow {id} {account} removing={saving} onShelfState={setShelfState} onRemove={removeUnavailable} />
+					<DashboardRow {id} removing={saving} onShelfState={setShelfState} onRemove={removeUnavailable} />
 				{/each}
 			</div>
 		{/if}

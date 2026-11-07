@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
@@ -11,26 +10,21 @@
 	import { DASHBOARD_PAGE_SIZE, listDashboardBooks, uniquePages } from './api.js';
 	import { sectionLabel, type ShelfState } from './labels.js';
 	import { isBuiltInSection, shelfId, type SectionId } from './layout.js';
-	import { resumeFile, ResumeFileUnavailableError } from './resume.js';
 
 	interface Props {
 		id: SectionId;
-		account: number;
 		removing: boolean;
 		onShelfState: (id: SectionId, state: ShelfState) => void;
 		onRemove: (id: SectionId) => void;
 	}
 
-	let { id, account, removing, onShelfState, onRemove }: Props = $props();
+	let { id, removing, onShelfState, onRemove }: Props = $props();
 	const pager = new CursorPager<Book>();
 	let panel = $state<HTMLElement | null>(null);
 	let scroller = $state<HTMLDivElement | null>(null);
 	let shelfState = $state<ShelfState | undefined>(undefined);
 	let started = $state(false);
-	let resumeBusy = $state<number | null>(null);
-	let resumeError = $state<{ book: number; missing: boolean } | null>(null);
 	let requestVersion = 0;
-	let mounted = true;
 	const label = $derived(sectionLabel(id, shelfState));
 	const headingId = $derived(`dashboard-${id.replace(':', '-')}`);
 
@@ -59,7 +53,6 @@
 		window.addEventListener('online', reconnect);
 		document.addEventListener('visibilitychange', visible);
 		return () => {
-			mounted = false;
 			requestVersion += 1;
 			observer?.disconnect();
 			pager.dispose();
@@ -80,8 +73,6 @@
 
 	async function load() {
 		const version = ++requestVersion;
-		resumeError = null;
-		resumeBusy = null;
 		void pager.reset(null);
 		const numericId = shelfId(id);
 		if (numericId !== null) {
@@ -127,24 +118,6 @@
 		}
 	}
 
-	async function resume(book: Book) {
-		if (resumeBusy !== null) return;
-		const version = requestVersion;
-		resumeBusy = book.id;
-		resumeError = null;
-		try {
-			const file = await resumeFile(account, book);
-			if (!mounted || version !== requestVersion) return;
-			await goto(`/read/${book.id}/${file.id}`);
-		} catch (error) {
-			if (!mounted || version !== requestVersion) return;
-			console.error('Could not resume the saved reading file', error);
-			resumeError = { book: book.id, missing: error instanceof ResumeFileUnavailableError };
-		} finally {
-			if (mounted && version === requestVersion) resumeBusy = null;
-		}
-	}
-
 	function scroll(direction: -1 | 1) {
 		if (scroller) scroller.scrollBy({ left: direction * scroller.clientWidth * 0.8, behavior: 'smooth' });
 	}
@@ -183,23 +156,9 @@
 	{:else}
 		{#if pager.items.length}
 			<div bind:this={scroller} class="min-w-0 overflow-x-auto pb-2" role="region" aria-label={m['ux5.cover_row']({ section: label })}>
-				<ul class="flex gap-4 [&>li]:w-36 [&>li]:shrink-0 sm:[&>li]:w-40">
+				<ul class="flex gap-5 pt-1 pb-3 [&>li]:w-36 [&>li]:shrink-0 sm:[&>li]:w-book">
 					{#each pager.items as book (book.id)}
-						<BookCard {book}>
-							{#snippet actions()}
-								{#if id === 'continue_reading'}
-									<button class="rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-60" disabled={resumeBusy !== null} onclick={() => void resume(book)}>
-										{resumeBusy === book.id ? m['ux5.resuming']() : m['ux5.resume']()}
-									</button>
-									{#if resumeError?.book === book.id}
-										<div class="space-y-1 text-sm text-red-800" role="alert">
-											<p>{resumeError.missing ? m['ux5.resume_missing']() : m['ux5.resume_failed']()}</p>
-											{#if resumeError.missing}<a class="font-medium underline" href={`/books/${book.id}`}>{m['ux5.choose_format']()}</a>{/if}
-										</div>
-									{/if}
-								{/if}
-							{/snippet}
-						</BookCard>
+						<BookCard {book} />
 					{/each}
 				</ul>
 			</div>

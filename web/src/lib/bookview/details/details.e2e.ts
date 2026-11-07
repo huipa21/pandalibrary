@@ -203,10 +203,21 @@ test('renders details, reading statistics, editions and related books responsive
 	await page.getByLabel('Choose a download format').click();
 	await expect(page.getByRole('link', { name: 'Download PDF' }).first()).toHaveAttribute('href', book.files[1].download_url);
 	await page.getByLabel('Choose a download format').click();
-	await expect(page.getByRole('link', { name: 'Another by the Author' })).toBeVisible();
+	const relatedRegion = page.getByRole('region', { name: 'Related books' });
+	await expect(relatedRegion.getByTitle('Another by the Author', { exact: true })).toHaveAttribute('href', '/books/22');
+	const related = relatedRegion.getByRole('list');
+	const relatedCover = related.locator(':scope > li .book-cover').first();
+	const relatedGeometry = await relatedCover.evaluate((element) => ({
+		width: element.getBoundingClientRect().width,
+		standard: Number.parseFloat(getComputedStyle(element).getPropertyValue('--spacing-book')) *
+			Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+	}));
+	expect(relatedGeometry.standard).toBe(208);
+	expect(relatedGeometry.width).toBe(relatedGeometry.standard);
+	await expect(related).toHaveCSS('padding-top', '4px');
 	await page.getByRole('button', { name: 'Similar books' }).click();
-	await expect(page.getByRole('link', { name: 'Earlier in the Series' })).toBeVisible();
-	await expect(page.getByRole('link', { name: 'A Similar Tale' })).toBeVisible();
+	await expect(relatedRegion.getByTitle('Earlier in the Series', { exact: true })).toHaveAttribute('href', '/books/23');
+	await expect(relatedRegion.getByTitle('A Similar Tale', { exact: true })).toHaveAttribute('href', '/books/24');
 	await expect(page.getByRole('heading', { name: 'Identifiers' })).toBeVisible();
 	await page.getByText('Metadata sources', { exact: true }).click();
 	await expect(page.getByText('title: import · fixture')).toBeVisible();
@@ -214,7 +225,7 @@ test('renders details, reading statistics, editions and related books responsive
 	await expect(page.getByRole('heading', { name: 'Available formats' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Download for offline' })).toHaveCount(0);
 
-	for (const width of [1440, 1024, 390]) {
+	for (const width of [1440, 1024, 390, 360]) {
 		await page.setViewportSize({ width, height: 900 });
 		const dimensions = await page.evaluate(() => ({
 			viewport: document.documentElement.clientWidth,
