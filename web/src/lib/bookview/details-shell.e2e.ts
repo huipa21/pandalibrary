@@ -50,6 +50,14 @@ async function mockApi(page: Page, role = 'user') {
 		route.fulfill({ json: { user_book: null, progress: null, highlights: [], bookmarks: [], notes: [] } })
 	);
 	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: books, next_cursor: null } }));
+	await page.route((url) => /^\/api\/v1\/me\/books\/\d+\/reading-summary$/.test(url.pathname), (route) =>
+		route.fulfill({ json: { summary: {
+			progress: 0, sessions: 0, total_seconds: 0, average_seconds: 0, active_days: 0, span_days: 0,
+			first_read_at: null, last_read_at: null, pace_percent_per_hour: null, estimated_seconds_left: null,
+			records: { longest_session: null, best_day: null, longest_streak_days: 0 }, attempts: [], days: []
+		} } }));
+	await page.route((url) => /^\/api\/v1\/me\/books\/\d+\/sessions$/.test(url.pathname), (route) =>
+		route.fulfill({ json: { items: [], next_cursor: null, total: 0 } }));
 	await page.route((url) => /^\/api\/v1\/books\/\d+$/.test(url.pathname), (route) => {
 		const id = Number(new URL(route.request().url()).pathname.split('/').at(-1));
 		detailRequests.set(id, (detailRequests.get(id) ?? 0) + 1);
@@ -76,9 +84,11 @@ test('tabs navigate, mark the current tab, and share one book request', async ({
 		await expect(page).toHaveURL(path);
 		await expect(tabs.getByRole('link', { name })).toHaveAttribute('aria-current', 'page');
 		await expect(tabs.getByRole('link', { name: 'Details' })).not.toHaveAttribute('aria-current', 'page');
-		await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
+		await expect(page.getByRole('heading', { name, level: 1 })).toHaveCount(1);
 		if (name === 'Files') {
 			await expect(page.getByRole('region', { name: 'This file' })).toBeVisible();
+		} else if (name === 'Reading Log') {
+			await expect(page.getByRole('heading', { name: 'Reading summary' })).toBeVisible();
 		} else {
 			await expect(page.getByText('Coming soon')).toBeVisible();
 		}
