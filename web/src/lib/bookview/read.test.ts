@@ -13,9 +13,9 @@ const book: Book = {
 	language: null, publisher: null, published_date: null, page_count: null, cover_url: null,
 	cover_source: null, authors: [], series: null, tags: [], identifiers: [], field_sources: [],
 	files: [
-		{ id: 11, format: 'pdf', size_bytes: 10, download_url: '', original_filename: 'book', created_at: '2026-11-07T00:00:00Z' },
-		{ id: 12, format: 'EPUB', size_bytes: 10, download_url: '', original_filename: 'book', created_at: '2026-11-07T00:00:00Z' },
-		{ id: 13, format: 'zip', size_bytes: 10, download_url: '', original_filename: 'book', created_at: '2026-11-07T00:00:00Z' }
+		{ id: 11, format: 'pdf', size_bytes: 10, download_url: '', original_filename: 'book.pdf', created_at: '2026-11-07T00:00:00Z' },
+		{ id: 12, format: 'EPUB', size_bytes: 10, download_url: '', original_filename: 'book.epub', created_at: '2026-11-07T00:00:00Z' },
+		{ id: 13, format: 'zip', size_bytes: 10, download_url: '', original_filename: 'book.zip', created_at: '2026-11-07T00:00:00Z' }
 	],
 	created_at: '2026-11-07T00:00:00Z', updated_at: '2026-11-07T00:00:00Z'
 };

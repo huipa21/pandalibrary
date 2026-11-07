@@ -1,6 +1,6 @@
 # BV6: Details tab
 
-- Status: Ready
+- Status: Done
 - Wave: 2. Dependencies merged: BV1, BV2, BV3, BV4
 - Can run in parallel with: BV5, BV7, BV8, BV9
 - Branch/worktree: `task/bv6` / `..\pandalibrary-bv6`
@@ -126,10 +126,10 @@ Files list actions (BV7), the session table (BV8), the highlights list (BV9).
 
 ## Acceptance criteria
 
-- [ ] The screenshot-5 structure in app style, responsive at 1440/1024/390 px.
-- [ ] All edits persist through `/sync/push` and survive a reload. The other
+- [x] The screenshot-5 structure in app style, responsive at 1440/1024/390 px.
+- [x] All edits persist through `/sync/push` and survive a reload. The other
       open views refresh via `BOOK_STATE_CHANGED_EVENT`.
-- [ ] Every legacy feature is still reachable (decision 8).
+- [x] Every legacy feature is still reachable (decision 8).
 
 ## Validation commands (targeted only)
 
@@ -141,4 +141,12 @@ pnpm --dir web exec playwright test src/lib/bookview/details/details.e2e.ts src/
 
 ## Hand-off
 
-Set this prompt to Done and update the BV6 row/log.
+Implemented on `task/bv6`. Offline Details shows synchronized state and the
+cached cover, but reading-state and review edits are read-only; summary and
+network download links are hidden. The legacy per-file read, download and
+offline-storage controls and inline Add to shelf remain on Details until BV7
+provides their replacements.
+
+Validation: `pnpm check` (no diagnostics), 57 focused book-view unit tests, and
+29 mocked Details, cover, shell, catalog and offline browser tests. The browser
+tests used an isolated preview port.

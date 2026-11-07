@@ -85,7 +85,7 @@ the next. Only BV10 runs the full verification gate.
 | 1 | BV3 | Cover kit: generated cover, format badge, hover actions | baseline | [BV3](../prompts/BV3-cover-kit.md) | Done | `master` | Cover kit and card integration; targeted checks pass |
 | 1 | BV4 | Details shell: route group, tabs, contexts, prev/next | baseline | [BV4](../prompts/BV4-details-shell.md) | Done | `task/bv4` | `getBookContext()` shape in the log |
 | 2 | BV5 | Quick view drawer | BV1, BV3 | [BV5](../prompts/BV5-quick-view.md) | Done | `task/bv5` | Contains a BV1 merge; status menu opens upward via a CSS override |
-| 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Ready | `task/bv6` | |
+| 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Done | `task/bv6` | Offline Details is read-only; legacy file controls stay until BV7 |
 | 2 | BV7 | Files tab | BV1, BV3, BV4 | [BV7](../prompts/BV7-files-tab.md) | Ready | `task/bv7` | |
 | 2 | BV8 | Reading Log tab | BV2-BV4 | [BV8](../prompts/BV8-reading-log-tab.md) | Ready | `task/bv8` | |
 | 2 | BV9 | Highlights tab + reader `?highlight=` | BV3, BV4 | [BV9](../prompts/BV9-highlights-tab.md) | Ready | `task/bv9` | |
@@ -94,6 +94,15 @@ the next. Only BV10 runs the full verification gate.
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BV6 — Rebuilt Details as a responsive cover/actions column,
+  editable reading state and review, reading summary, details/editions panels,
+  and related-book carousel. Book-level reviews use synced notes and all edits
+  notify other views. Offline Details loads synchronized state and cached cover,
+  with edits read-only and network-only sections hidden. Legacy per-file
+  read/download/offline actions and inline Add to shelf remain until BV7
+  replaces them. No backend or dependency changes. Validation: `pnpm check`,
+  57 focused book-view unit tests and 29 mocked browser tests passed.
 
 - 2026-11-07 — BV5 — Implemented the quick-view drawer (`bookview/quickview/`):
   a host mounted once in AppShell (hidden in immersive mode), a right-side
@@ -206,6 +215,42 @@ Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, block
   Web: `BookFile` fields, `getBookShelves`, and updated type-checked fixtures
   (e2e route mocks untouched). Contract deviation: none beyond the control
   character replacement.
+
+- 2026-11-07 — BV2 — Added the per-book reading summary, the filtered and
+  paginated sessions list, and the owner-only session delete. Attempts are
+  derived by a pure, table-tested function, and days are bucketed in the
+  viewer's timezone (tested with Asia/Shanghai across midnight). Stats
+  exposes `LoadTimezone`/`LocalMidnight`. Deleting a session does not bump the
+  sync revision. Added the typed client `web/src/lib/bookview/log-api.ts`;
+  its delete tolerates the 204 without editing the shared client. Contract
+  clarifications are recorded in the plan: UTC default timezone, active-day
+  definition, pace denominator, null records, and the unreachable `stopped`
+  status. No migration.
+
+- 2026-11-07 — BV4 — `/books/{id}` is now the `(tabs)` route group (Details,
+  Files, Reading Log, Highlights) with a sticky `BookTabs` bar: **‹ Books**
+  (history back when the tab area was entered from another in-app page, else
+  the browse-context `href` or `/books`), tab links with `aria-current`, and
+  `i / n` with Previous/Next buttons plus `[`/`]`. Tab switches and
+  previous/next replace the history entry, so Back always returns to the list.
+  The old page body moved verbatim into `tabs/DetailsTab.svelte` (offline
+  download/remove included); Files/Reading Log/Highlights are "Coming soon"
+  placeholders. `/books/{id}/edit` is unchanged and has no tab bar. Browse
+  context is remembered by `BookBrowser` (label = page `h1`), the shelf page
+  and the system shelf page. **`getBookContext()` returns a `BookContext`
+  instance** (`#lib/bookview/book-context.svelte.js`), all fields reactive
+  `$state`: `bookId: number | null`, `book: Book | null`, `offline: boolean`,
+  `coverSource: string | null` (object URL offline, revoked by the context),
+  `coverError: string`, `canEditMetadata: boolean`, `savedFileIds: number[]`
+  (writable by tabs after a download/removal), `loading: boolean` (also true
+  during a quiet `reload()`, which keeps `book` visible), `error: string`, and
+  `reload(): Promise<void>`. The layout renders tab content only when
+  `book` is loaded for the current route ID, so tabs may assume
+  `context.book` is set. It reloads on `pandalibrary-book-state-changed`
+  (matching `detail.bookId`, local constant marked `// BV10`) and
+  `pandalibrary-shelves-changed`. Validation: `pnpm check`, vitest
+  `src/lib/bookview` (14), Playwright `details-shell` (4), `catalog`,
+  `offline`, `metadata` (all pass, no selector changes needed).
 
 - 2026-11-07 — BV plan — Drafted the Book View batch (BV1-BV10): client-side
   generated title covers with a format badge, hover Info/Read actions, a
