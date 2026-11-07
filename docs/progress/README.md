@@ -81,7 +81,7 @@ the next. Only BV10 runs the full verification gate.
 | Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
 | 1 | BV1 | Catalog API: file name/added, shelves containing a book | baseline | [BV1](../prompts/BV1-catalog-detail-api.md) | Ready | `task/bv1` | |
-| 1 | BV2 | Per-book reading log API + web client | baseline | [BV2](../prompts/BV2-reading-log-api.md) | Ready | `task/bv2` | |
+| 1 | BV2 | Per-book reading log API + web client | baseline | [BV2](../prompts/BV2-reading-log-api.md) | Done | `task/bv2` | Clarifications in plan; `stopped` attempts currently unreachable |
 | 1 | BV3 | Cover kit: generated cover, format badge, hover actions | baseline | [BV3](../prompts/BV3-cover-kit.md) | Done | `master` | Cover kit and card integration; targeted checks pass |
 | 1 | BV4 | Details shell: route group, tabs, contexts, prev/next | baseline | [BV4](../prompts/BV4-details-shell.md) | Ready | `task/bv4` | |
 | 2 | BV5 | Quick view drawer | BV1, BV3 | [BV5](../prompts/BV5-quick-view.md) | Ready | `task/bv5` | |
@@ -124,6 +124,17 @@ Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, block
     `reread?: boolean`, `variant?: 'pill' | 'icon'`.
   `pnpm --dir web check` passed with no diagnostics; 33 focused unit tests and
   23 mocked cover/catalog/dashboard/search/shelf browser tests passed.
+
+- 2026-11-07 — BV2 — Added the per-book reading summary, the filtered and
+  paginated sessions list, and the owner-only session delete. Attempts are
+  derived by a pure, table-tested function, and days are bucketed in the
+  viewer's timezone (tested with Asia/Shanghai across midnight). Stats
+  exposes `LoadTimezone`/`LocalMidnight`. Deleting a session does not bump the
+  sync revision. Added the typed client `web/src/lib/bookview/log-api.ts`;
+  its delete tolerates the 204 without editing the shared client. Contract
+  clarifications are recorded in the plan: UTC default timezone, active-day
+  definition, pace denominator, null records, and the unreachable `stopped`
+  status. No migration.
 
 - 2026-11-07 — BV plan — Drafted the Book View batch (BV1-BV10): client-side
   generated title covers with a format badge, hover Info/Read actions, a

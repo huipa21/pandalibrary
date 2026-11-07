@@ -68,12 +68,9 @@ func parseCalendar(from, to, timezone string) (calendar, error) {
 	if last.Before(first) || last.Sub(first) >= maxDays*24*time.Hour {
 		return invalid("the inclusive range must contain 1 to 366 calendar days")
 	}
-	if timezone == "" || timezone == "Local" || len(timezone) > 255 || strings.TrimSpace(timezone) != timezone {
-		return invalid("timezone must be an IANA timezone")
-	}
-	location, err := time.LoadLocation(timezone)
+	location, err := LoadTimezone(timezone)
 	if err != nil {
-		return invalid("timezone must be an IANA timezone")
+		return calendar{}, err
 	}
 	result := calendar{location: location, toDay: last.Unix() / 86400}
 	for date := first; !date.After(last); date = date.AddDate(0, 0, 1) {
@@ -85,6 +82,24 @@ func parseCalendar(from, to, timezone string) (calendar, error) {
 		})
 	}
 	return result, nil
+}
+
+// LoadTimezone validates and loads a bundled IANA timezone using the stats API rules.
+// Errors wrap ErrInvalid.
+func LoadTimezone(timezone string) (*time.Location, error) {
+	if timezone == "" || timezone == "Local" || len(timezone) > 255 || strings.TrimSpace(timezone) != timezone {
+		return nil, fmt.Errorf("%w: timezone must be an IANA timezone", ErrInvalid)
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return nil, fmt.Errorf("%w: timezone must be an IANA timezone", ErrInvalid)
+	}
+	return location, nil
+}
+
+// LocalMidnight returns the first instant of date's calendar day in location.
+func LocalMidnight(date time.Time, location *time.Location) time.Time {
+	return localMidnight(date, location)
 }
 
 func localMidnight(date time.Time, location *time.Location) time.Time {

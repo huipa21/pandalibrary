@@ -10,6 +10,50 @@ import (
 	"database/sql"
 )
 
+const readingCountBookSessions = `-- name: ReadingCountBookSessions :one
+SELECT COUNT(*) FROM reading_sessions
+WHERE user_id = ?1 AND book_id = ?2
+AND (CAST(?3 AS INTEGER) = 0 OR started_at >= ?4)
+`
+
+type ReadingCountBookSessionsParams struct {
+	UserID   int64
+	BookID   int64
+	HasSince int64
+	Since    int64
+}
+
+func (q *Queries) ReadingCountBookSessions(ctx context.Context, arg ReadingCountBookSessionsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, readingCountBookSessions,
+		arg.UserID,
+		arg.BookID,
+		arg.HasSince,
+		arg.Since,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const readingDeleteBookSession = `-- name: ReadingDeleteBookSession :execrows
+DELETE FROM reading_sessions
+WHERE id = ?1 AND user_id = ?2 AND book_id = ?3
+`
+
+type ReadingDeleteBookSessionParams struct {
+	ID     string
+	UserID int64
+	BookID int64
+}
+
+func (q *Queries) ReadingDeleteBookSession(ctx context.Context, arg ReadingDeleteBookSessionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, readingDeleteBookSession, arg.ID, arg.UserID, arg.BookID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const readingDeleteHighlightFTS = `-- name: ReadingDeleteHighlightFTS :exec
 DELETE FROM highlights_fts WHERE rowid = (SELECT seq FROM highlights WHERE id = ?1)
 `
@@ -494,6 +538,63 @@ func (q *Queries) ReadingInsertSession(ctx context.Context, arg ReadingInsertSes
 	return result.RowsAffected()
 }
 
+const readingListBookSessions = `-- name: ReadingListBookSessions :many
+SELECT seq, id, source, device, started_at, ended_at, active_seconds, start_percentage, end_percentage
+FROM reading_sessions
+WHERE user_id = ?1 AND book_id = ?2
+ORDER BY started_at, seq
+`
+
+type ReadingListBookSessionsParams struct {
+	UserID int64
+	BookID int64
+}
+
+type ReadingListBookSessionsRow struct {
+	Seq             int64
+	ID              string
+	Source          string
+	Device          string
+	StartedAt       int64
+	EndedAt         int64
+	ActiveSeconds   int64
+	StartPercentage sql.NullFloat64
+	EndPercentage   sql.NullFloat64
+}
+
+func (q *Queries) ReadingListBookSessions(ctx context.Context, arg ReadingListBookSessionsParams) ([]ReadingListBookSessionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, readingListBookSessions, arg.UserID, arg.BookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ReadingListBookSessionsRow{}
+	for rows.Next() {
+		var i ReadingListBookSessionsRow
+		if err := rows.Scan(
+			&i.Seq,
+			&i.ID,
+			&i.Source,
+			&i.Device,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.ActiveSeconds,
+			&i.StartPercentage,
+			&i.EndPercentage,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readingListBookmarksByBookID = `-- name: ReadingListBookmarksByBookID :many
 SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm
 JOIN books b ON b.id = bm.book_id
@@ -780,6 +881,83 @@ func (q *Queries) ReadingListUserBookmarks(ctx context.Context, arg ReadingListU
 			&i.Rev,
 			&i.BookTitle,
 			&i.BookCoverSha256,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readingPageBookSessions = `-- name: ReadingPageBookSessions :many
+SELECT seq, id, source, device, started_at, ended_at, active_seconds, start_percentage, end_percentage
+FROM reading_sessions
+WHERE user_id = ?1 AND book_id = ?2
+AND (CAST(?3 AS INTEGER) = 0 OR started_at >= ?4)
+AND (CAST(?5 AS INTEGER) = 0
+    OR started_at < ?6
+    OR (started_at = ?6 AND seq < ?7))
+ORDER BY started_at DESC, seq DESC
+LIMIT ?8
+`
+
+type ReadingPageBookSessionsParams struct {
+	UserID          int64
+	BookID          int64
+	HasSince        int64
+	Since           int64
+	HasCursor       int64
+	CursorStartedAt int64
+	CursorSeq       int64
+	Limit           int64
+}
+
+type ReadingPageBookSessionsRow struct {
+	Seq             int64
+	ID              string
+	Source          string
+	Device          string
+	StartedAt       int64
+	EndedAt         int64
+	ActiveSeconds   int64
+	StartPercentage sql.NullFloat64
+	EndPercentage   sql.NullFloat64
+}
+
+func (q *Queries) ReadingPageBookSessions(ctx context.Context, arg ReadingPageBookSessionsParams) ([]ReadingPageBookSessionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, readingPageBookSessions,
+		arg.UserID,
+		arg.BookID,
+		arg.HasSince,
+		arg.Since,
+		arg.HasCursor,
+		arg.CursorStartedAt,
+		arg.CursorSeq,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ReadingPageBookSessionsRow{}
+	for rows.Next() {
+		var i ReadingPageBookSessionsRow
+		if err := rows.Scan(
+			&i.Seq,
+			&i.ID,
+			&i.Source,
+			&i.Device,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.ActiveSeconds,
+			&i.StartPercentage,
+			&i.EndPercentage,
 		); err != nil {
 			return nil, err
 		}

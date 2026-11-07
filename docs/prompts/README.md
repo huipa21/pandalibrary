@@ -72,7 +72,7 @@ hand-offs and update its prompts if the contracts changed.
 | BH4 | [BH4-bookheap-page.md](./BH4-bookheap-page.md) | Done |
 | BH5 | [BH5-bookheap-integration.md](./BH5-bookheap-integration.md) | Ready |
 | BV1 | [BV1-catalog-detail-api.md](./BV1-catalog-detail-api.md) | Ready |
-| BV2 | [BV2-reading-log-api.md](./BV2-reading-log-api.md) | Ready |
+| BV2 | [BV2-reading-log-api.md](./BV2-reading-log-api.md) | Done |
 | BV3 | [BV3-cover-kit.md](./BV3-cover-kit.md) | Ready |
 | BV4 | [BV4-details-shell.md](./BV4-details-shell.md) | Ready |
 | BV5 | [BV5-quick-view.md](./BV5-quick-view.md) | Ready |

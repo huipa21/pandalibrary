@@ -179,6 +179,27 @@ is `(1-progress)×100 / pace × 3600` (null when pace is null or 0). `days` are
 active days in `timezone`, ascending, with at most 3,660 entries. `attempts`
 are newest first. Without sessions, the counts are 0 and the arrays empty.
 
+BV2 implementation clarifications (for BV6/BV8):
+
+- `timezone` defaults to `UTC` when omitted; an empty or unknown value is 400.
+- A day is active when it has more than 0 seconds (as in ST1 streaks); `days`
+  lists only active days. `active_days`, `span_days`, and the streak use all
+  of them, even beyond the 3,660-entry cap.
+- Both pace sums use only sessions with both percentages known; pace is null
+  when those sessions total 0 seconds. `progress` is clamped to 0..1.
+- `longest_session` and `best_day` are null without positive-second data;
+  ties keep the earliest. `first_read_at` is the earliest start and
+  `last_read_at` the latest end.
+- `range` bounds are local midnight of today−29 (`30d`) or today−89 (`90d`)
+  in `timezone`. The cursor carries that bound, so later pages stay stable
+  across midnight.
+- Under decision 11, every non-final attempt is `completed`: a restart either
+  follows ≥95% or crosses `finished_at`. `stopped` stays in the enum but is
+  currently unreachable.
+- `deleteBookSession` tolerates the 204 without changing the shared API client.
+  `addManualSession` pushes a `source: 'web'` session through `pushMutation`
+  (device `Manual entry`) and resolves to the new session ID.
+
 ## Shared frontend contract
 
 - **Events** (`web/src/lib/bookview/events.ts`, created by BV3):
