@@ -72,9 +72,36 @@ the next.
 | 2 | BH4 | Bookheap page, nav, Scan, bulk Assign/Delete | BH1, BH3 | [BH4](../prompts/BH4-bookheap-page.md) | Done | `task/bh4` | Live assignment verified by BH5; Queued/Importing filter merged client-side |
 | 3 | BH5 | Real-server integration, docs, release gates | BH1-BH4 | [BH5](../prompts/BH5-bookheap-integration.md) | Done | `task/bh5` | Fixed hook-lookup deadlock; 6 real-server E2E + restart check |
 
+## Book View follow-up board
+
+Plan, decisions, API/frontend contracts and ownership rules:
+[book-view-plan.md](../plans/book-view-plan.md). Merge a wave before starting
+the next. Only BV10 runs the full verification gate.
+
+| Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
+|---|---|---|---|---|---|---|---|
+| 1 | BV1 | Catalog API: file name/added, shelves containing a book | baseline | [BV1](../prompts/BV1-catalog-detail-api.md) | Ready | `task/bv1` | |
+| 1 | BV2 | Per-book reading log API + web client | baseline | [BV2](../prompts/BV2-reading-log-api.md) | Ready | `task/bv2` | |
+| 1 | BV3 | Cover kit: generated cover, format badge, hover actions | baseline | [BV3](../prompts/BV3-cover-kit.md) | Ready | `task/bv3` | |
+| 1 | BV4 | Details shell: route group, tabs, contexts, prev/next | baseline | [BV4](../prompts/BV4-details-shell.md) | Ready | `task/bv4` | |
+| 2 | BV5 | Quick view drawer | BV1, BV3 | [BV5](../prompts/BV5-quick-view.md) | Ready | `task/bv5` | |
+| 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Ready | `task/bv6` | |
+| 2 | BV7 | Files tab | BV1, BV3, BV4 | [BV7](../prompts/BV7-files-tab.md) | Ready | `task/bv7` | |
+| 2 | BV8 | Reading Log tab | BV2-BV4 | [BV8](../prompts/BV8-reading-log-tab.md) | Ready | `task/bv8` | |
+| 2 | BV9 | Highlights tab + reader `?highlight=` | BV3, BV4 | [BV9](../prompts/BV9-highlights-tab.md) | Ready | `task/bv9` | |
+| 3 | BV10 | Integration, real-server E2E, visual QA, full gate | BV1-BV9 | [BV10](../prompts/BV10-integration.md) | Ready | `task/bv10` | |
+
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BV plan — Drafted the Book View batch (BV1-BV10): client-side
+  generated title covers with a format badge, hover Info/Read actions, a
+  right-side quick view drawer, and a tabbed `/books/{id}` (Details, Files,
+  Reading Log, Highlights) in a `(tabs)` route group. No migration: two
+  additive catalog changes (BV1) and a per-book reading summary/sessions/delete
+  API with derived attempts (BV2). Waves: BV1||BV2||BV3||BV4, then
+  BV5||BV6||BV7||BV8||BV9, then BV10 (the only full verification).
 
 - 2026-11-06 — BH5 verification — Added real-server PDF/CBZ scan coverage and
   a deterministic concurrent-scan assertion. The restart check now crashes
