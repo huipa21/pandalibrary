@@ -1,111 +1,25 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
-	import { page } from '$app/state';
 	import { ApiError } from '#lib/api/client.js';
 	import * as m from '#lib/paraglide/messages.js';
-	import { catalogErrorMessage } from '#lib/catalog/errors.js';
-	import { getBook } from '#lib/catalog/api.js';
-	import type { Book, BookFile } from '#lib/catalog/types.js';
+	import type { BookFile } from '#lib/catalog/types.js';
 	import { readerFormat } from '#lib/reader/index.js';
 	import AddToShelf from '#lib/shelves/AddToShelf.svelte';
-	import { getSessionViewer } from '#lib/shelves/api.js';
-	import { isAdministrator } from '#lib/shelves/form.js';
-	import { currentAccount, offlineAvailable, offlineStatus } from '#lib/sync/client.js';
+	import { currentAccount, offlineStatus } from '#lib/sync/client.js';
 	import { downloadedBooks, OfflineStorageError, removeBook } from '#lib/sync/db.js';
-	import { downloadForOffline, loadBook as loadOfflineBook, loadCover } from '#lib/sync/library.js';
+	import { downloadForOffline } from '#lib/sync/library.js';
+	import { getBookContext } from '../book-context.svelte.js';
 
-	let book = $state<Book | null>(null);
-	let loading = $state(true);
-	let error = $state('');
-	let coverError = $state('');
-	let coverSource = $state<string | null>(null);
-	let offline = $state(false);
-	let savedFileIds = $state<number[]>([]);
+	// BV6 replaces this tab; until then it is the former /books/[id] page body.
+	const context = getBookContext();
+	const book = $derived(context.book);
+	const offline = $derived(context.offline);
+	const coverSource = $derived(context.coverSource);
+	const coverError = $derived(context.coverError);
+	const canEditMetadata = $derived(context.canEditMetadata);
+	const savedFileIds = $derived(context.savedFileIds);
 	let downloadBusy = $state<number | null>(null);
 	let offlineNotice = $state('');
 	let offlineError = $state('');
-	let canEditMetadata = $state(false);
-	let requestVersion = 0;
-	let objectUrl: string | null = null;
-
-	$effect(() => {
-		const id = page.params.id ?? '';
-		void loadBook(id);
-	});
-
-	onDestroy(() => {
-		requestVersion += 1;
-		if (objectUrl) URL.revokeObjectURL(objectUrl);
-	});
-
-	async function loadBook(id: string) {
-		const request = ++requestVersion;
-		if (objectUrl) URL.revokeObjectURL(objectUrl);
-		objectUrl = null;
-		book = null;
-		coverSource = null;
-		coverError = '';
-		offlineError = '';
-		offlineNotice = '';
-		savedFileIds = [];
-		canEditMetadata = false;
-		loading = true;
-		error = '';
-		const parsedID = Number(id);
-		if (!Number.isSafeInteger(parsedID) || parsedID < 1) {
-			error = m['catalog.error.not_found']();
-			loading = false;
-			return;
-		}
-		try {
-			const loaded = offlineAvailable()
-				? await loadOfflineBook(currentAccount(), parsedID)
-				: { book: await getBook(parsedID), offline: false };
-			if (request !== requestVersion) return;
-			book = loaded.book;
-			offline = loaded.offline;
-			if (!loaded.offline) {
-				// Only hides the entry point; the edit route and API enforce authorization.
-				void getSessionViewer().then(
-					(viewer) => {
-						if (request === requestVersion) canEditMetadata = isAdministrator(viewer);
-					},
-					() => undefined
-				);
-			}
-			if (offlineAvailable()) {
-				const stored = (await downloadedBooks(currentAccount())).find((item) => item.book.id === parsedID);
-				if (request !== requestVersion) return;
-				savedFileIds = stored?.fileIds ?? [];
-				if (loaded.book.cover_url) {
-					try {
-						const cover = await loadCover(currentAccount(), loaded.book, loaded.offline);
-						if (request !== requestVersion) return;
-						if (cover) {
-							objectUrl = URL.createObjectURL(cover);
-							coverSource = objectUrl;
-						}
-					} catch (cause) {
-						if (cause instanceof ApiError && (cause.status === 403 || cause.status === 404)) throw cause;
-						console.error('Could not load the book cover', cause);
-						coverError = m['offline.cover_failure']();
-					}
-				}
-			} else {
-				coverSource = loaded.book.cover_url;
-			}
-		} catch (cause) {
-			if (request !== requestVersion) return;
-			book = null;
-			error = cause instanceof OfflineStorageError ? m['offline.missing']() : catalogErrorMessage(cause, {
-				api: m['catalog.error.api'](),
-				connection: m['catalog.error.connection'](),
-				notFound: m['catalog.error.not_found']()
-			});
-		} finally {
-			if (request === requestVersion) loading = false;
-		}
-	}
 
 	async function download(file: BookFile) {
 		if (!book || downloadBusy !== null) return;
@@ -118,13 +32,13 @@
 			if (!currentFile) throw new OfflineStorageError('The selected book file is missing.');
 			await downloadForOffline(currentAccount(), currentBook, currentFile);
 			const stored = (await downloadedBooks(currentAccount())).find((item) => item.book.id === currentBook.id);
-			savedFileIds = stored?.fileIds ?? [];
+			context.savedFileIds = stored?.fileIds ?? [];
 			offlineNotice = m['offline.download_success']();
 		} catch (cause) {
 			console.error('Could not download the book for offline reading', cause);
 			offlineError = m['offline.download_failure']();
 			if (cause instanceof ApiError && (cause.status === 403 || cause.status === 404)) {
-				savedFileIds = [];
+				context.savedFileIds = [];
 			}
 		} finally {
 			downloadBusy = null;
@@ -135,10 +49,10 @@
 		if (!book || !window.confirm(m['offline.storage.remove_confirm']())) return;
 		try {
 			await removeBook(currentAccount(), book.id);
-			savedFileIds = [];
+			context.savedFileIds = [];
 			offlineNotice = m['offline.storage.removed']();
 			offlineError = '';
-			if (offline) await loadBook(String(book.id));
+			if (offline) await context.reload();
 		} catch (cause) {
 			console.error('Could not remove the downloaded book', cause);
 			offlineError = m['offline.storage.failure']();
@@ -168,15 +82,7 @@
 	}
 </script>
 
-{#if error}
-	<div class="space-y-4" role="alert">
-		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800">{error}</p>
-		<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadBook(page.params.id ?? '')}>{m['catalog.retry']()}</button>
-		<a class="underline underline-offset-4 focus-visible:outline-2" href="/libraries">{m['catalog.back_to_libraries']()}</a>
-	</div>
-{:else if loading}
-	<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
-{:else if book}
+{#if book}
 	<article class="space-y-8">
 		<header class="space-y-3">
 			<a class="text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href={`/library/${book.library_id}`}>

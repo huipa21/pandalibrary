@@ -74,7 +74,7 @@ hand-offs and update its prompts if the contracts changed.
 | BV1 | [BV1-catalog-detail-api.md](./BV1-catalog-detail-api.md) | Ready |
 | BV2 | [BV2-reading-log-api.md](./BV2-reading-log-api.md) | Ready |
 | BV3 | [BV3-cover-kit.md](./BV3-cover-kit.md) | Ready |
-| BV4 | [BV4-details-shell.md](./BV4-details-shell.md) | Ready |
+| BV4 | [BV4-details-shell.md](./BV4-details-shell.md) | Done |
 | BV5 | [BV5-quick-view.md](./BV5-quick-view.md) | Ready |
 | BV6 | [BV6-details-tab.md](./BV6-details-tab.md) | Ready |
 | BV7 | [BV7-files-tab.md](./BV7-files-tab.md) | Ready |
