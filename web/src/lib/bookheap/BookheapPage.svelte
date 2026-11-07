@@ -10,6 +10,7 @@
 	import AssignDialog from './AssignDialog.svelte';
 	import DeleteDialog from './DeleteDialog.svelte';
 	import HeapItemRow from './HeapItemRow.svelte';
+	import HeapItemTile from './HeapItemTile.svelte';
 	import ScanControl from './ScanControl.svelte';
 	import UploadDialog from './UploadDialog.svelte';
 	import { BOOKHEAP_CHANGED_EVENT, notifyBookheapChanged } from './events.js';
@@ -33,6 +34,7 @@
 
 	const SEARCH_DEBOUNCE_MS = 300;
 	const SHELVES_CHANGED_EVENT = 'pandalibrary-shelves-changed';
+	const VIEW_KEY = 'pandalibrary.bookheap.view';
 
 	const list = new HeapList();
 	const selection = new HeapSelection();
@@ -61,6 +63,8 @@
 	let capNotice = $state('');
 	let navigationError = $state('');
 	let pageCheckbox = $state<HTMLInputElement | null>(null);
+	let view = $state<'grid' | 'list'>('grid');
+	let viewError = $state('');
 
 	const statusOptions: { value: HeapStatusFilter; label: () => string }[] = [
 		{ value: '', label: m['bh4.filter.all'] },
@@ -93,6 +97,13 @@
 	});
 
 	onMount(() => {
+		try {
+			const saved = localStorage.getItem(VIEW_KEY);
+			if (saved === 'grid' || saved === 'list') view = saved;
+		} catch (cause) {
+			console.error('Could not load Bookheap view preference', cause);
+			viewError = m['bc5.view.load_error']();
+		}
 		void scan.attach();
 		const changed = () => void refreshList();
 		window.addEventListener(BOOKHEAP_CHANGED_EVENT, changed);
@@ -104,6 +115,17 @@
 			list.dispose();
 		};
 	});
+
+	function changeView(next: 'grid' | 'list') {
+		view = next;
+		viewError = '';
+		try {
+			localStorage.setItem(VIEW_KEY, next);
+		} catch (cause) {
+			console.error('Could not save Bookheap view preference', cause);
+			viewError = m['bc5.view.save_error']();
+		}
+	}
 
 	/** Re-reads the shown pages, keeps the selection in step, and reports imported shelf members. */
 	async function refreshList() {
@@ -217,7 +239,7 @@
 		<label class="grid min-w-0 flex-1 gap-1 text-sm font-medium sm:max-w-sm">
 			<span>{m['bh4.filter.search']()}</span>
 			<input
-				class={inputClass}
+				class={`${inputClass} w-full min-w-0`}
 				type="search"
 				maxlength={MAX_HEAP_QUERY_LENGTH}
 				placeholder={m['bh4.filter.search_placeholder']()}
@@ -228,8 +250,17 @@
 		{#if filtered}
 			<button type="button" class={secondaryButton} onclick={clearFilters}>{m['bh4.filter.clear']()}</button>
 		{/if}
+		<div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1" role="group" aria-label={m['bc5.view.label']()}>
+			<button type="button" class={`rounded-md px-3 py-1.5 text-sm font-medium ${focusRing} ${view === 'grid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`} aria-pressed={view === 'grid'} onclick={() => changeView('grid')}>
+				{m['bc5.view.grid']()}
+			</button>
+			<button type="button" class={`rounded-md px-3 py-1.5 text-sm font-medium ${focusRing} ${view === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`} aria-pressed={view === 'list'} onclick={() => changeView('list')}>
+				{m['bc5.view.list']()}
+			</button>
+		</div>
 	</form>
 
+	{#if viewError}<p class="text-sm text-red-800" role="alert">{viewError}</p>{/if}
 	{#if navigationError}<p class="text-sm text-red-800" role="alert">{navigationError}</p>{/if}
 	{#if notice}<p class="text-sm text-emerald-800" role="status" data-testid="bh4-notice">{notice}</p>{/if}
 
@@ -266,9 +297,13 @@
 					{#if list.refreshing}<span class="ml-2 text-slate-500">{m['bh4.list.updating']()}</span>{/if}
 				</h2>
 			</div>
-			<ul class="space-y-2" aria-label={m['bh4.list.label']()}>
+			<ul class={view === 'grid' ? 'book-grid' : 'space-y-2'} aria-label={m['bh4.list.label']()}>
 				{#each list.items as item (item.id)}
-					<HeapItemRow {item} selected={selection.has(item.id)} ontoggle={toggleItem} />
+					{#if view === 'grid'}
+						<HeapItemTile {item} selected={selection.has(item.id)} ontoggle={toggleItem} />
+					{:else}
+						<HeapItemRow {item} selected={selection.has(item.id)} ontoggle={toggleItem} />
+					{/if}
 				{/each}
 			</ul>
 			{#if list.moreError}

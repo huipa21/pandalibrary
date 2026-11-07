@@ -2,9 +2,11 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { focusRing } from '#lib/admin/ui.js';
+	import BookCover from '#lib/bookview/BookCover.svelte';
 	import { heapThumbnailUrl } from './api.js';
+	import { heapStatusClasses, heapStatusLabels } from './status.js';
 	import { formatBytes } from './upload-queue.svelte.js';
-	import type { HeapItem, HeapItemStatus } from './types.js';
+	import type { HeapItem } from './types.js';
 
 	interface Props {
 		item: HeapItem;
@@ -13,36 +15,11 @@
 	}
 
 	let { item, selected, ontoggle }: Props = $props();
-	let coverFailed = $state(false);
-
-	const cover = $derived(coverFailed ? null : heapThumbnailUrl(item));
 	const added = $derived.by(() => {
 		const date = new Date(item.created_at);
 		return Number.isNaN(date.getTime()) ? item.created_at : new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium' }).format(date);
 	});
 	const showPath = $derived(item.rel_path !== item.file_name);
-
-	const statusLabels: Record<HeapItemStatus, () => string> = {
-		ready: m['bh4.status.ready'],
-		duplicate: m['bh4.status.duplicate'],
-		invalid: m['bh4.status.invalid'],
-		queued: m['bh4.status.queued'],
-		importing: m['bh4.status.importing'],
-		failed: m['bh4.status.failed']
-	};
-	const statusClasses: Record<HeapItemStatus, string> = {
-		ready: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-		duplicate: 'border-amber-300 bg-amber-50 text-amber-950',
-		invalid: 'border-red-200 bg-red-50 text-red-900',
-		queued: 'border-sky-200 bg-sky-50 text-sky-900',
-		importing: 'border-sky-200 bg-sky-50 text-sky-900',
-		failed: 'border-red-200 bg-red-50 text-red-900'
-	};
-
-	$effect(() => {
-		void item.cover_url;
-		coverFailed = false;
-	});
 </script>
 
 <li
@@ -57,16 +34,8 @@
 		aria-label={m['bh4.list.select_item']({ title: item.title })}
 		onchange={() => ontoggle(item)}
 	/>
-	<div class="row-span-2 h-16 w-12 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100 md:row-span-1">
-		{#if cover}
-			<img src={cover} alt="" class="h-full w-full object-cover" loading="lazy" onerror={() => (coverFailed = true)} />
-		{:else}
-			<div class="grid h-full w-full place-items-center text-slate-400" data-testid="bh4-cover-placeholder">
-				<svg aria-hidden="true" viewBox="0 0 20 20" class="size-5" fill="none" stroke="currentColor" stroke-width="1.5">
-					<path d="M5 3h8l3 3v11H5z M13 3v3h3" stroke-linejoin="round" />
-				</svg>
-			</div>
-		{/if}
+	<div class="row-span-2 w-12 shrink-0 md:row-span-1">
+		<BookCover size="xs" id={item.id} title={item.title} authors={item.authors} coverUrl={heapThumbnailUrl(item)} class="w-12" />
 	</div>
 	<div class="min-w-0 space-y-0.5">
 		<p class="font-medium break-words" data-testid="bh4-row-title">{item.title}</p>
@@ -85,8 +54,8 @@
 		<span>{item.source === 'scan' ? m['bh4.source.scan']() : m['bh4.source.upload']()} · <time datetime={item.created_at}>{added}</time></span>
 	</div>
 	<div class="col-start-3 space-y-1 text-sm md:col-start-auto">
-		<span class={`inline-block rounded-full border px-2 py-0.5 text-xs font-medium ${statusClasses[item.status]}`} data-testid="bh4-row-status">
-			{statusLabels[item.status]()}
+		<span class={`inline-block rounded-full border px-2 py-0.5 text-xs font-medium ${heapStatusClasses[item.status]}`} data-testid="bh4-row-status">
+			{heapStatusLabels[item.status]()}
 		</span>
 		{#if item.error}
 			<p class="text-xs break-words text-slate-700" data-testid="bh4-row-error">{item.error}</p>

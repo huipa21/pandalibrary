@@ -282,12 +282,12 @@ test('items selected across pages are assigned to a library and shelf and leave 
 
 	await page.goto(`/library/${state.libraryID}`);
 	await expect(page.getByRole('heading', { name: 'BH5 Library' })).toBeVisible();
-	for (const title of assignedTitles) await expect(page.getByRole('link', { name: title, exact: true }).first()).toBeVisible();
+	for (const title of assignedTitles) await expect(page.getByTitle(title, { exact: true }).first()).toBeVisible();
 	await page.goto(`/shelves/${state.shelfID}`);
 	await expect(page.getByRole('heading', { name: 'BH5 Shelf' })).toBeVisible();
-	for (const title of assignedTitles) await expect(page.getByRole('link', { name: title, exact: true }).first()).toBeVisible();
+	for (const title of assignedTitles) await expect(page.getByTitle(title, { exact: true }).first()).toBeVisible();
 	await page.goto('/books');
-	for (const title of assignedTitles) await expect(page.getByRole('link', { name: title, exact: true }).first()).toBeVisible();
+	for (const title of assignedTitles) await expect(page.getByTitle(title, { exact: true }).first()).toBeVisible();
 	await page.goto('/search?q=BH5%20Alpha');
 	await expect(page.getByRole('link', { name: 'BH5 Alpha', exact: true }).first()).toBeVisible();
 	await page.goto('/admin/imports');

@@ -109,6 +109,9 @@ async function mockApi(page: Page, server: ServerState) {
 			return route.fulfill({ json: { results } });
 		}
 		if (path === '/me/settings') return route.fulfill({ json: { settings: setting ? [setting] : [] } });
+		if (path === '/me/book-states') return route.fulfill({ json: { items: [{
+			book_id: 21, status: 'reading', percentage: 0.4, book_file_id: 12, updated_at: timestamp
+		}] } });
 		if (path === '/shelves' && method === 'GET') {
 			const cursor = url.searchParams.get('cursor');
 			server.shelfRequests.push(cursor);
@@ -405,16 +408,16 @@ test('keeps feeds independent, pages with opaque cursors, and resumes the exact 
 	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
 	const recent = page.locator('[data-dashboard-section="recently_added"]');
 	const read = page.locator('[data-dashboard-section="read"]');
-	await expect(continuing.getByRole('link', { name: 'First Book' })).toBeVisible();
+	await expect(continuing.getByTitle('First Book', { exact: true })).toBeVisible();
 	await expect(recent.getByRole('alert')).toContainText('Could not load books');
 	await expect(read.getByText('No books in this section yet.')).toBeVisible();
 	await continuing.getByRole('button', { name: 'Load more books' }).click();
 	await expect(continuing.getByRole('alert')).toContainText('Could not load more books');
-	await expect(continuing.getByRole('link', { name: 'First Book' })).toBeVisible();
+	await expect(continuing.getByTitle('First Book', { exact: true })).toBeVisible();
 	server.moreFailure.clear();
 	await continuing.getByRole('button', { name: 'Load more books' }).click();
-	await expect(continuing.getByRole('link', { name: 'Second Book' })).toBeVisible();
-	await expect(continuing.getByRole('link', { name: 'First Book' })).toHaveCount(1);
+	await expect(continuing.getByTitle('Second Book', { exact: true })).toBeVisible();
+	await expect(continuing.getByTitle('First Book', { exact: true })).toHaveCount(1);
 	expect(server.feedRequests.filter((item) => item.cursor).map((item) => item.cursor))
 		.toEqual(['opaque/+cursor=', 'opaque/+cursor=']);
 	server.feedFailure.clear();
@@ -428,6 +431,24 @@ test('keeps feeds independent, pages with opaque cursors, and resumes the exact 
 	server.progressFile = 12;
 	await continuing.getByRole('button', { name: 'Resume reading' }).first().click();
 	await expect(page).toHaveURL('/read/21/12');
+});
+
+test('opens a cover status menu beyond the dashboard scroller', async ({ page }) => {
+	const server = state();
+	await mockApi(page, server);
+	await page.goto('/');
+	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
+	const scroller = continuing.getByRole('region');
+	const badge = continuing.getByRole('button', { name: 'Reading status: Reading. Change' });
+	await badge.click();
+	const menu = continuing.getByRole('menu', { name: 'Reading status' });
+	const menuBox = await menu.boundingBox();
+	const scrollerBox = await scroller.boundingBox();
+	expect(menuBox && scrollerBox && (
+		menuBox.y < scrollerBox.y || menuBox.y + menuBox.height > scrollerBox.y + scrollerBox.height
+	)).toBe(true);
+	await menu.getByRole('menuitemradio', { name: 'On hold' }).click();
+	await expect(page).toHaveURL('/');
 });
 
 test('isolates accounts and synchronizes a dashboard saved while offline', async ({ page, context }) => {

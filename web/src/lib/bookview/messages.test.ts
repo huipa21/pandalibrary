@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest';
 
 type Messages = Record<string, string>;
 
-const bookViewKeys = (messages: Messages) => Object.keys(messages).filter((key) => /^bv\d+\./.test(key)).sort();
+const bookViewKeys = (messages: Messages) => Object.keys(messages).filter((key) => /^(?:bv\d+|bc4)\./.test(key)).sort();
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 
-describe('book view messages', () => {
-	it('has the same bv* keys in English and Chinese', () => {
+describe('book view and cover tile messages', () => {
+	it('has the same keys in English and Chinese', () => {
 		expect(bookViewKeys(en)).not.toHaveLength(0);
 		expect(bookViewKeys(zh)).toEqual(bookViewKeys(en));
 	});

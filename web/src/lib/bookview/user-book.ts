@@ -60,6 +60,22 @@ export function isUserBook(value: unknown): value is UserBook {
 		Number.isSafeInteger(value.rev) && value.rev >= 0;
 }
 
+export function userBookFromState(value: unknown): UserBook | null {
+	if (value === null) return null;
+	if (typeof value !== 'object' || Array.isArray(value)) {
+		throw new TypeError('Invalid user book state.');
+	}
+	const date = (input: unknown) =>
+		typeof input === 'number' ? new Date(input).toISOString() : input;
+	const candidate = {
+		...value,
+		started_at: 'started_at' in value ? date(value.started_at) : undefined,
+		finished_at: 'finished_at' in value ? date(value.finished_at) : undefined
+	};
+	if (!isUserBook(candidate)) throw new TypeError('Invalid user book state.');
+	return candidate;
+}
+
 export function statusPatch(current: UserBook | null, status: ReadStatus, now = new Date()): UserBookPatch {
 	const patch: UserBookPatch = { status };
 	if (status === 'reading' && !current?.started_at) patch.started_at = now.toISOString();

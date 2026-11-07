@@ -102,8 +102,8 @@ the next. Only BC8 runs the full verification gate.
 | 1 | BC1 | 8 reading statuses, status icons, Image-3 status menu | baseline | [BC1](../prompts/BC1-reading-statuses.md) | Done | `master` (uncommitted) | Migration 00005; status kit API in log |
 | 1 | BC2 | Batched `/me/book-states` API + client store | baseline | [BC2](../prompts/BC2-book-states.md) | Done | `task/bc2` | No migration; store API in log |
 | 1 | BC3 | Cloth generated cover + `--spacing-book` / `--aspect-book` tokens | baseline | [BC3](../prompts/BC3-cloth-cover.md) | Done | `master` (uncommitted) | 158 / 257.5 px covers; 13rem token |
-| 2 | BC4 | Cover tile: lift, status badge, hover progress, cover-only cards | BC1-BC3 | [BC4](../prompts/BC4-cover-tile.md) | Ready | `task/bc4` | |
-| 2 | BC5 | Bookheap grid view + unified heap covers | BC3 | [BC5](../prompts/BC5-bookheap-covers.md) | Ready | `task/bc5` | |
+| 2 | BC4 | Cover tile: lift, status badge, hover progress, cover-only cards | BC1-BC3 | [BC4](../prompts/BC4-cover-tile.md) | Done | `master` (uncommitted) | Cover-only cards; actions retained for BC6; BC2 prerequisite applied |
+| 2 | BC5 | Bookheap grid view + unified heap covers | BC3 | [BC5](../prompts/BC5-bookheap-covers.md) | Done | `master` (uncommitted) | Saved Grid/List; shared covers; 208 px grid tiles; targeted gates pass |
 | 3 | BC6 | Dashboard rows: no Resume button, standard width | BC4 | [BC6](../prompts/BC6-dashboard-tiles.md) | Ready | `task/bc6` | |
 | 3 | BC7 | All Books / shelves / related: standard grid | BC4 | [BC7](../prompts/BC7-catalog-grids.md) | Ready | `task/bc7` | |
 | 4 | BC8 | Integration, real-server E2E, visual QA, full gate | BC1-BC7 | [BC8](../prompts/BC8-integration.md) | Ready | `task/bc8` | |
@@ -112,6 +112,33 @@ the next. Only BC8 runs the full verification gate.
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-07 — BC4 — Added cover-only grid cards with hover/focus lift,
+  localized status badges and progress, persistent touch controls, and
+  reduced-motion support. List/search text and optional card actions remain;
+  narrow list covers reposition the format badge to avoid the status badge.
+  BC6 must remove the dashboard Resume snippet and BC6/BC7 still own sizing.
+  BC2's commits were applied uncommitted from `task/bc2` because the current
+  checkout lacked the prerequisite. The store now reports failed loads and
+  coalesces startup sync with the first request using a bounded wait.
+  Badge saves load full state and replay queued mutations before updating, to
+  preserve ratings and reading dates. Badge menus escape clipped scrollers
+  using the native top layer or a body fallback, superseding BC1's earlier
+  no-portal hand-off. Targeted Go and sqlc checks, Svelte check (zero
+  diagnostics), 124 Vitest cases, 66 mocked-browser cases and 7 real-server
+  cases passed.
+- 2026-11-07 — BC5 — Added the default Bookheap grid, persisted Grid/List
+  toggle, shared cloth covers for tiles and 48 px list thumbnails, selection
+  and heap-status overlays, and reduced-motion-aware hover/focus lift.
+  Kept errors and duplicate links for admin triage; both views retain the
+  existing row/status/error test hooks. Selection, filtering, paging and bulk
+  assign/delete share unchanged logic. Fixed the filter search input's mobile
+  overflow and added localized preference-storage error reporting.
+  Svelte check (zero errors/warnings), 46 targeted unit tests, production
+  build and 16 Bookheap/upload browser tests passed, including exact 208 px
+  covers at 1440 px. Final browser validation used an isolated static build
+  snapshot to avoid concurrent rebuilds replacing shared preview assets.
+  BC8 may consolidate the lift CSS with BC4; no catalog or bookview components
+  were changed for BC5.
 - 2026-11-07 — BC3 — Added deterministic cloth covers, adaptive grapheme-based
   title sizing, subtitle/series pass-through, image fallback, 2:3 geometry and
   the responsive `.book-grid` contract. The 1440 px baseline measured 158 px

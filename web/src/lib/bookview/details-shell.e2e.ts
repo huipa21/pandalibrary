@@ -38,6 +38,7 @@ async function mockApi(page: Page, role = 'user') {
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
 	} }));
+	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
 	await page.route('**/api/v1/setup', (route) => route.fulfill({ json: { required: false } }));
 	await page.route('**/api/v1/auth/me', (route) =>
 		route.fulfill({ json: { user: { id: 1, username: role, display_name: role, role, locale: 'en' } } })
@@ -111,7 +112,7 @@ test('tabs navigate, mark the current tab, and share one book request', async ({
 test('previous and next step through the list the book was opened from', async ({ page }) => {
 	const requests = await mockApi(page);
 	await page.goto('/books');
-	await page.getByRole('link', { name: 'Shell Book 1' }).first().click();
+	await page.getByTitle('Shell Book 1', { exact: true }).click({ position: { x: 10, y: 40 } });
 	await expect(page).toHaveURL('/books/1');
 	await expect(page.getByText('1 / 3', { exact: true })).toBeVisible();
 	const previous = page.getByRole('button', { name: 'Previous book' });
@@ -139,7 +140,7 @@ test('previous and next step through the list the book was opened from', async (
 
 	await tabBar(page).getByRole('link', { name: 'Back to books' }).click();
 	await expect(page).toHaveURL('/books');
-	await expect(page.getByRole('link', { name: 'Shell Book 3' }).first()).toBeVisible();
+	await expect(page.getByTitle('Shell Book 3', { exact: true })).toBeVisible();
 });
 
 test('the edit page has no tab bar', async ({ page }) => {

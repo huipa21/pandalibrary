@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function authenticate(page: Page, role = 'user', locale = 'en') {
+	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
 	} }));
@@ -84,7 +85,7 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 	await expect(page.locator('[data-slot="sidebar-footer"]')).toBeVisible();
 
 	await expect(page.getByRole('heading', { name: 'All Books', level: 1 })).toHaveClass('sr-only');
-	await expect(page.getByRole('heading', { name: 'A Book' })).toBeVisible();
+	await expect(page.getByTitle('A Book', { exact: true })).toBeVisible();
 	await expect(page.getByLabel('Author')).toHaveValue('4');
 	expect(bookQueries[0].has('library_id')).toBe(false);
 	expect(bookQueries[0].get('author_id')).toBe('4');
@@ -99,7 +100,7 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 	const main = await page.locator('#main-content').boundingBox();
 	expect(main?.width).toBeGreaterThan(900);
 
-	await page.getByRole('link', { name: 'A Book' }).first().click();
+	await page.getByTitle('A Book', { exact: true }).click({ position: { x: 10, y: 40 } });
 	await expect(page).toHaveURL('/books/21');
 	await expect(sidebar.getByRole('link', { name: 'All Books' })).not.toHaveAttribute('aria-current', 'page');
 
@@ -160,7 +161,7 @@ test('mobile drawer toggles by keyboard, traps focus, closes on Escape and navig
 	await page.getByRole('dialog', { name: 'Sidebar' }).getByRole('link', { name: 'All Books' }).click();
 	await expect(page).toHaveURL('/books');
 	await expect(page.getByRole('dialog', { name: 'Sidebar' })).toBeHidden();
-	await expect(page.getByRole('heading', { name: 'A Book' })).toBeVisible();
+	await expect(page.getByTitle('A Book', { exact: true })).toBeVisible();
 	await expectNoHorizontalOverflow(page);
 });
 

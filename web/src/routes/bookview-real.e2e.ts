@@ -172,7 +172,7 @@ async function bookSessionCount(api: APIRequestContext, bookID: number) {
 
 const card = (scope: Page | Locator, title: string) => {
 	const root = 'goto' in scope ? scope : scope.page();
-	return scope.locator('li').filter({ has: root.getByRole('heading', { name: title, exact: true }) }).first();
+	return scope.locator('li').filter({ has: root.getByTitle(title, { exact: true }) }).first();
 };
 
 interface Seed {
@@ -382,7 +382,9 @@ test('book view works end to end against the real server', async ({ page, browse
 			links.map((link) => Number(new URL((link as HTMLAnchorElement).href).pathname.split('/')[2])));
 		const index = ids.indexOf(data.covered.id);
 		expect(index).toBeGreaterThan(-1);
-		await card(page, data.covered.title).getByRole('link', { name: 'Open book details' }).click();
+		await card(page, data.covered.title).getByRole('link', { name: 'Open book details' }).click({
+			position: { x: 10, y: 40 }
+		});
 		await expect(page).toHaveURL(`/books/${data.covered.id}`);
 		if (index < ids.length - 1) {
 			await page.getByRole('button', { name: 'Next book' }).click();
@@ -425,6 +427,9 @@ test('book view works end to end against the real server', async ({ page, browse
 			await reader.goto('/books');
 			await expect(card(reader, data.covered.title)).toBeVisible();
 			await expect(card(reader, data.cjk.title)).toHaveCount(0);
+			const hiddenState = await reader.request.get(`/api/v1/me/book-states?ids=${data.cjk.id}`);
+			expect(hiddenState.ok()).toBe(true);
+			expect((await hiddenState.json() as { items: unknown[] }).items).toEqual([]);
 			const covered = card(reader, data.covered.title);
 			await covered.locator('.cover-frame').hover();
 			await covered.getByRole('button', { name: `Quick view: ${data.covered.title}` }).click();
@@ -434,6 +439,31 @@ test('book view works end to end against the real server', async ({ page, browse
 		} finally {
 			await context.close();
 		}
+	});
+
+	await test.step('cover badge and progress persist without changing the saved rating or dates', async () => {
+		await page.goto('/books');
+		const covered = card(page, data.covered.title);
+		const beforeResponse = await page.request.get(`/api/v1/me/books/${data.covered.id}`);
+		const before = (await beforeResponse.json() as {
+			user_book: { status: string; rating: number | null; started_at: string | null; finished_at: string | null }
+		}).user_book;
+		expect(before).toMatchObject({ status: 'finished', rating: 8 });
+		await covered.locator('.cover-frame').hover();
+		await expect(covered.getByRole('progressbar', { name: '100% read' })).toBeVisible();
+		await covered.getByRole('button', { name: 'Reading status: Read. Change' }).click();
+		await covered.getByRole('menuitemradio', { name: 'On hold' }).click();
+		await expect(covered.getByRole('button', { name: 'Reading status: On hold. Change' })).toBeVisible();
+		await expect.poll(async () => {
+			const response = await page.request.get(`/api/v1/me/books/${data.covered.id}`);
+			const result = await response.json() as { user_book: typeof before };
+			return result.user_book;
+		}).toMatchObject({
+			status: 'on_hold', rating: before.rating, started_at: before.started_at, finished_at: before.finished_at
+		});
+		await page.reload();
+		await expect(card(page, data.covered.title).getByRole('button',
+			{ name: 'Reading status: On hold. Change' })).toBeVisible();
 	});
 });
 

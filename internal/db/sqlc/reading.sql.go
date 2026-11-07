@@ -595,6 +595,74 @@ func (q *Queries) ReadingListBookSessions(ctx context.Context, arg ReadingListBo
 	return items, nil
 }
 
+const readingListBookStates = `-- name: ReadingListBookStates :many
+SELECT b.id AS book_id,
+       ub.status AS status,
+       ub.updated_at AS user_book_updated_at,
+       rp.percentage AS percentage,
+       rp.book_file_id AS book_file_id,
+       rp.updated_at AS progress_updated_at
+FROM books b
+LEFT JOIN user_books ub ON ub.user_id = ?1 AND ub.book_id = b.id
+LEFT JOIN reading_progress rp ON rp.user_id = ?1 AND rp.book_id = b.id
+WHERE b.id IN (SELECT value FROM json_each(CAST(?2 AS TEXT)))
+AND (ub.book_id IS NOT NULL OR rp.book_id IS NOT NULL)
+AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h
+    WHERE h.book_id = b.id AND h.user_id = ?1
+)
+ORDER BY b.id
+`
+
+type ReadingListBookStatesParams struct {
+	UserID      int64
+	BookIdsJson string
+	IsAdmin     int64
+}
+
+type ReadingListBookStatesRow struct {
+	BookID            int64
+	Status            sql.NullString
+	UserBookUpdatedAt sql.NullInt64
+	Percentage        sql.NullFloat64
+	BookFileID        sql.NullInt64
+	ProgressUpdatedAt sql.NullInt64
+}
+
+func (q *Queries) ReadingListBookStates(ctx context.Context, arg ReadingListBookStatesParams) ([]ReadingListBookStatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, readingListBookStates, arg.UserID, arg.BookIdsJson, arg.IsAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ReadingListBookStatesRow{}
+	for rows.Next() {
+		var i ReadingListBookStatesRow
+		if err := rows.Scan(
+			&i.BookID,
+			&i.Status,
+			&i.UserBookUpdatedAt,
+			&i.Percentage,
+			&i.BookFileID,
+			&i.ProgressUpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readingListBookmarksByBookID = `-- name: ReadingListBookmarksByBookID :many
 SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm
 JOIN books b ON b.id = bm.book_id

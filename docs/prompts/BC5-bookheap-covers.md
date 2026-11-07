@@ -1,6 +1,6 @@
 # BC5: Bookheap grid view and unified heap covers
 
-- Status: Ready
+- Status: Done
 - Wave: 2. Dependencies merged: BC3
 - Can run in parallel with: BC4
 - Branch/worktree: `task/bc5` / `..\pandalibrary-bc5`
@@ -68,9 +68,9 @@ Catalog tiles (BC4/BC7); heap item assign/edit behaviour.
 
 ## Acceptance criteria
 
-- [ ] Grid tile cover width = `--spacing-book` at `sm+`; the artwork matches
+- [x] Grid tile cover width = `--spacing-book` at `sm+`; the artwork matches
       catalog covers.
-- [ ] Bulk select/assign/delete still work in both views.
+- [x] Bulk select/assign/delete still work in both views.
 
 ## Validation commands (targeted only)
 
@@ -83,3 +83,24 @@ pnpm --dir web exec playwright test src/lib/bookheap/bookheap.e2e.ts src/lib/boo
 ## Hand-off
 
 Set this prompt to Done and update the BC5 row/log.
+
+Implemented in the current `master` worktree (uncommitted):
+
+- Default grid and saved Grid/List preference (`pandalibrary.bookheap.view`);
+  switching does not reload pages or clear selection. Storage failures are
+  logged and shown with localized messages.
+- `HeapItemTile` uses the shared `BookCover`, selection and heap-status chips,
+  title/file-name text, and reduced-motion-aware hover/focus lift. Error text
+  and duplicate links remain available for triage.
+- List thumbnails use `BookCover size="xs"` at 48 px; generated-cover tests
+  use `[data-generated-cover]` instead of the old file-icon placeholder.
+  Both views keep `data-testid="bh4-row"` and existing status/error hooks;
+  grid tiles additionally expose `[data-heap-tile]`.
+- Shared heap status labels/tones live in `bookheap/status.ts`. BC8 can
+  consolidate the lift CSS with BC4 without changing heap selection.
+- Svelte check: zero errors/warnings. Bookheap Vitest: 46 tests passed.
+  Production build and 16 Bookheap/upload browser tests passed. Browser
+  checks verify 208 px cover width at 1440 px, 2:3 geometry, mobile columns
+  without overflow, image fallback, persistence, selection, bulk actions,
+  and retry/storage failures. The final browser run used an isolated static
+  build snapshot because concurrent builds replaced shared preview assets.

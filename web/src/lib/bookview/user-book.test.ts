@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { pushMutation, SyncError } from '#lib/reader/api.js';
 import { notifyBookStateChanged } from './events.js';
 import {
-	isUserBook, previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, statusTone, type UserBook
+	isUserBook, previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, statusTone,
+	userBookFromState, type UserBook
 } from './user-book.js';
 
 vi.mock('#lib/reader/api.js', async (importOriginal) => ({
@@ -49,6 +50,17 @@ describe('saveUserBook', () => {
 		expect(isUserBook({ ...current, rev: '3' })).toBe(false);
 		expect(isUserBook(null)).toBe(false);
 		expect(isUserBook([])).toBe(false);
+	});
+
+	it('normalizes dates from queued user-book mutations without losing other fields', () => {
+		const queued = {
+			...current, started_at: Date.parse(current.started_at!), finished_at: Date.parse('2026-02-01T00:00:00Z')
+		};
+		expect(userBookFromState(queued)).toEqual({
+			...current, started_at: '2026-01-02T03:04:05.000Z', finished_at: '2026-02-01T00:00:00.000Z'
+		});
+		expect(userBookFromState(null)).toBeNull();
+		expect(() => userBookFromState({ ...queued, rating: 12 })).toThrow(TypeError);
 	});
 
 	it('sets only missing status dates and preserves the other fields in the optimistic preview', () => {

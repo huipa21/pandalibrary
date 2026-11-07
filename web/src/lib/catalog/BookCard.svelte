@@ -8,28 +8,12 @@
 
 <li
 	class={mode === 'grid'
-		? 'overflow-hidden rounded-lg border border-slate-200 bg-white'
+		? 'min-w-0'
 		: 'flex gap-4 rounded-lg border border-slate-200 bg-white p-3 sm:p-4'}
 >
 	{#if mode === 'grid'}
-		<CoverActions {book} variant="grid" />
-		<div class="space-y-2 p-4">
-			<h3 class="line-clamp-3 font-semibold leading-snug break-words" title={book.title}>
-				<a class="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={`/books/${book.id}`}>
-					{book.title}
-				</a>
-			</h3>
-			{#if book.subtitle}<p class="text-sm text-slate-600">{book.subtitle}</p>{/if}
-			{#if book.authors.length}
-				<p class="text-sm text-slate-600">{book.authors.map((author) => author.name).join(', ')}</p>
-			{/if}
-			{#if book.series}
-				<p class="text-sm text-slate-600">
-					<a class="underline-offset-4 hover:underline" href={`/series/${book.series.id}`}>{book.series.name}</a>
-				</p>
-			{/if}
-			{@render actions?.()}
-		</div>
+		<CoverActions {book} variant="tile" />
+		{#if actions}<div class="mt-2">{@render actions()}</div>{/if}
 	{:else}
 		<CoverActions {book} variant="list" />
 		<div class="min-w-0 space-y-2">

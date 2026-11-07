@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 async function authenticate(page: Page, role = 'user', locale = 'en') {
+	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
 	} }));
@@ -179,7 +180,7 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 
 	await page.goto('/shelves/8');
 	await expect(page.getByRole('heading', { name: 'Staff picks' })).toHaveClass('sr-only');
-	await expect(page.getByRole('heading', { name: 'A Book' })).toBeVisible();
+	await expect(page.getByTitle('A Book', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: /Remove “A Book”/ })).toHaveCount(0);
 
@@ -196,7 +197,7 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await expect(page.getByText('Old notes')).toHaveCount(0);
 	expect(patches).toEqual([{ name: 'Best books', description: null }]);
 
-	await expect(page.getByRole('link', { name: 'A Book' })).toHaveAttribute('href', '/books/21');
+	await expect(page.getByTitle('A Book', { exact: true })).toHaveAttribute('href', '/books/21');
 	await page.getByRole('button', { name: 'Load more books' }).click();
 	await expect(page.getByRole('alert')).toContainText('This shelf changed while you were browsing.');
 	expect(bookQueries.at(-1)?.get('cursor')).toBe('shelf-cursor');

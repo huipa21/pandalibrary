@@ -502,3 +502,25 @@ AND (CAST(sqlc.arg(has_since) AS INTEGER) = 0 OR started_at >= sqlc.arg(since));
 -- name: ReadingDeleteBookSession :execrows
 DELETE FROM reading_sessions
 WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND book_id = sqlc.arg(book_id);
+
+-- name: ReadingListBookStates :many
+SELECT b.id AS book_id,
+       ub.status AS status,
+       ub.updated_at AS user_book_updated_at,
+       rp.percentage AS percentage,
+       rp.book_file_id AS book_file_id,
+       rp.updated_at AS progress_updated_at
+FROM books b
+LEFT JOIN user_books ub ON ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id
+LEFT JOIN reading_progress rp ON rp.user_id = sqlc.arg(user_id) AND rp.book_id = b.id
+WHERE b.id IN (SELECT value FROM json_each(CAST(sqlc.arg(book_ids_json) AS TEXT)))
+AND (ub.book_id IS NOT NULL OR rp.book_id IS NOT NULL)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h
+    WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
+)
+ORDER BY b.id;

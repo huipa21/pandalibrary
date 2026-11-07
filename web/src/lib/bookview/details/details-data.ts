@@ -8,7 +8,7 @@ import { readerState } from '#lib/sync/state.js';
 import { notifyBookStateChanged } from '../events.js';
 import { parseDate } from '../format.js';
 import { getReadingSummary, type ReadingSummary } from '../log-api.js';
-import { isUserBook, type UserBook } from '../user-book.js';
+import { userBookFromState, type UserBook } from '../user-book.js';
 
 export interface DetailsState {
 	userBook: UserBook | null;
@@ -20,22 +20,6 @@ export interface DetailsState {
 export interface RelatedBooks {
 	byAuthor: Book[];
 	similar: Book[];
-}
-
-function userBookFromState(value: unknown): UserBook | null {
-	if (value === null) return null;
-	if (typeof value !== 'object' || Array.isArray(value)) {
-		throw new TypeError('Invalid user book state.');
-	}
-	const date = (input: unknown) =>
-		typeof input === 'number' ? new Date(input).toISOString() : input;
-	const candidate = {
-		...value,
-		started_at: 'started_at' in value ? date(value.started_at) : undefined,
-		finished_at: 'finished_at' in value ? date(value.finished_at) : undefined
-	};
-	if (!isUserBook(candidate)) throw new TypeError('Invalid user book state.');
-	return candidate;
 }
 
 function latestReview(notes: readonly Note[]): Note | null {

@@ -40,6 +40,7 @@ interface Item {
 	duplicate_of_book_id?: number | null;
 	target_library_id?: number | null;
 	target_shelf_ids?: number[];
+	cover_url?: string;
 }
 
 function dto(item: Item) {
@@ -47,7 +48,7 @@ function dto(item: Item) {
 		id: item.id, file_name: item.file_name, rel_path: `incoming/${item.file_name}`,
 		format: item.status === 'invalid' ? null : 'epub', size_bytes: 2048, sha256: 'a'.repeat(64),
 		title: item.title, authors: ['Author'], language: null, series: null, series_index: null,
-		has_cover: false, cover_url: null, source: 'scan', status: item.status, error: item.error ?? null,
+		has_cover: Boolean(item.cover_url), cover_url: item.cover_url ?? null, source: 'scan', status: item.status, error: item.error ?? null,
 		duplicate_of_book_id: item.duplicate_of_book_id ?? null, duplicate_of_item_id: null,
 		target_library_id: item.target_library_id ?? null, target_shelf_ids: item.target_shelf_ids ?? [],
 		import_job_id: null, added_by: 1,
@@ -174,6 +175,7 @@ test('administrators see Bookheap in HOME, an empty heap, and a scan that refres
 	await expect(summary).toContainText('Added: 3');
 	await expect(summary).toContainText('Duplicates: 1');
 	await expect(summary).toContainText('Invalid: 1');
+	await page.getByRole('button', { name: 'List', exact: true }).click();
 
 	const rows = page.getByTestId('bh4-row');
 	await expect(rows).toHaveCount(3);
@@ -187,70 +189,73 @@ test('administrators see Bookheap in HOME, an empty heap, and a scan that refres
 	await expect(page.getByTestId('bh4-nav-count')).toContainText('1');
 });
 
-test('filters and search live in the URL, selection survives paging, and Assign queues items', async ({ page }) => {
-	await authenticate(page);
-	const heap = await mockBookheap(page, [
-		...readyItems(1, 55),
-		{ id: 60, title: 'Twin', file_name: 'twin.epub', status: 'duplicate', duplicate_of_book_id: 7 }
-	]);
-	await page.setViewportSize({ width: 1280, height: 900 });
-	await page.goto('/bookheap?status=ready');
+for (const view of ['grid', 'list'] as const) {
+	test(`filters, paging, and Assign work in ${view} view`, async ({ page }) => {
+		await authenticate(page);
+		const heap = await mockBookheap(page, [
+			...readyItems(1, 55),
+			{ id: 60, title: 'Twin', file_name: 'twin.epub', status: 'duplicate', duplicate_of_book_id: 7 }
+		]);
+		await page.setViewportSize({ width: 1280, height: 900 });
+		await page.goto('/bookheap?status=ready');
+		await page.getByRole('button', { name: view === 'grid' ? 'Grid' : 'List', exact: true }).click();
 
-	const main = page.getByRole('main');
-	await expect(main.getByLabel('Status')).toHaveValue('ready');
-	const rows = page.getByTestId('bh4-row');
-	await expect(rows).toHaveCount(50);
-	await expect(page.getByTestId('bh4-total')).toContainText('Files: 55');
+		const main = page.getByRole('main');
+		await expect(main.getByLabel('Status')).toHaveValue('ready');
+		const rows = page.getByTestId('bh4-row');
+		await expect(rows).toHaveCount(50);
+		await expect(page.getByTestId('bh4-total')).toContainText('Files: 55');
 
-	await main.getByLabel('Select all shown').check();
-	await expect(page.getByTestId('bh4-selected-count')).toHaveText('Selected: 50');
-	await main.getByRole('button', { name: 'Load more files' }).click();
-	await expect(rows).toHaveCount(55);
-	await expect(main.getByLabel('Select all shown')).not.toBeChecked();
-	await main.getByRole('checkbox', { name: 'Select Ready 1', exact: true }).check();
-	await expect(page.getByTestId('bh4-selected-count')).toHaveText('Selected: 51');
+		await main.getByLabel('Select all shown').check();
+		await expect(page.getByTestId('bh4-selected-count')).toHaveText('Selected: 50');
+		await main.getByRole('button', { name: 'Load more files' }).click();
+		await expect(rows).toHaveCount(55);
+		await expect(main.getByLabel('Select all shown')).not.toBeChecked();
+		await main.getByRole('checkbox', { name: 'Select Ready 1', exact: true }).check();
+		await expect(page.getByTestId('bh4-selected-count')).toHaveText('Selected: 51');
 
-	await page.getByTestId('bh4-bulk-bar').getByRole('button', { name: 'Assign…' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Assign to a library' });
-	await expect(dialog).toBeVisible();
-	await expect(dialog.getByTestId('bh4-assign-count')).toHaveText('Files to assign: 51');
-	await expect(dialog.getByLabel('Library')).toBeFocused();
-	await expect(dialog.getByRole('checkbox')).toHaveCount(2);
-	await expect(dialog.getByLabel('Favorites')).toBeVisible();
-	await dialog.getByRole('button', { name: 'Assign (51)' }).click();
-	await expect(dialog.getByText('Choose a library.')).toBeVisible();
-	await dialog.getByLabel('Library').selectOption({ label: 'Main' });
-	await dialog.getByLabel(/Classics/).check();
-	await dialog.getByRole('button', { name: 'Assign (51)' }).click();
-	await expect(dialog).toBeHidden();
-	await expect(page.getByTestId('bh4-notice')).toContainText('Queued for import: 51');
-	await expect(page.getByTestId('bh4-bulk-bar')).toBeHidden();
-	expect(heap.assignBodies).toHaveLength(1);
-	const body = heap.assignBodies[0] as { ids: number[]; library_id: number; shelf_ids: number[] };
-	expect(body.library_id).toBe(2);
-	expect(body.shelf_ids).toEqual([21]);
-	expect(body.ids).toHaveLength(51);
+		await page.getByTestId('bh4-bulk-bar').getByRole('button', { name: 'Assign…' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Assign to a library' });
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByTestId('bh4-assign-count')).toHaveText('Files to assign: 51');
+		await expect(dialog.getByLabel('Library')).toBeFocused();
+		await expect(dialog.getByRole('checkbox')).toHaveCount(2);
+		await expect(dialog.getByLabel('Favorites')).toBeVisible();
+		await dialog.getByRole('button', { name: 'Assign (51)' }).click();
+		await expect(dialog.getByText('Choose a library.')).toBeVisible();
+		await dialog.getByLabel('Library').selectOption({ label: 'Main' });
+		await dialog.getByLabel(/Classics/).check();
+		await dialog.getByRole('button', { name: 'Assign (51)' }).click();
+		await expect(dialog).toBeHidden();
+		await expect(page.getByTestId('bh4-notice')).toContainText('Queued for import: 51');
+		await expect(page.getByTestId('bh4-bulk-bar')).toBeHidden();
+		expect(heap.assignBodies).toHaveLength(1);
+		const body = heap.assignBodies[0] as { ids: number[]; library_id: number; shelf_ids: number[] };
+		expect(body.library_id).toBe(2);
+		expect(body.shelf_ids).toEqual([21]);
+		expect(body.ids).toHaveLength(51);
 
-	await expect(rows).toHaveCount(4, { timeout: 15_000 });
-	await expect(page.getByTestId('bh4-total')).toContainText('Files: 4');
+		await expect(rows).toHaveCount(4, { timeout: 15_000 });
+		await expect(page.getByTestId('bh4-total')).toContainText('Files: 4');
 
-	await main.getByLabel('Search').fill('ready 5');
-	await expect(page).toHaveURL(/status=ready/);
-	await expect(page).toHaveURL(/q=ready\+5/);
-	await main.getByLabel('Status').selectOption('');
-	await expect(page).not.toHaveURL(/status=/);
-	await expect(page).toHaveURL(/q=ready\+5/);
-	await main.getByLabel('Search').fill('nothing here');
-	await expect(main.getByText('No files match these filters.')).toBeVisible();
-	await main.getByRole('button', { name: 'Clear filters' }).first().click();
-	await expect(page).toHaveURL(/\/bookheap$/);
-	await expect(rows).toHaveCount(5);
+		await main.getByLabel('Search').fill('ready 5');
+		await expect(page).toHaveURL(/status=ready/);
+		await expect(page).toHaveURL(/q=ready\+5/);
+		await main.getByLabel('Status').selectOption('');
+		await expect(page).not.toHaveURL(/status=/);
+		await expect(page).toHaveURL(/q=ready\+5/);
+		await main.getByLabel('Search').fill('nothing here');
+		await expect(main.getByText('No files match these filters.')).toBeVisible();
+		await main.getByRole('button', { name: 'Clear filters' }).first().click();
+		await expect(page).toHaveURL(/\/bookheap$/);
+		await expect(rows).toHaveCount(5);
 
-	await page.goto('/bookheap?status=duplicate&q=twin');
-	await expect(rows).toHaveCount(1);
-	await expect(main.getByLabel('Search')).toHaveValue('twin');
-	expect(heap.listQueries.some((query) => query.includes('status=duplicate') && query.includes('q=twin'))).toBe(true);
-});
+		await page.goto('/bookheap?status=duplicate&q=twin');
+		await expect(rows).toHaveCount(1);
+		await expect(main.getByLabel('Search')).toHaveValue('twin');
+		expect(heap.listQueries.some((query) => query.includes('status=duplicate') && query.includes('q=twin'))).toBe(true);
+	});
+}
 
 test('Assign skips items that cannot be assigned and the combined active filter merges statuses', async ({ page }) => {
 	await authenticate(page);
@@ -281,36 +286,157 @@ test('Assign skips items that cannot be assigned and the combined active filter 
 	expect(heap.listQueries.filter((query) => /status=(queued|importing)/.test(query)).length).toBeGreaterThanOrEqual(2);
 });
 
-test('Delete asks for confirmation and reports items that could not be deleted', async ({ page }) => {
-	await authenticate(page);
-	const heap = await mockBookheap(page, [
-		{ id: 1, title: 'Keep', file_name: 'keep.epub', status: 'ready' },
-		{ id: 2, title: 'Gone', file_name: 'gone.epub', status: 'ready' },
-		{ id: 3, title: 'Busy', file_name: 'busy.epub', status: 'importing' }
-	]);
-	await page.goto('/bookheap');
-	const main = page.getByRole('main');
-	await main.getByRole('checkbox', { name: 'Select Gone', exact: true }).check();
-	await main.getByRole('checkbox', { name: 'Select Busy', exact: true }).check();
-	await page.getByRole('button', { name: 'Delete…' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Delete from the Bookheap' });
-	await expect(dialog).toContainText('Delete 2 files from the server Bookheap? This cannot be undone.');
-	await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
-	await page.keyboard.press('Escape');
-	await expect(dialog).toBeHidden();
-	expect(heap.deleteBodies).toHaveLength(0);
+for (const view of ['grid', 'list'] as const) {
+	test(`Delete confirms and reports failures in ${view} view`, async ({ page }) => {
+		await authenticate(page);
+		const heap = await mockBookheap(page, [
+			{ id: 1, title: 'Keep', file_name: 'keep.epub', status: 'ready' },
+			{ id: 2, title: 'Gone', file_name: 'gone.epub', status: 'ready' },
+			{ id: 3, title: 'Busy', file_name: 'busy.epub', status: 'importing' }
+		]);
+		await page.goto('/bookheap');
+		await page.getByRole('button', { name: view === 'grid' ? 'Grid' : 'List', exact: true }).click();
+		const main = page.getByRole('main');
+		await main.getByRole('checkbox', { name: 'Select Gone', exact: true }).check();
+		await main.getByRole('checkbox', { name: 'Select Busy', exact: true }).check();
+		await page.getByRole('button', { name: 'Delete…' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Delete from the Bookheap' });
+		await expect(dialog).toContainText('Delete 2 files from the server Bookheap? This cannot be undone.');
+		await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+		await page.keyboard.press('Escape');
+		await expect(dialog).toBeHidden();
+		expect(heap.deleteBodies).toHaveLength(0);
 
-	await page.getByRole('button', { name: 'Delete…' }).click();
-	await dialog.getByRole('button', { name: 'Delete (2)' }).click();
-	const results = dialog.getByTestId('bh4-bulk-results');
-	await expect(results).toContainText('Deleted: 1. Not deleted: 1.');
-	await expect(results.getByRole('list', { name: 'Files that were not processed' })).toContainText('Busy');
-	await expect(results).toContainText('Being imported; try again when it finishes');
-	await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused();
-	await dialog.getByRole('button', { name: 'Close' }).click();
-	await expect(page.getByTestId('bh4-row')).toHaveCount(2);
+		await page.getByRole('button', { name: 'Delete…' }).click();
+		await dialog.getByRole('button', { name: 'Delete (2)' }).click();
+		const results = dialog.getByTestId('bh4-bulk-results');
+		await expect(results).toContainText('Deleted: 1. Not deleted: 1.');
+		await expect(results.getByRole('list', { name: 'Files that were not processed' })).toContainText('Busy');
+		await expect(results).toContainText('Being imported; try again when it finishes');
+		await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused();
+		await dialog.getByRole('button', { name: 'Close' }).click();
+		await expect(page.getByTestId('bh4-row')).toHaveCount(2);
+		await expect(page.getByTestId('bh4-selected-count')).toHaveText('Selected: 1');
+		expect(heap.deleteBodies).toEqual([{ ids: [2, 3] }]);
+	});
+}
+
+test('grid is the default, uses standard covers, and respects responsive sizing and reduced motion', async ({ page }) => {
+	await authenticate(page);
+	await mockBookheap(page, [
+		...readyItems(1, 2),
+		{ id: 3, title: 'Broken cover', file_name: 'broken.epub', status: 'ready', cover_url: '/heap-cover.jpg' },
+		{ id: 4, title: 'Real cover', file_name: 'real.epub', status: 'ready', cover_url: '/good-cover.svg' }
+	]);
+	await page.route('**/heap-cover.jpg?thumbnail=1', (route) => route.fulfill({ status: 404 }));
+	await page.route('**/good-cover.svg?thumbnail=1', (route) => route.fulfill({
+		contentType: 'image/svg+xml',
+		body: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300"><rect width="200" height="300" fill="navy"/></svg>'
+	}));
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/bookheap');
+	await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	const tiles = page.locator('[data-heap-tile]');
+	await expect(tiles).toHaveCount(4);
+	const generated = tiles.filter({ hasText: 'Ready 2' }).locator('[data-generated-cover]');
+	await expect(generated).toHaveAttribute('aria-label', 'Ready 2');
+	await expect(tiles.filter({ hasText: 'Broken cover' }).locator('[data-generated-cover]')).toBeVisible();
+	await expect(tiles.filter({ hasText: 'Real cover' }).getByRole('img', { name: 'Real cover' })).toHaveAttribute('src', '/good-cover.svg?thumbnail=1');
+
+	const cover = tiles.filter({ hasText: 'Ready 2' }).locator('.book-cover');
+	const geometry = await cover.evaluate((element) => ({
+		width: element.getBoundingClientRect().width,
+		height: element.getBoundingClientRect().height,
+		standard: Number.parseFloat(getComputedStyle(element).getPropertyValue('--spacing-book')) *
+			Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+	}));
+	expect(geometry.width).toBe(geometry.standard);
+	expect(geometry.width).toBe(208);
+	expect(geometry.height / geometry.width).toBeCloseTo(1.5);
+	await expect(tiles.filter({ hasText: 'Ready 2' }).getByText('ready-2.epub')).toHaveAttribute('title', 'incoming/ready-2.epub');
+
+	const frame = cover.locator('..');
+	await frame.hover();
+	await expect(frame).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, -4)');
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await expect(frame).toHaveCSS('transform', 'none');
+	await expect(frame).toHaveCSS('transition-duration', '0s');
+	await page.setViewportSize({ width: 390, height: 844 });
+	await expect(page.getByRole('list', { name: 'Bookheap files' })).toHaveCSS('grid-template-columns', /^\d+(?:\.\d+)?px \d+(?:\.\d+)?px$/);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+test('switching views preserves selection and persists across reload', async ({ page }) => {
+	await authenticate(page);
+	const heap = await mockBookheap(page, readyItems(1, 2));
+	await page.goto('/bookheap?status=ready');
+	await page.getByRole('checkbox', { name: 'Select Ready 2', exact: true }).check();
+	const queries = heap.listQueries.length;
+	await page.getByRole('button', { name: 'List', exact: true }).click();
+	await expect(page.locator('[data-heap-tile]')).toHaveCount(0);
+	await expect(page.getByRole('checkbox', { name: 'Select Ready 2', exact: true })).toBeChecked();
 	await expect(page.getByTestId('bh4-selected-count')).toHaveText('Selected: 1');
-	expect(heap.deleteBodies).toEqual([{ ids: [2, 3] }]);
+	await expect(page.getByTestId('bh4-row').locator('[data-generated-cover]')).toHaveCount(2);
+	await expect(page.getByTestId('bh4-row').first().locator('.book-cover')).toHaveCSS('width', '48px');
+	expect(heap.listQueries).toHaveLength(queries);
+	await expect(page).toHaveURL(/status=ready/);
+	expect(await page.evaluate(() => localStorage.getItem('pandalibrary.bookheap.view'))).toBe('list');
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await page.getByRole('checkbox', { name: 'Select Ready 2', exact: true }).check();
+	await page.getByRole('button', { name: 'Grid', exact: true }).click();
+	await expect(page.getByRole('checkbox', { name: 'Select Ready 2', exact: true })).toBeChecked();
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.locator('[data-heap-tile]')).toHaveCount(2);
+});
+
+test('storage failures are reported without blocking view changes', async ({ page }) => {
+	await authenticate(page);
+	await mockBookheap(page, readyItems(1, 1));
+	await page.addInitScript(() => {
+		const getItem = Storage.prototype.getItem;
+		const setItem = Storage.prototype.setItem;
+		Storage.prototype.getItem = function (key) {
+			if (key === 'pandalibrary.bookheap.view') throw new DOMException('Blocked', 'SecurityError');
+			return getItem.call(this, key);
+		};
+		Storage.prototype.setItem = function (key, value) {
+			if (key === 'pandalibrary.bookheap.view') throw new DOMException('Full', 'QuotaExceededError');
+			return setItem.call(this, key, value);
+		};
+	});
+	await page.goto('/bookheap');
+	await expect(page.getByRole('alert')).toContainText('Could not load your saved view');
+	await page.getByRole('button', { name: 'List', exact: true }).click();
+	await expect(page.getByRole('alert')).toContainText('Could not save your view');
+	await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByTestId('bh4-row')).toHaveCount(1);
+	await expect(page.locator('[data-heap-tile]')).toHaveCount(0);
+});
+
+test('an unrecognized saved view uses grid and load errors remain retryable in either view', async ({ page }) => {
+	await authenticate(page);
+	await mockBookheap(page, readyItems(1, 1));
+	await page.addInitScript(() => localStorage.setItem('pandalibrary.bookheap.view', 'obsolete'));
+	let unavailable = true;
+	await page.route('**/api/v1/admin/bookheap/items?*', (route) => {
+		if (new URL(route.request().url()).searchParams.get('limit') === '50' && unavailable) {
+			return problem(route, 503);
+		}
+		return route.fallback();
+	});
+	await page.goto('/bookheap');
+	await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('alert')).toBeVisible();
+	await page.getByRole('button', { name: 'List', exact: true }).click();
+	await expect(page.getByRole('alert')).toBeVisible();
+	unavailable = false;
+	await page.getByRole('alert').getByRole('button', { name: 'Try again', exact: true }).click();
+	await expect(page.getByTestId('bh4-row')).toHaveCount(1);
+	await expect(page.getByRole('alert')).toBeHidden();
+	await page.getByRole('button', { name: 'Grid', exact: true }).click();
+	await expect(page.locator('[data-heap-tile]')).toHaveCount(1);
 });
 
 test('the Upload toolbar button opens the shared upload dialog', async ({ page }) => {

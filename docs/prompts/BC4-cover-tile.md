@@ -1,9 +1,9 @@
 # BC4: Cover tile — lift, status badge, progress bar, cover-only cards
 
-- Status: Ready
-- Wave: 2. Dependencies merged: BC1, BC2, BC3
+- Status: Done
+- Wave: 2. Dependencies: BC1, BC2, BC3 (BC2 applied uncommitted from `task/bc2`)
 - Can run in parallel with: BC5
-- Branch/worktree: `task/bc4` / `..\pandalibrary-bc4`
+- Branch/worktree: `master` (uncommitted)
 - Migration: no
 
 ## Read first
@@ -111,21 +111,36 @@ Dashboard Resume button removal and row widths (BC6), grid widths (BC7).
 
 ## Acceptance criteria
 
-- [ ] Requirements R2-R6 hold on any `BookCard` grid.
-- [ ] Keyboard: Tab reaches the cover link, then the badge, Info and Play.
+- [x] Requirements R2-R6 hold on any `BookCard` grid.
+- [x] Keyboard: Tab reaches the cover link, then the badge, Info and Play.
       Focus shows the lift, the bar and the badge.
-- [ ] No layout shift when states load.
+- [x] No layout shift when states load.
 
 ## Validation commands (targeted only)
 
 ```powershell
 pnpm --dir web check
-pnpm --dir web exec vitest run src/lib/bookview
-pnpm --dir web exec playwright test src/lib/bookview/covers.e2e.ts src/lib/bookview/quickview
+pnpm --dir web exec vitest run src\lib\bookview
+pnpm --dir web exec playwright test covers.e2e.ts quickview.e2e.ts
 ```
 
 ## Hand-off
 
-Set this prompt to Done, update the BC4 row/log, and list any
-consumer-visible changes BC6/BC7 must adapt to (for example removed card
-padding).
+- Grid `BookCard` no longer adds a border, background, padding, title,
+  authors or series. The cover link keeps the title as a description and
+  tooltip. The optional actions snippet still renders below the cover, so
+  BC6 must remove the dashboard's Resume snippet; BC6/BC7 own row and grid
+  widths.
+- `CoverActions` accepts `tile` and the existing `grid` alias, as well as
+  `list` and `search`. List retains its text; on narrow list covers
+  the format badge moves below the status badge to avoid overlap. Search does
+  not request states.
+- Badge menus use the native top layer, with a body-portal fallback, so they
+  remain usable in clipped horizontal scrollers. Before saving, they fetch
+  the full user-book record and replay queued changes to retain ratings and
+  reading dates. Failed state loads hide the badge rather than implying
+  unread, and the store exposes an `error` flag.
+- The BC2 commits were applied without a commit because that prerequisite was
+  absent from this checkout. Startup sync is folded into the first batched
+  request when possible, with a bounded wait; this avoids duplicate initial
+  requests without blocking on a stalled sync.

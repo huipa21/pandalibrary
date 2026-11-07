@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function authenticate(page: Page, locale = 'en') {
+	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
 	} }));
@@ -112,7 +113,7 @@ test('filters and sorts with server cursors, then opens a hash-versioned downloa
 
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/library/1?series_id=8&sort=series');
-	await expect(page.getByRole('heading', { name: 'A Book' })).toBeVisible();
+	await expect(page.getByTitle('A Book', { exact: true })).toBeVisible();
 	const mobileWidths = await page.evaluate(() => ({
 		viewport: document.documentElement.clientWidth,
 		content: document.documentElement.scrollWidth

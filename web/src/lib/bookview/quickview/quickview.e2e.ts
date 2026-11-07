@@ -107,6 +107,17 @@ async function mockApi(page: Page, state: MockState) {
 			return route.fulfill({ json: { items: [], next_cursor: null } });
 		}
 		if (path === '/books') return route.fulfill({ json: { items: books, next_cursor: null } });
+		if (path === '/me/book-states') {
+			const ids = (url.searchParams.get('ids') ?? '').split(',').map(Number);
+			return route.fulfill({ json: { items: ids.flatMap((id) => {
+				const userBook = state.userBooks.get(id);
+				if (!userBook && id !== 2) return [];
+				return [{
+					book_id: id, status: userBook?.status ?? 'unread', percentage: id === 2 ? 0.42 : null,
+					book_file_id: id === 2 ? 201 : null, updated_at: timestamp
+				}];
+			}) } });
+		}
 		const shelvesOf = /^\/books\/(\d+)\/shelves$/.exec(path);
 		if (shelvesOf) {
 			const ids = state.members.get(Number(shelvesOf[1]));
@@ -137,7 +148,7 @@ async function mockApi(page: Page, state: MockState) {
 }
 
 function card(page: Page, title: string) {
-	return page.locator('li').filter({ has: page.getByRole('heading', { name: title, exact: true }) }).first();
+	return page.locator('li').filter({ has: page.getByTitle(title, { exact: true }) }).first();
 }
 
 async function openHarbor(page: Page) {
@@ -259,6 +270,9 @@ test('changes the reading status with one mutation and adds the book to a shelf'
 	await expect(drawer.getByRole('region', { name: 'Collections' }).getByRole('link'))
 		.toHaveText(['Favorites', 'Classics', 'Weekend reads']);
 	await expect(drawer.getByRole('button', { name: 'Add to shelf' })).toBeFocused();
+	await page.keyboard.press('Escape');
+	await expect(card(page, 'Quiet Harbor').getByRole('button',
+		{ name: 'Reading status: Want to read. Change' })).toBeVisible();
 });
 
 test('shows not found and replaces the book without stale responses', async ({ page }) => {

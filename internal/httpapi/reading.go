@@ -30,6 +30,7 @@ func ReadingMount(service *reading.Service, authentication *auth.Service, logger
 		router.Group(func(secured chi.Router) {
 			secured.Use(SessionMiddleware(authentication, logger))
 			secured.Get("/api/v1/me/books/{id}", handler.getBookState)
+			secured.Get("/api/v1/me/book-states", handler.listBookStates)
 			secured.Get("/api/v1/me/books/{id}/reading-summary", handler.getReadingSummary)
 			secured.Get("/api/v1/me/books/{id}/sessions", handler.listBookSessions)
 			secured.With(cookieProtection).Delete("/api/v1/me/books/{id}/sessions/{sessionId}", handler.deleteBookSession)
@@ -58,6 +59,45 @@ func (h *readingHTTP) getBookState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSON(w, http.StatusOK, result)
+}
+
+func (h *readingHTTP) listBookStates(w http.ResponseWriter, r *http.Request) {
+	viewer, ok := h.viewer(w, r)
+	if !ok {
+		return
+	}
+	values, valid := h.query(w, r, "ids")
+	if !valid {
+		return
+	}
+	raw, exists := values["ids"]
+	if !exists || raw[0] == "" {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "At least one book ID is required.")
+		return
+	}
+	parts := strings.Split(raw[0], ",")
+	if len(parts) > reading.MaxBookStateIDs {
+		WriteProblem(w, h.logger, http.StatusBadRequest,
+			"At most "+strconv.Itoa(reading.MaxBookStateIDs)+" book IDs are allowed.")
+		return
+	}
+	ids := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		id, err := strconv.ParseInt(part, 10, 64)
+		if err != nil || id < 1 || strconv.FormatInt(id, 10) != part {
+			WriteProblem(w, h.logger, http.StatusBadRequest, "Book IDs must be positive integers.")
+			return
+		}
+		ids = append(ids, id)
+	}
+	items, err := h.service.ListBookStates(r.Context(), viewer, ids)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, struct {
+		Items []reading.BookStateItem `json:"items"`
+	}{Items: items})
 }
 
 func (h *readingHTTP) listBookmarks(w http.ResponseWriter, r *http.Request) {

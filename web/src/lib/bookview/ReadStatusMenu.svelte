@@ -11,9 +11,11 @@
 		bookId: number;
 		userBook: UserBook | null;
 		variant?: 'pill' | 'icon' | 'badge';
+		loadCurrentUserBook?: (bookId: number) => Promise<UserBook | null>;
 	}
 
-	let { bookId, userBook, variant = 'pill' }: Props = $props();
+	let { bookId, userBook, variant = 'pill', loadCurrentUserBook }: Props = $props();
+	const menuId = $props.id();
 	let optimistic = $state<UserBook | undefined>(undefined);
 	let open = $state(false);
 	let busy = $state(false);
@@ -52,7 +54,6 @@
 
 	function positionBadgeMenu() {
 		if (!root || !trigger || !menu) return;
-		const rootBox = root.getBoundingClientRect();
 		const triggerBox = trigger.getBoundingClientRect();
 		const menuBox = menu.getBoundingClientRect();
 		const padding = 8;
@@ -65,7 +66,7 @@
 		const desiredTop = opensUp ? triggerBox.top - gap - menuBox.height : triggerBox.bottom + gap;
 		const left = Math.max(padding, Math.min(triggerBox.left, width - padding - menuBox.width));
 		const top = Math.max(padding, Math.min(desiredTop, height - padding - menuBox.height));
-		badgePosition = { left: left - rootBox.left, top: top - rootBox.top };
+		badgePosition = { left, top };
 	}
 
 	async function openMenu(position: 'first' | 'last' | 'current' = 'current') {
@@ -75,6 +76,20 @@
 		await tick();
 		if (!open) return;
 		if (variant === 'badge') {
+			if (!menu) return;
+			try {
+				if (typeof menu.showPopover === 'function') {
+					menu.showPopover();
+				} else {
+					menu.removeAttribute('popover');
+					document.body.appendChild(menu);
+				}
+			} catch (cause) {
+				console.error('Could not open the reading status menu', cause);
+				closeMenu(true);
+				error = m['bc4.menu_failed']();
+				return;
+			}
 			positionBadgeMenu();
 			await tick();
 			if (!open) return;
@@ -96,7 +111,8 @@
 		void openMenu(event.key === 'ArrowDown' ? 'first' : 'last');
 	}
 
-	function toggleMenu() {
+	function toggleMenu(event: MouseEvent) {
+		event.stopPropagation();
 		if (busy) return;
 		if (open) closeMenu();
 		else void openMenu();
@@ -125,22 +141,33 @@
 	}
 
 	function outside(event: Event) {
-		if (open && event.target instanceof Node && !root?.contains(event.target)) closeMenu();
+		if (open && event.target instanceof Node && !root?.contains(event.target) && !menu?.contains(event.target)) {
+			closeMenu();
+		}
 	}
 
 	async function select(status: ReadStatus) {
 		if (busy) return;
 		const before = optimistic;
-		const previous = current;
-		const patch = statusPatch(previous, status);
+		const displayed = current;
+		const previewPatch = statusPatch(displayed, status);
 		closeMenu(true);
-		if (previous?.status === status && Object.keys(patch).length === 1) return;
+		if (!loadCurrentUserBook && displayed?.status === status && Object.keys(previewPatch).length === 1) return;
 		const version = propVersion;
 		const targetBookId = bookId;
-		optimistic = previewUserBook(previous, patch);
+		optimistic = previewUserBook(displayed, previewPatch);
 		error = '';
 		busy = true;
 		try {
+			const previous = loadCurrentUserBook ? await loadCurrentUserBook(targetBookId) : displayed;
+			if (targetBookId !== bookId) return;
+			if (version !== propVersion) {
+				error = m['bv3.status_failed']();
+				return;
+			}
+			const patch = statusPatch(previous, status);
+			optimistic = previewUserBook(previous, patch);
+			if (previous?.status === status && Object.keys(patch).length === 1) return;
 			await saveUserBook(targetBookId, previous, patch);
 		} catch (cause) {
 			console.error('Could not update reading status', cause);
@@ -170,6 +197,7 @@
 			: variant === 'icon' ? m['bv3.status_menu']() : m['bv3.status_menu_current']({ status: readStatusLabel(selected) })}
 		aria-haspopup="menu"
 		aria-expanded={open}
+		aria-controls={open ? menuId : undefined}
 		aria-busy={busy}
 		aria-disabled={busy}
 		title={m['bv3.status_menu_current']({ status: readStatusLabel(selected) })}
@@ -182,12 +210,16 @@
 	{#if open}
 		<div
 			bind:this={menu}
+			id={menuId}
 			role="menu"
 			tabindex="-1"
 			aria-label={m['bv3.status_menu']()}
+			popover={variant === 'badge' ? 'manual' : undefined}
 			class="absolute top-full z-30 mt-2 max-h-[calc(100dvh-1rem)] w-48 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
 			style={variant === 'badge'
-				? badgePosition ? `left: ${badgePosition.left}px; top: ${badgePosition.top}px; margin: 0` : 'visibility: hidden'
+				? badgePosition
+					? `position: fixed; inset: auto; left: ${badgePosition.left}px; top: ${badgePosition.top}px; margin: 0; z-index: 100`
+					: 'position: fixed; inset: auto; left: 0; top: 0; margin: 0; z-index: 100; visibility: hidden'
 				: undefined}
 			onkeydown={menuKey}
 		>
@@ -198,7 +230,7 @@
 					aria-checked={status === selected}
 					tabindex="-1"
 					class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-100 focus:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700"
-					onclick={() => void select(status)}
+					onclick={(event) => { event.stopPropagation(); void select(status); }}
 				>
 					<StatusIcon {status} class={`size-5 shrink-0 ${statusTone(status).text}`} />
 					<span class="flex-1 whitespace-nowrap">{readStatusLabel(status)}</span>
