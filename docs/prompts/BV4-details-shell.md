@@ -1,6 +1,6 @@
 # BV4: Book details shell – route group, tab bar, book context, browse prev/next
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline `72c469c`
 - Can run in parallel with: BV1, BV2, BV3
 - Branch/worktree: `task/bv4` / `..\pandalibrary-bv4`
@@ -117,11 +117,11 @@ Redesigning Details (BV6) and the content of Files/Reading Log/Highlights
 
 ## Acceptance criteria
 
-- [ ] All four tab URLs work. Details shows today's content unchanged in
+- [x] All four tab URLs work. Details shows today's content unchanged in
       behavior, including offline.
-- [ ] The book is fetched once per book ID across tab switches (assert via the
+- [x] The book is fetched once per book ID across tab switches (assert via the
       request count in e2e).
-- [ ] Prev/next and Back behave as specified. The edit route is unaffected.
+- [x] Prev/next and Back behave as specified. The edit route is unaffected.
 
 ## Validation commands (targeted only)
 
