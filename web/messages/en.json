@@ -1185,5 +1185,19 @@
 	"bh4.scan.invalid": "Invalid: {count}",
 	"bh4.scan.skipped": "Skipped: {count}",
 	"bh4.scan.in_progress": "Still being written: {count}",
-	"bh5.imports.source.bookheap": "Bookheap"
+	"bh5.imports.source.bookheap": "Bookheap",
+	"bv4.tabs.label": "Book sections",
+	"bv4.tabs.details": "Details",
+	"bv4.tabs.files": "Files",
+	"bv4.tabs.reading_log": "Reading Log",
+	"bv4.tabs.highlights": "Highlights",
+	"bv4.back": "Books",
+	"bv4.back_label": "Back to books",
+	"bv4.browse.label": "Browse {label}",
+	"bv4.browse.position": "{index} / {total}",
+	"bv4.browse.position_label": "Book {index} of {total}",
+	"bv4.browse.previous": "Previous book",
+	"bv4.browse.next": "Next book",
+	"bv4.coming_soon.title": "Coming soon",
+	"bv4.coming_soon.body": "This section is not available yet. Book details stay on the Details tab."
 }

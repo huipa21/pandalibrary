@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
+	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import type { Book } from '#lib/catalog/types.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { requestErrorKind } from '#lib/paging/errors.js';
@@ -53,6 +54,8 @@
 		const id = page.params.id ?? '';
 		untrack(() => void loadShelf(id));
 	});
+
+	$effect(() => { if (shelf && books.status === 'ready') rememberBrowseContext({ ids: books.items.map((book) => book.id), label: shelf.name, href: `/shelves/${shelf.id}` }); });
 
 	onDestroy(() => {
 		requestVersion += 1;
