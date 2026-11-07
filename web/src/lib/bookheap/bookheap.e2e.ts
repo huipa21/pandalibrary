@@ -366,6 +366,43 @@ test('grid is the default, uses standard covers, and respects responsive sizing 
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
+test('keeps Bookheap filters and view controls usable on narrow screens', async ({ page }) => {
+	await authenticate(page);
+	await mockBookheap(page, readyItems(1, 2));
+	await page.setViewportSize({ width: 360, height: 844 });
+	await page.goto('/bookheap');
+	const filters = page.getByRole('main').getByRole('search');
+	const search = filters.getByRole('searchbox', { name: 'Search', exact: true });
+	const status = filters.getByRole('combobox', { name: 'Status', exact: true });
+	const views = filters.getByRole('group', { name: 'Bookheap view' });
+	for (const width of [320, 360, 390, 768]) {
+		await page.setViewportSize({ width, height: 844 });
+		const boxes = await Promise.all([search.boundingBox(), status.boundingBox(), views.boundingBox()]);
+		if (boxes.some((box) => box === null)) throw new Error('A Bookheap filter is not visible');
+		const [searchBox, statusBox, viewsBox] = boxes;
+		expect(searchBox!.width).toBeGreaterThanOrEqual(160);
+		for (const other of [statusBox!, viewsBox!]) {
+			const separated = searchBox!.x + searchBox!.width <= other.x ||
+				other.x + other.width <= searchBox!.x ||
+				searchBox!.y + searchBox!.height <= other.y ||
+				other.y + other.height <= searchBox!.y;
+			expect(separated, `Bookheap search overlaps another control at ${width}px`).toBe(true);
+		}
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+	}
+	await page.setViewportSize({ width: 320, height: 844 });
+	await search.fill('Ready 2');
+	await search.press('Enter');
+	await expect(page).toHaveURL(/q=Ready(?:\+|%20)2/);
+	await expect(page.getByTestId('bh4-row')).toHaveCount(1);
+	const filteredBox = await search.boundingBox();
+	if (!filteredBox) throw new Error('Bookheap search disappeared after filtering');
+	expect(filteredBox.width).toBeGreaterThanOrEqual(160);
+	await filters.getByRole('button', { name: 'Clear filters' }).click();
+	await expect(search).toHaveValue('');
+	await expect(page.getByTestId('bh4-row')).toHaveCount(2);
+});
+
 test('switching views preserves selection and persists across reload', async ({ page }) => {
 	await authenticate(page);
 	const heap = await mockBookheap(page, readyItems(1, 2));

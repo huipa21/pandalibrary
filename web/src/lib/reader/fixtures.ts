@@ -1,4 +1,27 @@
-import { crc32 } from 'node:zlib';
+import { crc32, deflateSync } from 'node:zlib';
+
+export function pngFixture(width: number, height: number, [red, green, blue]: [number, number, number]): Buffer {
+	const chunk = (type: string, data: Buffer) => {
+		const length = Buffer.alloc(4);
+		length.writeUInt32BE(data.length);
+		const body = Buffer.concat([Buffer.from(type), data]);
+		const checksum = Buffer.alloc(4);
+		checksum.writeUInt32BE(crc32(body));
+		return Buffer.concat([length, body, checksum]);
+	};
+	const header = Buffer.alloc(13);
+	header.writeUInt32BE(width, 0);
+	header.writeUInt32BE(height, 4);
+	header.writeUInt8(8, 8);
+	header.writeUInt8(2, 9);
+	const row = Buffer.alloc(1 + width * 3);
+	for (let x = 0; x < width; x++) row.set([red, green, blue], 1 + x * 3);
+	const pixels = Buffer.concat(Array.from({ length: height }, () => row));
+	return Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		chunk('IHDR', header), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))
+	]);
+}
 
 function zip(entries: Record<string, string | Buffer>): Buffer {
 	const local: Buffer[] = [];
@@ -40,7 +63,10 @@ function zip(entries: Record<string, string | Buffer>): Buffer {
 	return Buffer.concat([...local, directory, end]);
 }
 
-export function epubFixture(title = 'Fixture Book'): Buffer {
+export function epubFixture(
+	title = 'Fixture Book',
+	options: { author?: string; cover?: Buffer } = {}
+): Buffer {
 	const image = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXcAAAAASUVORK5CYII=';
 	return zip({
 		mimetype: 'application/epub+zip',
@@ -52,11 +78,13 @@ export function epubFixture(title = 'Fixture Book'): Buffer {
 			<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
 				<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
 					<dc:identifier id="id">9780306406157</dc:identifier><dc:title>${title}</dc:title><dc:language>en</dc:language>
+					${options.author ? `<dc:creator>${options.author}</dc:creator>` : ''}
 				</metadata>
 				<manifest>
 					<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
 					<item id="first" href="first.xhtml" media-type="application/xhtml+xml" properties="scripted"/>
 					<item id="second" href="second.xhtml" media-type="application/xhtml+xml"/>
+					${options.cover ? '<item id="cover" href="cover.png" media-type="image/png" properties="cover-image"/>' : ''}
 				</manifest>
 				<spine><itemref idref="first"/><itemref idref="second"/></spine>
 			</package>`,
@@ -82,7 +110,8 @@ export function epubFixture(title = 'Fixture Book'): Buffer {
 		'OEBPS/second.xhtml': `<?xml version="1.0"?>
 			<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Second</title></head>
 				<body><h1>Second section</h1><p>Another page of the fixture.</p></body>
-			</html>`
+			</html>`,
+		...(options.cover ? { 'OEBPS/cover.png': options.cover } : {})
 	});
 }
 

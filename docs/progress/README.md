@@ -106,11 +106,32 @@ the next. Only BC8 runs the full verification gate.
 | 2 | BC5 | Bookheap grid view + unified heap covers | BC3 | [BC5](../prompts/BC5-bookheap-covers.md) | Done | `master` (uncommitted) | Saved Grid/List; shared covers; 208 px grid tiles; targeted gates pass |
 | 3 | BC6 | Dashboard rows: no Resume button, standard width | BC4 | [BC6](../prompts/BC6-dashboard-tiles.md) | Done | `master` (uncommitted) | Cover-only rows at `w-book`; Play resumes; `ux5.resume*` keys removed |
 | 3 | BC7 | All Books / shelves / related: standard grid | BC4 | [BC7](../prompts/BC7-catalog-grids.md) | Done | `master` (uncommitted) | `.book-grid` everywhere; related carousel `w-book`; compact shelf remove button |
-| 4 | BC8 | Integration, real-server E2E, visual QA, full gate | BC1-BC7 | [BC8](../prompts/BC8-integration.md) | Ready | `task/bc8` | |
+| 4 | BC8 | Integration, real-server E2E, visual QA, full gate | BC1-BC7 | [BC8](../prompts/BC8-integration.md) | Blocked | `master` (uncommitted) | Full gate and written-spec visual QA pass; original reference-image comparison unavailable |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-08 — BC8 — BC1-BC7 were already integrated in `master`; shared
+  tile-lift CSS now serves catalog and Bookheap, the unused `grid` alias is
+  removed, and the quick-view placeholder uses the 2:3 token. Adjusted the
+  light cloth palettes so author text meets 4.5:1 against the rendered
+  texture. Fixed status changes not refreshing dashboard feeds or automatic
+  shelves, including a change during an in-flight shelf load. Concurrent
+  dashboard row loads now coalesce their cover-state requests with a bounded
+  one-second wait; later loads and batches over 100 IDs remain independent.
+  Corrected mobile search/upload overlap, kept the Bookheap filter usable at
+  narrow widths, and reserved touch space for Info beside the author. A
+  real-server suite imports 50 books, covers all eight statuses, batching
+  across surfaces, saved-file Play, dashboard movement, contrast, keyboard,
+  reduced motion and touch. The rendered contrast check exercises all eight
+  actual palettes independently of the IDs assigned to imported books.
+  Migration coverage upgrades and rolls back a copied v4 database without
+  altering the source. Captured 40 screenshots at 360/768/1440 px and
+  reviewed the written requirements; direct comparison with the original
+  Images 1-3 remains blocked because those images were unavailable. Full gate
+  passed: Go sqlc/lint/test/build, Svelte check 0/0, 382 Vitest cases,
+  production build and 180 real-server Playwright cases.
 
 - 2026-11-07 — BC7 — Grid mode in `BookBrowser` (All Books and
   library/author/series/tag pages), the manual shelf and the system shelf

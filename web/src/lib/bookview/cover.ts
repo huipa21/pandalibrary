@@ -5,10 +5,10 @@ export const FORMAT_ORDER = ['epub', 'pdf', 'cbz', 'azw3', 'mobi', 'fb2', 'fbz']
 const CLOTH = [
 	{ name: 'navy', board: '#1f2f5c', spine: '#142044', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#18223d', author: '#d9b768' },
 	{ name: 'forest', board: '#24462a', spine: '#18321d', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#18351e', author: '#d9b768' },
-	{ name: 'ochre', board: '#9a7618', spine: '#6e540f', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3e2f09', author: '#3b2a17' },
-	{ name: 'khaki', board: '#7a6446', spine: '#55452f', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#332719', author: '#3b2a17' },
+	{ name: 'ochre', board: '#cbb153', spine: '#6e540f', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3e2f09', author: '#120c06' },
+	{ name: 'khaki', board: '#c6b18f', spine: '#55452f', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#332719', author: '#120c06' },
 	{ name: 'rust', board: '#8b3a17', spine: '#612810', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#4c1d0a', author: '#d9b768' },
-	{ name: 'taupe', board: '#86704f', spine: '#5c4c36', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3d3021', author: '#3b2a17' },
+	{ name: 'taupe', board: '#c7b495', spine: '#5c4c36', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3d3021', author: '#120c06' },
 	{ name: 'burgundy', board: '#5e1f2a', spine: '#40151d', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3d131a', author: '#d9b768' },
 	{ name: 'slate-teal', board: '#24494d', spine: '#193335', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#163035', author: '#d9b768' }
 ] as const;

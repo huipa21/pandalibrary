@@ -82,11 +82,11 @@ hand-offs and update its prompts if the contracts changed.
 | BV8 | [BV8-reading-log-tab.md](./BV8-reading-log-tab.md) | Done |
 | BV9 | [BV9-highlights-tab.md](./BV9-highlights-tab.md) | Done |
 | BV10 | [BV10-integration.md](./BV10-integration.md) | Done |
-| BC1 | [BC1-reading-statuses.md](./BC1-reading-statuses.md) | Ready |
+| BC1 | [BC1-reading-statuses.md](./BC1-reading-statuses.md) | Done |
 | BC2 | [BC2-book-states.md](./BC2-book-states.md) | Done |
 | BC3 | [BC3-cloth-cover.md](./BC3-cloth-cover.md) | Done |
 | BC4 | [BC4-cover-tile.md](./BC4-cover-tile.md) | Done |
-| BC5 | [BC5-bookheap-covers.md](./BC5-bookheap-covers.md) | Ready |
+| BC5 | [BC5-bookheap-covers.md](./BC5-bookheap-covers.md) | Done |
 | BC6 | [BC6-dashboard-tiles.md](./BC6-dashboard-tiles.md) | Done |
 | BC7 | [BC7-catalog-grids.md](./BC7-catalog-grids.md) | Done |
-| BC8 | [BC8-integration.md](./BC8-integration.md) | Ready |
+| BC8 | [BC8-integration.md](./BC8-integration.md) | Blocked: original reference images unavailable |

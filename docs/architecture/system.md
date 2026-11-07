@@ -239,6 +239,7 @@ keyset cursors (`?cursor=…&limit=…`).
 | `/api/v1/books/{id}/metadata/apply` | admin | Apply per-field choices `{field: {source, ref, value}}` |
 | `/api/v1/search?q=` | session | Books; `/api/v1/search/annotations?q=` for the user's own highlights/notes |
 | `/api/v1/me/books/{id}` | session | Status, rating, progress, highlights, notes |
+| `/api/v1/me/book-states?ids=1,2` | session | Batched status and progress for visible book covers (BC2) |
 | `/api/v1/me/books/{id}/reading-summary`, `/sessions`, `/sessions/{sessionId}` | session | Per-book reading log: summary, paginated sessions, owner-only session delete (BV2) |
 | `/api/v1/sync/pull`, `/api/v1/sync/push` | session | PWA offline sync (§10) |
 | `/api/v1/me/profile` | session | Read/update the current user's display name and locale |
@@ -319,6 +320,23 @@ parameters. I1 can reuse `catalog.SortTitle` and `blobstore.BookPath`, and call
 `search.IndexBook` within its own write transaction after updating metadata. S1 and other
 new book-derived queries must apply the same SQL predicate and extend the visibility
 test harness. Blob cleanup and general book-file publication remain I1/J1 work.
+
+### Batched book states contract (BC2)
+
+`GET /api/v1/me/book-states?ids=1,2,3` accepts one comma-separated list of
+1–100 canonical positive integer IDs. The limit counts entries before
+deduplication; duplicate IDs are returned at most once. Missing, empty,
+malformed, repeated or unknown query parameters return 400
+`application/problem+json`; an unauthenticated request returns 401.
+
+The response is `{"items":[{"book_id":1,"status":"reading",
+"percentage":0.42,"book_file_id":7,"updated_at":"2026-11-07T12:00:00Z"}]}`,
+ordered by book ID. Status and progress belong to the signed-in user, and the
+same library-access and hidden-book checks as the dashboard apply. Invisible
+or nonexistent books, and books with neither a user-book nor progress row, are
+omitted. A progress-only row has status `unread`; `percentage` (a fraction
+from 0 to 1) and `book_file_id` are nullable. `updated_at` is the latest
+relevant row timestamp in RFC3339 UTC. An empty result is `{"items":[]}`.
 
 ### Reading log contract (BV2)
 

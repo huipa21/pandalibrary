@@ -361,6 +361,22 @@ func TestReadingStatusesMigrationPreservesRowsAndMapsRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	original := databases
+	copyPath := filepath.Join(t.TempDir(), "pre-bc-copy.db")
+	if _, err := original.Writer.ExecContext(ctx, "VACUUM INTO ?", copyPath); err != nil {
+		t.Fatal(err)
+	}
+	copyDB, err := db.Open(ctx, copyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := copyDB.Close(); err != nil {
+			t.Errorf("close copied database: %v", err)
+		}
+	})
+	databases, databasePath = copyDB, copyPath
+
 	assertState := func(stage string, statuses []string) {
 		t.Helper()
 		for i, want := range statuses {
@@ -436,6 +452,20 @@ func TestReadingStatusesMigrationPreservesRowsAndMapsRollback(t *testing.T) {
 	var remaining int
 	if err := databases.Writer.QueryRowContext(ctx, `SELECT count(*) FROM user_books WHERE book_id = 101`).Scan(&remaining); err != nil || remaining != 0 {
 		t.Fatalf("book deletion did not cascade: count = %d, %v", remaining, err)
+	}
+	current, _, err := v4.Status(ctx)
+	if err != nil || current != 4 {
+		t.Fatalf("original database version = %d, %v, want 4", current, err)
+	}
+	for i, want := range old {
+		var status string
+		var rating, started, finished, updated, rev int64
+		err := original.Writer.QueryRowContext(ctx, `SELECT status, rating, started_at, finished_at, updated_at, rev
+			FROM user_books WHERE user_id = 1 AND book_id = ?`, 101+i).
+			Scan(&status, &rating, &started, &finished, &updated, &rev)
+		if err != nil || status != want || rating != 7 || started != 12 || finished != 34 || updated != 56 || rev != int64(i+1) {
+			t.Fatalf("original row %d = %q,%d,%d,%d,%d,%d, %v", 101+i, status, rating, started, finished, updated, rev, err)
+		}
 	}
 }
 

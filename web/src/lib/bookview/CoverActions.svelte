@@ -21,7 +21,7 @@
 
 	interface Props {
 		book: Book | SearchResult;
-		variant: 'tile' | 'grid' | 'list' | 'search';
+		variant: 'tile' | 'list' | 'search';
 	}
 
 	let { book, variant }: Props = $props();
@@ -35,7 +35,7 @@
 
 	const authors = $derived(book.authors.map((author) => typeof author === 'string' ? author : author.name));
 	const files = $derived(fullBook(book) ? book.files : []);
-	const tile = $derived(variant === 'tile' || variant === 'grid');
+	const tile = $derived(variant === 'tile');
 	const readable = $derived(variant !== 'search' && files.some((file) => readerFormat(file.format) !== null));
 	const coverState = $derived.by(() => {
 		$offlineStatus.account;
@@ -103,7 +103,7 @@
 {/snippet}
 
 <div class={tile ? 'min-w-0 w-full' : 'w-20 shrink-0 sm:w-24'}>
-	<div class="cover-frame relative" class:tile class:list-cover={variant === 'list'} class:has-progress={hasProgress}>
+	<div class="cover-frame relative" class:tile class:book-tile-lift={tile} class:list-cover={variant === 'list'} class:has-progress={hasProgress}>
 		<a
 			class="block rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
 			href={`/books/${book.id}`}
@@ -166,11 +166,6 @@
 </div>
 
 <style>
-	.tile {
-		border-radius: 0.375rem;
-		transition: transform 150ms ease-out, box-shadow 150ms;
-	}
-
 	.cover-overlay {
 		position: absolute;
 		inset: 0;
@@ -192,12 +187,6 @@
 	}
 
 	@media (hover: hover) {
-		.tile:hover,
-		.tile:focus-within {
-			transform: translateY(-4px);
-			box-shadow: 0 10px 24px -6px rgb(15 23 42 / 35%);
-		}
-
 		.cover-overlay {
 			background: rgb(15 23 42 / 45%);
 			opacity: 0;
@@ -225,6 +214,11 @@
 	}
 
 	@media (hover: none) {
+		/* Keep the persistent quick-view button clear of the author. */
+		.cover-frame :global(.cover-footer) {
+			width: calc(78% - 2.5rem);
+		}
+
 		.cover-overlay {
 			align-items: end;
 			justify-content: end;
@@ -246,16 +240,10 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.tile,
 		.cover-overlay,
 		.cover-status.unread,
 		.cover-progress-visibility {
 			transition: none;
-		}
-
-		.tile:hover,
-		.tile:focus-within {
-			transform: none;
 		}
 	}
 </style>

@@ -1,6 +1,8 @@
 # Book View — architecture
 
-Status: implemented (BV1–BV10, see [the plan](../plans/book-view-plan.md)).
+Status: implemented (BV1–BV10 and BC1–BC8; see the
+[book view plan](../plans/book-view-plan.md) and
+[book cover plan](../plans/book-cover-plan.md)).
 This document describes how the book detail pages, the quick view drawer and
 the generated covers fit together. The system overview is in
 [system.md](./system.md); the API conventions are in its §5.
@@ -52,7 +54,7 @@ Defined in `bookview/events.ts`; both are `window` `CustomEvent`s.
 | Event | Detail | Producer | Consumers |
 |---|---|---|---|
 | `pandalibrary-quick-view` (`QUICK_VIEW_EVENT`) | `{ bookId, book?, trigger }` | `openQuickView()` from cover Info buttons; records `document.activeElement` as `trigger` | `QuickViewHost` (mounted once in `AppShell`) |
-| `pandalibrary-book-state-changed` (`BOOK_STATE_CHANGED_EVENT`) | `{ bookId }` | `notifyBookStateChanged()` after every status, rating, date, review or session change | open drawer, all tabs, dashboard rows; each reloads only for its own `bookId` |
+| `pandalibrary-book-state-changed` (`BOOK_STATE_CHANGED_EVENT`) | `{ bookId }` | `notifyBookStateChanged()` after every status, rating, date, review or session change | the book-state cache refreshes that book; open views reload it, and started status-filtered dashboard rows and automatic shelf rows refresh their feeds |
 
 Shelf membership changes keep using the existing
 `pandalibrary-shelves-changed` event.
@@ -63,42 +65,81 @@ Later features import these and must not fork them.
 
 | Module | Purpose |
 |---|---|
-| `BookCover.svelte` | Real cover with `onerror` fallback to the generated cover; `role="img"` named by the title |
+| `BookCover.svelte` | 2:3 real cover with `onerror` fallback to the cloth cover; generated cover has `role="img"` named by the title |
 | `FormatBadge.svelte` | Top-left format pill (`EPUB +1`, tooltip lists all formats) |
-| `CoverActions.svelte` | Hover/focus Info + Read buttons; persistent Info button on touch devices |
+| `CoverActions.svelte`, `CoverProgress.svelte` | Cover-only tile chrome: status badge, hover/focus Info and Play, and progress; persistent Info and progress on touch |
 | `RatingStars.svelte`, `rating.ts` | Half-star rating display/editor (1–10 scale) |
 | `ReadStatusMenu.svelte`, `StatusIcon.svelte` | Localized eight-status menu and reusable status icons; **Re-reading** is an explicit stored status, independent of attempt history |
 | `ProgressRing.svelte` | Circular progress used by Details and the Reading Log |
 | `ExpandableText.svelte` | Clamp with "Show more" |
 | `IdentifierLinks.svelte`, `identifiers.ts` | External links from identifiers (§ plan decision 5) |
 | `Icon.svelte` | Inline SVG icons (no icon dependency) |
-| `cover.ts` | Tones, title truncation, format ordering and tones |
+| `cover.ts` | Deterministic cloth palettes, title scaling/truncation, format ordering and tones |
 | `format.ts` | Size, duration, percent, date and relative-time formatting helpers |
 | `user-book.ts` | Status labels/tones and `saveUserBook` — `user_books` upsert through `/sync/push` (LWW) |
 | `read.ts` | `readTarget(book, account)` — resume the saved file or the first readable format |
+| `book-states.svelte.ts` | Account-scoped, coalescing status/progress store for cover tiles, with offline replay |
 | `log-api.ts` | Typed reading-log client (`getReadingSummary`, `listBookSessions`, `deleteBookSession`, `addManualSession`, `viewerTimezone`) |
 
 Feature folders: `quickview/` (drawer), `details/`, `files/`, `log/`,
 `highlights/` (one per tab).
 
-## 5. Cover generation rules
+## 5. Cover generation, tiles and state
 
 Covers are generated client-side; there is no server image.
 
 - Shown when the book has no cover or the real cover fails to load.
-- Background tone: one of 8 muted tones (emerald, teal, sky, indigo, violet,
-  rose, amber, slate) chosen by an integer hash of `book.id`, so a book always
-  gets the same tone. A darker spine shade sits on the left edge.
-- Title: hard cap of 80 graphemes (`Intl.Segmenter`, ending in "…"), then a
-  CSS line clamp. The first author is shown on one line. Text scales with the
-  cover via container query units.
+- An integer hash of `book.id` chooses one of eight cloth palettes: navy,
+  forest, ochre, khaki, rust, taupe, burgundy or slate-teal. A noise texture,
+  darker spine and double inset frame surround a cream label. The label holds
+  an optional series eyebrow, serif title and optional subtitle; an ornament
+  and the first author sit at the bottom. Dark ink on the light palettes and
+  gold on dark cloth meet at least 4.5:1 against the rendered texture in the
+  real-browser contrast test.
+- Title size follows grapheme count, capped at 80 graphemes (`Intl.Segmenter`,
+  ending in "…") and clamped to five lines (three on small covers). The first
+  author is truncated on one line. Text scales with container query units.
 - Format badge: the preferred format in the order epub, pdf, cbz, azw3, mobi,
   fb2, fbz (unknown formats sort last alphabetically); `+N` when there are
   more. Tones: EPUB emerald, PDF red, CBZ amber, AZW3/MOBI sky, FB2/FBZ violet.
   No badge without files. Search results get the generated cover and Info only
   (they carry no files).
-- Card titles under the cover are clamped (3 lines in the grid, 2 in the list)
-  and carry the full title as a tooltip.
+- Grid and carousel cards contain no title or author under the cover; the
+  details link retains the title as accessible description and tooltip. List
+  and search views retain text. Editable manual shelves add a remove button
+  below the tile. Bookheap grid tiles retain title, filename, selection and
+  heap-specific status because staged files are not catalog books.
+- `--aspect-book` is `2 / 3`; `--spacing-book` is `13rem` (208 px at the
+  default root size). At `sm` and above, `.book-grid`, dashboard/related rows
+  and Bookheap use that width. Below `sm`, grids use two fluid columns and
+  horizontal rows use 9rem tiles. Both catalog and heap tiles share
+  `.book-tile-lift`; hover/focus lifts 4 px, while touch and reduced-motion
+  settings disable the transform.
+- The top-right badge shows the localized stored status and icon; unread is
+  visible on hover/focus (always on touch). The menu is placed in the
+  top layer, or moved to the document body when popovers are unavailable, so
+  scrolling rows do not clip it. Offline badges are read-only; search results
+  do not show one. Progress above zero appears on hover/focus and on touch;
+  `finished` displays 100%. On touch, the author footer reserves room for
+  the persistent Info button and may truncate sooner. Play resumes the saved
+  readable file, otherwise it starts the first supported format. It replaces
+  the former dashboard Resume button.
+- The eight stored statuses are `unread`, `want_to_read`, `reading`,
+  `on_hold`, `rereading`, `finished` (labelled Read), `skimmed`, and
+  `abandoned`. `on_hold` and `rereading` count as in progress; `skimmed`
+  joins the Read dashboard section but does not increment finished-book stats.
+  Migration 00005 preserves existing rows; rollback maps `on_hold` and
+  `rereading` to `reading`, and `skimmed` to `finished`.
+- `bookState(id)` returns a stable reactive `{status, percentage, loading,
+  error}` per book and account. Requests in one microtask are coalesced and
+  split into batches of at most 100. Concurrently loading dashboard rows
+  hold their cover requests until the rows render, with a one-second maximum
+  wait if a row stalls; later loads or additional batches can issue another
+  request. A missing row means unread without progress.
+  `refreshBookStates(ids?)` refreshes cached IDs. The store invalidates on
+  account changes, book-state events and successful sync; offline it reads
+  IndexedDB rows and replays queued mutations. Failed loads are logged and
+  expose `error` rather than displaying a fabricated state.
 
 ## 6. Attempt derivation
 
@@ -128,6 +169,7 @@ visibility rules (an invisible book is `404`).
 | GET | `/api/v1/books/{id}` (files gain `original_filename`, `created_at`) | book context, drawer |
 | GET | `/api/v1/books/{id}/shelves` | drawer "Collections", Details shelves |
 | GET | `/api/v1/me/books/{id}` | user book, progress, highlights, notes |
+| GET | `/api/v1/me/book-states?ids=1,2` | batched visible-book status and progress for cover tiles |
 | GET | `/api/v1/me/books/{id}/reading-summary?timezone=` | Details "Your reading", Reading Log, status label |
 | GET | `/api/v1/me/books/{id}/sessions?range=&timezone=&limit=&cursor=` | Reading Log sessions table |
 | DELETE | `/api/v1/me/books/{id}/sessions/{sessionId}` | Reading Log delete |
@@ -149,6 +191,7 @@ The response shapes are in [system.md §5 "Reading log contract
 | Files | Lists cached files; reading saved copies works; download, save and remove actions that need the server are disabled |
 | Reading Log | Shows "Reading log needs a connection" with a retry that reloads once back online |
 | Highlights | Reads highlights and notes from the local reader state; export is disabled |
+| Cover tiles | Reads synchronized state and pending outbox mutations from IndexedDB; status badges are read-only while offline |
 
 Changes made offline in the reader (progress, highlights, sessions) still go
 through the outbox and appear in these views after syncing.
@@ -161,3 +204,8 @@ through the outbox and appear in these views after syncing.
 - Real server: `web/src/routes/bookview-real.e2e.ts` seeds books through the
   API and walks catalog → drawer → every tab → reader, then checks that the
   reading summary and sessions survive a server restart.
+- Cover integration: `web/src/routes/covers-real.e2e.ts` imports 50 books,
+  exercises all eight statuses and the saved file, checks batching and tile
+  sizing, measures rendered cloth contrast, and captures rest/hover/menu
+  screenshots at 360, 768 and 1440 px. The migration test upgrades a copied
+  version-4 database and checks preserved rows and rollback mappings.

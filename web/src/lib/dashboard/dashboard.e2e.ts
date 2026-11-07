@@ -493,6 +493,76 @@ test('opens a cover status menu beyond the dashboard scroller', async ({ page })
 	await expect(page).toHaveURL('/');
 });
 
+test('refreshes status-based dashboard sections after book state changes', async ({ page }) => {
+	const server = state();
+	await mockApi(page, server);
+	await page.goto('/');
+	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
+	const recent = page.locator('[data-dashboard-section="recently_added"]');
+	const read = page.locator('[data-dashboard-section="read"]');
+	await expect(continuing.getByTitle('First Book', { exact: true })).toBeVisible();
+	await read.scrollIntoViewIfNeeded();
+	await expect(read.getByText('No books in this section yet.')).toBeVisible();
+	await expect(recent.getByText('No books in this section yet.')).toBeVisible();
+	const count = (section: string) => server.feedRequests.filter((request) => request.section === section).length;
+	const before = {
+		continuing: count('continue_reading'),
+		recent: count('recently_added'),
+		read: count('read')
+	};
+	await page.evaluate(() => window.dispatchEvent(new CustomEvent('pandalibrary-book-state-changed', {
+		detail: { bookId: 21 }
+	})));
+	await expect.poll(() => count('continue_reading')).toBe(before.continuing + 1);
+	await expect.poll(() => count('read')).toBe(before.read + 1);
+	expect(count('recently_added')).toBe(before.recent);
+});
+
+test('refreshes an automatic shelf when book state changes during its first load', async ({ page }) => {
+	const server = state();
+	seed(server, 1, { version: 1, sections: [{ id: 'shelf:8' }, { id: 'shelf:7' }] });
+	await mockApi(page, server);
+	let startFirst!: () => void;
+	let releaseFirst!: () => void;
+	let finishFirst!: () => void;
+	const started = new Promise<void>((resolve) => { startFirst = resolve; });
+	const release = new Promise<void>((resolve) => { releaseFirst = resolve; });
+	const finished = new Promise<void>((resolve) => { finishFirst = resolve; });
+	let requests = 0;
+	let manualRequests = 0;
+	page.on('request', (request) => {
+		if (new URL(request.url()).pathname === '/api/v1/shelves/7/books') manualRequests += 1;
+	});
+	await page.route((url) => url.pathname === '/api/v1/shelves/8/books', async (route) => {
+		requests += 1;
+		if (requests === 1) {
+			startFirst();
+			await release;
+			try {
+				await route.fulfill({ json: { items: [book(21, 'Stale Book')], next_cursor: null } });
+			} finally {
+				finishFirst();
+			}
+		} else {
+			await route.fulfill({ json: { items: [book(22, 'Fresh Book')], next_cursor: null } });
+		}
+	});
+	await page.goto('/');
+	await started;
+	await expect.poll(() => manualRequests).toBeGreaterThan(0);
+	const manualBefore = manualRequests;
+	await page.evaluate(() => window.dispatchEvent(new CustomEvent('pandalibrary-book-state-changed', {
+		detail: { bookId: 21 }
+	})));
+	releaseFirst();
+	const panel = page.locator('[data-dashboard-section="shelf:8"]');
+	await expect(panel.getByTitle('Fresh Book', { exact: true })).toBeVisible();
+	await finished;
+	await expect(panel.getByTitle('Stale Book', { exact: true })).toHaveCount(0);
+	expect(requests).toBe(2);
+	expect(manualRequests).toBe(manualBefore);
+});
+
 test('isolates accounts and synchronizes a dashboard saved while offline', async ({ page, context }) => {
 	const server = state();
 	seed(server, 1, { version: 1, sections: [{ id: 'read' }] });

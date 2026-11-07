@@ -136,7 +136,7 @@
 			<div class="flex-1 space-y-4 px-5" role="status" aria-live="polite">
 				<h2 id={titleId} class="sr-only">{m['bv5.dialog_label']()}</h2>
 				<div class="flex gap-4" aria-hidden="true">
-					<div class="aspect-[3/4] w-24 animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none"></div>
+					<div class="aspect-book w-24 animate-pulse rounded-lg bg-slate-100 motion-reduce:animate-none"></div>
 					<div class="flex-1 space-y-2 pt-1">
 						<div class="h-5 w-3/4 animate-pulse rounded bg-slate-100 motion-reduce:animate-none"></div>
 						<div class="h-4 w-1/2 animate-pulse rounded bg-slate-100 motion-reduce:animate-none"></div>

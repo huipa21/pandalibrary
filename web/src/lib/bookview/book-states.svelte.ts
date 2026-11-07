@@ -10,6 +10,7 @@ import { READ_STATUSES, type ReadStatus } from './user-book.js';
 /** The server rejects larger batches; the store chunks its requests to this size. */
 export const BOOK_STATES_BATCH = 100;
 const SYNC_WAIT_MS = 1000;
+const BATCH_HOLD_MS = 1000;
 
 export interface BookStateItem {
 	book_id: number;
@@ -136,6 +137,7 @@ class BookStatesStore {
 	#syncing = false;
 	#syncSettled: Promise<void> | null = null;
 	#endSync: (() => void) | null = null;
+	#batchHolds = new Set<Promise<void>>();
 
 	get(bookId: number): CoverBookState {
 		if (!validBookId(bookId)) throw new RangeError('The book-state ID must be a positive integer.');
@@ -155,6 +157,19 @@ class BookStatesStore {
 		this.#syncAccount();
 		const cached = (ids ?? [...this.#entries.keys()]).filter((id) => this.#entries.has(id) && validBookId(id));
 		return cached.length === 0 ? Promise.resolve() : this.#schedule(cached);
+	}
+
+	holdBatch(): () => void {
+		let resolve!: () => void;
+		const pending = new Promise<void>((done) => { resolve = done; });
+		this.#batchHolds.add(pending);
+		const release = () => {
+			if (!this.#batchHolds.delete(pending)) return;
+			clearTimeout(timeout);
+			resolve();
+		};
+		const timeout = setTimeout(release, BATCH_HOLD_MS);
+		return release;
 	}
 
 	/** Drops the cache when the signed-in account changes. */
@@ -183,6 +198,17 @@ class BookStatesStore {
 				await Promise.race([
 					this.#syncSettled,
 					new Promise<void>((resolve) => { timeout = setTimeout(resolve, SYNC_WAIT_MS); })
+				]);
+				if (timeout !== undefined) clearTimeout(timeout);
+			}
+			const deadline = Date.now() + BATCH_HOLD_MS;
+			while (this.#batchHolds.size > 0) {
+				const remaining = deadline - Date.now();
+				if (remaining <= 0) break;
+				let timeout: ReturnType<typeof setTimeout> | undefined;
+				await Promise.race([
+					Promise.all([...this.#batchHolds]),
+					new Promise<void>((resolve) => { timeout = setTimeout(resolve, remaining); })
 				]);
 				if (timeout !== undefined) clearTimeout(timeout);
 			}
@@ -296,4 +322,9 @@ export function bookState(bookId: number): CoverBookState {
 /** Refetches the given cached books, or every cached book when no IDs are given. */
 export function refreshBookStates(ids?: number[]): Promise<void> {
 	return store.refresh(ids);
+}
+
+/** Coalesces independently loaded rows; releases automatically if one stalls. */
+export function holdBookStateBatch(): () => void {
+	return store.holdBatch();
 }

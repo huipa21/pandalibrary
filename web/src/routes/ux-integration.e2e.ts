@@ -283,16 +283,20 @@ test('real sidebar shelves, automatic rule changes, favorites and bilingual resp
 	const automatic = sidebar.getByRole('link', { name: /^Automatic UX shelf/ });
 	await expect(automatic).toContainText('1');
 	await automatic.click();
-	await expect(page.getByRole('main').getByRole('link', { name: 'UXPDF', exact: true })).toBeVisible();
+	const shelfBook = page.getByRole('main').locator(`a[href="/books/${book.id}"]`);
+	await expect(shelfBook).toBeVisible();
+	await expect(shelfBook).toHaveAttribute('title', 'UXPDF');
 	expect((await page.request.patch(`/api/v1/books/${book.id}`, { data: { title: 'Changed shelf input' } })).ok()).toBe(true);
 	await page.reload();
-	await expect(page.getByRole('main').getByRole('link', { name: 'Changed shelf input', exact: true })).toHaveCount(0);
+	await expect(page.getByText('This shelf has no books you can see.')).toBeVisible();
+	await expect(shelfBook).toHaveCount(0);
 	await expect(automatic).toContainText('0');
 	expect((await page.request.patch(`/api/v1/books/${book.id}`, { data: { title: 'UXPDF' } })).ok()).toBe(true);
 	const { shelf: favorites } = await (await page.request.get('/api/v1/shelves/system/favorites')).json() as { shelf: { shelf_id: number } };
 	expect((await page.request.put(`/api/v1/shelves/${favorites.shelf_id}/books/${book.id}`, { data: {} })).ok()).toBe(true);
 	await page.goto('/shelves/system/favorites');
-	await expect(page.getByRole('main').getByRole('link', { name: 'UXPDF', exact: true })).toBeVisible();
+	await expect(shelfBook).toBeVisible();
+	await expect(shelfBook).toHaveAttribute('title', 'UXPDF');
 	const { user } = await (await page.request.get('/api/v1/auth/me')).json() as { user: { id: number } };
 	for (const locale of ['en', 'zh']) {
 		expect((await page.request.patch(`/api/v1/admin/users/${user.id}`, { data: { locale } })).ok()).toBe(true);

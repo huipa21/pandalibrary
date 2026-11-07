@@ -1,7 +1,9 @@
 # Book Cover (BC): cloth default covers, unified cover tiles, status and progress on covers
 
-Status: Planned. Requested 2026-11-07. Baseline: `6a6709b` (`master`).
-Local issue specifications only; nothing is published to GitHub.
+Status: Implementation and full gate complete; direct comparison with the
+original reference images is blocked because they are unavailable in this
+session. Requested 2026-11-07. Baseline: `6a6709b` (`master`). Local issue
+specifications only; nothing is published to GitHub.
 
 ## Request (as given, split into requirements)
 

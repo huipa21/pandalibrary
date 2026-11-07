@@ -5,8 +5,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { crc32, deflateSync } from 'node:zlib';
-import { pdfFixture } from '../lib/reader/fixtures.js';
+import { crc32 } from 'node:zlib';
+import { pdfFixture, pngFixture } from '../lib/reader/fixtures.js';
 import { signInRealAdmin } from '../lib/real-auth.js';
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
@@ -52,29 +52,6 @@ function zip(entries: Record<string, string | Buffer>): Buffer {
 	return Buffer.concat([...local, directory, end]);
 }
 
-function png(width: number, height: number, [red, green, blue]: [number, number, number]): Buffer {
-	const chunk = (type: string, data: Buffer) => {
-		const length = Buffer.alloc(4);
-		length.writeUInt32BE(data.length);
-		const body = Buffer.concat([Buffer.from(type), data]);
-		const checksum = Buffer.alloc(4);
-		checksum.writeUInt32BE(crc32(body));
-		return Buffer.concat([length, body, checksum]);
-	};
-	const header = Buffer.alloc(13);
-	header.writeUInt32BE(width, 0);
-	header.writeUInt32BE(height, 4);
-	header.writeUInt8(8, 8);
-	header.writeUInt8(2, 9);
-	const row = Buffer.alloc(1 + width * 3);
-	for (let x = 0; x < width; x++) row.set([red, green, blue], 1 + x * 3);
-	const pixels = Buffer.concat(Array.from({ length: height }, () => row));
-	return Buffer.concat([
-		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-		chunk('IHDR', header), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))
-	]);
-}
-
 function epub(title: string, author: string, cover = false): Buffer {
 	const coverItem = cover ? '<item id="cover" href="cover.png" media-type="image/png" properties="cover-image"/>' : '';
 	return zip({
@@ -83,7 +60,7 @@ function epub(title: string, author: string, cover = false): Buffer {
 		'OEBPS/book.opf': `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf"><dc:identifier id="id" opf:scheme="uuid">urn:uuid:${randomUUID()}</dc:identifier><dc:title>${title}</dc:title><dc:creator>${author}</dc:creator><dc:language>en</dc:language></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="one" href="one.xhtml" media-type="application/xhtml+xml"/>${coverItem}</manifest><spine><itemref idref="one"/></spine></package>`,
 		'OEBPS/nav.xhtml': '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="one.xhtml">One</a></li></ol></nav></body></html>',
 		'OEBPS/one.xhtml': `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>One</title></head><body><h1>${title}</h1><p>Book view fixture text.</p></body></html>`,
-		...(cover ? { 'OEBPS/cover.png': png(60, 90, [32, 96, 160]) } : {})
+		...(cover ? { 'OEBPS/cover.png': pngFixture(60, 90, [32, 96, 160]) } : {})
 	});
 }
 

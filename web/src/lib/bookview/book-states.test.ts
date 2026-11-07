@@ -133,6 +133,65 @@ describe('bookState', () => {
 		expect(sizes).toEqual([100, 51]);
 	});
 
+	it('coalesces independently rendered dashboard rows until all loads settle', async () => {
+		const releaseFirst = store.holdBookStateBatch();
+		const releaseSecond = store.holdBookStateBatch();
+		const first = store.bookState(1);
+		await settle();
+		expect(mocks.request).not.toHaveBeenCalled();
+		releaseFirst();
+		const second = store.bookState(2);
+		await settle();
+		expect(mocks.request).not.toHaveBeenCalled();
+		releaseSecond();
+		await settle();
+		expect(mocks.request).toHaveBeenCalledTimes(1);
+		expect(mocks.request.mock.calls[0][0]).toBe('/me/book-states?ids=1,2');
+		expect(first.loading || second.loading).toBe(false);
+	});
+
+	it('releases a stalled row hold after a bounded wait', async () => {
+		vi.useFakeTimers();
+		const release = store.holdBookStateBatch();
+		const state = store.bookState(1);
+		await vi.advanceTimersByTimeAsync(999);
+		expect(mocks.request).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(mocks.request).toHaveBeenCalledTimes(1);
+		expect(state).toMatchObject({ status: 'reading', loading: false, error: false });
+		release();
+		release();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(mocks.request).toHaveBeenCalledTimes(1);
+	});
+
+	it('bounds the batch wait even when another row starts later', async () => {
+		vi.useFakeTimers();
+		const releaseFirst = store.holdBookStateBatch();
+		const state = store.bookState(1);
+		await vi.advanceTimersByTimeAsync(500);
+		const releaseSecond = store.holdBookStateBatch();
+		await vi.advanceTimersByTimeAsync(500);
+		expect(mocks.request).toHaveBeenCalledTimes(1);
+		expect(state.loading).toBe(false);
+		releaseFirst();
+		releaseSecond();
+	});
+
+	it('discards held requests from a previous account', async () => {
+		const release = store.holdBookStateBatch();
+		const previous = store.bookState(1);
+		await settle();
+		mocks.account.current = 2;
+		const current = store.bookState(2);
+		release();
+		await settle();
+		expect(mocks.request).toHaveBeenCalledTimes(1);
+		expect(mocks.request.mock.calls[0][0]).toBe('/me/book-states?ids=2');
+		expect(current.loading).toBe(false);
+		expect(previous.loading).toBe(true);
+	});
+
 	it('coalesces the initial page request with a synchronization already in progress', async () => {
 		mocks.offlineStatus.set({ syncing: true, error: false });
 		const states = [1, 2, 3].map((id) => store.bookState(id));

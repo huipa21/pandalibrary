@@ -107,7 +107,7 @@
 			<span class={viewer ? 'hidden sm:inline' : ''}>{m['common.app_name']()}</span>
 			{#if viewer}<span class="sr-only sm:hidden">{m['common.app_name']()}</span>{/if}
 		</a>
-		<div class="ml-auto flex min-w-0 items-center gap-4">
+		<div class="ml-auto flex min-w-0 items-center gap-2 sm:gap-4">
 			{#if viewer && pathname !== '/search'}
 				<div class="shell-search min-w-0">
 					<SearchBox />

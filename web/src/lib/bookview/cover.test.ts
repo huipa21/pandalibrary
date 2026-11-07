@@ -7,14 +7,14 @@ describe('cover helpers', () => {
 	it('chooses deterministic cloth palettes across book IDs 1-1000', () => {
 		const palettes = Array.from({ length: 1000 }, (_, index) => coverCloth(index + 1));
 		expect(new Map(palettes.map(({ name, board }) => [name, board]))).toEqual(new Map([
-			['navy', '#1f2f5c'], ['forest', '#24462a'], ['ochre', '#9a7618'],
-			['khaki', '#7a6446'], ['rust', '#8b3a17'], ['taupe', '#86704f'],
+			['navy', '#1f2f5c'], ['forest', '#24462a'], ['ochre', '#cbb153'],
+			['khaki', '#c6b18f'], ['rust', '#8b3a17'], ['taupe', '#c7b495'],
 			['burgundy', '#5e1f2a'], ['slate-teal', '#24494d']
 		]));
 		for (const palette of palettes) {
 			expect(palette.plate).toBe('#f3eedf');
 			expect(palette.author).toBe(
-				['ochre', 'khaki', 'taupe'].includes(palette.name) ? '#3b2a17' : '#d9b768'
+				['ochre', 'khaki', 'taupe'].includes(palette.name) ? '#120c06' : '#d9b768'
 			);
 			expect(palette).toHaveProperty('spine');
 			expect(palette).toHaveProperty('frame');

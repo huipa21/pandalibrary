@@ -1,7 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
+	import { holdBookStateBatch } from '#lib/bookview/book-states.svelte.js';
+	import { BOOK_STATE_CHANGED_EVENT } from '#lib/bookview/events.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
 	import type { Book } from '#lib/catalog/types.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
@@ -23,6 +25,7 @@
 	let panel = $state<HTMLElement | null>(null);
 	let scroller = $state<HTMLDivElement | null>(null);
 	let shelfState = $state<ShelfState | undefined>(undefined);
+	let shelfMode: Shelf['mode'] | undefined;
 	let started = $state(false);
 	let requestVersion = 0;
 	const label = $derived(sectionLabel(id, shelfState));
@@ -47,9 +50,15 @@
 			begin();
 		}
 		const refreshShelf = () => { if (started && shelfId(id) !== null) void load(); };
+		const refreshBookState = () => {
+			if (!started || !navigator.onLine) return;
+			if ((isBuiltInSection(id) && id !== 'recently_added') ||
+				shelfMode === 'automatic') void load();
+		};
 		const reconnect = () => { if (started) void load(); };
 		const visible = () => { if (!document.hidden) refreshShelf(); };
 		window.addEventListener('pandalibrary-shelves-changed', refreshShelf);
+		window.addEventListener(BOOK_STATE_CHANGED_EVENT, refreshBookState);
 		window.addEventListener('online', reconnect);
 		document.addEventListener('visibilitychange', visible);
 		return () => {
@@ -57,6 +66,7 @@
 			observer?.disconnect();
 			pager.dispose();
 			window.removeEventListener('pandalibrary-shelves-changed', refreshShelf);
+			window.removeEventListener(BOOK_STATE_CHANGED_EVENT, refreshBookState);
 			window.removeEventListener('online', reconnect);
 			document.removeEventListener('visibilitychange', visible);
 		};
@@ -72,6 +82,19 @@
 	}
 
 	async function load() {
+		const releaseBatch = holdBookStateBatch();
+		try {
+			await loadPage();
+		} finally {
+			try {
+				await tick();
+			} finally {
+				releaseBatch();
+			}
+		}
+	}
+
+	async function loadPage() {
 		const version = ++requestVersion;
 		void pager.reset(null);
 		const numericId = shelfId(id);
@@ -87,6 +110,7 @@
 				return;
 			}
 			if (version !== requestVersion) return;
+			shelfMode = shelf.mode;
 			await pager.reset(uniquePages((cursor, signal) =>
 				listShelfBooks(numericId, { cursor, signal, limit: DASHBOARD_PAGE_SIZE })
 			));

@@ -236,7 +236,7 @@
 				{/each}
 			</select>
 		</label>
-		<label class="grid min-w-0 flex-1 gap-1 text-sm font-medium sm:max-w-sm">
+		<label class="grid min-w-40 flex-1 gap-1 text-sm font-medium sm:max-w-sm">
 			<span>{m['bh4.filter.search']()}</span>
 			<input
 				class={`${inputClass} w-full min-w-0`}

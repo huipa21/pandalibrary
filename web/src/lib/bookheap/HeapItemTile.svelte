@@ -16,7 +16,7 @@
 </script>
 
 <li class="min-w-0 space-y-2" data-testid="bh4-row" data-heap-tile data-id={item.id}>
-	<div class={`heap-tile relative rounded-md ${selected ? 'ring-2 ring-slate-900 ring-offset-2' : ''}`}>
+	<div class={`book-tile-lift relative ${selected ? 'ring-2 ring-slate-900 ring-offset-2' : ''}`}>
 		<BookCover id={item.id} title={item.title} authors={item.authors} series={item.series} coverUrl={heapThumbnailUrl(item)} />
 		<label class="absolute top-2 left-2 grid size-7 place-items-center rounded bg-white shadow-sm">
 			<input
@@ -48,32 +48,3 @@
 		{/if}
 	</div>
 </li>
-
-<style>
-	.heap-tile {
-		transition: transform 150ms, box-shadow 150ms;
-	}
-
-	.heap-tile:focus-within {
-		transform: translateY(-4px);
-		box-shadow: 0 8px 20px rgb(0 0 0 / 18%);
-	}
-
-	@media (hover: hover) {
-		.heap-tile:hover {
-			transform: translateY(-4px);
-			box-shadow: 0 8px 20px rgb(0 0 0 / 18%);
-		}
-	}
-
-	@media (hover: none), (prefers-reduced-motion: reduce) {
-		.heap-tile {
-			transition: none;
-		}
-
-		.heap-tile:hover,
-		.heap-tile:focus-within {
-			transform: none;
-		}
-	}
-</style>

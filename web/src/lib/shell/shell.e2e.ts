@@ -125,6 +125,31 @@ test('administrators see the Admin entry with localized Chinese navigation', asy
 	await expect(sidebar.getByRole('link', { name: '仪表盘' })).toHaveAttribute('aria-current', 'page');
 });
 
+test('keeps the mobile search and upload controls separate and usable', async ({ page }) => {
+	await authenticate(page, 'admin');
+	await mockCatalog(page);
+	await page.setViewportSize({ width: 360, height: 844 });
+	await page.goto('/books');
+	const header = page.getByRole('banner');
+	const search = header.getByRole('searchbox', { name: 'Search books' });
+	const submit = header.getByRole('button', { name: 'Search', exact: true });
+	const upload = header.getByRole('button', { name: 'Upload', exact: true });
+	for (const width of [320, 360, 768]) {
+		await page.setViewportSize({ width, height: 844 });
+		const [inputBox, submitBox, uploadBox] = await Promise.all([
+			search.boundingBox(), submit.boundingBox(), upload.boundingBox()
+		]);
+		if (!inputBox || !submitBox || !uploadBox) throw new Error('A header control is not visible');
+		expect(inputBox.width).toBeGreaterThanOrEqual(64);
+		expect(inputBox.x + inputBox.width).toBeLessThanOrEqual(submitBox.x);
+		expect(submitBox.x + submitBox.width).toBeLessThanOrEqual(uploadBox.x);
+		await expectNoHorizontalOverflow(page);
+	}
+	await search.fill('panda');
+	await submit.click();
+	await expect(page).toHaveURL('/search?q=panda');
+});
+
 test('mobile drawer toggles by keyboard, traps focus, closes on Escape and navigation', async ({ page }) => {
 	await authenticate(page);
 	await mockCatalog(page);
