@@ -1,6 +1,6 @@
 # BV8: Reading Log tab
 
-- Status: Ready
+- Status: Done
 - Wave: 2. Dependencies merged: BV2, BV3, BV4
 - Can run in parallel with: BV5, BV6, BV7, BV9
 - Branch/worktree: `task/bv8` / `..\pandalibrary-bv8`
@@ -130,9 +130,9 @@ Editing sessions, a stored attempts model, cross-book history (Stats page).
 
 ## Acceptance criteria
 
-- [ ] Screenshot-7 structure in app style with all listed interactions.
-- [ ] Day grouping and chart dates use the viewer's timezone.
-- [ ] The table and chart are accessible (table semantics, chart text
+- [x] Screenshot-7 structure in app style with all listed interactions.
+- [x] Day grouping and chart dates use the viewer's timezone.
+- [x] The table and chart are accessible (table semantics, chart text
       alternative, labelled icon buttons).
 
 ## Validation commands (targeted only)

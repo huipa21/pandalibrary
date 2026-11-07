@@ -87,13 +87,24 @@ the next. Only BV10 runs the full verification gate.
 | 2 | BV5 | Quick view drawer | BV1, BV3 | [BV5](../prompts/BV5-quick-view.md) | Ready | `task/bv5` | |
 | 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Ready | `task/bv6` | |
 | 2 | BV7 | Files tab | BV1, BV3, BV4 | [BV7](../prompts/BV7-files-tab.md) | Ready | `task/bv7` | |
-| 2 | BV8 | Reading Log tab | BV2-BV4 | [BV8](../prompts/BV8-reading-log-tab.md) | Ready | `task/bv8` | |
+| 2 | BV8 | Reading Log tab | BV2-BV4 | [BV8](../prompts/BV8-reading-log-tab.md) | Done | `task/bv8` | Local progress ring for BV10 to deduplicate |
 | 2 | BV9 | Highlights tab + reader `?highlight=` | BV3, BV4 | [BV9](../prompts/BV9-highlights-tab.md) | Ready | `task/bv9` | |
 | 3 | BV10 | Integration, real-server E2E, visual QA, full gate | BV1-BV9 | [BV10](../prompts/BV10-integration.md) | Ready | `task/bv10` | |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BV8 — Implemented the Reading Log summary, attempts, records,
+  timezone-aware chart and filterable, cursor-paginated sessions. Manual add,
+  optimistic delete with rollback, CSV export (10,000-session cap), offline
+  recovery and book-state refresh are wired up. Manual entries allow backward
+  progress but reject future-ending sessions and nonexistent local DST times.
+  The progress ring is local markup in `log/LogSummary.svelte`; BV10 should
+  consolidate it with BV7's ring if appropriate. No dependency or migration was
+  added. Validation: `pnpm check`, production build, 59 bookview unit tests,
+  19 mocked Reading Log and tab-shell browser tests, and targeted Go
+  reading-log service/HTTP tests passed.
 
 - 2026-11-07 — BV3 — Implemented deterministic, contrast-checked title covers,
   format badges, hover/focus/touch actions, the shared interactive kit, and

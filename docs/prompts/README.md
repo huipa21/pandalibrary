@@ -78,6 +78,6 @@ hand-offs and update its prompts if the contracts changed.
 | BV5 | [BV5-quick-view.md](./BV5-quick-view.md) | Ready |
 | BV6 | [BV6-details-tab.md](./BV6-details-tab.md) | Ready |
 | BV7 | [BV7-files-tab.md](./BV7-files-tab.md) | Ready |
-| BV8 | [BV8-reading-log-tab.md](./BV8-reading-log-tab.md) | Ready |
+| BV8 | [BV8-reading-log-tab.md](./BV8-reading-log-tab.md) | Done |
 | BV9 | [BV9-highlights-tab.md](./BV9-highlights-tab.md) | Ready |
 | BV10 | [BV10-integration.md](./BV10-integration.md) | Ready |
