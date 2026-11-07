@@ -38,7 +38,7 @@
 	<h2 id="bv8-summary-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-500">{m['bv8.summary']()}</h2>
 	<div class="mt-5 flex flex-col items-center gap-3 text-center">
 		<ProgressRing fraction={progress} size="lg" {locale} label={m['bv8.progress']({ percent: formatPercent(progress, locale) })} />
-		<ReadStatusMenu {bookId} {userBook} reread={summary.attempts.length > 1} variant="pill" />
+		<ReadStatusMenu {bookId} {userBook} variant="pill" />
 		{#if summary.estimated_seconds_left !== null}
 			<p class="text-sm text-slate-500">{m['bv8.estimate']({ duration: formatDuration(summary.estimated_seconds_left) })}</p>
 		{/if}

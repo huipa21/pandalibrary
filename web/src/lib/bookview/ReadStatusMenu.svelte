@@ -2,18 +2,18 @@
 	import { tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import Icon from './Icon.svelte';
+	import StatusIcon from './StatusIcon.svelte';
 	import {
-		previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, type ReadStatus, type UserBook
+		previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, statusTone, type ReadStatus, type UserBook
 	} from './user-book.js';
 
 	interface Props {
 		bookId: number;
 		userBook: UserBook | null;
-		reread?: boolean;
-		variant?: 'pill' | 'icon';
+		variant?: 'pill' | 'icon' | 'badge';
 	}
 
-	let { bookId, userBook, reread = false, variant = 'pill' }: Props = $props();
+	let { bookId, userBook, variant = 'pill' }: Props = $props();
 	let optimistic = $state<UserBook | undefined>(undefined);
 	let open = $state(false);
 	let busy = $state(false);
@@ -21,6 +21,7 @@
 	let root = $state<HTMLDivElement | null>(null);
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let menu = $state<HTMLDivElement | null>(null);
+	let badgePosition = $state<{ left: number; top: number } | null>(null);
 	let propVersion = 0;
 	const current = $derived(optimistic ?? userBook);
 	const selected = $derived(current?.status ?? 'unread');
@@ -39,14 +40,45 @@
 		open = false;
 	});
 
-	function label(status: ReadStatus): string {
-		return readStatusLabel(status, reread);
+	$effect(() => {
+		if (!open || variant !== 'badge') return;
+		window.addEventListener('resize', positionBadgeMenu);
+		window.addEventListener('scroll', positionBadgeMenu, true);
+		return () => {
+			window.removeEventListener('resize', positionBadgeMenu);
+			window.removeEventListener('scroll', positionBadgeMenu, true);
+		};
+	});
+
+	function positionBadgeMenu() {
+		if (!root || !trigger || !menu) return;
+		const rootBox = root.getBoundingClientRect();
+		const triggerBox = trigger.getBoundingClientRect();
+		const menuBox = menu.getBoundingClientRect();
+		const padding = 8;
+		const gap = 8;
+		const width = document.documentElement.clientWidth;
+		const height = window.innerHeight;
+		const below = height - triggerBox.bottom - gap - padding;
+		const above = triggerBox.top - gap - padding;
+		const opensUp = menuBox.height > below && above > below;
+		const desiredTop = opensUp ? triggerBox.top - gap - menuBox.height : triggerBox.bottom + gap;
+		const left = Math.max(padding, Math.min(triggerBox.left, width - padding - menuBox.width));
+		const top = Math.max(padding, Math.min(desiredTop, height - padding - menuBox.height));
+		badgePosition = { left: left - rootBox.left, top: top - rootBox.top };
 	}
 
 	async function openMenu(position: 'first' | 'last' | 'current' = 'current') {
 		if (busy) return;
+		badgePosition = null;
 		open = true;
 		await tick();
+		if (!open) return;
+		if (variant === 'badge') {
+			positionBadgeMenu();
+			await tick();
+			if (!open) return;
+		}
 		const options = menu?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
 		if (!options?.length) return;
 		const index = position === 'first' ? 0 : position === 'last' ? options.length - 1 : READ_STATUSES.indexOf(selected);
@@ -128,20 +160,24 @@
 	<button
 		bind:this={trigger}
 		type="button"
-		class={variant === 'icon'
-			? 'inline-flex size-10 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 aria-disabled:opacity-60'
-			: 'inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 aria-disabled:opacity-60'}
-		aria-label={variant === 'icon' ? m['bv3.status_menu']() : m['bv3.status_menu_current']({ status: label(selected) })}
+		class={variant === 'badge'
+			? 'inline-flex size-7 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/5 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 aria-disabled:opacity-60'
+			: variant === 'icon'
+				? 'inline-flex size-10 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 aria-disabled:opacity-60'
+				: 'inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 aria-disabled:opacity-60'}
+		aria-label={variant === 'badge'
+			? m['bc1.status_badge']({ status: readStatusLabel(selected) })
+			: variant === 'icon' ? m['bv3.status_menu']() : m['bv3.status_menu_current']({ status: readStatusLabel(selected) })}
 		aria-haspopup="menu"
 		aria-expanded={open}
 		aria-busy={busy}
 		aria-disabled={busy}
-		title={m['bv3.status_menu_current']({ status: label(selected) })}
+		title={m['bv3.status_menu_current']({ status: readStatusLabel(selected) })}
 		onclick={toggleMenu}
 		onkeydown={triggerKey}
 	>
-		<Icon name="eye" />
-		{#if variant === 'pill'}<span>{label(selected)}</span><Icon name="chevron-down" class="size-4" />{/if}
+		<StatusIcon status={selected} class={`size-5 shrink-0 ${statusTone(selected).text}`} />
+		{#if variant === 'pill'}<span>{readStatusLabel(selected)}</span><Icon name="chevron-down" class="size-4" />{/if}
 	</button>
 	{#if open}
 		<div
@@ -149,7 +185,10 @@
 			role="menu"
 			tabindex="-1"
 			aria-label={m['bv3.status_menu']()}
-			class="absolute z-20 mt-2 min-w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
+			class="absolute top-full z-30 mt-2 max-h-[calc(100dvh-1rem)] w-48 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
+			style={variant === 'badge'
+				? badgePosition ? `left: ${badgePosition.left}px; top: ${badgePosition.top}px; margin: 0` : 'visibility: hidden'
+				: undefined}
 			onkeydown={menuKey}
 		>
 			{#each READ_STATUSES as status}
@@ -158,11 +197,16 @@
 					role="menuitemradio"
 					aria-checked={status === selected}
 					tabindex="-1"
-					class="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 focus-visible:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-700"
+					class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-100 focus:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700"
 					onclick={() => void select(status)}
 				>
-					<span>{label(status)}</span>
-					{#if status === selected}<span aria-hidden="true">✓</span>{/if}
+					<StatusIcon {status} class={`size-5 shrink-0 ${statusTone(status).text}`} />
+					<span class="flex-1 whitespace-nowrap">{readStatusLabel(status)}</span>
+					{#if status === selected}
+						<svg aria-hidden="true" class="size-4 shrink-0 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="m5 12 4 4L19 6" />
+						</svg>
+					{/if}
 				</button>
 			{/each}
 		</div>

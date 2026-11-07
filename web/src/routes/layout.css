@@ -8,6 +8,8 @@
 	--color-shell-accent: #34d399;
 	--spacing-shell-header: 3.5rem;
 	--spacing-shell-sidebar: 15.5rem;
+	--spacing-book: 13rem;
+	--aspect-book: 2 / 3;
 }
 
 :root {
@@ -27,6 +29,19 @@ body {
  * the rounded main panel, so these classes are scoped to the shell and never restyle pages.
  */
 @layer components {
+	.book-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		justify-content: start;
+		gap: 1.75rem 1.25rem;
+	}
+
+	@media (min-width: 40rem) {
+		.book-grid {
+			grid-template-columns: repeat(auto-fill, var(--spacing-book));
+		}
+	}
+
 	.shell-heading {
 		padding-inline: 0.75rem;
 		font-size: 0.6875rem;

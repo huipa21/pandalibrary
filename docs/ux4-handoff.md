@@ -60,7 +60,9 @@ Session-authenticated only (requires login).
 ## Section Definitions and Ordering
 
 ### `continue_reading`
-- Predicate: Books with reading progress 0 < percentage < 1 (in progress)
+- Predicate: Books with reading progress 0 < percentage < 1, excluding
+  `finished`, `skimmed`, and `abandoned`. `on_hold` and `rereading` remain
+  eligible when they have partial progress.
 - Ordering: `reading_progress.updated_at DESC, books.id ASC`
 - Tie-breaker: ID (oldest first if progress timestamps equal)
 - SQL Query: Joins reading_progress table with books, filters by user and percentage range
@@ -72,11 +74,11 @@ Session-authenticated only (requires login).
 - SQL Query: All books with library visibility check
 
 ### `read`
-- Predicate: `user_books.status = 'finished'` only
+- Predicate: `user_books.status IN ('finished', 'skimmed')`
 - Ordering: `COALESCE(user_books.finished_at, user_books.updated_at) DESC, books.id ASC`
 - Tie-breaker: ID (ascending)
 - Falls back to updated_at if finished_at is null
-- SQL Query: INNER JOIN with user_books where status = 'finished'
+- SQL Query: INNER JOIN with user_books where status is `finished` or `skimmed`
 
 ### `unread`
 - Predicate: No user_books entry (absent) OR `user_books.status = 'unread'` (explicit)

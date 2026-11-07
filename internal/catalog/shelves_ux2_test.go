@@ -356,6 +356,40 @@ func TestAutomaticShelfValidation(t *testing.T) {
 	}
 }
 
+func TestAutomaticShelfExtendedReadingStatuses(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	ctx := context.Background()
+	viewer := Viewer{UserID: 1, IsAdmin: true}
+	tests := []struct {
+		status string
+		bookID int64
+	}{
+		{"on_hold", 101},
+		{"rereading", 102},
+		{"skimmed", 104},
+	}
+	for _, test := range tests {
+		if _, err := fixture.db.Writer.ExecContext(ctx,
+			`INSERT INTO user_books (user_id, book_id, status, updated_at, rev) VALUES (?, ?, ?, 1, 1)`,
+			viewer.UserID, test.bookID, test.status,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, test := range tests {
+		t.Run(test.status, func(t *testing.T) {
+			shelf := createAutomaticShelf(t, fixture.service, viewer, test.status,
+				rules("all", condition("reading_status", "eq", `"`+test.status+`"`)))
+			if shelf.VisibleBookCount != 1 {
+				t.Fatalf("count = %d, want 1", shelf.VisibleBookCount)
+			}
+			if got := shelfBookIDs(t, fixture.service, viewer, shelf.ID, 1); !reflect.DeepEqual(got, []int64{test.bookID}) {
+				t.Fatalf("books = %v, want [%d]", got, test.bookID)
+			}
+		})
+	}
+}
+
 func TestAutomaticShelfRuleEvaluation(t *testing.T) {
 	fixture := newCatalogFixture(t)
 	ctx := context.Background()

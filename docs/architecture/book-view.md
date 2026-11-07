@@ -67,14 +67,14 @@ Later features import these and must not fork them.
 | `FormatBadge.svelte` | Top-left format pill (`EPUB +1`, tooltip lists all formats) |
 | `CoverActions.svelte` | Hover/focus Info + Read buttons; persistent Info button on touch devices |
 | `RatingStars.svelte`, `rating.ts` | Half-star rating display/editor (1–10 scale) |
-| `ReadStatusMenu.svelte` | Eye-icon status menu; shows **Re-reading** when `reading` and more than one attempt |
+| `ReadStatusMenu.svelte`, `StatusIcon.svelte` | Localized eight-status menu and reusable status icons; **Re-reading** is an explicit stored status, independent of attempt history |
 | `ProgressRing.svelte` | Circular progress used by Details and the Reading Log |
 | `ExpandableText.svelte` | Clamp with "Show more" |
 | `IdentifierLinks.svelte`, `identifiers.ts` | External links from identifiers (§ plan decision 5) |
 | `Icon.svelte` | Inline SVG icons (no icon dependency) |
 | `cover.ts` | Tones, title truncation, format ordering and tones |
-| `format.ts` | Size, duration, percent, relative time and read-status label helpers |
-| `user-book.ts` | `saveUserBook` — `user_books` upsert through `/sync/push` (LWW) |
+| `format.ts` | Size, duration, percent, date and relative-time formatting helpers |
+| `user-book.ts` | Status labels/tones and `saveUserBook` — `user_books` upsert through `/sync/push` (LWW) |
 | `read.ts` | `readTarget(book, account)` — resume the saved file or the first readable format |
 | `log-api.ts` | Typed reading-log client (`getReadingSummary`, `listBookSessions`, `deleteBookSession`, `addManualSession`, `viewerTimezone`) |
 

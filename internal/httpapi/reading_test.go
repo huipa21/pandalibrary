@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -107,6 +109,36 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 	if missingTimestamp.Code != http.StatusBadRequest {
 		t.Fatalf("missing mutation timestamp = %d %s", missingTimestamp.Code, missingTimestamp.Body.String())
 	}
+	t.Run("reading statuses round-trip", func(t *testing.T) {
+		var cursor int64
+		for i, status := range []string{"unread", "want_to_read", "reading", "on_hold", "rereading", "finished", "skimmed", "abandoned"} {
+			body := fmt.Sprintf(`{"mutations":[{"entity":"user_books","key":"101","op":"upsert","data":{"book_id":101,"status":%q,"rating":7,"started_at":10,"finished_at":null},"updated_at":%d}]}`, status, 101+i)
+			response := readingHTTPRequest(t, router, http.MethodPost, "/api/v1/sync/push", body, cookie, "https://books.example")
+			var pushed reading.PushResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &pushed); err != nil || response.Code != http.StatusOK ||
+				len(pushed.Results) != 1 || pushed.Results[0].Status != "applied" {
+				t.Fatalf("push %s = %d %s, %v", status, response.Code, response.Body.String(), err)
+			}
+			pull := readingHTTPRequest(t, router, http.MethodGet,
+				fmt.Sprintf("/api/v1/sync/pull?cursor=%d", cursor), "", cookie, "")
+			var pulled reading.PullResponse
+			if err := json.Unmarshal(pull.Body.Bytes(), &pulled); err != nil || pull.Code != http.StatusOK ||
+				len(pulled.UserBooks) != 1 || pulled.UserBooks[0].BookID != 101 || pulled.UserBooks[0].Status != status ||
+				pulled.UserBooks[0].Rating == nil || *pulled.UserBooks[0].Rating != 7 ||
+				pulled.UserBooks[0].StartedAt == nil || pulled.UserBooks[0].StartedAt.UnixMilli() != 10 ||
+				pulled.UserBooks[0].FinishedAt != nil || pulled.Cursor <= cursor {
+				t.Fatalf("pull %s = %d %s, %v", status, pull.Code, pull.Body.String(), err)
+			}
+			cursor = pulled.Cursor
+		}
+		body := `{"mutations":[{"entity":"user_books","key":"101","op":"upsert","data":{"book_id":101,"status":"invalid"},"updated_at":109}]}`
+		response := readingHTTPRequest(t, router, http.MethodPost, "/api/v1/sync/push", body, cookie, "https://books.example")
+		var rejected reading.PushResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &rejected); err != nil || response.Code != http.StatusOK ||
+			len(rejected.Results) != 1 || rejected.Results[0].Status != "rejected" || rejected.Results[0].Reason != "status is invalid" {
+			t.Fatalf("invalid status = %d %s, %v", response.Code, response.Body.String(), err)
+		}
+	})
 	bookmarkPush := `{"mutations":[{"entity":"bookmarks","id":"018f0f7e-7b00-7000-8000-000000000001","op":"upsert","data":{"book_id":101,"book_file_id":201,"locator":{"type":"pdf","page":2},"position":0.5,"label":"Here"},"updated_at":100}]}`
 	bookmark := readingHTTPRequest(t, router, http.MethodPost, "/api/v1/sync/push", bookmarkPush, cookie, "https://books.example")
 	if bookmark.Code != http.StatusOK || !strings.Contains(bookmark.Body.String(), `"status":"applied"`) {

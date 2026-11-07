@@ -2,30 +2,42 @@ import type { BookFile } from '#lib/catalog/types.js';
 
 export const FORMAT_ORDER = ['epub', 'pdf', 'cbz', 'azw3', 'mobi', 'fb2', 'fbz'] as const;
 
-const TONES = [
-	{ bg: 'bg-emerald-100', spine: 'bg-emerald-900/20', text: 'text-emerald-950', accent: 'bg-emerald-700' },
-	{ bg: 'bg-teal-100', spine: 'bg-teal-900/20', text: 'text-teal-950', accent: 'bg-teal-700' },
-	{ bg: 'bg-sky-100', spine: 'bg-sky-900/20', text: 'text-sky-950', accent: 'bg-sky-700' },
-	{ bg: 'bg-indigo-100', spine: 'bg-indigo-900/20', text: 'text-indigo-950', accent: 'bg-indigo-700' },
-	{ bg: 'bg-violet-100', spine: 'bg-violet-900/20', text: 'text-violet-950', accent: 'bg-violet-700' },
-	{ bg: 'bg-rose-100', spine: 'bg-rose-900/20', text: 'text-rose-950', accent: 'bg-rose-700' },
-	{ bg: 'bg-amber-100', spine: 'bg-amber-900/20', text: 'text-amber-950', accent: 'bg-amber-700' },
-	{ bg: 'bg-slate-100', spine: 'bg-slate-900/20', text: 'text-slate-950', accent: 'bg-slate-700' }
+const CLOTH = [
+	{ name: 'navy', board: '#1f2f5c', spine: '#142044', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#18223d', author: '#d9b768' },
+	{ name: 'forest', board: '#24462a', spine: '#18321d', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#18351e', author: '#d9b768' },
+	{ name: 'ochre', board: '#9a7618', spine: '#6e540f', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3e2f09', author: '#3b2a17' },
+	{ name: 'khaki', board: '#7a6446', spine: '#55452f', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#332719', author: '#3b2a17' },
+	{ name: 'rust', board: '#8b3a17', spine: '#612810', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#4c1d0a', author: '#d9b768' },
+	{ name: 'taupe', board: '#86704f', spine: '#5c4c36', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3d3021', author: '#3b2a17' },
+	{ name: 'burgundy', board: '#5e1f2a', spine: '#40151d', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3d131a', author: '#d9b768' },
+	{ name: 'slate-teal', board: '#24494d', spine: '#193335', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#163035', author: '#d9b768' }
 ] as const;
 
-export function coverTone(seed: number): (typeof TONES)[number] {
+export function coverCloth(seed: number): (typeof CLOTH)[number] {
 	let hash = seed | 0;
 	hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
 	hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
 	hash ^= hash >>> 16;
-	return TONES[(hash >>> 0) % TONES.length];
+	return CLOTH[(hash >>> 0) % CLOTH.length];
+}
+
+function splitGraphemes(value: string): string[] {
+	return typeof Intl.Segmenter === 'function'
+		? Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value), (part) => part.segment)
+		: Array.from(value);
+}
+
+export function titleScale(title: string): 'xl' | 'lg' | 'md' | 'sm' {
+	const length = splitGraphemes(title).length;
+	if (length <= 6) return 'xl';
+	if (length <= 14) return 'lg';
+	if (length <= 32) return 'md';
+	return 'sm';
 }
 
 export function truncateTitle(title: string, max = 80): string {
 	if (!Number.isSafeInteger(max) || max < 0) throw new RangeError('Title limit must be a non-negative integer.');
-	const graphemes = typeof Intl.Segmenter === 'function'
-		? Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(title), (part) => part.segment)
-		: Array.from(title);
+	const graphemes = splitGraphemes(title);
 	if (graphemes.length <= max) return title;
 	return max === 0 ? '' : `${graphemes.slice(0, max - 1).join('')}…`;
 }

@@ -58,6 +58,8 @@
 	<BookCover
 		id={book.id}
 		title={book.title}
+		subtitle={fullBook(book) ? book.subtitle : null}
+		series={book.series?.name}
 		{authors}
 		coverUrl={book.cover_url}
 		{files}

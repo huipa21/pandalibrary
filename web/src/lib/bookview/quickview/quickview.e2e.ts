@@ -143,7 +143,7 @@ function card(page: Page, title: string) {
 async function openHarbor(page: Page) {
 	await page.goto('/books');
 	const info = card(page, 'Quiet Harbor').getByRole('button', { name: 'Quick view: Quiet Harbor' });
-	await card(page, 'Quiet Harbor').locator('.cover-frame').hover();
+	await card(page, 'Quiet Harbor').locator('div.cover-frame').hover();
 	await info.click();
 	const drawer = page.getByRole('dialog', { name: 'Quiet Harbor' });
 	await expect(drawer).toBeVisible();
@@ -242,6 +242,8 @@ test('changes the reading status with one mutation and adds the book to a shelf'
 	await status.click();
 	const menu = page.getByRole('menu', { name: 'Reading status' });
 	const menuBox = await menu.boundingBox();
+	expect(menuBox?.x ?? -1).toBeGreaterThanOrEqual(0);
+	expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(1280);
 	expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(900);
 	await menu.getByRole('menuitemradio', { name: 'Want to read' }).click();
 	await expect(status).toHaveAttribute('title', 'Reading status: Want to read');

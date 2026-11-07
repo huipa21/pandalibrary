@@ -186,7 +186,7 @@ test('renders summary, timezone-aware sessions, filters and cursor pagination', 
 	const state = await mockApi(page);
 	await openLog(page);
 	await expect(page.getByRole('img', { name: 'Reading progress: 21%' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Reading status: Re-reading' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Reading status: Reading' })).toBeVisible();
 	await expect(page.getByText('~5m to finish')).toBeVisible();
 	await expect(page.getByText('3 of 4', { exact: true })).toBeVisible();
 	await expect(page.getByText('14.2%/h').first()).toBeVisible();

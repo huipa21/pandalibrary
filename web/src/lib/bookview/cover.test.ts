@@ -1,16 +1,39 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { coverTone, formatTone, preferredFormat, sortedFormats, truncateTitle } from './cover.js';
+import { coverCloth, formatTone, preferredFormat, sortedFormats, titleScale, truncateTitle } from './cover.js';
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('cover helpers', () => {
-	it('chooses a deterministic muted tone from all eight palettes', () => {
-		const tones = new Set(Array.from({ length: 256 }, (_, id) => coverTone(id).bg));
-		expect(tones.size).toBe(8);
-		expect(coverTone(42)).toEqual(coverTone(42));
-		expect(coverTone(-42)).toHaveProperty('spine');
-		expect(coverTone(42)).toHaveProperty('text');
-		expect(coverTone(42)).toHaveProperty('accent');
+	it('chooses deterministic cloth palettes across book IDs 1-1000', () => {
+		const palettes = Array.from({ length: 1000 }, (_, index) => coverCloth(index + 1));
+		expect(new Map(palettes.map(({ name, board }) => [name, board]))).toEqual(new Map([
+			['navy', '#1f2f5c'], ['forest', '#24462a'], ['ochre', '#9a7618'],
+			['khaki', '#7a6446'], ['rust', '#8b3a17'], ['taupe', '#86704f'],
+			['burgundy', '#5e1f2a'], ['slate-teal', '#24494d']
+		]));
+		for (const palette of palettes) {
+			expect(palette.plate).toBe('#f3eedf');
+			expect(palette.author).toBe(
+				['ochre', 'khaki', 'taupe'].includes(palette.name) ? '#3b2a17' : '#d9b768'
+			);
+			expect(palette).toHaveProperty('spine');
+			expect(palette).toHaveProperty('frame');
+			expect(palette).toHaveProperty('plateRule');
+			expect(palette).toHaveProperty('ink');
+		}
+		expect(coverCloth(42)).toEqual(coverCloth(42));
+		expect(coverCloth(-42)).toEqual(coverCloth(-42));
+	});
+
+	it('scales titles at grapheme boundaries for Latin, CJK, and combined emoji', () => {
+		for (const [length, expected] of [[0, 'xl'], [6, 'xl'], [7, 'lg'], [14, 'lg'], [15, 'md'], [32, 'md'], [33, 'sm']] as const) {
+			expect(titleScale('a'.repeat(length))).toBe(expected);
+		}
+		expect(titleScale('猫'.repeat(6))).toBe('xl');
+		expect(titleScale('猫'.repeat(15))).toBe('md');
+		expect(titleScale('👩🏽‍🚀'.repeat(6))).toBe('xl');
+		expect(titleScale('👩🏽‍🚀'.repeat(7))).toBe('lg');
+		expect(titleScale('e\u0301'.repeat(33))).toBe('sm');
 	});
 
 	it('limits titles by graphemes, including CJK and combined emoji', () => {
@@ -28,6 +51,7 @@ describe('cover helpers', () => {
 		Object.defineProperty(Intl, 'Segmenter', { configurable: true, value: undefined });
 		try {
 			expect(truncateTitle('🐼猫书', 2)).toBe('🐼…');
+			expect(titleScale('🐼'.repeat(7))).toBe('lg');
 		} finally {
 			if (descriptor) Object.defineProperty(Intl, 'Segmenter', descriptor);
 		}

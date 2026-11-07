@@ -618,6 +618,39 @@ func TestAcquisitionFeedsPaginateAndHideInvisibleBooks(t *testing.T) {
 	}
 }
 
+func TestReadingFeedIncludesExtendedStatusesAcrossPages(t *testing.T) {
+	f := newFixture(t, fixtureOptions{})
+	f.exec(`UPDATE user_books SET status = CASE book_id % 3
+			WHEN 0 THEN 'reading' WHEN 1 THEN 'on_hold' ELSE 'rereading' END, updated_at = 100
+		WHERE user_id = 1 AND book_id BETWEEN 1001 AND 1053`)
+	f.exec(`UPDATE user_books SET status = 'on_hold' WHERE user_id = 1 AND book_id = 102`)
+	f.exec(`UPDATE user_books SET status = 'rereading' WHERE user_id = 1 AND book_id = 103`)
+	f.exec(`UPDATE user_books SET status = 'skimmed' WHERE user_id = 1 AND book_id = 1055`)
+	f.exec(`INSERT INTO user_books (user_id, book_id, status, updated_at, rev) VALUES (1, 104, 'finished', 200, 200)`)
+
+	first := f.feed("reader", "/opds/reading", "acquisition")
+	next, ok := first.link("next")
+	if len(first.Entries) != pageSize || !ok {
+		t.Fatalf("reading first page = %d entries, next = %+v", len(first.Entries), next)
+	}
+	second := f.feed("reader", next.Href, "acquisition")
+	if _, ok := second.link("next"); ok {
+		t.Fatal("reading feed has an unexpected third page")
+	}
+	got := append(first.entryIDs(), second.entryIDs()...)
+	want := make([]string, 0, 54)
+	for id := int64(1053); id >= 1001; id-- {
+		want = append(want, bookID(id))
+	}
+	want = append(want, bookID(101))
+	if !slices.Equal(got, want) {
+		t.Fatalf("reading feed = %v, want %v", got, want)
+	}
+	if got := f.feed("reader", "/opds/want-to-read", "acquisition").entryIDs(); !slices.Equal(got, []string{bookID(1054)}) {
+		t.Fatalf("want-to-read feed = %v, want only book 1054", got)
+	}
+}
+
 func TestSearchUsesSearchServiceAndPreservesQuery(t *testing.T) {
 	f := newFixture(t, fixtureOptions{})
 	first := f.feed("reader", "/opds/search?q=filler", "acquisition")

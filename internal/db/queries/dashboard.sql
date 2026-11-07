@@ -6,7 +6,7 @@ AND rp.percentage > 0 AND rp.percentage < 1
 AND NOT EXISTS (
     SELECT 1 FROM user_books ub
     WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id
-      AND ub.status IN ('finished', 'abandoned')
+      AND ub.status IN ('finished', 'skimmed', 'abandoned')
 )
 AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -40,7 +40,7 @@ LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: DashboardReadBooks :many
 SELECT b.id, CAST(COALESCE(ub.finished_at, ub.updated_at) AS INTEGER) AS sort_time FROM books b
-JOIN user_books ub ON ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id AND ub.status = 'finished'
+JOIN user_books ub ON ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id AND ub.status IN ('finished', 'skimmed')
 WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)

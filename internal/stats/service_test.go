@@ -227,6 +227,17 @@ func TestZeroFillMonthsAuthorsAndDeterministicBookOrder(t *testing.T) {
 	}
 }
 
+func TestSkimmedDoesNotCountAsFinished(t *testing.T) {
+	f := newStatsFixture(t)
+	at := instant(t, "2026-01-15T12:00:00Z")
+	f.finish(t, 2, 101, at, "finished")
+	f.finish(t, 2, 104, at, "skimmed")
+	got, err := f.service.Get(context.Background(), Viewer{UserID: 2}, "2026-01-01", "2026-01-31", "UTC")
+	if err != nil || !reflect.DeepEqual(got.FinishedPerMonth, []FinishedMonth{{Month: "2026-01", BooksFinished: 1}}) {
+		t.Fatalf("finished counts = %+v, %v", got.FinishedPerMonth, err)
+	}
+}
+
 func TestStreaksUseDistinctPositiveDaysAndHistoryThroughTo(t *testing.T) {
 	f := newStatsFixture(t)
 	for _, date := range []string{

@@ -24,7 +24,8 @@ var errInvalidCursor = errors.New("cursor does not match this list")
 const statusBooksQuery = `
 SELECT ub.book_id, ub.updated_at FROM user_books ub
 JOIN books b ON b.id = ub.book_id
-WHERE ub.user_id = ?1 AND ub.status = ?2
+WHERE ub.user_id = ?1
+AND (ub.status = ?2 OR (?2 = 'reading' AND ub.status IN ('on_hold', 'rereading')))
 AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1

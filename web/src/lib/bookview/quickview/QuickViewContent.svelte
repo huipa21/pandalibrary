@@ -88,7 +88,7 @@
 	<div class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 pb-6" data-quick-view-body>
 		<header class="flex gap-4">
 			<div class="w-24 shrink-0">
-				<BookCover id={book.id} title={book.title} authors={authorNames} coverUrl={book.cover_url} files={book.files} size="sm" badge loading="eager" />
+				<BookCover id={book.id} title={book.title} subtitle={book.subtitle} series={book.series?.name} authors={authorNames} coverUrl={book.cover_url} files={book.files} size="sm" badge loading="eager" />
 			</div>
 			<div class="min-w-0 flex-1 space-y-2">
 				<h2 id={titleId} class="text-lg leading-snug font-semibold break-words text-slate-950">

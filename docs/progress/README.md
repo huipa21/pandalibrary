@@ -91,9 +91,78 @@ the next. Only BV10 runs the full verification gate.
 | 2 | BV9 | Highlights tab + reader `?highlight=` | BV3, BV4 | [BV9](../prompts/BV9-highlights-tab.md) | Done | `task/bv9` | Branch includes merged `task/bv4` |
 | 3 | BV10 | Integration, real-server E2E, visual QA, full gate | BV1-BV9 | [BV10](../prompts/BV10-integration.md) | Done | `task/bv10` | All BV branches merged; full gate green; architecture in [book-view.md](../architecture/book-view.md) |
 
+## Book Cover follow-up board
+
+Plan, decisions, contracts and ownership rules:
+[book-cover-plan.md](../plans/book-cover-plan.md). Merge a wave before starting
+the next. Only BC8 runs the full verification gate.
+
+| Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
+|---|---|---|---|---|---|---|---|
+| 1 | BC1 | 8 reading statuses, status icons, Image-3 status menu | baseline | [BC1](../prompts/BC1-reading-statuses.md) | Done | `master` (uncommitted) | Migration 00005; status kit API in log |
+| 1 | BC2 | Batched `/me/book-states` API + client store | baseline | [BC2](../prompts/BC2-book-states.md) | Done | `task/bc2` | No migration; store API in log |
+| 1 | BC3 | Cloth generated cover + `--spacing-book` / `--aspect-book` tokens | baseline | [BC3](../prompts/BC3-cloth-cover.md) | Done | `master` (uncommitted) | 158 / 257.5 px covers; 13rem token |
+| 2 | BC4 | Cover tile: lift, status badge, hover progress, cover-only cards | BC1-BC3 | [BC4](../prompts/BC4-cover-tile.md) | Ready | `task/bc4` | |
+| 2 | BC5 | Bookheap grid view + unified heap covers | BC3 | [BC5](../prompts/BC5-bookheap-covers.md) | Ready | `task/bc5` | |
+| 3 | BC6 | Dashboard rows: no Resume button, standard width | BC4 | [BC6](../prompts/BC6-dashboard-tiles.md) | Ready | `task/bc6` | |
+| 3 | BC7 | All Books / shelves / related: standard grid | BC4 | [BC7](../prompts/BC7-catalog-grids.md) | Ready | `task/bc7` | |
+| 4 | BC8 | Integration, real-server E2E, visual QA, full gate | BC1-BC7 | [BC8](../prompts/BC8-integration.md) | Ready | `task/bc8` | |
+
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BC3 — Added deterministic cloth covers, adaptive grapheme-based
+  title sizing, subtitle/series pass-through, image fallback, 2:3 geometry and
+  the responsive `.book-grid` contract. The 1440 px baseline measured 158 px
+  for dashboard covers and 257.5 px for All Books covers, producing
+  `--spacing-book: 13rem` (208 px). Svelte check, 6 cover unit tests, the
+  production build, and 10 targeted browser tests passed; the browser report
+  contains 1440 px app and six-cover screenshots. BC5-BC7 adopt the shared
+  size in Bookheap and page grids.
+- 2026-11-07 — BC1 — Done in the current `master` worktree, uncommitted;
+  no `task/bc1` branch was created. Migration 00005 preserves existing rows;
+  rollback maps `on_hold` and `rereading` to `reading`, and `skimmed` to
+  `finished`. Dashboard Read includes `skimmed`, while finished-book
+  statistics still count only `finished`. Entering `rereading` starts a new
+  reading period and clears the previous finish date.
+  Shared BC4 API in `web/src/lib/bookview`: `StatusIcon({ status, class? })`
+  renders an aria-hidden status glyph; `statusTone(status)` returns
+  `{ text, ring }` Tailwind classes; and
+  `ReadStatusMenu({ bookId, userBook, variant: "badge" })` provides the 28px
+  status trigger and viewport-flipping/clamped menu. The menu is rendered
+  inside its component rather than portalled, so its ancestors must not clip
+  it. Targeted sqlc, Go, Svelte, Vitest (107), and bookview Playwright (39,
+  plus 4 focused reruns) checks passed; BC8 still owns the full gate.
+- 2026-11-07 — BC2 — `task/bc2` (`0090860` API, `b59a35c` store).
+  `GET /api/v1/me/book-states?ids=1,2,3` (session auth): 1-100 positive
+  canonical integers (the limit counts the raw list), deduplicated, one
+  `ReadingListBookStates` query (`json_each` IDs, LEFT JOIN `user_books` and
+  `reading_progress` for the viewer, same library-access/`book_hidden` filters
+  as the dashboard). Returns `{ items: [{ book_id, status, percentage,
+  book_file_id, updated_at }] }` only for books with either row; status is
+  passed through from the DB (BC1 values work). Store API for BC4, in
+  `web/src/lib/bookview/book-states.svelte.ts`:
+  `bookState(bookId): { status: ReadStatus; percentage: number | null; loading: boolean }`
+  (a stable reactive object per book and account; safe to call from markup),
+  `refreshBookStates(ids?)` (cached IDs only, returns a promise), and
+  `getBookStates(ids, signal)` (raw client). Calls in one microtask coalesce
+  into one request per 100 IDs (50 covers = 1 request; asserted in the unit
+  test, for BC8's E2E). No window-level sync-complete event exists, so the
+  store refreshes everything when `offlineStatus.syncing` goes true → false
+  without error, plus `online`/visible tab when offline storage is
+  unavailable. Unknown statuses map to `unread`; offline it reads IndexedDB
+  rows with pending/applied outbox writes replayed via `replayMutations`.
+  Checks: `task sqlc:check`, `go test ./internal/reading/... ./internal/httpapi/...`,
+  staticcheck on both packages, `pnpm --dir web check` (0/0) and the
+  `book-states.test.ts` suite (11 tests) all pass.
+
+- 2026-11-07 — BC plan — Drafted the Book Cover batch (BC1-BC8): cloth-style
+  generated covers (Image 1), cover-only tiles with hover lift/Info/Play,
+  hover progress bar, top-right status badge with the Image-3 menu, 8 stored
+  statuses (migration 00005), batched `/me/book-states`, one `--spacing-book`
+  size everywhere incl. a Bookheap grid. Waves: BC1||BC2||BC3, then BC4||BC5,
+  then BC6||BC7, then BC8 (the only full verification).
 
 - 2026-11-07 — BV10 — Merged `task/bv1`, `bv2`, `bv4`-`bv9` into `task/bv10`
   (BV3 was already on master). Seams: one shared `ProgressRing` (BV7/BV8),

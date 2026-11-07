@@ -56,7 +56,10 @@ function statusValue(value: unknown): UserBook['status'] {
 		case 'unread':
 		case 'want_to_read':
 		case 'reading':
+		case 'on_hold':
+		case 'rereading':
 		case 'finished':
+		case 'skimmed':
 		case 'abandoned':
 			return value;
 		default:
@@ -173,7 +176,7 @@ test('renders details, reading statistics, editions and related books responsive
 	await page.goto('/books/21');
 	const title = page.getByRole('heading', { name: 'The Emerald Library' });
 	await expect(title).toBeVisible();
-	await expect(page.getByText('A reader’s journey')).toBeVisible();
+	await expect(title.locator('..').getByText('A reader’s journey')).toBeVisible();
 	await expect(page.getByRole('link', { name: 'A Writer', exact: true })).toBeVisible();
 	await expect(page.getByText('(Translator)')).toBeVisible();
 	await expect(page.getByRole('link', { name: 'The Reading Series', exact: true }).first()).toBeVisible();
@@ -268,10 +271,10 @@ test('persists rating, status, dates and review, and refreshes on book-state eve
 	await expect.poll(() => state.mutations.some((item) => item.entity === 'user_books' && item.data.rating === 8)).toBe(true);
 	await expect(rating).toHaveAttribute('aria-checked', 'true');
 
-	await page.getByRole('button', { name: 'Reading status: Re-reading' }).click();
-	await page.getByRole('menuitemradio', { name: 'Finished' }).click();
+	await page.getByRole('button', { name: 'Reading status: Reading' }).click();
+	await page.getByRole('menuitemradio', { name: 'Read', exact: true }).click();
 	await expect.poll(() => state.userBook?.status).toBe('finished');
-	await expect(page.getByRole('button', { name: 'Reading status: Finished' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Reading status: Read' })).toBeVisible();
 
 	await page.getByRole('button', { name: 'Edit Date started' }).click();
 	await page.getByLabel('Date started', { exact: true }).fill('2026-03-04');
@@ -287,7 +290,7 @@ test('persists rating, status, dates and review, and refreshes on book-state eve
 	await page.reload();
 	await expect(page.getByText('A thoughtful personal review.', { exact: true })).toBeVisible();
 	await expect(rating).toHaveAttribute('aria-checked', 'true');
-	await expect(page.getByRole('button', { name: 'Reading status: Finished' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Reading status: Read' })).toBeVisible();
 	await expect(page.getByText('Mar 4, 2026', { exact: true })).toBeVisible();
 
 	if (!state.userBook) throw new Error('Expected a saved user book.');
@@ -303,6 +306,23 @@ test('persists rating, status, dates and review, and refreshes on book-state eve
 	await page.getByRole('button', { name: 'Edit Date started' }).click();
 	await page.getByRole('button', { name: 'Clear', exact: true }).click();
 	await expect.poll(() => state.userBook?.started_at).toBeNull();
+});
+
+test('uses the stored status and persists a new re-read without a finish date', async ({ page }) => {
+	const state = await setup(page);
+	await page.goto('/books/21');
+	await page.getByRole('button', { name: 'Reading status: Reading' }).click();
+	await page.getByRole('menuitemradio', { name: 'Read', exact: true }).click();
+	await expect.poll(() => state.userBook?.status).toBe('finished');
+	expect(state.userBook?.finished_at).not.toBeNull();
+	await page.getByRole('button', { name: 'Reading status: Read' }).click();
+	await page.getByRole('menuitemradio', { name: 'Re-reading' }).click();
+	await expect.poll(() => state.userBook?.status).toBe('rereading');
+	expect(state.userBook?.started_at).not.toBeNull();
+	expect(state.userBook?.finished_at).toBeNull();
+	expect(state.userBook?.rating).toBe(6);
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'Reading status: Re-reading' })).toBeVisible();
 });
 
 test('shows edit metadata only to administrators', async ({ page }) => {

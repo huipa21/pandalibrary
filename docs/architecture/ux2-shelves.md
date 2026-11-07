@@ -84,7 +84,7 @@ A RuleSet is `{"match":"all"|"any","conditions":[...]}` with 1–20 flat conditi
 | `series_id` | `eq` | positive JSON integer | `books.series_id` equals it. A book with no series never matches |
 | `language` | `eq` | BCP 47 tag (≤35 chars, `[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*`) | Case-insensitive equality. A NULL language never matches |
 | `format` | `eq` | `epub`/`pdf`/`mobi`/`azw3`/`fb2`/`fbz`/`cbz` | The book has any file of that format |
-| `reading_status` | `eq` | `unread`/`want_to_read`/`reading`/`finished`/`abandoned` | The viewer's own status. A missing `user_books` row counts as `unread` |
+| `reading_status` | `eq` | `unread`/`want_to_read`/`reading`/`on_hold`/`rereading`/`finished`/`skimmed`/`abandoned` | The viewer's own status. A missing `user_books` row counts as `unread` |
 
 Validation rejects these with 400:
 

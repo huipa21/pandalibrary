@@ -138,7 +138,7 @@
 
 		<div class="grid min-w-0 gap-6 md:grid-cols-[minmax(12rem,18rem)_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)_20rem]">
 			<aside class="min-w-0 space-y-3">
-				<BookCover id={book.id} title={book.title} authors={book.authors.map((author) => author.name)} coverUrl={context.coverSource} files={book.files} size="lg" badge loading="eager" />
+				<BookCover id={book.id} title={book.title} subtitle={book.subtitle} series={book.series?.name} authors={book.authors.map((author) => author.name)} coverUrl={context.coverSource} files={book.files} size="lg" badge loading="eager" />
 				{#if context.coverError}<p class="text-sm text-amber-800">{context.coverError}</p>{/if}
 				{#if book.cover_source}<p class="text-xs text-slate-500">{m['catalog.book.cover_source']()}: {book.cover_source}</p>{/if}
 				<div class="flex items-center gap-2">
@@ -147,7 +147,7 @@
 						{details?.progress && details.progress.percentage > 0 ? m['bv6.resume']() : m['bv6.read']()}
 					</button>
 					{#if detailsReady && details && !offline}
-						<ReadStatusMenu bookId={book.id} userBook={details.userBook} reread={(details.summary?.attempts.length ?? 0) > 1} variant="icon" />
+						<ReadStatusMenu bookId={book.id} userBook={details.userBook} variant="icon" />
 					{/if}
 				</div>
 				{#if readError}<p class="text-sm text-red-800" role="alert">{readError}</p>{/if}

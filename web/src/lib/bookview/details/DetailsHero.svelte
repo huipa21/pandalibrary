@@ -97,9 +97,9 @@
 			{/if}
 		</div>
 		{#if details && !offline}
-			<ReadStatusMenu bookId={book.id} userBook={details.userBook} reread={(details.summary?.attempts.length ?? 0) > 1} />
+			<ReadStatusMenu bookId={book.id} userBook={details.userBook} />
 		{:else if details}
-			<span class="rounded-full border border-slate-300 px-3 py-2 text-sm text-slate-700">{readStatusLabel(details.userBook?.status ?? 'unread', (details.summary?.attempts.length ?? 0) > 1)}</span>
+			<span class="rounded-full border border-slate-300 px-3 py-2 text-sm text-slate-700">{readStatusLabel(details.userBook?.status ?? 'unread')}</span>
 		{/if}
 		<a class="text-sm font-medium text-emerald-800 underline underline-offset-4" href="#book-review">{m['bv6.personal_review']()}</a>
 	</div>

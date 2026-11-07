@@ -221,6 +221,40 @@ func TestDashboardReadBooks(t *testing.T) {
 	}
 }
 
+func TestDashboardExtendedReadingStatuses(t *testing.T) {
+	ctx := context.Background()
+	fixture := newCatalogFixture(t)
+	viewer := Viewer{UserID: 2}
+	for _, statement := range []string{
+		`INSERT INTO libraries (id, name, slug, created_at, updated_at) VALUES (150, 'Status', 'status', 1, 1)`,
+		`INSERT INTO library_access (library_id, user_id, granted_at) VALUES (150, 2, 1)`,
+	} {
+		if _, err := fixture.db.Writer.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	statuses := []string{"unread", "want_to_read", "reading", "on_hold", "rereading", "finished", "skimmed", "abandoned"}
+	for i := 0; i <= len(statuses); i++ {
+		id := int64(3001 + i)
+		if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO books
+			(id, library_id, title, sort_title, created_at, updated_at) VALUES (?, 150, 'Status', 'status', 1, 1)`, id); err != nil {
+			t.Fatal(err)
+		}
+		setProgress(t, fixture, viewer.UserID, id, 0.5)
+		if i < len(statuses) {
+			setUserBookStatus(t, fixture, viewer.UserID, id, statuses[i])
+		}
+	}
+	for section, want := range map[string][]int64{
+		"continue_reading": {3009, 3005, 3004, 3003, 3002, 3001},
+		"read":             {3007, 3006},
+	} {
+		if got := dashboardBookIDs(t, fixture.service, viewer, section, 1); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s = %v, want %v", section, got, want)
+		}
+	}
+}
+
 func TestDashboardUnread(t *testing.T) {
 	ctx := context.Background()
 	fixture := newCatalogFixture(t)

@@ -322,6 +322,123 @@ func TestBookheapMigrationPreservesImportJobs(t *testing.T) {
 	}
 }
 
+func TestReadingStatusesMigrationPreservesRowsAndMapsRollback(t *testing.T) {
+	ctx := context.Background()
+	databases, databasePath := openTestDB(t)
+	v4 := newTestRunner(t, databases.Writer, databasePath, embeddedPrefixFS(t, 4), DefaultOptions())
+	if err := v4.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (1, 'reader', 'x', 'user', 1, 1)`,
+		`INSERT INTO libraries (id, name, slug, created_at, updated_at) VALUES (10, 'Main', 'main', 1, 1)`,
+	} {
+		if _, err := databases.Writer.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for id := int64(101); id <= 109; id++ {
+		if _, err := databases.Writer.ExecContext(ctx,
+			`INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at) VALUES (?, 10, 'A', 'a', 1, 1)`, id,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert := func(id int64, status string) {
+		t.Helper()
+		if _, err := databases.Writer.ExecContext(ctx, `INSERT INTO user_books
+			(user_id, book_id, status, rating, started_at, finished_at, updated_at, rev)
+			VALUES (1, ?, ?, 7, 12, 34, 56, ?)`, id, status, id-100); err != nil {
+			t.Fatalf("insert %s: %v", status, err)
+		}
+	}
+	old := []string{"unread", "want_to_read", "reading", "finished", "abandoned"}
+	for i, status := range old {
+		insert(int64(101+i), status)
+	}
+	if _, err := databases.Writer.ExecContext(ctx, `INSERT INTO user_books (user_id, book_id, updated_at, rev)
+		VALUES (1, 109, 57, 9)`); err != nil {
+		t.Fatal(err)
+	}
+
+	assertState := func(stage string, statuses []string) {
+		t.Helper()
+		for i, want := range statuses {
+			var status string
+			var rating, started, finished, updated, rev int64
+			err := databases.Writer.QueryRowContext(ctx, `SELECT status, rating, started_at, finished_at, updated_at, rev
+				FROM user_books WHERE user_id = 1 AND book_id = ?`, 101+i).
+				Scan(&status, &rating, &started, &finished, &updated, &rev)
+			if err != nil || status != want || rating != 7 || started != 12 || finished != 34 || updated != 56 || rev != int64(i+1) {
+				t.Fatalf("%s row %d = %q,%d,%d,%d,%d,%d, %v", stage, 101+i, status, rating, started, finished, updated, rev, err)
+			}
+		}
+		var count, indexes, violations int
+		var defaultStatus string
+		var rating, started, finished sql.NullInt64
+		var updated, rev int64
+		err := databases.Writer.QueryRowContext(ctx, `SELECT status, rating, started_at, finished_at, updated_at, rev
+			FROM user_books WHERE user_id = 1 AND book_id = 109`).
+			Scan(&defaultStatus, &rating, &started, &finished, &updated, &rev)
+		if err != nil || defaultStatus != "unread" || rating.Valid || started.Valid || finished.Valid || updated != 57 || rev != 9 {
+			t.Fatalf("%s nullable row = %q,%v,%v,%v,%d,%d, %v", stage, defaultStatus, rating, started, finished, updated, rev, err)
+		}
+		if err := databases.Writer.QueryRowContext(ctx, `SELECT count(*) FROM user_books`).Scan(&count); err != nil || count != len(statuses)+1 {
+			t.Fatalf("%s row count = %d, %v", stage, count, err)
+		}
+		if err := databases.Writer.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master
+			WHERE type = 'index' AND tbl_name = 'user_books'
+			AND name IN ('user_books_user_rev', 'user_books_user_status')`).Scan(&indexes); err != nil || indexes != 2 {
+			t.Fatalf("%s indexes = %d, %v", stage, indexes, err)
+		}
+		if err := databases.Writer.QueryRowContext(ctx, `SELECT count(*) FROM pragma_foreign_key_check`).Scan(&violations); err != nil || violations != 0 {
+			t.Fatalf("%s foreign key violations = %d, %v", stage, violations, err)
+		}
+		var schema string
+		if err := databases.Writer.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'user_books'`).Scan(&schema); err != nil || !strings.Contains(schema, "WITHOUT ROWID") {
+			t.Fatalf("%s table schema = %q, %v", stage, schema, err)
+		}
+	}
+
+	runner := newTestRunner(t, databases.Writer, databasePath, embedded, DefaultOptions())
+	if err := runner.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertState("after up", old)
+	for i, status := range []string{"on_hold", "rereading", "skimmed"} {
+		insert(int64(106+i), status)
+	}
+	assertState("new statuses", append(append([]string(nil), old...), "on_hold", "rereading", "skimmed"))
+	if _, err := databases.Writer.ExecContext(ctx, `UPDATE user_books SET status = 'invalid' WHERE book_id = 101`); err == nil {
+		t.Fatal("invalid reading status was accepted")
+	}
+	if _, err := databases.Writer.ExecContext(ctx, `INSERT INTO user_books (user_id, book_id, updated_at, rev) VALUES (1, 999, 1, 1)`); err == nil {
+		t.Fatal("user_books foreign key was not enforced")
+	}
+
+	if err := runner.DownTo(ctx, 4); err != nil {
+		t.Fatal(err)
+	}
+	rolledBack := append(append([]string(nil), old...), "reading", "reading", "finished")
+	assertState("after down", rolledBack)
+	for _, status := range []string{"on_hold", "rereading", "skimmed"} {
+		if _, err := databases.Writer.ExecContext(ctx, `UPDATE user_books SET status = ? WHERE book_id = 101`, status); err == nil {
+			t.Fatalf("rollback accepted %s", status)
+		}
+	}
+	if err := runner.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertState("after re-up", rolledBack)
+	if _, err := databases.Writer.ExecContext(ctx, `DELETE FROM books WHERE id = 101`); err != nil {
+		t.Fatal(err)
+	}
+	var remaining int
+	if err := databases.Writer.QueryRowContext(ctx, `SELECT count(*) FROM user_books WHERE book_id = 101`).Scan(&remaining); err != nil || remaining != 0 {
+		t.Fatalf("book deletion did not cascade: count = %d, %v", remaining, err)
+	}
+}
+
 func TestUpgradeCreatesBackup(t *testing.T) {
 	ctx := context.Background()
 	databases, databasePath := openTestDB(t)
@@ -564,7 +681,7 @@ func newTestRunner(t *testing.T, writer *sql.DB, path string, files fs.FS, optio
 	return runner
 }
 
-const embeddedLatest = 4
+const embeddedLatest = 5
 
 // embeddedPrefixFS returns the embedded migrations up to and including version max, with a matching sum.
 func embeddedPrefixFS(t *testing.T, max int) fstest.MapFS {

@@ -497,7 +497,7 @@ func (s *Service) applyMutation(
 			return reject(err.Error())
 		}
 		switch data.Status {
-		case "unread", "want_to_read", "reading", "finished", "abandoned":
+		case "unread", "want_to_read", "reading", "on_hold", "rereading", "finished", "skimmed", "abandoned":
 		default:
 			return reject("status is invalid")
 		}

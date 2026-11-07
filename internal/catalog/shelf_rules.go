@@ -31,7 +31,8 @@ var (
 		"epub": true, "pdf": true, "mobi": true, "azw3": true, "fb2": true, "fbz": true, "cbz": true,
 	}
 	ruleStatuses = map[string]bool{
-		"unread": true, "want_to_read": true, "reading": true, "finished": true, "abandoned": true,
+		"unread": true, "want_to_read": true, "reading": true, "on_hold": true,
+		"rereading": true, "finished": true, "skimmed": true, "abandoned": true,
 	}
 )
 

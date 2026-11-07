@@ -10,18 +10,24 @@ const timestamp = '2026-11-04T00:00:00Z';
 const longTitle = '星'.repeat(90);
 const file = (id: number, format: string, bookId: number) => ({
 	id, format, size_bytes: 4096,
-	download_url: `/api/v1/books/${bookId}/files/${id}?v=${'a'.repeat(64)}`
+	download_url: `/api/v1/books/${bookId}/files/${id}?v=${'a'.repeat(64)}`,
+	original_filename: `${bookId}-${id}.${format}`, created_at: timestamp
 });
-const book = (id: number, title: string, coverUrl: string | null = null) => ({
-	id, library_id: 1, title, sort_title: title, subtitle: null, description: null, language: null,
+const book = (
+	id: number,
+	title: string,
+	coverUrl: string | null = null,
+	metadata: { subtitle?: string; series?: { id: number; name: string; index: number | null } } = {}
+) => ({
+	id, library_id: 1, title, sort_title: title, subtitle: metadata.subtitle ?? null, description: null, language: null,
 	publisher: null, published_date: null, page_count: null, cover_url: coverUrl, cover_source: null,
 	authors: [{ id: 1, name: 'First Writer', role: 'author', position: 0 }],
-	series: null, tags: [], identifiers: [], field_sources: [],
+	series: metadata.series ?? null, tags: [], identifiers: [], field_sources: [],
 	files: [file(id * 100 + 1, 'pdf', id), file(id * 100 + 2, 'epub', id)],
 	created_at: timestamp, updated_at: timestamp
 });
 const books = [
-	book(2, 'Generated Book'),
+	book(2, 'Generated Book', null, { subtitle: 'A generated subtitle', series: { id: 8, name: 'Example Series', index: 2 } }),
 	book(4, 'PDF Book'),
 	book(5, longTitle),
 	book(7, 'Palette Four'),
@@ -35,7 +41,7 @@ const books = [
 books[1].files = [file(401, 'pdf', 4)];
 books[3].files = [file(701, 'zip', 7)];
 books[7].files = [];
-const searchResult = { id: 70, title: 'Search Book', authors: ['Search Writer'], series: null, cover_url: null, rank: -1 };
+const searchResult = { id: 70, title: 'Search Book', authors: ['Search Writer'], series: { id: 8, name: 'Search Series', index: null }, cover_url: null, rank: -1 };
 
 interface MockState {
 	locale: 'en' | 'zh';
@@ -81,6 +87,15 @@ async function mockApi(page: Page, state: MockState) {
 		if (path === '/auth/me') return route.fulfill({ json: { user: {
 			id: 1, username: 'reader', display_name: '', role: 'user', locale: state.locale
 		} } });
+		if (path === '/version') return route.fulfill({ json: {
+			version: 'test', commit: '0123456789abcdef', commit_date: timestamp, dirty: false, release: null
+		} });
+		if (path === '/shelves/system/unshelved' || path === '/shelves/system/favorites') {
+			return route.fulfill({ json: { shelf: {
+				id: path.endsWith('favorites') ? 7 : 8, name: 'System shelf', system_key: path.split('/').at(-1),
+				visible_book_count: 0
+			} } });
+		}
 		if (path === '/sync/pull') return route.fulfill({ json: {
 			cursor: Number(url.searchParams.get('cursor') ?? 0),
 			user_books: [], reading_progress: [], highlights: [], bookmarks: [], notes: [], user_settings: []
@@ -102,8 +117,10 @@ async function mockApi(page: Page, state: MockState) {
 		if (['/authors', '/series', '/tags', '/libraries', '/shelves'].includes(path)) {
 			return route.fulfill({ json: { items: [], next_cursor: null } });
 		}
+		if (path === '/libraries/1') return route.fulfill({ json: { library: { id: 1, name: 'Library' } } });
 		if (path === '/books') return route.fulfill({ json: { items: books, next_cursor: null } });
 		if (path === '/search') return route.fulfill({ json: { items: [searchResult], next_cursor: null } });
+		if (/^\/books\/\d+\/shelves$/.test(path)) return route.fulfill({ json: { shelves: [] } });
 		const details = /^\/books\/(\d+)$/.exec(path);
 		if (details) {
 			const found = books.find((item) => item.id === Number(details[1]));
@@ -121,6 +138,11 @@ async function mockApi(page: Page, state: MockState) {
 				} : null
 			} });
 		}
+		if (/^\/me\/books\/\d+\/reading-summary$/.test(path)) return route.fulfill({ json: { summary: {
+			progress: 0, sessions: 0, total_seconds: 0, average_seconds: 0, active_days: 0, span_days: 0,
+			first_read_at: null, last_read_at: null, pace_percent_per_hour: null, estimated_seconds_left: null,
+			records: { longest_session: null, best_day: null, longest_streak_days: 0 }, attempts: [], days: []
+		} } });
 		return problem(route, 404);
 	});
 }
@@ -158,12 +180,30 @@ async function mountKitFixture(page: Page) {
 	await expect(page.locator('#bv3-test-root [role="radiogroup"]')).toBeVisible();
 }
 
+async function measureBookGrid(page: Page, width: number) {
+	return page.evaluate((gridWidth) => {
+		const grid = document.createElement('div');
+		grid.className = 'book-grid';
+		grid.style.width = `${gridWidth}px`;
+		for (let index = 0; index < 4; index += 1) grid.append(document.createElement('span'));
+		document.body.append(grid);
+		const style = getComputedStyle(grid);
+		const result = {
+			widths: Array.from(grid.children, (child) => child.getBoundingClientRect().width),
+			rowGap: style.rowGap, columnGap: style.columnGap, justifyContent: style.justifyContent
+		};
+		grid.remove();
+		return result;
+	}, width);
+}
+
 test('generates accessible, contrast-checked covers and badges in grid and list modes', async ({ page }) => {
 	await mockApi(page, mockState());
 	await page.goto('/books');
 	const generated = card(page, 'Generated Book');
 	await expect(generated.locator('[data-generated-cover]')).toContainText('Generated Book');
 	await expect(generated.locator('[data-generated-cover]')).toContainText('First Writer');
+	await expect(generated.getByRole('img', { name: 'Generated Book', exact: true })).toHaveAttribute('data-generated-cover', '');
 	await expect(generated.getByRole('img', { name: 'Formats: EPUB, PDF' })).toContainText('EPUB +1');
 	await expect(card(page, 'PDF Book').getByRole('img', { name: 'Formats: PDF' })).toContainText('PDF');
 	await expect(card(page, longTitle).locator('.cover-title')).toHaveText(`${'星'.repeat(79)}…`);
@@ -194,21 +234,182 @@ test('generates accessible, contrast-checked covers and badges in grid and list 
 		}).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
 		return nodes.map((node) => {
 			const title = node.querySelector('.cover-title');
-			if (!title) throw new Error('Generated cover title is missing.');
-			const background = getComputedStyle(node).backgroundColor;
+			const plate = node.querySelector('.cover-plate');
+			if (!title || !plate) throw new Error('Generated cover title or plate is missing.');
+			const board = getComputedStyle(node).backgroundColor;
+			const background = getComputedStyle(plate).backgroundColor;
 			const foreground = getComputedStyle(title).color;
 			const first = luminance(rgb(background));
 			const second = luminance(rgb(foreground));
-			return { background, contrast: (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05) };
+			return { board, contrast: (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05) };
 		});
 	});
-	expect(new Set(colors.map((color) => color.background)).size).toBe(8);
+	expect(new Set(colors.map((color) => color.board)).size).toBe(8);
 	for (const color of colors) expect(color.contrast).toBeGreaterThanOrEqual(4.5);
 
 	await page.getByRole('button', { name: 'List', exact: true }).click();
 	await expect(card(page, 'Generated Book').locator('[data-generated-cover]')).toBeVisible();
 	await expect(card(page, 'Generated Book').getByRole('img', { name: 'Formats: EPUB, PDF' })).toBeVisible();
+	expect(await card(page, longTitle).locator('.cover-title').evaluate((node) => getComputedStyle(node).webkitLineClamp)).toBe('3');
 	await expect(page.getByText('Cover unavailable')).toHaveCount(0);
+});
+
+test('renders cloth covers at the measured size without overflowing', async ({ page }, testInfo) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await mockApi(page, mockState());
+	await page.goto('/books');
+
+	const long = card(page, longTitle).locator('.cover-title');
+	await expect(long).toHaveAttribute('data-title-scale', 'sm');
+	expect(await long.evaluate((node) => getComputedStyle(node).webkitLineClamp)).toBe('5');
+	expect(await long.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+
+	const realCover = card(page, 'Real Cover').locator('.book-cover');
+	const generatedCover = card(page, 'Generated Book').locator('.book-cover');
+	const geometry = await generatedCover.evaluate((node) => {
+		const rect = node.getBoundingClientRect();
+		const style = getComputedStyle(node);
+		return { width: rect.width, height: rect.height, ratio: style.aspectRatio, radius: style.borderRadius, shadow: style.boxShadow };
+	});
+	expect(geometry.ratio).toBe('2 / 3');
+	expect(geometry.height / geometry.width).toBeCloseTo(1.5, 2);
+	expect(await realCover.evaluate((node) => {
+		const style = getComputedStyle(node);
+		return { ratio: style.aspectRatio, radius: style.borderRadius, shadow: style.boxShadow };
+	})).toEqual({ ratio: geometry.ratio, radius: geometry.radius, shadow: geometry.shadow });
+	expect(await realCover.locator('img').evaluate((node) => getComputedStyle(node).objectFit)).toBe('cover');
+
+	const appScreenshot = testInfo.outputPath('bc3-app-1440.png');
+	await page.screenshot({ path: appScreenshot });
+	await testInfo.attach('BC3 app at 1440px', { path: appScreenshot, contentType: 'image/png' });
+
+	await mountKitFixture(page);
+	const gallery = page.locator('[data-test="cloth-cover-gallery"]');
+	const covers = gallery.locator('[data-generated-cover]');
+	await expect(covers).toHaveCount(6);
+	for (const [title, scale, factor] of [
+		['Emma', 'xl', 0.17],
+		['Frankenstein', 'lg', 0.12],
+		['Pride and Prejudice', 'md', 0.095],
+		['Twenty Thousand Leagues Under the Seas', 'sm', 0.08]
+	] as const) {
+		const label = gallery.locator(`[aria-label="${title}"] .cover-title`);
+		await expect(label).toHaveAttribute('data-title-scale', scale);
+		expect(await label.evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize)))
+			.toBeCloseTo(208 * factor, 1);
+	}
+	await expect(gallery.locator('[aria-label="Emma"] .cloth-frame')).toHaveCount(2);
+	await expect(gallery.locator('[aria-label="Emma"] .cover-texture')).toHaveCSS('mix-blend-mode', 'multiply');
+	await expect(gallery.locator('[aria-label="Emma"] .cover-texture')).toHaveCSS('opacity', '0.18');
+	const referenceTitle = gallery.locator('[aria-label="Twenty Thousand Leagues Under the Seas"] .cover-title');
+	await expect(referenceTitle).toHaveAttribute('data-title-scale', 'sm');
+	const referenceLines = await referenceTitle.evaluate((node) =>
+		node.getBoundingClientRect().height / Number.parseFloat(getComputedStyle(node).lineHeight)
+	);
+	expect(referenceLines).toBeGreaterThan(1);
+	expect(referenceLines).toBeLessThanOrEqual(5.01);
+	await expect(gallery.locator('[aria-label="The Adventures of Sherlock Holmes"] .cover-series')).toHaveText('Sherlock Holmes');
+	await expect(gallery.locator('[aria-label="Frankenstein"] .cover-subtitle')).toHaveText('The Modern Prometheus');
+	await expect(gallery.locator('[aria-label="Frankenstein"] .cover-author')).toHaveText('Mary Shelley');
+
+	const layout = await covers.evaluateAll((nodes) => nodes.map((node) => {
+		const root = node.parentElement;
+		const plate = node.querySelector('.cover-plate');
+		const footer = node.querySelector('.cover-footer');
+		if (!root || !plate || !footer) throw new Error('Generated cover layers are missing.');
+		const rootRect = root.getBoundingClientRect();
+		const plateRect = plate.getBoundingClientRect();
+		const footerRect = footer.getBoundingClientRect();
+		const contents = Array.from(plate.querySelectorAll('.cover-title, .cover-series, .cover-subtitle'), (element) => {
+			const rect = element.getBoundingClientRect();
+			return rect.top >= plateRect.top && rect.bottom <= plateRect.bottom &&
+				rect.left >= plateRect.left && rect.right <= plateRect.right;
+		});
+		return {
+			width: rootRect.width, height: rootRect.height,
+			plateAboveFooter: plateRect.bottom <= footerRect.top,
+			contentsFit: contents.every(Boolean)
+		};
+	}));
+	for (const cover of layout) {
+		expect(cover.width).toBe(208);
+		expect(cover.height / cover.width).toBeCloseTo(1.5, 2);
+		expect(cover.plateAboveFooter).toBe(true);
+		expect(cover.contentsFit).toBe(true);
+	}
+
+	const galleryScreenshot = testInfo.outputPath('bc3-cloth-covers-1440.png');
+	await gallery.screenshot({ path: galleryScreenshot });
+	await testInfo.attach('BC3 cloth covers at 1440px', { path: galleryScreenshot, contentType: 'image/png' });
+
+	const xs = page.locator('[data-test="cover-xs"]');
+	const sm = page.locator('[data-test="cover-sm"]');
+	for (const compact of [xs, sm]) {
+		expect(await compact.locator('.cover-title').evaluate((node) => getComputedStyle(node).webkitLineClamp)).toBe('3');
+		await expect(compact.locator('.cover-subtitle')).toHaveCount(0);
+	}
+	await expect(xs.locator('.cover-series, .cover-footer')).toHaveCount(0);
+	await expect(sm.locator('.cover-series')).toHaveText('A long series');
+	await expect(sm.locator('.cover-author')).toHaveText('First Writer');
+
+	const overflow = page.locator('[data-test="cover-overflow"]');
+	for (const selector of ['.cover-series', '.cover-subtitle', '.cover-author']) {
+		expect(await overflow.locator(selector).evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+	}
+	const overflowLayout = await overflow.locator('[data-generated-cover]').evaluate((node) => {
+		const plate = node.querySelector('.cover-plate');
+		const footer = node.querySelector('.cover-footer');
+		if (!plate || !footer) throw new Error('Generated cover layers are missing.');
+		const plateRect = plate.getBoundingClientRect();
+		return {
+			plateAboveFooter: plateRect.bottom <= footer.getBoundingClientRect().top,
+			contentsFit: Array.from(plate.querySelectorAll('.cover-title, .cover-series, .cover-subtitle'), (element) => {
+				const rect = element.getBoundingClientRect();
+				return rect.top >= plateRect.top && rect.bottom <= plateRect.bottom &&
+					rect.left >= plateRect.left && rect.right <= plateRect.right;
+			}).every(Boolean)
+		};
+	});
+	expect(overflowLayout).toEqual({ plateAboveFooter: true, contentsFit: true });
+
+	expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--spacing-book').trim())).toBe('13rem');
+	expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--aspect-book').trim())).toBe('2 / 3');
+	expect(await measureBookGrid(page, 900)).toEqual({
+		widths: [208, 208, 208, 208], rowGap: '28px', columnGap: '20px', justifyContent: 'start'
+	});
+	await page.setViewportSize({ width: 390, height: 844 });
+	expect(await measureBookGrid(page, 300)).toEqual({
+		widths: [140, 140, 140, 140], rowGap: '28px', columnGap: '20px', justifyContent: 'start'
+	});
+	await page.setViewportSize({ width: 639, height: 844 });
+	expect((await measureBookGrid(page, 300)).widths).toEqual([140, 140, 140, 140]);
+	await page.setViewportSize({ width: 640, height: 844 });
+	expect((await measureBookGrid(page, 900)).widths).toEqual([208, 208, 208, 208]);
+});
+
+test('passes cover metadata through the catalog, quick view, details, and files', async ({ page }) => {
+	await mockApi(page, mockState());
+	await page.goto('/books');
+	const generated = card(page, 'Generated Book');
+	const catalogCover = generated.locator('[data-generated-cover]');
+	await expect(catalogCover.locator('.cover-series')).toHaveText('Example Series');
+	await expect(catalogCover.locator('.cover-subtitle')).toHaveText('A generated subtitle');
+	await generated.locator('div.cover-frame').hover();
+	await generated.getByRole('button', { name: 'Quick view: Generated Book' }).click();
+	const drawerCover = page.getByRole('dialog', { name: 'Generated Book' }).locator('[data-generated-cover]');
+	await expect(drawerCover.locator('.cover-series')).toHaveText('Example Series');
+	await expect(drawerCover.locator('.cover-subtitle')).toHaveCount(0);
+	await page.keyboard.press('Escape');
+
+	await page.goto('/books/2');
+	const detailsCover = page.locator('[data-generated-cover][aria-label="Generated Book"]').first();
+	await expect(detailsCover.locator('.cover-series')).toHaveText('Example Series');
+	await expect(detailsCover.locator('.cover-subtitle')).toHaveText('A generated subtitle');
+
+	await page.goto('/books/2/files');
+	const filesCover = page.locator('[data-generated-cover][aria-label="Generated Book"]').first();
+	await expect(filesCover.locator('.cover-series')).toHaveText('Example Series');
+	await expect(filesCover.locator('.cover-subtitle')).toHaveCount(0);
 });
 
 test('reveals keyboard and hover actions, dispatches info, and resumes the saved file', async ({ page }) => {
@@ -218,7 +419,7 @@ test('reveals keyboard and hover actions, dispatches info, and resumes the saved
 	const overlay = generated.locator('.cover-overlay');
 	await expect(generated.locator('[data-generated-cover]')).toBeVisible();
 	expect(await overlay.evaluate((node) => Number(getComputedStyle(node).opacity))).toBe(0);
-	await generated.locator('.cover-frame').hover();
+	await generated.locator('div.cover-frame').hover();
 	await expect.poll(() => overlay.evaluate((node) => Number(getComputedStyle(node).opacity))).toBe(1);
 	await page.emulateMedia({ reducedMotion: 'reduce' });
 	expect(await overlay.evaluate((node) => getComputedStyle(node).transitionDuration)).toBe('0s');
@@ -250,14 +451,14 @@ test('uses the first readable fallback and reports failures without navigation',
 	await mockApi(page, mockState());
 	await page.goto('/books');
 	const failed = card(page, 'Read Failure');
-	await failed.locator('.cover-frame').hover();
+	await failed.locator('div.cover-frame').hover();
 	await failed.getByRole('button', { name: 'Read Read Failure' }).click();
 	await expect(failed.getByRole('alert')).toContainText('Could not open the reader');
 	await expect(page).toHaveURL(/\/books$/);
 	await expect(card(page, 'Palette Four').getByRole('button', { name: 'Read Palette Four' })).toHaveCount(0);
 
 	const pdf = card(page, 'PDF Book');
-	await pdf.locator('.cover-frame').hover();
+	await pdf.locator('div.cover-frame').hover();
 	await pdf.getByRole('button', { name: 'Read PDF Book' }).click();
 	await expect(page).toHaveURL(/\/read\/4\/401$/);
 });
@@ -268,10 +469,11 @@ test('search results use generated covers and dispatch info without claiming a f
 	const result = card(page, 'Search Book');
 	await expect(result.locator('[data-generated-cover]')).toContainText('Search Book');
 	await expect(result.locator('[data-generated-cover]')).toContainText('Search Writer');
+	await expect(result.locator('.cover-series')).toHaveText('Search Series');
 	await expect(result.getByRole('img', { name: 'Cover of Search Book' })).toBeVisible();
 	await expect(result.getByRole('img', { name: /^Formats:/ })).toHaveCount(0);
 	await expect(result.getByRole('button', { name: 'Read Search Book' })).toHaveCount(0);
-	await result.locator('.cover-frame').hover();
+	await result.locator('div.cover-frame').hover();
 	await result.getByRole('button', { name: 'Quick view: Search Book' }).click();
 	await expect(page.locator('html')).toHaveAttribute('data-quick-book', '70');
 	await expect(page.locator('html')).toHaveAttribute('data-quick-book-provided', 'false');
@@ -282,11 +484,18 @@ test('localizes cover actions and badges', async ({ page }) => {
 	await page.goto('/books');
 	const generated = card(page, 'Generated Book');
 	await expect(generated.getByRole('img', { name: '格式：EPUB, PDF' })).toBeVisible();
-	await generated.locator('.cover-frame').hover();
+	await generated.locator('div.cover-frame').hover();
 	await expect(generated.getByRole('button', { name: '快速查看：Generated Book' })).toBeVisible();
 	await expect(generated.getByRole('button', { name: '阅读 Generated Book' })).toBeVisible();
 	await mountKitFixture(page);
 	await expect(page.locator('[data-test="duration"]')).toHaveText('2小时 56分钟');
+	const status = page.locator('[data-test="reading-status"]');
+	await status.getByRole('button', { name: '阅读状态：阅读中' }).click();
+	await expect(status.getByRole('menuitemradio')).toHaveText(['未读', '想读', '阅读中', '暂搁', '重读中', '已读', '已略读', '已放弃']);
+	await expect(status.getByRole('menuitemradio', { name: '阅读中' })).toHaveAttribute('aria-checked', 'true');
+	await page.keyboard.press('Escape');
+	await expect(page.locator('[data-test="badge-reading-status"]').getByRole('button',
+		{ name: '阅读状态：阅读中。更改' })).toBeVisible();
 });
 
 test('exercises interactive kit primitives, safe links, and optimistic status rollback', async ({ page }) => {
@@ -344,11 +553,15 @@ test('exercises interactive kit primitives, safe links, and optimistic status ro
 	)).toBe(true);
 
 	const status = page.locator('[data-test="reading-status"]');
-	let trigger = status.getByRole('button', { name: 'Reading status: Re-reading' });
+	let trigger = status.getByRole('button', { name: 'Reading status: Reading' });
+	await expect(trigger.locator('svg[data-status-icon="reading"]')).toHaveClass(/text-blue-600/);
 	await trigger.click();
-	await expect(status.getByRole('menuitemradio', { name: 'Re-reading' })).toBeFocused();
+	await expect(status.getByRole('menuitemradio')).toHaveText([
+		'Unread', 'Want to read', 'Reading', 'On hold', 'Re-reading', 'Read', 'Skimmed', 'Abandoned'
+	]);
+	await expect(status.getByRole('menuitemradio', { name: 'Reading', exact: true })).toBeFocused();
 	await page.keyboard.press('ArrowDown');
-	await expect(status.getByRole('menuitemradio', { name: 'Finished' })).toBeFocused();
+	await expect(status.getByRole('menuitemradio', { name: 'On hold' })).toBeFocused();
 	await page.keyboard.press('Home');
 	await expect(status.getByRole('menuitemradio', { name: 'Unread' })).toBeFocused();
 	await page.keyboard.press('End');
@@ -358,10 +571,11 @@ test('exercises interactive kit primitives, safe links, and optimistic status ro
 
 	state.holdPush = true;
 	await trigger.click();
-	await status.getByRole('menuitemradio', { name: 'Finished' }).click();
+	await status.getByRole('menuitemradio', { name: 'Read', exact: true }).click();
 	await expect.poll(() => state.pushes.length).toBe(1);
-	trigger = status.getByRole('button', { name: 'Reading status: Finished' });
+	trigger = status.getByRole('button', { name: 'Reading status: Read' });
 	await expect(trigger).toBeDisabled();
+	await expect(trigger.locator('svg[data-status-icon="finished"]')).toHaveClass(/text-green-600/);
 	await expect(trigger).toBeFocused();
 	expect(state.pushes[0].data).toMatchObject({
 		book_id: 21, status: 'finished', rating: 7, started_at: Date.parse('2026-01-02T03:04:05Z'),
@@ -375,17 +589,112 @@ test('exercises interactive kit primitives, safe links, and optimistic status ro
 	await trigger.click();
 	await status.getByRole('menuitemradio', { name: 'Want to read' }).click();
 	await expect(status.getByRole('alert')).toContainText('Could not update reading status');
-	await expect(status.getByRole('button', { name: 'Reading status: Finished' })).toBeEnabled();
+	await expect(status.getByRole('button', { name: 'Reading status: Read' })).toBeEnabled();
 
 	state.pushStatus = 'applied';
 	const newStatus = page.locator('[data-test="new-reading-status"]');
-	await newStatus.getByRole('button', { name: 'Reading status', exact: true }).click();
+	const iconTrigger = newStatus.getByRole('button', { name: 'Reading status', exact: true });
+	await expect(iconTrigger.locator('svg[data-status-icon="unread"]')).toHaveClass(/text-slate-500/);
+	await iconTrigger.click();
 	await newStatus.getByRole('menuitemradio', { name: 'Reading', exact: true }).click();
 	await expect.poll(() => state.pushes.length).toBe(3);
+	await expect(iconTrigger.locator('svg[data-status-icon="reading"]')).toHaveClass(/text-blue-600/);
 	expect(state.pushes[2].data).toMatchObject({
 		book_id: 23, status: 'reading', rating: null, started_at: expect.any(Number), finished_at: null
 	});
 	await expect(page.locator('html')).toHaveAttribute('data-state-book', '23');
+});
+
+test('positions the status badge menu at viewport edges and supports keyboard selection', async ({ page }) => {
+	const state = mockState();
+	await mockApi(page, state);
+	await page.setViewportSize({ width: 320, height: 480 });
+	await page.goto('/books');
+	await mountKitFixture(page);
+	const section = page.locator('[data-test="badge-reading-status"]');
+	await section.evaluate((element) => {
+		Object.assign(element.style, { position: 'fixed', right: '4px', bottom: '4px', zIndex: '1000' });
+	});
+	let badge = section.getByRole('button', { name: 'Reading status: Reading. Change' });
+	const badgeBox = await badge.boundingBox();
+	expect(badgeBox?.width).toBe(28);
+	expect(badgeBox?.height).toBe(28);
+	await badge.click();
+	const menu = section.getByRole('menu', { name: 'Reading status' });
+	const box = await menu.boundingBox();
+	expect(box).not.toBeNull();
+	expect(box!.x).toBeGreaterThanOrEqual(8);
+	expect(box!.x + box!.width).toBeLessThanOrEqual(312);
+	expect(box!.y).toBeGreaterThanOrEqual(8);
+	expect(box!.y + box!.height).toBeLessThanOrEqual(badgeBox!.y);
+
+	const statuses = [
+		['Unread', 'unread', 'text-slate-500'], ['Want to read', 'want_to_read', 'text-violet-600'],
+		['Reading', 'reading', 'text-blue-600'], ['On hold', 'on_hold', 'text-amber-500'],
+		['Re-reading', 'rereading', 'text-fuchsia-600'], ['Read', 'finished', 'text-green-600'],
+		['Skimmed', 'skimmed', 'text-sky-500'], ['Abandoned', 'abandoned', 'text-rose-600']
+	] as const;
+	const colors: string[] = [];
+	for (const [label, value, tone] of statuses) {
+		const row = menu.getByRole('menuitemradio', { name: label, exact: true });
+		const icon = row.locator(`svg[data-status-icon="${value}"]`);
+		await expect(icon).toHaveClass(new RegExp(tone));
+		await expect(icon).toHaveAttribute('viewBox', '0 0 24 24');
+		await expect(icon).toHaveAttribute('aria-hidden', 'true');
+		await expect(icon.locator('path, rect')).not.toHaveCount(0);
+		colors.push(await icon.evaluate((element) => getComputedStyle(element).color));
+		await expect(row).toHaveAttribute('aria-checked', value === 'reading' ? 'true' : 'false');
+		await expect(row.locator('svg:not([data-status-icon])')).toHaveCount(value === 'reading' ? 1 : 0);
+	}
+	expect(new Set(colors).size).toBe(statuses.length);
+	await page.keyboard.press('End');
+	const last = menu.getByRole('menuitemradio', { name: 'Abandoned' });
+	await expect(last).toBeFocused();
+	expect(await last.evaluate((element) => {
+		const probe = document.createElement('span');
+		probe.style.backgroundColor = 'var(--color-slate-100)';
+		element.append(probe);
+		const matches = getComputedStyle(element).backgroundColor === getComputedStyle(probe).backgroundColor;
+		probe.remove();
+		return matches;
+	})).toBe(true);
+	await page.keyboard.press('Home');
+	await expect(menu.getByRole('menuitemradio', { name: 'Unread' })).toBeFocused();
+	await page.keyboard.press('Escape');
+	await expect(badge).toBeFocused();
+
+	await section.evaluate((element) => {
+		Object.assign(element.style, { left: '4px', top: '4px', right: 'auto', bottom: 'auto' });
+	});
+	await badge.click();
+	const topBox = await menu.boundingBox();
+	const topBadge = await badge.boundingBox();
+	expect(topBox!.x).toBeGreaterThanOrEqual(8);
+	expect(topBox!.y).toBeGreaterThanOrEqual(topBadge!.y + topBadge!.height);
+	expect(topBox!.y + topBox!.height).toBeLessThanOrEqual(472);
+	await page.setViewportSize({ width: 200, height: 240 });
+	await expect.poll(async () => {
+		const resized = await menu.boundingBox();
+		return resized !== null && resized.x >= 8 && resized.y >= 8 &&
+			resized.x + resized.width <= 192 && resized.y + resized.height <= 232;
+	}).toBe(true);
+	await menu.getByRole('menuitemradio', { name: 'On hold' }).click();
+	await expect.poll(() => state.pushes.length).toBe(1);
+	expect(state.pushes[0].data).toMatchObject({ book_id: 24, status: 'on_hold', rating: 7 });
+	badge = section.getByRole('button', { name: 'Reading status: On hold. Change' });
+	await expect(badge.locator('svg[data-status-icon="on_hold"]')).toHaveClass(/text-amber-500/);
+
+	await page.setViewportSize({ width: 320, height: 480 });
+	for (const [label, value, tone] of statuses) {
+		if (value === 'on_hold') continue;
+		await badge.click();
+		await menu.getByRole('menuitemradio', { name: label, exact: true }).click();
+		await expect.poll(() => state.pushes.at(-1)?.data.status).toBe(value);
+		badge = section.getByRole('button', { name: `Reading status: ${label}. Change` });
+		await expect(badge).toBeEnabled();
+		await expect(badge.locator(`svg[data-status-icon="${value}"]`)).toHaveClass(new RegExp(tone));
+	}
+	expect(state.pushes).toHaveLength(statuses.length);
 });
 
 test.describe('touch devices', () => {

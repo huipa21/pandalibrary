@@ -3,18 +3,37 @@ import { pushMutation } from '#lib/reader/api.js';
 import { notifyBookStateChanged } from './events.js';
 import { parseDate } from './format.js';
 
-export const READ_STATUSES = ['unread', 'want_to_read', 'reading', 'finished', 'abandoned'] as const;
+export const READ_STATUSES = [
+	'unread', 'want_to_read', 'reading', 'on_hold', 'rereading', 'finished', 'skimmed', 'abandoned'
+] as const;
 export type ReadStatus = (typeof READ_STATUSES)[number];
 
-/** Localized status label; `reading` reads "Re-reading" when the book has more than one attempt. */
-export function readStatusLabel(status: ReadStatus, reread = false): string {
+export function readStatusLabel(status: ReadStatus): string {
 	switch (status) {
 		case 'unread': return m['bv3.status_unread']();
 		case 'want_to_read': return m['bv3.status_want_to_read']();
-		case 'reading': return reread ? m['bv3.status_rereading']() : m['bv3.status_reading']();
-		case 'finished': return m['bv3.status_finished']();
+		case 'reading': return m['bv3.status_reading']();
+		case 'on_hold': return m['bc1.status_on_hold']();
+		case 'rereading': return m['bv3.status_rereading']();
+		case 'finished': return m['bc1.status_read']();
+		case 'skimmed': return m['bc1.status_skimmed']();
 		case 'abandoned': return m['bv3.status_abandoned']();
 	}
+}
+
+const STATUS_TONES = {
+	unread: { text: 'text-slate-500', ring: 'ring-slate-500' },
+	want_to_read: { text: 'text-violet-600', ring: 'ring-violet-600' },
+	reading: { text: 'text-blue-600', ring: 'ring-blue-600' },
+	on_hold: { text: 'text-amber-500', ring: 'ring-amber-500' },
+	rereading: { text: 'text-fuchsia-600', ring: 'ring-fuchsia-600' },
+	finished: { text: 'text-green-600', ring: 'ring-green-600' },
+	skimmed: { text: 'text-sky-500', ring: 'ring-sky-500' },
+	abandoned: { text: 'text-rose-600', ring: 'ring-rose-600' }
+} satisfies Record<ReadStatus, { text: string; ring: string }>;
+
+export function statusTone(status: ReadStatus): { text: string; ring: string } {
+	return STATUS_TONES[status];
 }
 
 export interface UserBook {
@@ -44,6 +63,10 @@ export function isUserBook(value: unknown): value is UserBook {
 export function statusPatch(current: UserBook | null, status: ReadStatus, now = new Date()): UserBookPatch {
 	const patch: UserBookPatch = { status };
 	if (status === 'reading' && !current?.started_at) patch.started_at = now.toISOString();
+	if (status === 'rereading' && (current?.status !== 'rereading' || !current.started_at)) {
+		patch.started_at = now.toISOString();
+		patch.finished_at = null;
+	}
 	if (status === 'finished' && !current?.finished_at) patch.finished_at = now.toISOString();
 	return patch;
 }

@@ -312,8 +312,8 @@ test('book view works end to end against the real server', async ({ page, browse
 		await rating.click();
 		await expect(rating).toHaveAttribute('aria-checked', 'true');
 		await page.getByRole('button', { name: /^Reading status:/ }).first().click();
-		await page.getByRole('menuitemradio', { name: 'Finished' }).click();
-		await expect(page.getByRole('button', { name: 'Reading status: Finished' }).first()).toBeVisible();
+		await page.getByRole('menuitemradio', { name: 'Read', exact: true }).click();
+		await expect(page.getByRole('button', { name: 'Reading status: Read' }).first()).toBeVisible();
 		await expect.poll(async () => {
 			const response = await page.request.get(`/api/v1/me/books/${data.covered.id}`);
 			const state = await response.json() as { user_book: { status: string; rating: number | null } | null };
@@ -321,7 +321,7 @@ test('book view works end to end against the real server', async ({ page, browse
 		}).toMatchObject({ status: 'finished', rating: 8 });
 		await page.reload();
 		await expect(page.getByRole('radio', { name: '4 out of 5', exact: true })).toHaveAttribute('aria-checked', 'true');
-		await expect(page.getByRole('button', { name: 'Reading status: Finished' }).first()).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Reading status: Read' }).first()).toBeVisible();
 	});
 
 	await test.step('Files tab groups formats and puts progress on the right file', async () => {

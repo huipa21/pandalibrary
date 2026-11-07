@@ -27,6 +27,8 @@
 				<BookCover
 					id={book.id}
 					title={book.title}
+					subtitle={book.subtitle}
+					series={book.series?.name}
 					authors={book.authors.map((item) => item.name)}
 					coverUrl={coverSource}
 					size="sm"

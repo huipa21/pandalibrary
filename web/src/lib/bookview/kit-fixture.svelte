@@ -24,6 +24,17 @@
 		'chevron-left', 'chevron-right', 'chevron-down', 'trash', 'copy', 'more',
 		'star', 'star-half', 'pencil', 'search', 'plus', 'refresh', 'file'
 	];
+	const clothCovers: Array<{
+		id: number; title: string; authors: string[]; series?: string; subtitle?: string;
+	}> = [
+		{ id: 2, title: 'Emma', authors: ['Jane Austen'] },
+		{ id: 4, title: 'The Adventures of Sherlock Holmes', series: 'Sherlock Holmes', authors: ['Arthur Conan Doyle'] },
+		{ id: 5, title: 'Twenty Thousand Leagues Under the Seas', authors: ['Jules Verne'] },
+		{ id: 7, title: 'Frankenstein', subtitle: 'The Modern Prometheus', authors: ['Mary Shelley'] },
+		{ id: 10, title: 'Pride and Prejudice', authors: ['Jane Austen'] },
+		{ id: 3, title: 'The Secret Garden', authors: ['Frances Hodgson Burnett'] }
+	];
+	const compactTitle = '星'.repeat(90);
 </script>
 
 <div class="space-y-5 bg-white p-4 text-slate-900">
@@ -34,11 +45,36 @@
 	<section data-test="short-description" style="width: 20rem"><ExpandableText text="<b>Short &amp; safe</b>" /></section>
 	<section data-test="identifier-icons"><IdentifierLinks {identifiers} variant="icons" /></section>
 	<section data-test="identifier-chips"><IdentifierLinks {identifiers} variant="chips" /></section>
-	<section data-test="reading-status"><ReadStatusMenu bookId={21} {userBook} reread variant="pill" /></section>
+	<section data-test="reading-status"><ReadStatusMenu bookId={21} {userBook} variant="pill" /></section>
 	<section data-test="new-reading-status"><ReadStatusMenu bookId={23} userBook={null} variant="icon" /></section>
+	<section data-test="badge-reading-status"><ReadStatusMenu bookId={24} {userBook} variant="badge" /></section>
 	<section data-test="icons">{#each icons as name}<Icon {name} />{/each}</section>
 	<section data-test="changing-cover" style="width: 8rem">
 		<BookCover id={21} title="Changing cover" {coverUrl} />
 		<button type="button" onclick={() => (coverUrl = '/cover-good.png')}>Use working cover</button>
+	</section>
+	<section data-test="cloth-cover-gallery" class="flex flex-wrap gap-4">
+		{#each clothCovers as cover (cover.id)}
+			<div class="w-book shrink-0">
+				<BookCover {...cover} />
+			</div>
+		{/each}
+	</section>
+	<section data-test="cloth-cover-compact" class="flex items-start gap-4">
+		<div data-test="cover-xs" class="w-12">
+			<BookCover id={2} title={compactTitle} series="A long series" subtitle="A subtitle" authors={['First Writer']} size="xs" />
+		</div>
+		<div data-test="cover-sm" class="w-24">
+			<BookCover id={4} title={compactTitle} series="A long series" subtitle="A subtitle" authors={['First Writer']} size="sm" />
+		</div>
+		<div data-test="cover-overflow" class="w-book">
+			<BookCover
+				id={13}
+				title={compactTitle}
+				series={'A very long series '.repeat(10)}
+				subtitle={'A very long subtitle '.repeat(10)}
+				authors={['An exceptionally long author name '.repeat(10)]}
+			/>
+		</div>
 	</section>
 </div>
