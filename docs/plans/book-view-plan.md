@@ -270,7 +270,9 @@ Each prompt's Scope section is authoritative.
   `web/src/lib/bookview/log-api.ts` (summary, sessions, delete, manual add).
 - BV3: `web/src/lib/bookview/**` except `log-api.ts`, `browse-context.ts`,
   `book-context.svelte.ts` and `tabs/**`. It also edits
-  `catalog/BookCard.svelte` and `search/SearchResultCard.svelte`.
+  `catalog/BookCard.svelte` and `search/SearchResultCard.svelte`, and widens
+  the existing `reader/api.ts` mutation entity type to include the already
+  supported `user_books` upsert.
 - BV4: `routes/books/[id]/(tabs)/**`, removal of the old
   `routes/books/[id]/+page.svelte`, `bookview/browse-context.ts`,
   `bookview/book-context.svelte.ts`, placeholder `bookview/tabs/*.svelte`, and

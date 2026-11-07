@@ -82,7 +82,7 @@ the next. Only BV10 runs the full verification gate.
 |---|---|---|---|---|---|---|---|
 | 1 | BV1 | Catalog API: file name/added, shelves containing a book | baseline | [BV1](../prompts/BV1-catalog-detail-api.md) | Ready | `task/bv1` | |
 | 1 | BV2 | Per-book reading log API + web client | baseline | [BV2](../prompts/BV2-reading-log-api.md) | Ready | `task/bv2` | |
-| 1 | BV3 | Cover kit: generated cover, format badge, hover actions | baseline | [BV3](../prompts/BV3-cover-kit.md) | Ready | `task/bv3` | |
+| 1 | BV3 | Cover kit: generated cover, format badge, hover actions | baseline | [BV3](../prompts/BV3-cover-kit.md) | Done | `master` | Cover kit and card integration; targeted checks pass |
 | 1 | BV4 | Details shell: route group, tabs, contexts, prev/next | baseline | [BV4](../prompts/BV4-details-shell.md) | Ready | `task/bv4` | |
 | 2 | BV5 | Quick view drawer | BV1, BV3 | [BV5](../prompts/BV5-quick-view.md) | Ready | `task/bv5` | |
 | 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Ready | `task/bv6` | |
@@ -94,6 +94,36 @@ the next. Only BV10 runs the full verification gate.
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BV3 — Implemented deterministic, contrast-checked title covers,
+  format badges, hover/focus/touch actions, the shared interactive kit, and
+  English/Chinese copy. Info dispatches the quick-view event; the drawer remains
+  BV5. `readTarget` resumes saved progress, falls back only when that file is
+  unavailable, and propagates other failures. `isUserBook` narrows the existing
+  `BookState.user_book: unknown` before it is passed to the kit. The existing
+  reader mutation entity type was widened to include the server-supported
+  `user_books` upsert. `formatSize` is available in the kit; the old book page
+  retains its local copy until BV4/BV6 replace it, because that route is outside
+  BV3 ownership. No migration or dependency was added.
+  Final component props for BV5-BV9:
+  - `Icon`: `name: IconName`, `class?: string`.
+  - `BookCover`: `id`, `title`, `authors?: readonly string[]`,
+    `coverUrl?: string | null`, `files?: readonly BookFile[]`,
+    `size?: 'sm' | 'md' | 'lg'`, `badge?: boolean`, `class?: string`,
+    `loading?: 'lazy' | 'eager'`.
+  - `FormatBadge`: `files: readonly BookFile[]`, `size?: 'xs' | 'sm'`.
+  - `CoverActions`: `book: Book | SearchResult`,
+    `variant: 'grid' | 'list' | 'search'`; search emits only the book ID.
+  - `RatingStars`: `value: number | null`, `size?: 'sm' | 'md' | 'lg'`,
+    `editable?: boolean`, `onChange?: (value: number | null) => void`;
+    `onChange` is required when `editable` is true.
+  - `ExpandableText`: `text: string`, `lines?: number`.
+  - `IdentifierLinks`: `identifiers: readonly Identifier[]`,
+    `variant?: 'icons' | 'chips'`.
+  - `ReadStatusMenu`: `bookId: number`, `userBook: UserBook | null`,
+    `reread?: boolean`, `variant?: 'pill' | 'icon'`.
+  `pnpm --dir web check` passed with no diagnostics; 33 focused unit tests and
+  23 mocked cover/catalog/dashboard/search/shelf browser tests passed.
 
 - 2026-11-07 — BV plan — Drafted the Book View batch (BV1-BV10): client-side
   generated title covers with a format badge, hover Info/Read actions, a

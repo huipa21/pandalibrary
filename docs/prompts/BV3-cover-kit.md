@@ -1,9 +1,9 @@
 # BV3: Cover kit – generated cover, format badge, hover actions, shared primitives
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline `72c469c`
 - Can run in parallel with: BV1, BV2, BV4
-- Branch/worktree: `task/bv3` / `..\pandalibrary-bv3`
+- Branch/worktree: `master` / `.`
 - Migration: no
 
 ## Read first

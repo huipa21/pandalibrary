@@ -3,7 +3,7 @@ import type { BookFile } from '#lib/catalog/types.js';
 import type { BookState, Setting } from './types.js';
 
 export type Mutation = {
-	entity: 'reading_progress' | 'highlights' | 'bookmarks' | 'notes' | 'user_settings' | 'reading_sessions';
+	entity: 'user_books' | 'reading_progress' | 'highlights' | 'bookmarks' | 'notes' | 'user_settings' | 'reading_sessions';
 	op: 'upsert' | 'delete';
 	data: { [key: string]: JsonValue };
 	updated_at: number;
