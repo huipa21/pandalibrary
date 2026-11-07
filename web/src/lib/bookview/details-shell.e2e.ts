@@ -84,13 +84,15 @@ test('tabs navigate, mark the current tab, and share one book request', async ({
 		await expect(page).toHaveURL(path);
 		await expect(tabs.getByRole('link', { name })).toHaveAttribute('aria-current', 'page');
 		await expect(tabs.getByRole('link', { name: 'Details' })).not.toHaveAttribute('aria-current', 'page');
-		await expect(page.getByRole('heading', { name, level: 1 })).toHaveCount(1);
 		if (name === 'Files') {
+			await expect(page.getByRole('heading', { name, level: 1 })).toHaveCount(1);
 			await expect(page.getByRole('region', { name: 'This file' })).toBeVisible();
 		} else if (name === 'Reading Log') {
+			await expect(page.getByRole('heading', { name, level: 1 })).toHaveCount(1);
 			await expect(page.getByRole('heading', { name: 'Reading summary' })).toBeVisible();
 		} else {
-			await expect(page.getByText('Coming soon')).toBeVisible();
+			await expect(page.getByRole('heading', { name: 'Highlights in Shell Book 2', level: 1 })).toBeAttached();
+			await expect(page.getByText('No highlights yet – highlights you make while reading appear here')).toBeVisible();
 		}
 		await expect(page).toHaveTitle(`Shell Book 2 · ${name}`);
 	}

@@ -1,6 +1,6 @@
 # BV9: Highlights tab
 
-- Status: Ready
+- Status: Done
 - Wave: 2. Dependencies merged: BV3, BV4
 - Can run in parallel with: BV5, BV6, BV7, BV8
 - Branch/worktree: `task/bv9` / `..\pandalibrary-bv9`

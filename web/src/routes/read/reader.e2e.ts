@@ -302,6 +302,31 @@ test('opens PDF, restores its page and persists selectable highlights', async ({
 	await expect(page.locator('.reader-pdf-highlight')).toHaveCount(1);
 });
 
+for (const { format, fixture, locator, target, start } of [
+	{ format: 'pdf', fixture: pdfFixture, locator: { type: 'pdf', page: 2 }, target: 'Second PDF page text', start: 'First PDF page text' },
+	{ format: 'epub', fixture: epubFixture, locator: { type: 'cfi', value: 'epubcfi(/6/4!/4/2/1:0)' }, target: 'Another page of the fixture.', start: 'A passage worth highlighting.' }
+]) {
+	test(`opens ${format.toUpperCase()} at a ?highlight= target and ignores unknown IDs`, async ({ page }) => {
+		const state = await setupReader(page, format, fixture());
+		state.highlights = [{
+			id: 'hl-target', book_id: 21, book_file_id: 31, locator, position: 0.75, text: target, color: 'blue',
+			chapter: null, created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z', deleted_at: null, rev: 1
+		}];
+		const visibleText = async (text: string) => {
+			if (format === 'pdf') await expect(page.locator('.reader-pdf-text')).toContainText(text);
+			else await expect((await bookFrame(page, text)).getByText(text, { exact: true })).toBeVisible();
+		};
+		await page.goto('/read/21/31?highlight=missing-highlight');
+		await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+		await visibleText(start);
+		// Background Sync can be unavailable in headless Chromium, which may surface the unrelated save banner.
+		await expect(page.getByRole('alert').filter({ hasNotText: 'A change could not be saved' })).toHaveCount(0);
+		await page.goto('/read/21/31?highlight=hl-target');
+		await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+		await visibleText(target);
+	});
+}
+
 for (const [format, fixture] of [
 	['mobi', mobiFixture],
 	['azw3', azw3Fixture],
