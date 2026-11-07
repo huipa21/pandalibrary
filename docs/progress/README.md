@@ -249,53 +249,6 @@ Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, block
   `pnpm --dir web check` passed with no diagnostics; 33 focused unit tests and
   23 mocked cover/catalog/dashboard/search/shelf browser tests passed.
 
-- 2026-11-07 — BV1 — Book `files[]` items now carry `original_filename` and
-  `created_at` (all `Book` producers share `hydrateBook`). The name is a base
-  name: `\` normalized to `/`, drive prefix and directories stripped, control
-  characters replaced with `_`; empty/unusable names fall back to
-  `<title>.<format>`. Added `GET /api/v1/books/{id}/shelves` (manual shelves
-  only, `/shelves` visibility and counts, name/ID order, cap 200, 404 for an
-  invisible book) via the new `ShelfListContainingBook` query; no migration.
-  Web: `BookFile` fields, `getBookShelves`, and updated type-checked fixtures
-  (e2e route mocks untouched). Contract deviation: none beyond the control
-  character replacement.
-
-- 2026-11-07 — BV2 — Added the per-book reading summary, the filtered and
-  paginated sessions list, and the owner-only session delete. Attempts are
-  derived by a pure, table-tested function, and days are bucketed in the
-  viewer's timezone (tested with Asia/Shanghai across midnight). Stats
-  exposes `LoadTimezone`/`LocalMidnight`. Deleting a session does not bump the
-  sync revision. Added the typed client `web/src/lib/bookview/log-api.ts`;
-  its delete tolerates the 204 without editing the shared client. Contract
-  clarifications are recorded in the plan: UTC default timezone, active-day
-  definition, pace denominator, null records, and the unreachable `stopped`
-  status. No migration.
-
-- 2026-11-07 — BV4 — `/books/{id}` is now the `(tabs)` route group (Details,
-  Files, Reading Log, Highlights) with a sticky `BookTabs` bar: **‹ Books**
-  (history back when the tab area was entered from another in-app page, else
-  the browse-context `href` or `/books`), tab links with `aria-current`, and
-  `i / n` with Previous/Next buttons plus `[`/`]`. Tab switches and
-  previous/next replace the history entry, so Back always returns to the list.
-  The old page body moved verbatim into `tabs/DetailsTab.svelte` (offline
-  download/remove included); Files/Reading Log/Highlights are "Coming soon"
-  placeholders. `/books/{id}/edit` is unchanged and has no tab bar. Browse
-  context is remembered by `BookBrowser` (label = page `h1`), the shelf page
-  and the system shelf page. **`getBookContext()` returns a `BookContext`
-  instance** (`#lib/bookview/book-context.svelte.js`), all fields reactive
-  `$state`: `bookId: number | null`, `book: Book | null`, `offline: boolean`,
-  `coverSource: string | null` (object URL offline, revoked by the context),
-  `coverError: string`, `canEditMetadata: boolean`, `savedFileIds: number[]`
-  (writable by tabs after a download/removal), `loading: boolean` (also true
-  during a quiet `reload()`, which keeps `book` visible), `error: string`, and
-  `reload(): Promise<void>`. The layout renders tab content only when
-  `book` is loaded for the current route ID, so tabs may assume
-  `context.book` is set. It reloads on `pandalibrary-book-state-changed`
-  (matching `detail.bookId`, local constant marked `// BV10`) and
-  `pandalibrary-shelves-changed`. Validation: `pnpm check`, vitest
-  `src/lib/bookview` (14), Playwright `details-shell` (4), `catalog`,
-  `offline`, `metadata` (all pass, no selector changes needed).
-
 - 2026-11-07 — BV plan — Drafted the Book View batch (BV1-BV10): client-side
   generated title covers with a format badge, hover Info/Read actions, a
   right-side quick view drawer, and a tabbed `/books/{id}` (Details, Files,

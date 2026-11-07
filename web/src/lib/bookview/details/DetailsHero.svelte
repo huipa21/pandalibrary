@@ -6,7 +6,7 @@
 	import ReadStatusMenu from '../ReadStatusMenu.svelte';
 	import { formatTone, sortedFormats } from '../cover.js';
 	import { formatPercent } from '../format.js';
-	import { saveUserBook, type ReadStatus } from '../user-book.js';
+	import { readStatusLabel, saveUserBook } from '../user-book.js';
 	import type { DetailsState } from './details-data.js';
 
 	let { book, details, offline }: {
@@ -58,16 +58,6 @@
 			default: return role;
 		}
 	}
-
-	function statusLabel(status: ReadStatus): string {
-		switch (status) {
-			case 'unread': return m['bv3.status_unread']();
-			case 'want_to_read': return m['bv3.status_want_to_read']();
-			case 'reading': return m['bv3.status_reading']();
-			case 'finished': return m['bv3.status_finished']();
-			case 'abandoned': return m['bv3.status_abandoned']();
-		}
-	}
 </script>
 
 <header class="min-w-0 space-y-4">
@@ -109,7 +99,7 @@
 		{#if details && !offline}
 			<ReadStatusMenu bookId={book.id} userBook={details.userBook} reread={(details.summary?.attempts.length ?? 0) > 1} />
 		{:else if details}
-			<span class="rounded-full border border-slate-300 px-3 py-2 text-sm text-slate-700">{statusLabel(details.userBook?.status ?? 'unread')}</span>
+			<span class="rounded-full border border-slate-300 px-3 py-2 text-sm text-slate-700">{readStatusLabel(details.userBook?.status ?? 'unread', (details.summary?.attempts.length ?? 0) > 1)}</span>
 		{/if}
 		<a class="text-sm font-medium text-emerald-800 underline underline-offset-4" href="#book-review">{m['bv6.personal_review']()}</a>
 	</div>

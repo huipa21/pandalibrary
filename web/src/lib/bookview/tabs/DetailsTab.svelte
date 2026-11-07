@@ -1,21 +1,16 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
-	import { ApiError } from '#lib/api/client.js';
-	import type { BookFile } from '#lib/catalog/types.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import { readerFormat } from '#lib/reader/types.js';
 	import AddToShelf from '#lib/shelves/AddToShelf.svelte';
-	import { currentAccount, offlineStatus } from '#lib/sync/client.js';
-	import { downloadedBooks, OfflineStorageError, removeBook } from '#lib/sync/db.js';
-	import { downloadForOffline } from '#lib/sync/library.js';
+	import { currentAccount } from '#lib/sync/client.js';
 	import BookCover from '../BookCover.svelte';
 	import Icon from '../Icon.svelte';
 	import ReadStatusMenu from '../ReadStatusMenu.svelte';
 	import { getBookContext } from '../book-context.svelte.js';
 	import { sortedFormats } from '../cover.js';
 	import { BOOK_STATE_CHANGED_EVENT, type BookStateChangedDetail } from '../events.js';
-	import { formatSize } from '../format.js';
 	import { readTarget } from '../read.js';
 	import DetailsHero from '../details/DetailsHero.svelte';
 	import DetailsPanel from '../details/DetailsPanel.svelte';
@@ -29,7 +24,6 @@
 	const book = $derived(context.book);
 	const bookId = $derived(book?.id ?? null);
 	const offline = $derived(context.offline);
-	const savedFileIds = $derived(context.savedFileIds);
 	let details = $state<DetailsState | null>(null);
 	let detailsLoading = $state(true);
 	let detailsError = $state('');
@@ -40,9 +34,6 @@
 	let relatedRevision = $state(0);
 	let readBusy = $state(false);
 	let readError = $state('');
-	let downloadBusy = $state<number | null>(null);
-	let offlineNotice = $state('');
-	let offlineError = $state('');
 	const detailsReady = $derived(details !== null && !detailsLoading && !detailsError);
 	const readable = $derived(book?.files.some((file) => readerFormat(file.format) !== null) ?? false);
 	const primaryFile = $derived.by(() => {
@@ -53,8 +44,6 @@
 
 	$effect(() => {
 		bookId;
-		offlineNotice = '';
-		offlineError = '';
 		readError = '';
 	});
 
@@ -135,52 +124,10 @@
 			readBusy = false;
 		}
 	}
-
-	async function download(file: BookFile) {
-		if (!book || downloadBusy !== null) return;
-		const current = $state.snapshot(book);
-		downloadBusy = file.id;
-		offlineError = '';
-		offlineNotice = '';
-		try {
-			const selected = current.files.find((item) => item.id === file.id);
-			if (!selected) throw new OfflineStorageError('The selected book file is missing.');
-			await downloadForOffline(currentAccount(), current, selected);
-			const stored = (await downloadedBooks(currentAccount())).find((item) => item.book.id === current.id);
-			if (bookId !== current.id) return;
-			context.savedFileIds = stored?.fileIds ?? [];
-			offlineNotice = m['offline.download_success']();
-		} catch (cause) {
-			console.error('Could not download the book for offline reading', cause);
-			if (bookId !== current.id) return;
-			offlineError = m['offline.download_failure']();
-			if (cause instanceof ApiError && (cause.status === 403 || cause.status === 404)) context.savedFileIds = [];
-		} finally {
-			downloadBusy = null;
-		}
-	}
-
-	async function removeDownload() {
-		if (!book || !window.confirm(m['offline.storage.remove_confirm']())) return;
-		const id = book.id;
-		try {
-			await removeBook(currentAccount(), id);
-			if (bookId !== id) return;
-			context.savedFileIds = [];
-			offlineNotice = m['offline.storage.removed']();
-			offlineError = '';
-			if (offline) await context.reload();
-		} catch (cause) {
-			console.error('Could not remove the downloaded book', cause);
-			if (bookId === id) offlineError = m['offline.storage.failure']();
-		}
-	}
 </script>
 
 {#if book}
 	<article class="min-w-0 space-y-8">
-		{#if offlineNotice}<p role="status" class="rounded-md bg-green-50 p-3 text-green-800">{offlineNotice}</p>{/if}
-		{#if offlineError}<p role="alert" class="rounded-md bg-red-50 p-3 text-red-800">{offlineError}</p>{/if}
 		{#if offline}<p class="text-sm text-slate-500">{m['bv6.offline_read_only']()}</p>{/if}
 		{#if detailsError}
 			<div class="flex flex-wrap items-center gap-3 rounded-md bg-red-50 p-3 text-sm text-red-800" role="alert">
@@ -271,38 +218,6 @@
 				<button type="button" class="font-semibold underline" onclick={() => (relatedRevision += 1)}>{m['catalog.retry']()}</button>
 			</div>
 		{/if}
-
-		<section class="space-y-3" aria-labelledby="book-files-heading">
-			<h2 id="book-files-heading" class="text-xl font-semibold">{m['catalog.book.files']()}</h2>
-			{#if book.files.length}
-				<ul class="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
-					{#each book.files as file (file.id)}
-						<li class="flex flex-wrap items-center justify-between gap-3 p-4">
-							<span class="min-w-0 font-medium [overflow-wrap:anywhere]">{file.format.toUpperCase()} · {formatSize(file.size_bytes)}{#if file.original_filename}{' · '}{file.original_filename}{/if}</span>
-							<div class="flex flex-wrap items-center gap-3">
-								{#if savedFileIds.includes(file.id)}<span class="text-sm text-green-700">{m['offline.downloaded']()}</span>{/if}
-								{#if readerFormat(file.format)}
-									<a class="text-sm font-medium underline focus-visible:outline-2" href={`/read/${book.id}/${file.id}`}>{m['reader.launch.open']()} {file.format.toUpperCase()}</a>
-								{/if}
-								{#if !offline && book.files.length > 1}
-									<a class="text-sm font-medium underline focus-visible:outline-2" href={file.download_url}>{m['bv6.download_format']({ format: file.format.toUpperCase() })}</a>
-								{/if}
-								{#if $offlineStatus.available}
-									<button class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium focus-visible:outline-2 disabled:opacity-60" disabled={offline || !$offlineStatus.online || downloadBusy !== null} onclick={() => download(file)}>
-										{downloadBusy === file.id ? m['offline.downloading']() : m['offline.download']()}
-									</button>
-								{/if}
-							</div>
-						</li>
-					{/each}
-				</ul>
-			{:else}
-				<p class="text-slate-600">{m['catalog.book.no_files']()}</p>
-			{/if}
-			{#if savedFileIds.length}
-				<button class="text-sm font-medium text-red-700 underline focus-visible:outline-2" onclick={removeDownload}>{m['offline.storage.remove']()}</button>
-			{/if}
-		</section>
 
 		{#if !offline}
 			<div id="book-shelf" class="scroll-mt-24"><AddToShelf bookId={book.id} /></div>

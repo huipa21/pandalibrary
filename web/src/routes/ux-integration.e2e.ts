@@ -171,8 +171,10 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 	await page.getByRole('listitem').filter({ hasText: 'CFI saved position' }).getByRole('link', { name: 'Open bookmark' }).click();
 	await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeEnabled();
 	await expect.poll(() => page.frames().some((frame) => frame.url().startsWith('blob:'))).toBe(true);
-	await page.goto(`/books/${pdf.bookID}`);
-	await page.getByRole('button', { name: 'Download for offline', exact: true }).click();
+	await page.goto(`/books/${pdf.bookID}/files`);
+	const filePanel = page.getByRole('region', { name: 'This file' });
+	await filePanel.getByRole('button', { name: 'Actions for UXPDF.pdf' }).click();
+	await filePanel.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();
 	await page.evaluate(async () => {
 		await navigator.serviceWorker.ready;

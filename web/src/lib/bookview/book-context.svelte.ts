@@ -9,9 +9,8 @@ import { isAdministrator } from '#lib/shelves/form.js';
 import { currentAccount, offlineAvailable } from '#lib/sync/client.js';
 import { downloadedBooks, OfflineStorageError } from '#lib/sync/db.js';
 import { loadBook as loadOfflineBook, loadCover } from '#lib/sync/library.js';
+import { BOOK_STATE_CHANGED_EVENT as BOOK_STATE_CHANGED } from './events.js';
 
-// BV10: import from events.ts
-const BOOK_STATE_CHANGED = 'pandalibrary-book-state-changed';
 const SHELVES_CHANGED = 'pandalibrary-shelves-changed';
 const BOOK_CONTEXT_KEY = Symbol('pandalibrary.book-context');
 

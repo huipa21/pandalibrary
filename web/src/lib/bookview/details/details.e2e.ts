@@ -207,8 +207,9 @@ test('renders details, reading statistics, editions and related books responsive
 	await expect(page.getByRole('heading', { name: 'Identifiers' })).toBeVisible();
 	await page.getByText('Metadata sources', { exact: true }).click();
 	await expect(page.getByText('title: import · fixture')).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Read EPUB' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Download for offline' }).first()).toBeVisible();
+	// Per-file read and offline actions live on the Files tab (BV7), not in Details.
+	await expect(page.getByRole('heading', { name: 'Available formats' })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Download for offline' })).toHaveCount(0);
 
 	for (const width of [1440, 1024, 390]) {
 		await page.setViewportSize({ width, height: 900 });

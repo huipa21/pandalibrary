@@ -6,6 +6,7 @@
 	import { formatDate, formatDuration, formatPercent, formatRelative } from '../format.js';
 	import type { ReadingSummary } from '../log-api.js';
 	import type { UserBook } from '../user-book.js';
+	import ProgressRing from '../ProgressRing.svelte';
 	import AddSessionDialog from './AddSessionDialog.svelte';
 
 	interface Props {
@@ -36,14 +37,7 @@
 <section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="bv8-summary-heading">
 	<h2 id="bv8-summary-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-500">{m['bv8.summary']()}</h2>
 	<div class="mt-5 flex flex-col items-center gap-3 text-center">
-		<div class="relative grid size-32 place-items-center" role="img" aria-label={m['bv8.progress']({ percent: formatPercent(progress, locale) })}>
-			<svg class="absolute inset-0 size-full -rotate-90" viewBox="0 0 120 120" aria-hidden="true">
-				<circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="8" class="text-slate-100" />
-				<circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"
-					stroke-dasharray={2 * Math.PI * 52} stroke-dashoffset={2 * Math.PI * 52 * (1 - progress)} class="text-emerald-600" />
-			</svg>
-			<span class="text-3xl font-semibold text-slate-900">{formatPercent(progress, locale)}</span>
-		</div>
+		<ProgressRing fraction={progress} size="lg" {locale} label={m['bv8.progress']({ percent: formatPercent(progress, locale) })} />
 		<ReadStatusMenu {bookId} {userBook} reread={summary.attempts.length > 1} variant="pill" />
 		{#if summary.estimated_seconds_left !== null}
 			<p class="text-sm text-slate-500">{m['bv8.estimate']({ duration: formatDuration(summary.estimated_seconds_left) })}</p>

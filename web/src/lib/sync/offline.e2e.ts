@@ -44,7 +44,6 @@ async function setup(page: Page) {
 			return route.fulfill({ json: { logged_out: true } });
 		}
 		if (path === '/books') return route.fulfill({ json: { items: [book], next_cursor: null } });
-		if (path === '/libraries/1') return route.fulfill({ json: { library: { id: 1, name: 'Library' } } });
 		if (path.startsWith('/books/21') && state.denial) {
 			return route.fulfill({ status: state.denial, json: { title: 'Denied', status: state.denial } });
 		}

@@ -1,9 +1,21 @@
+import * as m from '#lib/paraglide/messages.js';
 import { pushMutation } from '#lib/reader/api.js';
 import { notifyBookStateChanged } from './events.js';
 import { parseDate } from './format.js';
 
 export const READ_STATUSES = ['unread', 'want_to_read', 'reading', 'finished', 'abandoned'] as const;
 export type ReadStatus = (typeof READ_STATUSES)[number];
+
+/** Localized status label; `reading` reads "Re-reading" when the book has more than one attempt. */
+export function readStatusLabel(status: ReadStatus, reread = false): string {
+	switch (status) {
+		case 'unread': return m['bv3.status_unread']();
+		case 'want_to_read': return m['bv3.status_want_to_read']();
+		case 'reading': return reread ? m['bv3.status_rereading']() : m['bv3.status_reading']();
+		case 'finished': return m['bv3.status_finished']();
+		case 'abandoned': return m['bv3.status_abandoned']();
+	}
+}
 
 export interface UserBook {
 	status: ReadStatus;

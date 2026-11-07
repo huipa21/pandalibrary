@@ -4,7 +4,7 @@
 	import Icon from '../Icon.svelte';
 	import FileIcon from './FileIcon.svelte';
 	import FileMenu from './FileMenu.svelte';
-	import ProgressRing from './ProgressRing.svelte';
+	import ProgressRing from '../ProgressRing.svelte';
 	import type { FileItem } from './files-model.js';
 
 	interface Props {
@@ -53,7 +53,7 @@
 	</dl>
 	{#if file.progress !== null}
 		<div class="mt-5 flex items-center gap-3 rounded-xl bg-emerald-50 p-3">
-			<ProgressRing fraction={file.progress} />
+			<ProgressRing fraction={file.progress} label={m['bv7.read_percent']({ percent: formatPercent(file.progress) })} />
 			<div class="min-w-0 text-sm">
 				<p class="font-medium text-slate-900">{m['bv7.progress']({ percent: formatPercent(file.progress) })}</p>
 				{#if progressUpdatedAt}<p class="mt-1 text-slate-600">{m['bv7.last_read']({ relative: formatRelative(progressUpdatedAt) })}</p>{/if}

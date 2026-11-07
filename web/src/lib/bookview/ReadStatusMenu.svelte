@@ -3,7 +3,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import Icon from './Icon.svelte';
 	import {
-		previewUserBook, READ_STATUSES, saveUserBook, statusPatch, type ReadStatus, type UserBook
+		previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, type ReadStatus, type UserBook
 	} from './user-book.js';
 
 	interface Props {
@@ -40,13 +40,7 @@
 	});
 
 	function label(status: ReadStatus): string {
-		switch (status) {
-			case 'unread': return m['bv3.status_unread']();
-			case 'want_to_read': return m['bv3.status_want_to_read']();
-			case 'reading': return reread ? m['bv3.status_rereading']() : m['bv3.status_reading']();
-			case 'finished': return m['bv3.status_finished']();
-			case 'abandoned': return m['bv3.status_abandoned']();
-		}
+		return readStatusLabel(status, reread);
 	}
 
 	async function openMenu(position: 'first' | 'last' | 'current' = 'current') {
