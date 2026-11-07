@@ -82,7 +82,8 @@
 		const bookId = page.params.bookId ?? '';
 		const fileId = page.params.fileId ?? '';
 		const bookmarkId = page.url.searchParams.get('bookmark');
-		untrack(() => { void openBook(bookId, fileId, bookmarkId); });
+		const highlightId = page.url.searchParams.get('highlight');
+		untrack(() => { void openBook(bookId, fileId, bookmarkId, highlightId); });
 	});
 
 	onMount(() => {
@@ -184,7 +185,7 @@
 		}
 	}
 
-	async function openBook(rawBookId: string, rawFileId: string, bookmarkId: string | null) {
+	async function openBook(rawBookId: string, rawFileId: string, bookmarkId: string | null, highlightId: string | null = null) {
 		const version = ++requestVersion;
 		ready = false;
 		sessionClock?.stop();
@@ -322,6 +323,18 @@
 					} catch (error) {
 						console.error('Could not open the saved bookmark', error);
 						actionError = m['ux6.jump_failed']();
+					}
+				}
+			}
+			if (highlightId) {
+				// Unknown IDs and highlights from another file or format are ignored silently.
+				const requested = highlights.find((item) => item.id === highlightId);
+				const annotation = requested ? annotationForReader(requested, fileId, selectedFormat) : null;
+				if (annotation) {
+					try {
+						await currentReader.goTo(annotation.locator);
+					} catch (error) {
+						console.error('Could not open the highlight', error);
 					}
 				}
 			}
@@ -670,7 +683,7 @@
 {#if loadError}
 	<div class="space-y-4" role="alert">
 		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800">{loadError}</p>
-		<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => openBook(page.params.bookId ?? '', page.params.fileId ?? '', page.url.searchParams.get('bookmark'))}>{m['reader.retry']()}</button>
+		<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => openBook(page.params.bookId ?? '', page.params.fileId ?? '', page.url.searchParams.get('bookmark'), page.url.searchParams.get('highlight'))}>{m['reader.retry']()}</button>
 		<a class="ml-4 underline underline-offset-4 focus-visible:outline-2" href="/read">{m['reader.back_to_books']()}</a>
 	</div>
 {:else if !book || !file || !format}

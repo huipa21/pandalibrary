@@ -40,6 +40,9 @@ async function mockApi(page: Page, role = 'user') {
 		route.fulfill({ json: { user: { id: 1, username: role, display_name: role, role, locale: 'en' } } })
 	);
 	await page.route('**/api/v1/shelves**', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route((url) => /^\/api\/v1\/me\/books\/\d+$/.test(url.pathname), (route) =>
+		route.fulfill({ json: { user_book: null, progress: null, highlights: [], notes: [] } })
+	);
 	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: books, next_cursor: null } }));
 	await page.route((url) => /^\/api\/v1\/books\/\d+$/.test(url.pathname), (route) => {
 		const id = Number(new URL(route.request().url()).pathname.split('/').at(-1));
@@ -67,8 +70,13 @@ test('tabs navigate, mark the current tab, and share one book request', async ({
 		await expect(page).toHaveURL(path);
 		await expect(tabs.getByRole('link', { name })).toHaveAttribute('aria-current', 'page');
 		await expect(tabs.getByRole('link', { name: 'Details' })).not.toHaveAttribute('aria-current', 'page');
-		await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
-		await expect(page.getByText('Coming soon')).toBeVisible();
+		if (name === 'Highlights') {
+			await expect(page.getByRole('heading', { name: 'Highlights in Shell Book 2', level: 1 })).toBeAttached();
+			await expect(page.getByText('No highlights yet – highlights you make while reading appear here')).toBeVisible();
+		} else {
+			await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
+			await expect(page.getByText('Coming soon')).toBeVisible();
+		}
 		await expect(page).toHaveTitle(`Shell Book 2 · ${name}`);
 	}
 	await tabs.getByRole('link', { name: 'Details' }).click();

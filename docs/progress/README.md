@@ -88,12 +88,30 @@ the next. Only BV10 runs the full verification gate.
 | 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Ready | `task/bv6` | |
 | 2 | BV7 | Files tab | BV1, BV3, BV4 | [BV7](../prompts/BV7-files-tab.md) | Ready | `task/bv7` | |
 | 2 | BV8 | Reading Log tab | BV2-BV4 | [BV8](../prompts/BV8-reading-log-tab.md) | Ready | `task/bv8` | |
-| 2 | BV9 | Highlights tab + reader `?highlight=` | BV3, BV4 | [BV9](../prompts/BV9-highlights-tab.md) | Ready | `task/bv9` | |
+| 2 | BV9 | Highlights tab + reader `?highlight=` | BV3, BV4 | [BV9](../prompts/BV9-highlights-tab.md) | Done | `task/bv9` | Branch includes merged `task/bv4` |
 | 3 | BV10 | Integration, real-server E2E, visual QA, full gate | BV1-BV9 | [BV10](../prompts/BV10-integration.md) | Ready | `task/bv10` | |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BV9 — Implemented the Highlights tab (`lib/bookview/highlights/`:
+  pure `highlights-model.ts` with `buildMarks`, `filterMarks`, `sortMarks`,
+  `groupByChapter`, `markStats`, `colorTone`, `matchSegments`; `HighlightItem`,
+  `HighlightList`, `HighlightsToolbar`, `HighlightsSidebar`). Data comes from
+  `getBookState` (readerState snapshot offline) and refreshes on book-state
+  events and window focus. `?q=`/`?sort=` sync with `replace`; compact mode
+  persists in localStorage. Notes render only through `renderMarkdown`; search
+  marks matches in highlight text only. "Where they came from" is grouped by
+  file format. A `pink` tone was added because the reader offers pink. Export
+  reuses the notes export for this book. Reader honours `?highlight=<id>` after
+  any `?bookmark=` handling; unknown IDs are ignored silently. `task/bv4` was
+  merged into `task/bv9` (dependency not yet on master), and the BV4 shell test
+  now asserts the real Highlights tab instead of the placeholder. Validation:
+  `pnpm check` 0 errors, bookview vitest 57 passed, bookview + reader Playwright
+  35 passed (run on a private preview port because 4173 was in use by another
+  worktree). Headless Chromium may report "Background Sync is disabled", which
+  can surface the reader's generic save banner; the new reader test tolerates it.
 
 - 2026-11-07 — BV3 — Implemented deterministic, contrast-checked title covers,
   format badges, hover/focus/touch actions, the shared interactive kit, and
