@@ -8,6 +8,7 @@
 	import { allowsCatalogFilters, bookFiltersFromSearch, bookPageOptions, hasNextPage, selectedSort, setCatalogFilter } from './query.js';
 	import type { Book, BookFilters, BookSort, CatalogEntity, EntityKind } from './types.js';
 	import BookCard from './BookCard.svelte';
+	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 
 	let { scope, showHeading = true }: { scope: BookFilters; showHeading?: boolean } = $props();
 	let books = $state<Book[]>([]);
@@ -42,6 +43,8 @@
 	onMount(() => {
 		if (filterable) void loadFilterOptions();
 	});
+
+	$effect(() => { if (!loading && !error) rememberBrowseContext({ ids: books.map((book) => book.id), label: document.querySelector('main h1')?.textContent?.trim() || m['catalog.books.title'](), href: `${page.url.pathname}${page.url.search}` }); });
 
 	$effect(() => {
 		const search = page.url.searchParams.toString();

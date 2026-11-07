@@ -8,6 +8,7 @@
 	import { shelfErrorKey } from '#lib/shelves/form.js';
 	import ShelfDescription from '#lib/shelves/ShelfDescription.svelte';
 	import BookCard from '#lib/catalog/BookCard.svelte';
+	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import type { Shelf } from '#lib/shelves/types.js';
 	import type { Book } from '#lib/catalog/types.js';
 
@@ -27,6 +28,8 @@
 		requestVersion += 1;
 		pager.dispose();
 	});
+
+	$effect(() => { if (shelf && pager.status === 'ready') rememberBrowseContext({ ids: pager.items.map((book) => book.id), label: systemShelfTitle(key), href: `/shelves/system/${encodeURIComponent(key)}` }); });
 
 	async function loadShelf(current: string) {
 		const version = ++requestVersion;
