@@ -9,8 +9,8 @@ type Mutation = {
 async function setup(page: Page) {
 	const bytes = pdfFixture();
 	const file = {
-		id: 31, format: 'pdf', size_bytes: bytes.length, download_url: `/api/v1/books/21/files/31?v=${'a'.repeat(64)}`,
-		original_filename: 'offline.pdf', created_at: '2026-11-03T00:00:00Z'
+		id: 31, format: 'pdf', size_bytes: bytes.length, original_filename: 'Offline Fixture.pdf',
+		created_at: '2026-11-03T00:00:00Z', download_url: `/api/v1/books/21/files/31?v=${'a'.repeat(64)}`
 	};
 	const book = {
 		id: 21, library_id: 1, title: 'Offline Fixture', sort_title: 'Offline Fixture', subtitle: null,
@@ -44,6 +44,7 @@ async function setup(page: Page) {
 			return route.fulfill({ json: { logged_out: true } });
 		}
 		if (path === '/books') return route.fulfill({ json: { items: [book], next_cursor: null } });
+		if (path === '/libraries/1') return route.fulfill({ json: { library: { id: 1, name: 'Library' } } });
 		if (path.startsWith('/books/21') && state.denial) {
 			return route.fulfill({ status: state.denial, json: { title: 'Denied', status: state.denial } });
 		}
@@ -116,8 +117,10 @@ async function databaseRows(page: Page, store: string): Promise<Array<Record<str
 }
 
 async function download(page: Page) {
-	await page.goto('/books/21');
-	await page.getByRole('button', { name: 'Download for offline', exact: true }).click();
+	await page.goto('/books/21/files');
+	const panel = page.getByRole('region', { name: 'This file' });
+	await panel.getByRole('button', { name: 'Actions for Offline Fixture.pdf' }).click();
+	await panel.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();
 	await page.evaluate(async () => {
 		await navigator.serviceWorker.ready;

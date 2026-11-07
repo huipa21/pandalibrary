@@ -18,7 +18,10 @@ function makeBook(id: number) {
 		series: null,
 		tags: [],
 		identifiers: [],
-		files: [{ id: id * 10, format: 'epub', size_bytes: 2048, download_url: `/api/v1/books/${id}/files/${id * 10}?v=abc` }],
+		files: [{
+			id: id * 10, format: 'epub', size_bytes: 2048, original_filename: `Shell Book ${id}.epub`,
+			created_at: '2026-11-07T00:00:00Z', download_url: `/api/v1/books/${id}/files/${id * 10}?v=abc`
+		}],
 		field_sources: [],
 		created_at: '2026-11-07T00:00:00Z',
 		updated_at: '2026-11-07T00:00:00Z'
@@ -40,6 +43,12 @@ async function mockApi(page: Page, role = 'user') {
 		route.fulfill({ json: { user: { id: 1, username: role, display_name: role, role, locale: 'en' } } })
 	);
 	await page.route('**/api/v1/shelves**', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/libraries/1', (route) =>
+		route.fulfill({ json: { library: { id: 1, name: 'Library' } } })
+	);
+	await page.route((url) => /^\/api\/v1\/me\/books\/\d+$/.test(url.pathname), (route) =>
+		route.fulfill({ json: { user_book: null, progress: null, highlights: [], bookmarks: [], notes: [] } })
+	);
 	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: books, next_cursor: null } }));
 	await page.route((url) => /^\/api\/v1\/books\/\d+$/.test(url.pathname), (route) => {
 		const id = Number(new URL(route.request().url()).pathname.split('/').at(-1));
@@ -68,7 +77,11 @@ test('tabs navigate, mark the current tab, and share one book request', async ({
 		await expect(tabs.getByRole('link', { name })).toHaveAttribute('aria-current', 'page');
 		await expect(tabs.getByRole('link', { name: 'Details' })).not.toHaveAttribute('aria-current', 'page');
 		await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
-		await expect(page.getByText('Coming soon')).toBeVisible();
+		if (name === 'Files') {
+			await expect(page.getByRole('region', { name: 'This file' })).toBeVisible();
+		} else {
+			await expect(page.getByText('Coming soon')).toBeVisible();
+		}
 		await expect(page).toHaveTitle(`Shell Book 2 · ${name}`);
 	}
 	await tabs.getByRole('link', { name: 'Details' }).click();

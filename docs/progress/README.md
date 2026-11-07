@@ -86,7 +86,7 @@ the next. Only BV10 runs the full verification gate.
 | 1 | BV4 | Details shell: route group, tabs, contexts, prev/next | baseline | [BV4](../prompts/BV4-details-shell.md) | Done | `task/bv4` | `getBookContext()` shape in the log |
 | 2 | BV5 | Quick view drawer | BV1, BV3 | [BV5](../prompts/BV5-quick-view.md) | Done | `task/bv5` | Contains a BV1 merge; status menu opens upward via a CSS override |
 | 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Done | `task/bv6` | Offline Details is read-only; legacy file controls stay until BV7 |
-| 2 | BV7 | Files tab | BV1, BV3, BV4 | [BV7](../prompts/BV7-files-tab.md) | Ready | `task/bv7` | |
+| 2 | BV7 | Files tab | BV1, BV3, BV4 | [BV7](../prompts/BV7-files-tab.md) | Done | `task/bv7` | Grouped files, per-copy progress and offline actions; targeted checks pass |
 | 2 | BV8 | Reading Log tab | BV2-BV4 | [BV8](../prompts/BV8-reading-log-tab.md) | Ready | `task/bv8` | |
 | 2 | BV9 | Highlights tab + reader `?highlight=` | BV3, BV4 | [BV9](../prompts/BV9-highlights-tab.md) | Ready | `task/bv9` | |
 | 3 | BV10 | Integration, real-server E2E, visual QA, full gate | BV1-BV9 | [BV10](../prompts/BV10-integration.md) | Ready | `task/bv10` | |
@@ -94,6 +94,21 @@ the next. Only BV10 runs the full verification gate.
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BV7 — Implemented the responsive Files tab, format-ordered
+  reader groups, per-group sorting, selected-file panel, progress ring,
+  clipboard actions and English/Chinese copy. Progress follows its file and
+  refreshes on book-state events and after synchronization; an offline-loaded
+  book refreshes after reconnecting. Unknown formats remain visible in an
+  Other group, while cached books from before BV1 use a sanitized fallback
+  name and show an unknown added date. Offline removal keeps the legacy
+  book-wide semantics and confirmation. **BV10:** `offline.e2e.ts` selectors
+  moved to `/books/21/files` and the selected-file actions menu; BV6 still owns
+  removal of the legacy Details section. Updated the BV4 shell expectation and
+  a BV1/BV3 fixture needed after merging their prerequisites. Validation:
+  `pnpm check` (zero diagnostics), 44 book-view unit tests, and 20 Files,
+  offline and details-shell browser tests passed; the 390 px overflow check
+  passed. Browser tests used an isolated port because 4173 was in use.
 
 - 2026-11-07 — BV6 — Rebuilt Details as a responsive cover/actions column,
   editable reading state and review, reading summary, details/editions panels,
