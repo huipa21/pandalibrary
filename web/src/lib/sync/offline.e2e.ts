@@ -138,6 +138,7 @@ test('book details use synced state and the cached cover while offline', async (
 		updated_at: '2026-11-03T00:00:00Z', deleted_at: null, rev: 1
 	});
 	await download(page);
+	await page.goto('/books/21');
 	await expect(page.getByText('No reading sessions yet.', { exact: true })).toBeVisible();
 	state.online = false;
 	await context.setOffline(true);

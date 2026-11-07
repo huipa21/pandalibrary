@@ -40,6 +40,7 @@ const savedProgress: Progress = {
 };
 
 describe('reader selection and progress', () => {
+	// Cold-imports foliate-js and pdf.js, which can exceed the default timeout under full-suite load.
 	it('selects the PDF adapter only for PDF and foliate for each supported book format', async () => {
 		const container = {} as HTMLElement;
 		for (const format of ['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz'] as ReaderFormat[]) {
@@ -48,7 +49,7 @@ describe('reader selection and progress', () => {
 		}
 		expect((await createReader('pdf', container, events)).constructor.name).toBe('PdfReader');
 		expect(readerFormat('txt')).toBeNull();
-	});
+	}, 30_000);
 
 	it('restores a compatible locator, falling back to percentage for another file, source, type or broken locator', async () => {
 		const reader = mockReader();

@@ -3,7 +3,8 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { resolve } from 'node:path';
 import { build } from 'vite';
 
-test.use({ serviceWorkers: 'block' });
+// The kit fixture injects a locally built bundle, which the real server's CSP would block.
+test.use({ serviceWorkers: 'block', bypassCSP: true });
 
 const timestamp = '2026-11-04T00:00:00Z';
 const longTitle = '星'.repeat(90);
