@@ -1,6 +1,6 @@
 # BV5: Quick view drawer
 
-- Status: Ready
+- Status: Done
 - Wave: 2. Dependencies merged: BV1, BV3 (BV2 and BV4 are merged too but not needed)
 - Can run in parallel with: BV6, BV7, BV8, BV9
 - Branch/worktree: `task/bv5` / `..\pandalibrary-bv5`
