@@ -198,6 +198,24 @@ Git-ignored; they are not included in a fresh checkout. Use the commands below
 for the supported development workflow. On first use, enter the `setup_token`
 printed by the backend to create an administrator; keep the token private.
 
+On Windows, if Vite exits with `3221226505` or `-1073740791` (`0xC0000409`),
+try updating to [Node.js 24 LTS](https://nodejs.org/en/download) 24.22.2 or a
+newer 24.x release, then restart the terminal. The crash was reproduced with
+Node.js 24.15.0 on one Windows system but not with 24.22.2; its underlying
+cause is not confirmed. If a launcher stops both servers after the frontend
+crashes, a browser shelves connection error can be a consequence.
+
+To run without Vite while troubleshooting, first stop other servers using the
+same data directory, then run in PowerShell:
+
+```powershell
+pnpm --dir web build
+go run .\cmd\pandalibrary serve --data-dir .\data --listen 127.0.0.1:8080 --base-url http://127.0.0.1:8080
+```
+
+Open `http://127.0.0.1:8080`. Frontend edits require rebuilding and restarting
+the server in this mode.
+
 Also install Task and staticcheck for the checks below:
 
 ```sh

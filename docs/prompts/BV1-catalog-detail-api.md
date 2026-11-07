@@ -32,12 +32,8 @@ appended to `internal/db/queries/catalog.sql` / `shelves.sql`, regenerated sqlc
 output (`task sqlc`), the handlers and routes in `internal/httpapi/catalog.go`
 and `shelves.go`, and tests.
 
-**Owns (web typed client for this contract):** the `BookFile` fields in
-`web/src/lib/catalog/types.ts` and `getBookShelves` in `web/src/lib/catalog/api.ts`
-(+ test in `api.test.ts`).
-
-**Must not touch:** `internal/reading/**` (BV2), any other `web/**` file,
-migrations.
+**Must not touch:** `internal/reading/**` (BV2), any `web/**` file (BV3 adds
+the optional TS fields), migrations.
 
 ## Subtasks
 
@@ -72,17 +68,7 @@ migrations.
 > (excluded), a hidden book (404), an invisible library (404) and
 > unauthenticated access (401).
 
-### BV1.3 – Typed web client
-
-> In `web/src/lib/catalog/types.ts`, add `readonly original_filename: string`
-> and `readonly created_at: string` to `BookFile`. Update every fixture/mock
-> that builds a `BookFile` so `pnpm --dir web check` passes (grep `size_bytes:`
-> in `web/src`). In `web/src/lib/catalog/api.ts`, add
-> `getBookShelves(bookId: number, signal?: AbortSignal): Promise<Shelf[]>`
-> (`GET /books/{id}/shelves`, returns `response.shelves`), with a unit test
-> in `api.test.ts`.
-
-### BV1.4 – Document
+### BV1.3 – Document
 
 > Document both changes in [architecture/system.md](../architecture/system.md)
 > (API list) and in the plan contract, if anything differs from it.
@@ -105,8 +91,6 @@ for a single book.
 ```powershell
 task sqlc:check
 go test ./internal/catalog/... ./internal/httpapi/...
-pnpm --dir web check
-pnpm --dir web exec vitest run src/lib/catalog
 ```
 
 ## Hand-off

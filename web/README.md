@@ -15,5 +15,7 @@ pnpm --dir web build
 
 The development server proxies `/api`, `/opds`, and `/kosync` to
 `http://127.0.0.1:8080`. Set `VITE_API_PROXY_TARGET` to override the backend URL.
+For Windows Vite crashes with `0xC0000409`, see the [development troubleshooting
+guidance](../README.md#development).
 Playwright is configured for later end-to-end tasks; its browser installation is separate
 from the default unit-test command.
