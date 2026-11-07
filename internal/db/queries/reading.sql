@@ -476,3 +476,29 @@ WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND deleted_at IS NULL;
 
 -- name: ReadingSyncHighWater :one
 SELECT value FROM sync_counter WHERE id = 1;
+
+-- name: ReadingListBookSessions :many
+SELECT seq, id, source, device, started_at, ended_at, active_seconds, start_percentage, end_percentage
+FROM reading_sessions
+WHERE user_id = sqlc.arg(user_id) AND book_id = sqlc.arg(book_id)
+ORDER BY started_at, seq;
+
+-- name: ReadingPageBookSessions :many
+SELECT seq, id, source, device, started_at, ended_at, active_seconds, start_percentage, end_percentage
+FROM reading_sessions
+WHERE user_id = sqlc.arg(user_id) AND book_id = sqlc.arg(book_id)
+AND (CAST(sqlc.arg(has_since) AS INTEGER) = 0 OR started_at >= sqlc.arg(since))
+AND (CAST(sqlc.arg(has_cursor) AS INTEGER) = 0
+    OR started_at < sqlc.arg(cursor_started_at)
+    OR (started_at = sqlc.arg(cursor_started_at) AND seq < sqlc.arg(cursor_seq)))
+ORDER BY started_at DESC, seq DESC
+LIMIT sqlc.arg(limit);
+
+-- name: ReadingCountBookSessions :one
+SELECT COUNT(*) FROM reading_sessions
+WHERE user_id = sqlc.arg(user_id) AND book_id = sqlc.arg(book_id)
+AND (CAST(sqlc.arg(has_since) AS INTEGER) = 0 OR started_at >= sqlc.arg(since));
+
+-- name: ReadingDeleteBookSession :execrows
+DELETE FROM reading_sessions
+WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND book_id = sqlc.arg(book_id);
