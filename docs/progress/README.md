@@ -84,7 +84,7 @@ the next. Only BV10 runs the full verification gate.
 | 1 | BV2 | Per-book reading log API + web client | baseline | [BV2](../prompts/BV2-reading-log-api.md) | Ready | `task/bv2` | |
 | 1 | BV3 | Cover kit: generated cover, format badge, hover actions | baseline | [BV3](../prompts/BV3-cover-kit.md) | Done | `master` | Cover kit and card integration; targeted checks pass |
 | 1 | BV4 | Details shell: route group, tabs, contexts, prev/next | baseline | [BV4](../prompts/BV4-details-shell.md) | Ready | `task/bv4` | |
-| 2 | BV5 | Quick view drawer | BV1, BV3 | [BV5](../prompts/BV5-quick-view.md) | Ready | `task/bv5` | |
+| 2 | BV5 | Quick view drawer | BV1, BV3 | [BV5](../prompts/BV5-quick-view.md) | Done | `task/bv5` | Contains a BV1 merge; status menu opens upward via a CSS override |
 | 2 | BV6 | Details tab | BV1-BV4 | [BV6](../prompts/BV6-details-tab.md) | Ready | `task/bv6` | |
 | 2 | BV7 | Files tab | BV1, BV3, BV4 | [BV7](../prompts/BV7-files-tab.md) | Ready | `task/bv7` | |
 | 2 | BV8 | Reading Log tab | BV2-BV4 | [BV8](../prompts/BV8-reading-log-tab.md) | Ready | `task/bv8` | |
@@ -95,6 +95,29 @@ the next. Only BV10 runs the full verification gate.
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
 
+- 2026-11-07 — BV5 — Implemented the quick-view drawer (`bookview/quickview/`):
+  a host mounted once in AppShell (hidden in immersive mode), a right-side
+  modal drawer that is full width below `sm` and slides in over 200ms (the
+  animation is skipped under reduced motion), Escape/backdrop close, a Tab
+  trap, focus restored to the trigger (not after navigation), and stale
+  requests aborted when another book replaces the current one. It shows header,
+  facts, primary file, tags, collections and synopsis, and the footer has
+  Read/Resume, Details, the status menu and an add-to-shelf popover. Admins
+  also get an Edit metadata link. It reloads on book-state and shelf change
+  events. Decisions and assumptions:
+  - Master did not have BV1 yet, so `task/bv1` is merged into `task/bv5`.
+  - BV3's `read.test.ts` fixture gained the new BV1 `BookFile` fields.
+  - The AddToShelf filter is extracted to `shelves/addable.ts` and shared with
+    the popover; AddToShelf behavior is unchanged.
+  - The Favorites collection links to `/shelves/system/favorites`.
+  - The admin flag comes from AppShell's viewer, so no extra request is made.
+  - The kit's ReadStatusMenu is flipped upward with a scoped `:global` CSS
+    override. Follow-up: add a `placement` prop to the kit.
+  - BV3's `covers.e2e.ts` now presses Escape after Info, because the modal
+    drawer covers the grid.
+  Validation: `pnpm check` clean; `vitest src/lib/bookview` 40/40; Playwright
+  quickview + shell + covers 18/18. Playwright was run against a manually
+  started preview, because build + preview exceeds the 60s webServer timeout.
 - 2026-11-07 — BV3 — Implemented deterministic, contrast-checked title covers,
   format badges, hover/focus/touch actions, the shared interactive kit, and
   English/Chinese copy. Info dispatches the quick-view event; the drawer remains
