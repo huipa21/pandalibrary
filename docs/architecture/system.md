@@ -237,6 +237,7 @@ keyset cursors (`?cursor=…&limit=…`).
 | `/api/v1/books/{id}/metadata/apply` | admin | Apply per-field choices `{field: {source, ref, value}}` |
 | `/api/v1/search?q=` | session | Books; `/api/v1/search/annotations?q=` for the user's own highlights/notes |
 | `/api/v1/me/books/{id}` | session | Status, rating, progress, highlights, notes |
+| `/api/v1/me/books/{id}/reading-summary`, `/sessions`, `/sessions/{sessionId}` | session | Per-book reading log: summary, paginated sessions, owner-only session delete (BV2) |
 | `/api/v1/sync/pull`, `/api/v1/sync/push` | session | PWA offline sync (§10) |
 | `/api/v1/me/profile` | session | Read/update the current user's display name and locale |
 | `/api/v1/me/app-passwords` | session | Create (secret shown once), list, revoke |
@@ -316,6 +317,42 @@ parameters. I1 can reuse `catalog.SortTitle` and `blobstore.BookPath`, and call
 `search.IndexBook` within its own write transaction after updating metadata. S1 and other
 new book-derived queries must apply the same SQL predicate and extend the visibility
 test harness. Blob cleanup and general book-file publication remain I1/J1 work.
+
+### Reading log contract (BV2)
+
+All three routes are scoped to the signed-in user's own `reading_sessions` for a visible
+book; invisible or nonexistent books and other users' sessions return 404. `timezone` is
+an IANA name and defaults to `UTC` when omitted (an empty or unknown value returns 400).
+Unknown query parameters return 400.
+
+- `GET /api/v1/me/books/{id}/reading-summary?timezone=` returns
+  `{"summary":{progress, sessions, total_seconds, average_seconds, active_days, span_days,
+  first_read_at, last_read_at, pace_percent_per_hour, estimated_seconds_left, records,
+  attempts, days}}`. Days are bucketed by the local date of `started_at`; a day is active
+  when it has more than 0 seconds, and `days` lists active days ascending (newest 3,660
+  kept). Pace uses only sessions with both percentages known and is null when they total
+  0 seconds; the estimate is null without a positive pace. `records` holds
+  `longest_session`, `best_day` (null without data), and `longest_streak_days`.
+  `attempts` are newest first, with `number`, `status`
+  (`in_progress`/`completed`/`stopped`), `started_at`, `ended_at`, `sessions`,
+  `seconds`, `max_percentage`, and sorted distinct `sources`.
+- `GET /api/v1/me/books/{id}/sessions?range=all|30d|90d|year&timezone=&limit=&cursor=`
+  returns `{"items":[...],"next_cursor":...,"total":N}` ordered newest first. The default
+  limit is 25 and the maximum is 100. Ranges start at local midnight of today−29, today−89,
+  or 1 January in `timezone`. Items contain `id`, `source`, `device`, `started_at`,
+  `ended_at`, `active_seconds`, nullable `start_percentage`, `end_percentage`, and
+  `change`, plus the derived `attempt` number. Cursors are bound to the user, book, range,
+  and timezone.
+- `DELETE /api/v1/me/books/{id}/sessions/{sessionId}` (cookie-origin protected) deletes the
+  user's own session and returns 204. It does not bump the sync revision; sessions are
+  upload-only and stats read the table directly.
+
+**Attempt rule:** sessions are walked in `started_at` order. A new attempt starts when the
+current attempt has reached at least 95% and the session's position (start, or end when
+the start is unknown) is at most 10%, or when the session starts after
+`user_books.finished_at` while the current attempt started before it. An attempt is
+`completed` when it reached 95% or contains `finished_at`; otherwise the last attempt is
+`in_progress` and earlier ones are `stopped`.
 
 Middleware order: request ID → structured logging (slog) → panic recovery → real IP (only from
 trusted proxies) → security headers → body size limit → `http.CrossOriginProtection`
