@@ -1,6 +1,6 @@
 # BV10: Integration, real-server E2E, visual QA, docs and full verification
 
-- Status: Ready
+- Status: Done
 - Wave: 3 (alone). Dependencies merged: BV1-BV9
 - Branch/worktree: `task/bv10` / `..\pandalibrary-bv10`
 - Migration: no
@@ -97,11 +97,11 @@ changes in the owning files. Do not redesign. Do not weaken or skip tests.
 
 ## Acceptance criteria
 
-- [ ] The real-server E2E covers every user-visible feature of the request.
-- [ ] No duplicated helpers, no unused messages, en/zh parity.
-- [ ] Visual review done at three widths with no layout defects.
-- [ ] Docs updated. Plan, prompts and progress set to Done.
-- [ ] All gates below pass in one final run.
+- [x] The real-server E2E covers every user-visible feature of the request.
+- [x] No duplicated helpers, no unused messages, en/zh parity.
+- [x] Visual review done at three widths with no layout defects.
+- [x] Docs updated. Plan, prompts and progress set to Done.
+- [x] All gates below pass in one final run.
 
 ## Validation commands (full gate)
 
@@ -118,12 +118,12 @@ $env:PANDA_E2E_BINARY = (Resolve-Path .\pandalibrary.exe).Path; pnpm --dir web t
 
 | Gate | Result |
 |---|---|
-| `task sqlc:check lint test build` | |
-| `pnpm --dir web check` | |
-| `pnpm --dir web test` | |
-| `pnpm --dir web build` | |
-| `pnpm --dir web test:e2e` (real server) | |
-| Visual QA (3 widths × 8 surfaces) | |
+| `task sqlc:check lint test build` | Pass: `sqlc diff` clean; `go vet` + `staticcheck` clean; `go test ./...` 28 packages ok; CGO-free build ok |
+| `pnpm --dir web check` | Pass: 0 errors, 0 warnings |
+| `pnpm --dir web test` | Pass: 50 files, 358 tests |
+| `pnpm --dir web build` | Pass |
+| `pnpm --dir web test:e2e` (real server) | Pass: 143 tests (incl. new `bookview-real.e2e.ts`, 2 tests) |
+| Visual QA (3 widths × 8 surfaces) | Done: 9 surfaces × 1440/1024/390 (grid, list, dashboard, search, drawer, 4 tabs); fixed card title clamp, Reading Log sessions clipping, mobile active tab visibility; no unnamed controls or page overflow |
 
 Update the BV10 row and log, and list any follow-ups (for example write-back,
 progress strips on cards, or a stored re-reading status).

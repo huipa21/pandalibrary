@@ -18,9 +18,10 @@ reflect what earlier tasks actually built.
 
 Prompts are kept after completion as a record of what was asked.
 
-The [sidebar/dashboard follow-up](../plans/sidebar-dashboard-plan.md) and the
-[bookheap follow-up](../plans/bookheap-plan.md) are complete requested planning
-batches, and the [Book View batch](../plans/book-view-plan.md) is drafted. Their
+The [sidebar/dashboard follow-up](../plans/sidebar-dashboard-plan.md), the
+[bookheap follow-up](../plans/bookheap-plan.md) and the
+[Book View batch](../plans/book-view-plan.md) are complete requested planning
+batches. Their
 prompts are drafted together with
 explicit contracts. Before launching a later wave, read the merged dependency
 hand-offs and update its prompts if the contracts changed.
@@ -71,13 +72,13 @@ hand-offs and update its prompts if the contracts changed.
 | BH3 | [BH3-upload-dialog.md](./BH3-upload-dialog.md) | Done |
 | BH4 | [BH4-bookheap-page.md](./BH4-bookheap-page.md) | Done |
 | BH5 | [BH5-bookheap-integration.md](./BH5-bookheap-integration.md) | Ready |
-| BV1 | [BV1-catalog-detail-api.md](./BV1-catalog-detail-api.md) | Ready |
+| BV1 | [BV1-catalog-detail-api.md](./BV1-catalog-detail-api.md) | Done |
 | BV2 | [BV2-reading-log-api.md](./BV2-reading-log-api.md) | Done |
-| BV3 | [BV3-cover-kit.md](./BV3-cover-kit.md) | Ready |
+| BV3 | [BV3-cover-kit.md](./BV3-cover-kit.md) | Done |
 | BV4 | [BV4-details-shell.md](./BV4-details-shell.md) | Done |
-| BV5 | [BV5-quick-view.md](./BV5-quick-view.md) | Ready |
-| BV6 | [BV6-details-tab.md](./BV6-details-tab.md) | Ready |
+| BV5 | [BV5-quick-view.md](./BV5-quick-view.md) | Done |
+| BV6 | [BV6-details-tab.md](./BV6-details-tab.md) | Done |
 | BV7 | [BV7-files-tab.md](./BV7-files-tab.md) | Done |
 | BV8 | [BV8-reading-log-tab.md](./BV8-reading-log-tab.md) | Done |
-| BV9 | [BV9-highlights-tab.md](./BV9-highlights-tab.md) | Ready |
-| BV10 | [BV10-integration.md](./BV10-integration.md) | Ready |
+| BV9 | [BV9-highlights-tab.md](./BV9-highlights-tab.md) | Done |
+| BV10 | [BV10-integration.md](./BV10-integration.md) | Done |

@@ -89,11 +89,41 @@ the next. Only BV10 runs the full verification gate.
 | 2 | BV7 | Files tab | BV1, BV3, BV4 | [BV7](../prompts/BV7-files-tab.md) | Done | `task/bv7` | Grouped files, per-copy progress and offline actions; targeted checks pass |
 | 2 | BV8 | Reading Log tab | BV2-BV4 | [BV8](../prompts/BV8-reading-log-tab.md) | Done | `task/bv8` | Local progress ring for BV10 to deduplicate |
 | 2 | BV9 | Highlights tab + reader `?highlight=` | BV3, BV4 | [BV9](../prompts/BV9-highlights-tab.md) | Done | `task/bv9` | Branch includes merged `task/bv4` |
-| 3 | BV10 | Integration, real-server E2E, visual QA, full gate | BV1-BV9 | [BV10](../prompts/BV10-integration.md) | Ready | `task/bv10` | |
+| 3 | BV10 | Integration, real-server E2E, visual QA, full gate | BV1-BV9 | [BV10](../prompts/BV10-integration.md) | Done | `task/bv10` | All BV branches merged; full gate green; architecture in [book-view.md](../architecture/book-view.md) |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-07 — BV10 — Merged `task/bv1`, `bv2`, `bv4`-`bv9` into `task/bv10`
+  (BV3 was already on master). Seams: one shared `ProgressRing` (BV7/BV8),
+  one `readStatusLabel`, every consumer imports `BOOK_STATE_CHANGED_EVENT`, the
+  legacy Details "Available formats" section is gone, orphan message keys were
+  removed and `messages.test.ts` enforces en/zh parity and usage. Added
+  `routes/bookview-real.e2e.ts` (real binary: seeded EPUB/PDF/multi-format/CJK
+  books, shelves, access, hidden book, sessions, highlights; walks catalog →
+  drawer → every tab → reader `?highlight=`, plus restart persistence of the
+  summary and sessions). Visual QA at 1440/1024/390 fixed card title clamping,
+  Reading Log sessions clipping (sessions now full width below `2xl`) and the
+  active tab scrolling out of view on mobile. Gate fixes: `offline.e2e`
+  checked a Details string on the Files tab; `covers.e2e` needed `bypassCSP`
+  under the real server; the cold-import reader unit test got a 30 s timeout.
+  Wrote [book-view.md](../architecture/book-view.md).
+
+  | Gate | Result |
+  |---|---|
+  | `task sqlc:check lint test build` | Pass (28 Go packages ok) |
+  | `pnpm --dir web check` | 0 errors, 0 warnings |
+  | `pnpm --dir web test` | 50 files, 358 tests |
+  | `pnpm --dir web build` | Pass |
+  | `pnpm --dir web test:e2e` (real server) | 143 passed |
+
+  Follow-ups: the importer rejects an EPUB `dc:identifier` of bare
+  `urn:uuid:…` without `opf:scheme` (identifier scheme CHECK constraint fails
+  the import); `ReadStatusMenu` could take a placement prop instead of BV5's
+  CSS override; the `stopped` attempt status is unreachable; an unread file
+  shows no "0% read" chip on Files; write-back, progress strips on list cards
+  and a stored re-reading status remain out of scope.
 
 - 2026-11-07 — BV9 — Implemented the Highlights tab (`lib/bookview/highlights/`:
   pure `highlights-model.ts` with `buildMarks`, `filterMarks`, `sortMarks`,

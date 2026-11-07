@@ -3,6 +3,7 @@
 Status: accepted design, implementation in progress. The database design is in
 [database.md](./database.md), the migration process in [migrations.md](./migrations.md),
 the admin Bookheap staging area in [bookheap.md](./bookheap.md),
+the book detail pages, quick view and generated covers in [book-view.md](./book-view.md),
 and the initial migration in [00001_init.sql](../../internal/db/migrations/00001_init.sql).
 Decisions are recorded in
 [../decisions](../decisions/README.md); the task breakdown is in
@@ -660,7 +661,8 @@ type Provider interface {
 - **Routes:**
   - `login`, `setup`
   - `library/[id]` (grid/list, filters: author, series, tag, status, shelf; sort)
-  - `books/[id]`, `books/[id]/edit` (metadata merge grid)
+  - `books/[id]` with the Details, Files, Reading Log and Highlights tabs, and
+    `books/[id]/edit` (metadata merge grid); see [book-view.md](./book-view.md)
   - `read/[bookId]/[fileId]`
   - `shelves/[id]`, `series/[id]`, `authors/[id]`, `tags/[name]`
   - `notes` (all of the user's notes and highlights, searchable)

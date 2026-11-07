@@ -1,6 +1,6 @@
 # Book View (BV): generated covers, quick view drawer, tabbed book details
 
-Status: Prompts drafted (BV1-BV10). Requested 2026-11-07.
+Status: Done (BV1-BV10 merged; see [book-view.md](../architecture/book-view.md)). Requested 2026-11-07.
 Baseline: `72c469c` (`master`). Local issue specifications only; nothing is
 published to GitHub.
 
