@@ -5,6 +5,7 @@
 	import { isImmersiveRoute } from '#lib/nav.js';
 	import SearchBox from '#lib/search/SearchBox.svelte';
 	import UploadButton from '#lib/bookheap/UploadButton.svelte';
+	import QuickViewHost from '#lib/bookview/quickview/QuickViewHost.svelte';
 	import AccountControls from './AccountControls.svelte';
 	import Sidebar from './Sidebar.svelte';
 	import { focusableWithin, nextTrappedFocus } from './focus.js';
@@ -159,4 +160,5 @@
 			</div>
 		</main>
 	</div>
+	{#if viewer && !immersive}<QuickViewHost admin={viewer.role === 'admin'} />{/if}
 </div>

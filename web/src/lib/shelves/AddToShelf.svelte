@@ -2,8 +2,9 @@
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { translate } from '#lib/paging/translate.js';
-	import { addBookToShelf, getSessionViewer, listAllShelves } from './api.js';
-	import { offersShelfManagement, shelfErrorKey } from './form.js';
+	import { addBookToShelf } from './api.js';
+	import { loadAddableShelves } from './addable.js';
+	import { shelfErrorKey } from './form.js';
 	import type { Shelf } from './types.js';
 
 	let { bookId }: { bookId: number } = $props();
@@ -26,11 +27,9 @@
 		status = 'loading';
 		loadError = '';
 		try {
-			const [all, viewer] = await Promise.all([listAllShelves(current.signal), getSessionViewer()]);
+			const addable = await loadAddableShelves(current.signal);
 			if (current.signal.aborted) return;
-			shelves = all.filter((shelf) =>
-				offersShelfManagement(shelf, viewer) && shelf.mode !== 'automatic' && shelf.system_key !== 'unshelved'
-			);
+			shelves = addable;
 			if (!shelves.some((shelf) => String(shelf.id) === selected)) selected = '';
 			status = 'ready';
 		} catch (cause) {
