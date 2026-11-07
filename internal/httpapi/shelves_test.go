@@ -443,3 +443,92 @@ func TestShelfHTTPSystemAndAutomaticShelves(t *testing.T) {
 	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(created.Shelf.ID, 101), nil, fixture.reader, nil), http.StatusConflict)
 	expectShelfStatus(t, fixture.request(http.MethodDelete, shelfHTTPBookPath(created.Shelf.ID, 101), nil, fixture.reader, nil), http.StatusConflict)
 }
+
+func TestShelfHTTPBookShelves(t *testing.T) {
+	fixture := newShelfHTTPFixture(t)
+	ctx := context.Background()
+	beta := createHTTPShelf(t, fixture, fixture.reader, "private", "beta")
+	alpha := createHTTPShelf(t, fixture, fixture.admin, "shared", "Alpha")
+	unrelated := createHTTPShelf(t, fixture, fixture.reader, "private", "Gamma")
+	foreign := createHTTPShelf(t, fixture, fixture.other, "private", "Aardvark")
+	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(beta.ID, 101), nil, fixture.reader, nil), http.StatusOK)
+	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(alpha.ID, 101), nil, fixture.admin, nil), http.StatusOK)
+	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(alpha.ID, 102), nil, fixture.admin, nil), http.StatusOK)
+	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(unrelated.ID, 102), nil, fixture.admin, nil), http.StatusOK)
+	if _, err := fixture.db.Writer.ExecContext(ctx, `
+		INSERT INTO shelf_books (shelf_id, book_id, position, added_by, added_at) VALUES (?, 101, 0, 1, 1)`, foreign.ID); err != nil {
+		t.Fatal(err)
+	}
+	response := fixture.request(http.MethodGet, "/api/v1/shelves/system/favorites", nil, fixture.reader, nil)
+	expectShelfStatus(t, response, http.StatusOK)
+	var favorites struct {
+		Shelf catalog.SystemShelf `json:"shelf"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &favorites); err != nil || favorites.Shelf.ShelfID == nil {
+		t.Fatalf("favorites response = %s, %v", response.Body.String(), err)
+	}
+	favoritesID := *favorites.Shelf.ShelfID
+	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(favoritesID, 101), nil, fixture.reader, nil), http.StatusOK)
+	response = fixture.request(http.MethodPost, "/api/v1/shelves", strings.NewReader(
+		`{"kind":"private","mode":"automatic","name":"Auto","rules":{"match":"all","conditions":[{"field":"author_id","op":"eq","value":1}]}}`),
+		fixture.reader, nil)
+	expectShelfStatus(t, response, http.StatusCreated)
+
+	listed := map[int64]catalog.Shelf{}
+	response = fixture.request(http.MethodGet, "/api/v1/shelves?limit=100", nil, fixture.reader, nil)
+	expectShelfStatus(t, response, http.StatusOK)
+	var page catalog.Page[catalog.Shelf]
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	for _, shelf := range page.Items {
+		listed[shelf.ID] = shelf
+	}
+
+	bookShelves := func(cookie *http.Cookie, bookID int64) []catalog.Shelf {
+		t.Helper()
+		response := fixture.request(http.MethodGet, fmt.Sprintf("/api/v1/books/%d/shelves", bookID), nil, cookie, nil)
+		expectShelfStatus(t, response, http.StatusOK)
+		var result struct {
+			Shelves []catalog.Shelf `json:"shelves"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || result.Shelves == nil {
+			t.Fatalf("book shelves = %s, %v", response.Body.String(), err)
+		}
+		return result.Shelves
+	}
+	shelves := bookShelves(fixture.reader, 101)
+	var ids []int64
+	for _, shelf := range shelves {
+		ids = append(ids, shelf.ID)
+		if !reflect.DeepEqual(shelf, listed[shelf.ID]) {
+			t.Errorf("book shelf %+v differs from shelf list %+v", shelf, listed[shelf.ID])
+		}
+	}
+	if want := []int64{alpha.ID, beta.ID, favoritesID}; !reflect.DeepEqual(ids, want) {
+		t.Fatalf("reader book shelves = %v, want %v", ids, want)
+	}
+	if shelves[0].VisibleBookCount != 1 {
+		t.Fatalf("shared shelf count ignores hidden books: %+v", shelves[0])
+	}
+
+	ids = nil
+	for _, shelf := range bookShelves(fixture.admin, 101) {
+		ids = append(ids, shelf.ID)
+	}
+	if want := []int64{foreign.ID, alpha.ID, beta.ID}; !reflect.DeepEqual(ids, want) {
+		t.Fatalf("admin book shelves = %v, want %v", ids, want)
+	}
+	for _, bookID := range []string{"102", "103", "9999"} {
+		requireProblem(t, fixture.request(http.MethodGet, "/api/v1/books/"+bookID+"/shelves", nil, fixture.reader, nil), http.StatusNotFound)
+	}
+	hidden := fixture.request(http.MethodGet, "/api/v1/books/102/shelves", nil, fixture.reader, nil)
+	missing := fixture.request(http.MethodGet, "/api/v1/books/9999/shelves", nil, fixture.reader, nil)
+	if hidden.Body.String() != missing.Body.String() {
+		t.Fatalf("hidden and missing book errors differ: %s / %s", hidden.Body, missing.Body)
+	}
+	for _, target := range []string{"/api/v1/books/abc/shelves", "/api/v1/books/0/shelves", "/api/v1/books/101/shelves?limit=10"} {
+		requireProblem(t, fixture.request(http.MethodGet, target, nil, fixture.reader, nil), http.StatusBadRequest)
+	}
+	expectShelfStatus(t, fixture.request(http.MethodGet, "/api/v1/books/101/shelves", nil, nil, nil), http.StatusUnauthorized)
+}

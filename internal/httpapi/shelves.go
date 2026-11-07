@@ -30,8 +30,25 @@ func ShelfMount(service *catalog.Service, authentication *auth.Service, logger *
 			secured.Get("/api/v1/shelves/{id}/books", handler.withViewer(handler.listShelfBooks))
 			secured.With(cookieProtection).Put("/api/v1/shelves/{id}/books/{bookID}", handler.withViewer(handler.putShelfBook))
 			secured.With(cookieProtection).Delete("/api/v1/shelves/{id}/books/{bookID}", handler.withViewer(handler.removeShelfBook))
+			secured.Get("/api/v1/books/{id}/shelves", handler.withViewer(handler.listBookShelves))
 		})
 	}
+}
+
+func (h *catalogHTTP) listBookShelves(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	if _, ok := h.query(w, r); !ok {
+		return
+	}
+	id, ok := h.pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	result, err := h.service.ListBookShelves(r.Context(), viewer, id)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string][]catalog.Shelf{"shelves": result})
 }
 
 func (h *catalogHTTP) listShelves(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {

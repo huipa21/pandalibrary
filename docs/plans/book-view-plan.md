@@ -137,8 +137,8 @@ follows the existing catalog rules: an invisible book is `404`.
 
 | Method | Path | Owner | Behavior |
 |---|---|---|---|
-| GET | `/api/v1/books`, `/api/v1/books/{id}` (changed) | BV1 | each `files[]` item gains `original_filename` (base name, never a directory path) and `created_at` |
-| GET | `/api/v1/books/{id}/shelves` | BV1 | `{shelves: Shelf[]}` – the viewer-visible **manual** shelves (custom manual + Favorites) containing the book, by name; same `Shelf` DTO as `/api/v1/shelves` |
+| GET | `/api/v1/books`, `/api/v1/books/{id}` (changed) | BV1 | each `files[]` item gains `original_filename` (base name, never a directory path; control characters become `_`; `<title>.<format>` when empty) and `created_at` |
+| GET | `/api/v1/books/{id}/shelves` | BV1 | `{shelves: Shelf[]}` – the viewer-visible **manual** shelves (custom manual + Favorites) containing the book, by name (case-insensitive) then ID, at most 200; same `Shelf` DTO as `/api/v1/shelves` |
 | GET | `/api/v1/me/books/{id}/reading-summary?timezone=<IANA>` | BV2 | `{summary}` (below); `400` for a bad timezone |
 | GET | `/api/v1/me/books/{id}/sessions?range=all\|30d\|90d\|year&timezone=&limit=&cursor=` | BV2 | `{items: Session[], next_cursor, total}`; newest first; limit 1-100 (default 25); opaque filter-bound cursor; `year` = current calendar year in `timezone` |
 | DELETE | `/api/v1/me/books/{id}/sessions/{sessionId}` | BV2 | `204`; `404` when it is missing, not the viewer's own, or the book is invisible |

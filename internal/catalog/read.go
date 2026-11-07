@@ -4,10 +4,47 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path"
+	"strings"
+	"unicode"
 
 	"pandalibrary/internal/blobstore"
 	"pandalibrary/internal/db/sqlc"
 )
+
+// fileBaseName returns the stored original filename without any directory or
+// drive prefix, falling back to "<title>.<format>" when nothing usable remains.
+func fileBaseName(stored, title, format string) string {
+	name := strings.ReplaceAll(strings.TrimSpace(stripControl(stored)), `\`, "/")
+	if len(name) >= 2 && name[1] == ':' && isASCIILetter(name[0]) {
+		name = name[2:]
+	}
+	name = strings.TrimRight(name, "/")
+	if name != "" {
+		name = path.Base(name)
+	}
+	if name == "" || name == "." || name == ".." || name == "/" {
+		safeTitle := strings.NewReplacer("/", "_", `\`, "_").Replace(strings.TrimSpace(stripControl(title)))
+		if safeTitle == "" {
+			safeTitle = "book"
+		}
+		return safeTitle + "." + format
+	}
+	return name
+}
+
+func isASCIILetter(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+func stripControl(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '_'
+		}
+		return r
+	}, value)
+}
 
 func libraryDTO(row sqlc.Library) Library {
 	return Library{
@@ -233,7 +270,9 @@ func hydrateBook(ctx context.Context, queries *sqlc.Queries, viewer Viewer, row 
 		}
 		book.Files = append(book.Files, BookFile{
 			ID: file.ID, Format: file.Format, SizeBytes: file.SizeBytes,
-			DownloadURL: fmt.Sprintf("/api/v1/books/%d/files/%d?v=%s", row.ID, file.ID, file.Sha256),
+			DownloadURL:      fmt.Sprintf("/api/v1/books/%d/files/%d?v=%s", row.ID, file.ID, file.Sha256),
+			OriginalFilename: fileBaseName(file.OriginalFilename, row.Title, file.Format),
+			CreatedAt:        utcMillis(file.CreatedAt),
 		})
 	}
 	sources, err := queries.CatalogBookFieldSources(ctx, sqlc.CatalogBookFieldSourcesParams{
