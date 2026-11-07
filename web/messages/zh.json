@@ -1185,5 +1185,19 @@
 	"bh4.scan.invalid": "无效：{count}",
 	"bh4.scan.skipped": "跳过：{count}",
 	"bh4.scan.in_progress": "仍在写入：{count}",
-	"bh5.imports.source.bookheap": "书堆"
+	"bh5.imports.source.bookheap": "书堆",
+	"bv4.tabs.label": "图书分区",
+	"bv4.tabs.details": "详情",
+	"bv4.tabs.files": "文件",
+	"bv4.tabs.reading_log": "阅读记录",
+	"bv4.tabs.highlights": "划线",
+	"bv4.back": "图书",
+	"bv4.back_label": "返回图书列表",
+	"bv4.browse.label": "浏览 {label}",
+	"bv4.browse.position": "{index} / {total}",
+	"bv4.browse.position_label": "第 {index} 本，共 {total} 本",
+	"bv4.browse.previous": "上一本",
+	"bv4.browse.next": "下一本",
+	"bv4.coming_soon.title": "即将推出",
+	"bv4.coming_soon.body": "此部分尚未开放。图书信息仍在“详情”标签页中。"
 }
