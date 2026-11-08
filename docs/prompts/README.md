@@ -91,11 +91,11 @@ hand-offs and update its prompts if the contracts changed.
 | BC7 | [BC7-catalog-grids.md](./BC7-catalog-grids.md) | Done |
 | BC8 | [BC8-integration.md](./BC8-integration.md) | Blocked: original reference images unavailable |
 | HM1 | [HM1-header-menu.md](./HM1-header-menu.md) | Done |
-| BD1 | [BD1-back-navigation.md](./BD1-back-navigation.md) | Ready |
-| BD2 | [BD2-status-lifecycle.md](./BD2-status-lifecycle.md) | Ready |
-| BD3 | [BD3-reviews-api.md](./BD3-reviews-api.md) | Ready |
+| BD1 | [BD1-back-navigation.md](./BD1-back-navigation.md) | Done |
+| BD2 | [BD2-status-lifecycle.md](./BD2-status-lifecycle.md) | Done |
+| BD3 | [BD3-reviews-api.md](./BD3-reviews-api.md) | Done |
 | BD4 | [BD4-hero-status-control.md](./BD4-hero-status-control.md) | Done |
 | BD5 | [BD5-shelf-tags.md](./BD5-shelf-tags.md) | Done |
-| BD6 | [BD6-details-card.md](./BD6-details-card.md) | Ready |
+| BD6 | [BD6-details-card.md](./BD6-details-card.md) | Done |
 | BD7 | [BD7-overview-reviews-assembly.md](./BD7-overview-reviews-assembly.md) | Ready |
 | BD8 | [BD8-integration.md](./BD8-integration.md) | Ready |

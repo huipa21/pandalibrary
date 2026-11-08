@@ -36,7 +36,7 @@ function validID(value: unknown): value is number {
 }
 
 /** Only same-origin absolute paths are kept so the Back fallback cannot leave the app. */
-function safeHref(value: unknown): string | null {
+export function safeHref(value: unknown): string | null {
 	if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
 	return value;
 }
@@ -91,10 +91,12 @@ export function readBrowseContext(): BrowseContext | null {
 	}
 }
 
-export function browseNeighbors(bookId: number): BrowseNeighbors | null {
+/** Neighbors of `bookId` in the remembered list; null when `originHref` is given and the list came from elsewhere. */
+export function browseNeighbors(bookId: number, originHref?: string): BrowseNeighbors | null {
 	if (!validID(bookId)) return null;
 	const context = readBrowseContext();
 	if (!context) return null;
+	if (originHref !== undefined && context.href !== originHref) return null;
 	const position = context.ids.indexOf(bookId);
 	if (position < 0) return null;
 	return {

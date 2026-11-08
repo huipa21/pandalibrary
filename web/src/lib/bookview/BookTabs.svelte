@@ -1,9 +1,9 @@
 <script module lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 
-	export type BookTab = 'details' | 'files' | 'reading-log' | 'highlights';
+	export type BookTab = 'details' | 'files' | 'activities' | 'highlights';
 
-	export const BOOK_TABS: readonly BookTab[] = ['details', 'files', 'reading-log', 'highlights'];
+	export const BOOK_TABS: readonly BookTab[] = ['details', 'files', 'activities', 'highlights'];
 
 	export function bookTabPath(bookId: number, tab: BookTab): string {
 		return tab === 'details' ? `/books/${bookId}` : `/books/${bookId}/${tab}`;
@@ -11,13 +11,14 @@
 
 	export function bookTabFromPath(pathname: string): BookTab {
 		const segment = pathname.replace(/\/+$/, '').split('/')[3] ?? '';
+		if (segment === 'reading-log') return 'activities';
 		return (BOOK_TABS as readonly string[]).includes(segment) ? (segment as BookTab) : 'details';
 	}
 
 	export function bookTabLabel(tab: BookTab): string {
 		switch (tab) {
 			case 'files': return m['bv4.tabs.files']();
-			case 'reading-log': return m['bv4.tabs.reading_log']();
+			case 'activities': return m['bd1.tabs.activities']();
 			case 'highlights': return m['bv4.tabs.highlights']();
 			default: return m['bv4.tabs.details']();
 		}
@@ -27,13 +28,24 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import Icon from './Icon.svelte';
+	import { originLabel, restoreOriginScroll, type BookOrigin } from './book-origin.js';
 	import { browseNeighbors } from './browse-context.js';
 
-	let { bookId, backUsesHistory = false }: { bookId: number; backUsesHistory?: boolean } = $props();
+	let { bookId, origin = null, directFromOrigin = false }: {
+		bookId: number;
+		origin?: BookOrigin | null;
+		directFromOrigin?: boolean;
+	} = $props();
 
 	const activeTab = $derived(bookTabFromPath(page.url.pathname));
-	const neighbors = $derived(browseNeighbors(bookId));
-	const backHref = $derived(neighbors?.href ?? '/books');
+	const backHref = $derived(origin?.href ?? '/');
+	const backName = $derived.by(() => {
+		const label = origin?.label ?? originLabel(backHref);
+		return label ? m['bd1.back_to']({ label }) : m['bd1.back']();
+	});
+	// Previous/next only belongs to the list the user came from.
+	const neighbors = $derived(browseNeighbors(bookId, backHref));
 	let tabNav: HTMLElement | undefined = $state();
 
 	// Keep the active tab visible when the tab strip overflows on narrow screens.
@@ -48,9 +60,11 @@
 	});
 
 	function back(event: MouseEvent) {
-		if (!backUsesHistory || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+		if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 		event.preventDefault();
-		history.back();
+		if (directFromOrigin) history.back();
+		else void goto(backHref);
+		restoreOriginScroll(backHref);
 	}
 
 	function openNeighbor(id: number | null) {
@@ -82,13 +96,13 @@
 <div class="card sticky top-[var(--shell-content-top)] z-20 flex items-center gap-3 px-2 sm:px-4">
 	<nav bind:this={tabNav} class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden" aria-label={m['bv4.tabs.label']()}>
 		<a
-			class="flex shrink-0 items-center gap-1 rounded-md px-2 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-600"
+			class="my-1.5 flex size-9 shrink-0 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-600"
 			href={backHref}
-			aria-label={m['bv4.back_label']()}
+			aria-label={backName}
+			title={backName}
 			onclick={back}
 		>
-			<span aria-hidden="true" class="text-lg leading-none">‹</span>
-			<span>{m['bv4.back']()}</span>
+			<Icon name="arrow-left" class="size-5" />
 		</a>
 		<span class="mx-1 h-5 w-px shrink-0 bg-slate-200" aria-hidden="true"></span>
 		<ul class="flex shrink-0 items-stretch gap-1">

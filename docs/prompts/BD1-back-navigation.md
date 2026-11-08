@@ -1,6 +1,6 @@
 # BD1: Back icon with origin return, previous/next fix, Activities tab
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline (`d6014b0`)
 - Can run in parallel with: BD2, BD3, BD4, BD5, BD6
 - Branch/worktree: `task/bd1` in `..\pandalibrary-bd1`
@@ -133,12 +133,12 @@ handles it), other `bookview/details/*` files.
 
 ## Acceptance criteria
 
-- [ ] R4: the back icon returns to the entry page for every entrance listed
+- [x] R4: the back icon returns to the entry page for every entrance listed
       in BD1.5, including after the reader and the editor round trips.
-- [ ] No visible "Books" text. The icon has an accessible name and a tooltip.
-- [ ] Previous/next only shows for the list the user came from.
-- [ ] The tab reads "Activities" (en/zh). The old URL redirects.
-- [ ] Unit + e2e tests above pass.
+- [x] No visible "Books" text. The icon has an accessible name and a tooltip.
+- [x] Previous/next only shows for the list the user came from.
+- [x] The tab reads "Activities" (en/zh). The old URL redirects.
+- [x] Unit + e2e tests above pass.
 
 ## Validation commands (targeted only)
 

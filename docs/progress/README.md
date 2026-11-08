@@ -126,12 +126,12 @@ Only BD8 runs the full verification gate.
 
 | Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
-| 1 | BD1 | Back icon with origin return, previous/next fix, Activities tab | baseline | [BD1](../prompts/BD1-back-navigation.md) | Ready | `task/bd1` | Fixes reader round-trip reopening the reader |
-| 1 | BD2 | Automatic status lifecycle + re-read restart | baseline | [BD2](../prompts/BD2-status-lifecycle.md) | Done | `master` (uncommitted) | Migration 00006; server/KOReader/offline lifecycle and restart tests pass |
+| 1 | BD1 | Back icon with origin return, previous/next fix, Activities tab | baseline | [BD1](../prompts/BD1-back-navigation.md) | Done | `master` | Fixes reader round-trip reopening the reader |
+| 1 | BD2 | Automatic status lifecycle + re-read restart | baseline | [BD2](../prompts/BD2-status-lifecycle.md) | Done | `master` | Migration 00006; server/KOReader/offline lifecycle and restart tests pass |
 | 1 | BD3 | Multi-user reviews: storage, API, web client | baseline | [BD3](../prompts/BD3-reviews-api.md) | Done | `master` | Migration 00007; visibility-scoped reviews, CRUD API and typed client; notes stay private |
-| 1 | BD4 | Hero cleanup + borderless status control | baseline | [BD4](../prompts/BD4-hero-status-control.md) | Done | `master` (uncommitted) | Hero-only `inline` variant; 201 unit and 42 targeted E2E tests pass |
-| 1 | BD5 | Shelf tags with X + Add-to-shelf popover button | baseline | [BD5](../prompts/BD5-shelf-tags.md) | Done | `master` (uncommitted) | Membership store, corner-X tags, downward picker; 21 unit and 38 browser tests pass; BD7 wires the tab |
-| 1 | BD6 | Details card: edit icon + metadata sources | baseline | [BD6](../prompts/BD6-details-card.md) | Done | `master` (uncommitted) | Context/override permission, live offline gate and source rows; BD7 removes duplicates |
+| 1 | BD4 | Hero cleanup + borderless status control | baseline | [BD4](../prompts/BD4-hero-status-control.md) | Done | `master` | Hero-only `inline` variant; 201 unit and 42 targeted E2E tests pass |
+| 1 | BD5 | Shelf tags with X + Add-to-shelf popover button | baseline | [BD5](../prompts/BD5-shelf-tags.md) | Done | `master` | Membership store, corner-X tags, downward picker; 21 unit and 38 browser tests pass; BD7 wires the tab |
+| 1 | BD6 | Details card: edit icon + metadata sources | baseline | [BD6](../prompts/BD6-details-card.md) | Done | `master` | Context/override permission, live offline gate and source rows; BD7 removes duplicates |
 | 2 | BD7 | Overview + Reviews cards, Details tab assembly | BD3-BD6 | [BD7](../prompts/BD7-overview-reviews-assembly.md) | Ready | `task/bd7` | Sole owner of `DetailsTab.svelte` |
 | 3 | BD8 | Integration, real-server E2E, visual QA, docs, full gate | BD1-BD7 | [BD8](../prompts/BD8-integration.md) | Ready | `task/bd8` | Prunes unused message keys |
 
@@ -194,6 +194,25 @@ Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, block
   push/pull DTOs are unchanged. Offline replay mirrors the rules without adding
   mutations. Targeted Go tests, sqlc diff, web check and 118 targeted frontend
   tests pass; unrelated concurrent work is preserved.
+
+- 2026-11-08 — BD1 — The book header's "‹ Books" is now a round arrow-left
+  icon ("Back to {label}") that returns to the page the book was opened from,
+  including after reader and metadata-editor round trips. `book-origin.ts` API:
+  `BOOK_ORIGIN_KEY`, `BookOrigin { href, label | null }`, `isBookArea`,
+  `isBookChildFlow(pathname, bookId?)`, `rememberBookOrigin(href, label?)`,
+  `readBookOrigin()`, `originLabel(href)`, plus `rememberOriginScroll`,
+  `readOriginScroll` and `restoreOriginScroll`. The scroll helpers were added because
+  the router restores the Dashboard scroll before its rows load, which clamps it to 0.
+  Caveats: `/` always labels as "Dashboard" (not the row); `/login` and
+  `/setup` are never origins; popstate arrivals never use `history.back()`.
+  `browseNeighbors(bookId, originHref)` hides previous/next for other lists;
+  Dashboard rows record their context on tile activation. Reading Log →
+  Activities: the route is `(tabs)/activities`. Legacy `(tabs)/reading-log`
+  is a `+page.ts` load redirect (307, keeps the query) with a placeholder
+  `+page.svelte`. It works with the SPA fallback. `log.e2e.ts` and `ReadingCard`
+  still use the old URL (BD7/BD8). Old `bv4.back*`/`bv4.tabs.reading_log` keys remain for
+  BD8. Check, 406 unit tests and 43 targeted e2e tests (details-shell, log,
+  dashboard) pass.
 
 - 2026-11-08 — BD (planning) — Split the book detail page request into
   R1-R13 and eight tasks (BD1-BD8) in three waves. Root cause of the

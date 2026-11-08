@@ -1,5 +1,1 @@
-<script lang="ts">
-	import ReadingLogTab from '#lib/bookview/tabs/ReadingLogTab.svelte';
-</script>
-
-<ReadingLogTab />
+<!-- Redirects to the Activities tab in +page.ts. -->

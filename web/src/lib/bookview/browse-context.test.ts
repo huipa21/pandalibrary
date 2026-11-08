@@ -88,6 +88,18 @@ describe('browse context', () => {
 		expect(browseNeighbors(MAX_BROWSE_IDS + 1)).toBeNull();
 	});
 
+	it('only returns neighbors for the list the book was opened from', () => {
+		rememberBrowseContext({ ids: [5, 7, 9], label: 'All books', href: '/books?sort=title' });
+		expect(browseNeighbors(7, '/books?sort=title')).toMatchObject({ index: 2, href: '/books?sort=title' });
+		expect(browseNeighbors(7, '/books')).toBeNull();
+		expect(browseNeighbors(7, '/')).toBeNull();
+		expect(browseNeighbors(7)).toMatchObject({ index: 2 });
+
+		rememberBrowseContext({ ids: [9, 7], label: 'Recently added', href: '/' });
+		expect(browseNeighbors(7, '/')).toMatchObject({ index: 2, total: 2, previousId: 9, nextId: null, label: 'Recently added' });
+		expect(browseNeighbors(7, '/books?sort=title')).toBeNull();
+	});
+
 	it('rejects external origins and ignores write failures', () => {
 		rememberBrowseContext({ ids: [1], label: 'x', href: 'https://evil.example/books' });
 		expect(storage.values.has(BROWSE_CONTEXT_KEY)).toBe(false);
