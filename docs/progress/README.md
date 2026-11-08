@@ -117,9 +117,40 @@ Plan, decisions and implementation contract:
 |---|---|---|---|---|---|---|---|
 | 1 | HM1 | Icon header, language picker, app theme and account menu | UX1, UX10, BH3 | [HM1](../prompts/HM1-header-menu.md) | Done | `task/hm1` | Responsive shell and locale/theme controls implemented; targeted checks pass; full page-by-page visual contrast review remains a follow-up |
 
+## Book Detail follow-up board
+
+Plan, decisions, contracts and ownership rules:
+[book-detail-plan.md](../plans/book-detail-plan.md). Merge a wave before
+starting the next. In wave 1, merge BD2 (migration 00006) before BD3 (00007).
+Only BD8 runs the full verification gate.
+
+| Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
+|---|---|---|---|---|---|---|---|
+| 1 | BD1 | Back icon with origin return, previous/next fix, Activities tab | baseline | [BD1](../prompts/BD1-back-navigation.md) | Ready | `task/bd1` | Fixes reader round-trip reopening the reader |
+| 1 | BD2 | Automatic status lifecycle + re-read restart | baseline | [BD2](../prompts/BD2-status-lifecycle.md) | Ready | `task/bd2` | Migration 00006 (backfill); merge before BD3 |
+| 1 | BD3 | Multi-user reviews: storage, API, web client | baseline | [BD3](../prompts/BD3-reviews-api.md) | Ready | `task/bd3` | Migration 00007; notes stay private |
+| 1 | BD4 | Hero cleanup + borderless status control | baseline | [BD4](../prompts/BD4-hero-status-control.md) | Ready | `task/bd4` | New `inline` variant only |
+| 1 | BD5 | Shelf tags with X + Add-to-shelf popover button | baseline | [BD5](../prompts/BD5-shelf-tags.md) | Ready | `task/bd5` | Components only; wired by BD7 |
+| 1 | BD6 | Details card: edit icon + metadata sources | baseline | [BD6](../prompts/BD6-details-card.md) | Ready | `task/bd6` | Reads `canEditMetadata` from context |
+| 2 | BD7 | Overview + Reviews cards, Details tab assembly | BD3-BD6 | [BD7](../prompts/BD7-overview-reviews-assembly.md) | Ready | `task/bd7` | Sole owner of `DetailsTab.svelte` |
+| 3 | BD8 | Integration, real-server E2E, visual QA, docs, full gate | BD1-BD7 | [BD8](../prompts/BD8-integration.md) | Ready | `task/bd8` | Prunes unused message keys |
+
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-08 — BD (planning) — Split the book detail page request into
+  R1-R13 and eight tasks (BD1-BD8) in three waves. Root cause of the
+  inconsistent "‹ Books" button: the reader's Back/close and the metadata
+  editor push `/books/{id}`, so the remounted layout treated `/read/…` as the
+  previous list and `history.back()` reopened the reader. The Dashboard also
+  never recorded a browse context, so the fallback went to a stale list.
+  Decisions: an origin stored per tab (child flows excluded); a
+  server-authoritative status lifecycle (progress > 0 → Reading, ≥ 99% →
+  Read, manual states kept, Re-reading resets progress) with a backfill
+  migration; reviews as a new public entity because book-level notes are
+  private (the reader creates them). Reference screenshot saved under
+  `docs/plans/assets/`. Prompts are Ready.
 
 - 2026-11-08 — HM1 — Replaced text account controls with an icon-only responsive
   header, searchable language picker, local theme toggle and avatar menu.
