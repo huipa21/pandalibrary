@@ -1488,5 +1488,19 @@
 	"bv9.sources_label": "按文件格式统计的标注",
 	"bv9.format_unknown": "未知",
 	"bv9.chapters": "章节",
-	"bv9.chapter_jump": "跳转到 {chapter}，{count} 条标注"
+	"bv9.chapter_jump": "跳转到 {chapter}，{count} 条标注",
+	"bd1.back": "返回",
+	"bd1.back_to": "返回{label}",
+	"bd1.tabs.activities": "阅读动态",
+	"bd1.origin.dashboard": "仪表盘",
+	"bd1.origin.all_books": "全部图书",
+	"bd1.origin.search": "搜索",
+	"bd1.origin.bookheap": "书堆",
+	"bd1.origin.bookmarks": "书签",
+	"bd1.origin.notes": "笔记",
+	"bd1.origin.shelf": "书架",
+	"bd1.origin.author": "作者",
+	"bd1.origin.series": "丛书",
+	"bd1.origin.tag": "标签",
+	"bd1.origin.library": "书库"
 }

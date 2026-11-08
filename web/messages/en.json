@@ -1488,5 +1488,19 @@
 	"bv9.sources_label": "Highlights by file format",
 	"bv9.format_unknown": "Unknown",
 	"bv9.chapters": "Chapters",
-	"bv9.chapter_jump": "Jump to {chapter}, {count} highlights"
+	"bv9.chapter_jump": "Jump to {chapter}, {count} highlights",
+	"bd1.back": "Back",
+	"bd1.back_to": "Back to {label}",
+	"bd1.tabs.activities": "Activities",
+	"bd1.origin.dashboard": "Dashboard",
+	"bd1.origin.all_books": "All books",
+	"bd1.origin.search": "Search",
+	"bd1.origin.bookheap": "Bookheap",
+	"bd1.origin.bookmarks": "Bookmarks",
+	"bd1.origin.notes": "Notes",
+	"bd1.origin.shelf": "Shelf",
+	"bd1.origin.author": "Author",
+	"bd1.origin.series": "Series",
+	"bd1.origin.tag": "Tag",
+	"bd1.origin.library": "Library"
 }

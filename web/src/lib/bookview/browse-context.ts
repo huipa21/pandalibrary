@@ -36,7 +36,7 @@ function validID(value: unknown): value is number {
 }
 
 /** Only same-origin absolute paths are kept so the Back fallback cannot leave the app. */
-function safeHref(value: unknown): string | null {
+export function safeHref(value: unknown): string | null {
 	if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
 	return value;
 }
