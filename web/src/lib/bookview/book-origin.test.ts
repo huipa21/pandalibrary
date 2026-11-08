@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	BOOK_ORIGIN_KEY,
+	BOOK_ORIGIN_SCROLL_KEY,
 	isBookArea,
 	isBookChildFlow,
 	originLabel,
 	readBookOrigin,
-	rememberBookOrigin
+	readOriginScroll,
+	rememberBookOrigin,
+	rememberOriginScroll
 } from './book-origin.js';
 import { rememberBrowseContext } from './browse-context.js';
 
@@ -110,12 +113,42 @@ describe('book origin', () => {
 	});
 });
 
+describe('origin scroll', () => {
+	it('remembers the scroll position for one origin href', () => {
+		rememberOriginScroll('/', 574.4);
+		expect(readOriginScroll('/')).toBe(574);
+		expect(readOriginScroll('/books')).toBeNull();
+		rememberOriginScroll('/books?sort=added', 120);
+		expect(readOriginScroll('/')).toBeNull();
+		expect(readOriginScroll('/books?sort=added')).toBe(120);
+	});
+
+	it('ignores invalid positions, unsafe hrefs and bad stored values', () => {
+		rememberOriginScroll('/', 300);
+		for (const [href, y] of [['/', -1], ['/', Number.NaN], ['https://evil.example/', 10], ['/books/2', 10]] as const) {
+			rememberOriginScroll(href, y);
+			expect(readOriginScroll('/'), `${href} ${y}`).toBe(300);
+		}
+		for (const raw of ['{not json', 'null', '{"href":"/","y":"5"}', '{"href":"/","y":0}']) {
+			storage.values.set(BOOK_ORIGIN_SCROLL_KEY, raw);
+			expect(readOriginScroll('/'), raw).toBeNull();
+		}
+		storage.failWrites = true;
+		expect(() => rememberOriginScroll('/', 10)).not.toThrow();
+	});
+});
+
 describe('origin label', () => {
 	it('prefers the browse-context label for the same href', () => {
 		rememberBrowseContext({ ids: [1], label: 'Sci-fi', href: '/shelves/4' });
 		expect(originLabel('/shelves/4')).toBe('Sci-fi');
 		expect(originLabel('/shelves/5')).toBe('Shelf');
-		rememberBrowseContext({ ids: [1], label: ' ', href: '/' });
+		rememberBrowseContext({ ids: [1], label: ' ', href: '/books' });
+		expect(originLabel('/books')).toBe('All books');
+	});
+
+	it('always names the Dashboard, not its row', () => {
+		rememberBrowseContext({ ids: [1], label: 'Recently Added', href: '/' });
 		expect(originLabel('/')).toBe('Dashboard');
 	});
 

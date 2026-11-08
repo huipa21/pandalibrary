@@ -3,7 +3,7 @@
 		| 'info' | 'play' | 'book-open' | 'external' | 'eye' | 'folder-plus'
 		| 'download' | 'x' | 'chevron-left' | 'chevron-right' | 'chevron-down'
 		| 'trash' | 'copy' | 'more' | 'star' | 'star-half' | 'pencil'
-		| 'search' | 'plus' | 'refresh' | 'file';
+		| 'search' | 'plus' | 'refresh' | 'file' | 'arrow-left';
 </script>
 
 <script lang="ts">
@@ -63,5 +63,7 @@
 		<path d="M20 7v5h-5M4 17v-5h5M5 9a7 7 0 0 1 12-2l3 5M19 15a7 7 0 0 1-12 2l-3-5" />
 	{:else if name === 'file'}
 		<path d="M6 3h8l4 4v14H6zM14 3v5h4" />
+	{:else if name === 'arrow-left'}
+		<path d="M19 12H5m6-6-6 6 6 6" />
 	{/if}
 </svg>

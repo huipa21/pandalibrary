@@ -70,12 +70,75 @@ export function readBookOrigin(): BookOrigin | null {
 	}
 }
 
+export const BOOK_ORIGIN_SCROLL_KEY = 'pandalibrary.book-origin-scroll';
+
+/** Remembers the scroll position of the page a book is opened from. */
+export function rememberOriginScroll(href: string, y: number): void {
+	const target = storage();
+	const safe = acceptableOrigin(href);
+	if (!target || safe === null || !Number.isFinite(y) || y < 0) return;
+	try {
+		target.setItem(BOOK_ORIGIN_SCROLL_KEY, JSON.stringify({ href: safe, y: Math.round(y) }));
+	} catch {
+		// Scroll restoration is a nicety.
+	}
+}
+
+export function readOriginScroll(href: string): number | null {
+	const source = storage();
+	if (!source) return null;
+	try {
+		const raw = source.getItem(BOOK_ORIGIN_SCROLL_KEY);
+		if (!raw) return null;
+		const value = JSON.parse(raw) as Record<string, unknown> | null;
+		if (!value || value.href !== href || typeof value.y !== 'number' || !Number.isFinite(value.y) || value.y <= 0) return null;
+		return value.y;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Origin pages such as the Dashboard load their content after navigation, so the router's
+ * scroll restoration is clamped to a short page. Re-apply the remembered position once the
+ * page at `href` is tall enough, unless the user scrolls first.
+ */
+export function restoreOriginScroll(href: string, timeoutMs = 5000): void {
+	const y = readOriginScroll(href);
+	if (y === null || typeof window === 'undefined') return;
+	const started = performance.now();
+	let heldSince: number | null = null;
+	let cancelled = false;
+	const cancel = () => { cancelled = true; };
+	const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+	for (const name of events) window.addEventListener(name, cancel, { passive: true, capture: true });
+	const stop = () => { for (const name of events) window.removeEventListener(name, cancel, { capture: true }); };
+	const step = () => {
+		const now = performance.now();
+		if (cancelled || now - started > timeoutMs) return stop();
+		if (location.pathname + location.search === href) {
+			const reachable = document.documentElement.scrollHeight - window.innerHeight >= y - 1;
+			if (Math.abs(window.scrollY - y) <= 1) {
+				heldSince ??= now;
+				// Keep watching briefly in case the router scrolls after rendering.
+				if (now - heldSince > 400) return stop();
+			} else {
+				heldSince = null;
+				if (reachable) window.scrollTo(window.scrollX, y);
+			}
+		}
+		requestAnimationFrame(step);
+	};
+	requestAnimationFrame(step);
+}
+
 /** A human name for an origin: the remembered list's label, else the route name. */
 export function originLabel(href: string): string | null {
+	const pathname = pathOf(href);
+	// Dashboard rows remember their row title, but the back target is the whole Dashboard.
+	if (pathname === '/') return m['bd1.origin.dashboard']();
 	const context = readBrowseContext();
 	if (context && context.href === href && context.label.trim()) return context.label;
-	const pathname = pathOf(href);
-	if (pathname === '/') return m['bd1.origin.dashboard']();
 	if (pathname === '/books') return m['bd1.origin.all_books']();
 	if (pathname === '/search') return m['bd1.origin.search']();
 	if (pathname === '/bookheap') return m['bd1.origin.bookheap']();

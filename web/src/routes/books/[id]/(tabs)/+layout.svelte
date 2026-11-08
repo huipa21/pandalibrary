@@ -5,6 +5,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import BookTabs, { bookTabFromPath, bookTabLabel } from '#lib/bookview/BookTabs.svelte';
 	import { createBookContext, parseBookID, setBookContext } from '#lib/bookview/book-context.svelte.js';
+	import { isBookArea, isBookChildFlow, readBookOrigin, rememberBookOrigin, type BookOrigin } from '#lib/bookview/book-origin.js';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -13,8 +14,9 @@
 	const routeID = $derived(page.params.id ?? '');
 	const routeBookID = $derived(parseBookID(routeID));
 	const tabLabel = $derived(bookTabLabel(bookTabFromPath(page.url.pathname)));
-	let backUsesHistory = $state(false);
-	let entered = false;
+	let origin = $state<BookOrigin | null>(readBookOrigin());
+	let directFromOrigin = $state(false);
+	let historyLength: number | null = null;
 
 	$effect(() => {
 		const id = routeID;
@@ -25,10 +27,6 @@
 
 	onDestroy(() => context.destroy());
 
-	function inBookArea(pathname: string): boolean {
-		return /^\/books\/[^/]+(?:\/|$)/.test(pathname);
-	}
-
 	function sameOriginReferrer(): URL | null {
 		try {
 			const referrer = new URL(document.referrer);
@@ -38,13 +36,38 @@
 		}
 	}
 
-	// Tabs and previous/next replace the history entry, so the entry before the
-	// tab area is the in-app list the user came from (when there is one).
-	afterNavigate(({ from }) => {
-		if (entered) return;
-		entered = true;
-		const previous = from?.url ?? sameOriginReferrer();
-		backUsesHistory = previous !== null && !inBookArea(previous.pathname) && history.length > 1;
+	function isOriginCandidate(url: URL): boolean {
+		return !isBookArea(url.pathname) && !isBookChildFlow(url.pathname);
+	}
+
+	// The origin is the last page outside the book area. The reader and the
+	// editor are child flows and never replace it. Tabs and previous/next
+	// replace the history entry, so while only those happen the entry before
+	// the current one is still the origin and history.back() can restore it.
+	afterNavigate(({ from, type }) => {
+		const length = history.length;
+		// AfterNavigate has no replace flag: a push changes history.length.
+		const pushed = historyLength !== null && length !== historyLength;
+		historyLength = length;
+		if (from) {
+			if (isBookChildFlow(from.url.pathname)) {
+				directFromOrigin = false;
+			} else if (isBookArea(from.url.pathname)) {
+				if (type === 'popstate' || pushed) directFromOrigin = false;
+			} else {
+				rememberBookOrigin(from.url.pathname + from.url.search);
+				directFromOrigin = type !== 'popstate';
+			}
+		} else {
+			const referrer = sameOriginReferrer();
+			if (referrer && isOriginCandidate(referrer)) {
+				rememberBookOrigin(referrer.pathname + referrer.search);
+				directFromOrigin = length > 1;
+			} else {
+				directFromOrigin = false;
+			}
+		}
+		origin = readBookOrigin();
 	});
 </script>
 
@@ -61,7 +84,7 @@
 {:else}
 	<div class="space-y-6">
 		{#if routeBookID !== null}
-			<BookTabs bookId={routeBookID} {backUsesHistory} />
+			<BookTabs bookId={routeBookID} {origin} {directFromOrigin} />
 		{/if}
 		{#if context.book && context.bookId === routeBookID}
 			{@render children()}
