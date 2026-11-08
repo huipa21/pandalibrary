@@ -20,3 +20,4 @@ Smaller choices go in [architecture](../architecture/system.md) with a one-line 
 | [0004](./0004-docs-structure-and-agent-workflow.md) | Docs structure and prompt-first, plan-driven agent workflow | Accepted |
 | [0005](./0005-offline-sync-lww.md) | Offline sync with per-row last-write-wins and a global rev counter | Accepted |
 | [0006](./0006-koreader-sync-compat.md) | KOReader sync via the kosync protocol and partial-MD5 file identity | Accepted |
+| [0007](./0007-public-reviews-private-notes.md) | Public reviews are separate from private notes | Accepted |

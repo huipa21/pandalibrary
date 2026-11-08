@@ -1,35 +1,19 @@
 import { listBooks } from '#lib/catalog/api.js';
 import type { Book } from '#lib/catalog/types.js';
-import { makeNote, deleteAnnotation } from '#lib/reader/annotations.js';
-import { getBookState, pushMutation } from '#lib/reader/api.js';
-import type { BookState, Note, Progress } from '#lib/reader/types.js';
+import { getBookState } from '#lib/reader/api.js';
+import type { BookState, Progress } from '#lib/reader/types.js';
 import { currentAccount, offlineAvailable } from '#lib/sync/client.js';
 import { readerState } from '#lib/sync/state.js';
-import { notifyBookStateChanged } from '../events.js';
-import { parseDate } from '../format.js';
-import { getReadingSummary, type ReadingSummary } from '../log-api.js';
 import { userBookFromState, type UserBook } from '../user-book.js';
 
 export interface DetailsState {
 	userBook: UserBook | null;
 	progress: Progress | null;
-	review: Note | null;
-	summary: ReadingSummary | null;
 }
 
 export interface RelatedBooks {
 	byAuthor: Book[];
 	similar: Book[];
-}
-
-function latestReview(notes: readonly Note[]): Note | null {
-	return notes
-		.filter((note) => note.highlight_id === null && note.deleted_at === null)
-		.sort((left, right) =>
-			parseDate(right.updated_at).getTime() - parseDate(left.updated_at).getTime() ||
-			parseDate(right.created_at).getTime() - parseDate(left.created_at).getTime() ||
-			left.id.localeCompare(right.id)
-		)[0] ?? null;
 }
 
 async function loadReaderBookState(bookId: number, offline: boolean): Promise<BookState> {
@@ -47,31 +31,12 @@ export async function loadDetailsState(
 	if (!Number.isSafeInteger(bookId) || bookId < 1) throw new RangeError('Invalid book ID.');
 	signal?.throwIfAborted();
 	const useOffline = offline || (typeof navigator !== 'undefined' && navigator.onLine === false);
-	const [state, summary] = await Promise.all([
-		loadReaderBookState(bookId, useOffline),
-		useOffline ? Promise.resolve(null) : getReadingSummary(bookId, { signal })
-	]);
+	const state = await loadReaderBookState(bookId, useOffline);
 	signal?.throwIfAborted();
 	return {
 		userBook: userBookFromState(state.user_book),
-		progress: state.progress,
-		review: latestReview(state.notes),
-		summary
+		progress: state.progress
 	};
-}
-
-export async function saveReview(bookId: number, existing: Note | null, body: string): Promise<void> {
-	if (!Number.isSafeInteger(bookId) || bookId < 1) throw new RangeError('Invalid book ID.');
-	if (body.length > 10_000) throw new RangeError('Review exceeds 10,000 characters.');
-	if (existing && (existing.book_id !== bookId || existing.highlight_id !== null || existing.deleted_at !== null)) {
-		throw new RangeError('Invalid book review.');
-	}
-	const mutation = body.trim()
-		? makeNote(bookId, body, null, existing?.id)
-		: existing ? deleteAnnotation('notes', existing.id) : null;
-	if (!mutation) return;
-	await pushMutation(mutation);
-	notifyBookStateChanged(bookId);
 }
 
 export async function loadRelated(book: Book, signal?: AbortSignal): Promise<RelatedBooks> {

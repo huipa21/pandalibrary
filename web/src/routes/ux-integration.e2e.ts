@@ -262,8 +262,9 @@ test('real sidebar shelves, automatic rule changes, favorites and bilingual resp
 	await expect(creator).toHaveCount(0);
 	await expect(sidebar.getByRole('button', { name: 'New shelf' })).toBeFocused();
 	await page.goto(`/books/${book.id}`);
-	await page.getByRole('combobox', { name: 'Shelf', exact: true }).selectOption({ label: 'Manual UX shelf (Private)' });
 	await page.getByRole('button', { name: 'Add to shelf', exact: true }).click();
+	await page.getByRole('dialog', { name: 'Add to shelf' })
+		.getByRole('button', { name: 'Manual UX shelf Private', exact: true }).click();
 	await expect(page.getByText('Added to “Manual UX shelf”.')).toBeVisible();
 	await expect(sidebar.getByRole('link', { name: 'Manual UX shelf 1', exact: true })).toBeVisible();
 	await sidebar.getByRole('link', { name: 'Manual UX shelf 1', exact: true }).click();

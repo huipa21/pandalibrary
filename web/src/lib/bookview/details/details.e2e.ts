@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
 import type { Book } from '#lib/catalog/types.js';
 import type { Note, Progress } from '#lib/reader/types.js';
+import type { Shelf } from '#lib/shelves/types.js';
 import type { UserBook } from '../user-book.js';
 
 type CapturedMutation = {
@@ -49,6 +50,16 @@ const authorBook = relatedBook(22, 'Another by the Author', 1);
 const seriesBook = relatedBook(23, 'Earlier in the Series', 1);
 const tagBook = relatedBook(24, 'A Similar Tale', 3);
 
+const shelf = (id: number, name: string, extra: Partial<Shelf> = {}): Shelf => ({
+	id, name, kind: 'private', owner_id: 1, created_by: 1, description: null,
+	visible_book_count: 1, mode: 'manual', system_key: null, created_at: stamp, updated_at: stamp, ...extra
+});
+const shelves = [
+	shelf(41, 'My shelf'),
+	shelf(42, 'Shared shelf', { kind: 'shared', owner_id: null, created_by: 2 }),
+	shelf(43, 'Owned shelf')
+];
+
 function timestamp(value: unknown): string | null {
 	if (value === null) return null;
 	if (typeof value !== 'number') throw new TypeError('Expected a timestamp.');
@@ -81,6 +92,9 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 		mutations: CapturedMutation[];
 		rejectNext: boolean;
 		shelfAdds: number;
+		members: number[];
+		shelfDeletes: string[];
+		failShelfDelete: boolean;
 	} = {
 		book,
 		online: true,
@@ -89,27 +103,11 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 		notes: [],
 		mutations: [],
 		rejectNext: false,
-		shelfAdds: 0
+		shelfAdds: 0,
+		members: [42, 43],
+		shelfDeletes: [],
+		failShelfDelete: false
 	};
-	const summary = {
-		progress: 0.21, sessions: 196, total_seconds: 10_560, average_seconds: 54,
-		active_days: 2, span_days: 4, first_read_at: stamp, last_read_at: stamp,
-		pace_percent_per_hour: null, estimated_seconds_left: null,
-		records: { longest_session: null, best_day: null, longest_streak_days: 1 },
-		attempts: [
-			{ number: 2, status: 'in_progress', started_at: stamp, ended_at: stamp, sessions: 1, seconds: 60, max_percentage: 0.21, sources: ['web'] },
-			{ number: 1, status: 'completed', started_at: stamp, ended_at: stamp, sessions: 1, seconds: 60, max_percentage: 1, sources: ['web'] }
-		],
-		days: [
-			{ date: '2026-11-05', seconds: 60, sessions: 1, max_percentage: 0.1 },
-			{ date: '2026-11-06', seconds: 120, sessions: 1, max_percentage: 0.21 }
-		]
-	};
-	const sessions = [1, 2, 3].map((id) => ({
-		id: `session-${id}`, source: id === 2 ? 'koreader' : 'web', device: 'Reader',
-		started_at: stamp, ended_at: stamp, active_seconds: id * 60,
-		start_percentage: 0.1, end_percentage: 0.21, change: 0.11, attempt: 2
-	}));
 	let rev = 1;
 	await page.route('**/api/v1/**', async (route) => {
 		if (!state.online) return route.abort('internetdisconnected');
@@ -163,18 +161,24 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 		}
 		if (path === '/libraries/1') return route.fulfill({ json: { library: { id: 1, name: 'Fiction', slug: 'fiction', created_at: stamp, updated_at: stamp } } });
 		if (path.startsWith('/shelves/system/')) return route.fulfill({ json: { shelf: null } });
-		if (path === '/shelves/41/books/21' && route.request().method() === 'PUT') {
+		const membership = /^\/shelves\/(\d+)\/books\/21$/.exec(path);
+		if (membership && route.request().method() === 'PUT') {
 			state.shelfAdds += 1;
+			state.members.push(Number(membership[1]));
 			return route.fulfill({ json: { saved: true } });
 		}
-		if (path === '/shelves') return route.fulfill({ json: { items: [{
-			id: 41, name: 'My shelf', kind: 'private', owner_id: 1, created_by: 1,
-			description: null, visible_book_count: 0, mode: 'manual', system_key: null,
-			created_at: stamp, updated_at: stamp
-		}], next_cursor: null } });
+		if (membership && route.request().method() === 'DELETE') {
+			state.shelfDeletes.push(path);
+			if (state.failShelfDelete) return route.fulfill({ status: 500, json: { title: 'Failed', status: 500 } });
+			state.members = state.members.filter((id) => id !== Number(membership[1]));
+			return route.fulfill({ json: { removed: true } });
+		}
+		if (path === '/shelves') return route.fulfill({ json: { items: shelves, next_cursor: null } });
+		if (path === '/books/21/shelves') {
+			return route.fulfill({ json: { shelves: shelves.filter((shelf) => state.members.includes(shelf.id)) } });
+		}
+		if (path === '/books/21/reviews') return route.fulfill({ json: { mine: null, items: [], next_cursor: null, total: 0 } });
 		if (path === '/me/books/21') return route.fulfill({ json: { user_book: state.userBook, progress: state.progress, highlights: [], bookmarks: [], notes: state.notes } });
-		if (path === '/me/books/21/reading-summary') return route.fulfill({ json: { summary } });
-		if (path === '/me/books/21/sessions') return route.fulfill({ json: { items: sessions, next_cursor: null, total: 196 } });
 		return route.fulfill({ status: 404, json: { title: 'Unknown fixture endpoint', status: 404 } });
 	});
 	return state;
@@ -190,25 +194,26 @@ test('renders details, reading statistics, editions and related books responsive
 	await expect(page.getByRole('link', { name: 'A Writer', exact: true })).toBeVisible();
 	await expect(page.getByText('(Translator)')).toBeVisible();
 	await expect(page.getByRole('link', { name: 'The Reading Series', exact: true }).first()).toBeVisible();
-	await expect(page.getByRole('heading', { name: 'Synopsis' })).toBeVisible();
-	await expect(page.getByRole('heading', { name: 'Your review' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
+	await expect(page.getByRole('region', { name: 'Reviews', exact: true })).toContainText('No reviews yet. Be the first to write one.');
 	await expect(page.getByRole('button', { name: 'Show more' })).toBeVisible();
 	await page.getByRole('button', { name: 'Show more' }).click();
 	await expect(page.getByText('Synopsis line 10')).toBeVisible();
 
-	const reading = page.getByRole('region', { name: 'Your reading' });
-	await expect(reading).toContainText('196');
-	await expect(reading).toContainText('2h 56m');
-	await expect(reading).toContainText('54s');
-	await expect(reading).toContainText('21%');
-	await expect(reading).toContainText('KOReader');
-	await expect(reading.getByText('Reading time across the last 2 active days: 3m.')).toBeAttached();
-	await expect(reading.locator('[aria-hidden="true"] > span')).toHaveCount(30);
+	await expect(page.getByRole('heading', { name: 'Synopsis' })).toHaveCount(0);
+	await expect(page.getByRole('region', { name: 'Your reading' })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Back to library' })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Personal review' })).toHaveCount(0);
+	await expect(page.getByText('Metadata sources', { exact: true })).toHaveCount(0);
+	await expect(page.getByText(/^Cover source: /)).toHaveCount(0);
+	await expect(page.getByRole('main').getByRole('heading', { name: 'Shelves', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('combobox', { name: 'Shelf', exact: true })).toHaveCount(0);
+	await expect(page.locator('#book-shelf')).toHaveCount(0);
 	await expect(page.getByRole('progressbar', { name: 'Progress' })).toHaveAttribute('aria-valuenow', '21');
 	await expect(page.getByRole('link', { name: 'Files on disk: 2' })).toHaveAttribute('href', '/books/21/files');
 	await expect(page.getByText('Panda Press')).toBeVisible();
-	await expect(page.getByText('Fiction', { exact: true })).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Back to library' })).toHaveAttribute('href', '/library/1');
+	await expect(page.getByRole('link', { name: 'Fiction', exact: true })).toHaveAttribute('href', '/library/1');
 	await expect(page.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('href', book.files[0].download_url);
 	await page.getByLabel('Choose a download format').click();
 	await expect(page.getByRole('link', { name: 'Download PDF' }).first()).toHaveAttribute('href', book.files[1].download_url);
@@ -229,9 +234,6 @@ test('renders details, reading statistics, editions and related books responsive
 	await expect(relatedRegion.getByTitle('Earlier in the Series', { exact: true })).toHaveAttribute('href', '/books/23');
 	await expect(relatedRegion.getByTitle('A Similar Tale', { exact: true })).toHaveAttribute('href', '/books/24');
 	await expect(page.getByRole('heading', { name: 'Identifiers' })).toBeVisible();
-	const provenance = page.locator('details').filter({ has: page.getByText('Metadata sources', { exact: true }) });
-	await provenance.locator('summary').click();
-	await expect(provenance.getByText('title: import · fixture')).toBeVisible();
 	// Per-file read and offline actions live on the Files tab (BV7), not in Details.
 	await expect(page.getByRole('heading', { name: 'Available formats' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Download for offline' })).toHaveCount(0);
@@ -247,23 +249,42 @@ test('renders details, reading statistics, editions and related books responsive
 		const cover = await page.getByRole('img', { name: 'The Emerald Library', exact: true }).boundingBox();
 		const hero = await title.boundingBox();
 		const panel = await page.getByRole('heading', { name: 'Details', exact: true }).boundingBox();
-		if (!cover || !hero || !panel) throw new Error(`Missing details layout at ${width}px.`);
+		const overview = await page.getByRole('region', { name: 'Overview', exact: true }).boundingBox();
+		const reviews = await page.getByRole('region', { name: 'Reviews', exact: true }).boundingBox();
+		if (!cover || !hero || !panel || !overview || !reviews) throw new Error(`Missing details layout at ${width}px.`);
+		expect(reviews.y).toBeGreaterThan(overview.y + overview.height);
+		expect(Math.abs(reviews.x - overview.x)).toBeLessThan(1);
+		expect(reviews.width).toBeGreaterThan(Math.min(width - 64, 280));
 		if (width >= 1280) {
 			expect(hero.x).toBeGreaterThan(cover.x + cover.width);
+			expect(overview.x).toBeGreaterThan(cover.x + cover.width);
 			expect(panel.x).toBeGreaterThan(hero.x);
 			expect(Math.abs(panel.y - hero.y)).toBeLessThan(80);
 		} else if (width >= 768) {
 			expect(hero.x).toBeGreaterThan(cover.x + cover.width);
+			expect(overview.x).toBeGreaterThan(cover.x + cover.width);
 			expect(panel.y).toBeGreaterThan(cover.y + cover.height);
 		} else {
 			expect(hero.y).toBeGreaterThan(cover.y + cover.height);
 			expect(panel.y).toBeGreaterThan(hero.y);
 		}
 	}
-	await page.getByRole('link', { name: 'Add to shelf', exact: true }).click();
-	await page.getByRole('combobox', { name: 'Shelf', exact: true }).selectOption('41');
-	await page.getByRole('button', { name: 'Add to shelf', exact: true }).click();
-	await expect(page.getByText('Added to “My shelf”.')).toBeVisible();
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const tags = page.getByRole('list', { name: 'Shelves', exact: true });
+	await expect(tags.getByRole('link')).toHaveText(['Owned shelf', 'Shared shelf']);
+	const trigger = page.getByRole('button', { name: 'Add to shelf', exact: true });
+	await trigger.click();
+	const picker = page.getByRole('dialog', { name: 'Add to shelf' });
+	const option = picker.getByRole('button', { name: /My shelf/ });
+	await expect(option).toBeVisible();
+	await expect(picker.getByRole('button', { name: /Owned shelf/ })).toHaveAttribute('aria-disabled', 'true');
+	const triggerBox = await trigger.boundingBox();
+	const pickerBox = await picker.boundingBox();
+	if (!triggerBox || !pickerBox) throw new Error('Missing shelf picker.');
+	expect(pickerBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height);
+	await option.click();
+	await expect(picker).toHaveCount(0);
+	await expect(tags.getByRole('link')).toHaveText(['My shelf', 'Owned shelf', 'Shared shelf']);
 	expect(state.shelfAdds).toBe(1);
 });
 
@@ -356,14 +377,14 @@ test('opens the inline status with the keyboard and updates it optimistically', 
 	await page.keyboard.press('Escape');
 });
 
-test('keeps library navigation available when loading its metadata fails', async ({ page }) => {
+test('reports a library load failure without the removed back-to-library link', async ({ page }) => {
 	await setup(page);
 	await page.route('**/api/v1/libraries/1', (route) =>
 		route.fulfill({ status: 503, json: { title: 'Unavailable', status: 503 } })
 	);
 	await page.goto('/books/21');
 	await expect(page.getByText('Could not load the library.')).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Back to library' })).toHaveAttribute('href', '/library/1');
+	await expect(page.getByRole('link', { name: 'Back to library' })).toHaveCount(0);
 });
 
 test('resumes the saved readable format', async ({ page }) => {
@@ -373,9 +394,15 @@ test('resumes the saved readable format', async ({ page }) => {
 	await expect(page).toHaveURL('/read/21/31');
 });
 
-test('persists rating, status, dates and review, and refreshes on book-state events', async ({ page }) => {
+test('persists rating, status and dates without showing private notes as a review', async ({ page }) => {
 	const state = await setup(page);
+	state.notes = [{
+		id: 'private-note', book_id: 21, highlight_id: null, body_md: 'A private book note.',
+		created_at: stamp, updated_at: stamp, deleted_at: null, rev: 1
+	}];
 	await page.goto('/books/21');
+	await expect(page.getByRole('region', { name: 'Reviews', exact: true })).toContainText('No reviews yet.');
+	await expect(page.getByText('A private book note.')).toHaveCount(0);
 	const rating = page.getByRole('radio', { name: '4 out of 5', exact: true });
 	await expect(rating).toBeVisible();
 	await rating.click();
@@ -393,13 +420,7 @@ test('persists rating, status, dates and review, and refreshes on book-state eve
 	await expect.poll(() => state.mutations.some((item) => item.entity === 'user_books' && item.data.started_at === Date.parse('2026-03-04T00:00:00Z'))).toBe(true);
 	await expect(page.getByText('Mar 4, 2026', { exact: true })).toBeVisible();
 
-	await page.getByRole('button', { name: 'Write', exact: true }).click();
-	await page.getByRole('textbox', { name: 'Your review', exact: true }).fill('A thoughtful personal review.');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
-	await expect.poll(() => state.mutations.some((item) => item.entity === 'notes' && item.data.body_md === 'A thoughtful personal review.')).toBe(true);
-	await expect(page.getByText('A thoughtful personal review.', { exact: true })).toBeVisible();
 	await page.reload();
-	await expect(page.getByText('A thoughtful personal review.', { exact: true })).toBeVisible();
 	await expect(rating).toHaveAttribute('aria-checked', 'true');
 	await expect(page.getByRole('button', { name: 'Reading status: Read' })).toBeVisible();
 	await expect(page.getByText('Mar 4, 2026', { exact: true })).toBeVisible();
@@ -409,11 +430,6 @@ test('persists rating, status, dates and review, and refreshes on book-state eve
 	await page.evaluate(() => window.dispatchEvent(new CustomEvent('pandalibrary-book-state-changed', { detail: { bookId: 21 } })));
 	await expect(page.getByRole('radio', { name: '1 out of 5', exact: true })).toHaveAttribute('aria-checked', 'true');
 
-	await page.getByRole('button', { name: 'Edit', exact: true }).click();
-	await page.getByRole('textbox', { name: 'Your review', exact: true }).fill('');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
-	await expect.poll(() => state.mutations.some((item) => item.entity === 'notes' && item.op === 'delete')).toBe(true);
-	await expect(page.getByText('Not written yet', { exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Edit Date started' }).click();
 	await page.getByRole('button', { name: 'Clear', exact: true }).click();
 	await expect.poll(() => state.userBook?.started_at).toBeNull();
@@ -457,18 +473,66 @@ test('opens the metadata editor from the administrator details card', async ({ p
 	await expect(page.getByRole('heading', { name: 'Edit metadata: The Emerald Library' })).toBeVisible();
 });
 
-test('hides edit metadata from non-admins and reports rejected review writes', async ({ page }) => {
-	const state = await setup(page);
+test('hides edit metadata and shows the write-review button to non-admins', async ({ page }) => {
+	await setup(page);
 	await page.goto('/books/21');
-	await expect(page.getByRole('button', { name: 'Write', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Write a review', exact: true })).toBeVisible();
 	await expect(page.getByRole('region', { name: 'Details', exact: true }).getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
 	await expect(page.getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
-	state.rejectNext = true;
-	await page.getByRole('button', { name: 'Write', exact: true }).click();
-	await page.getByRole('textbox', { name: 'Your review', exact: true }).fill('Rejected review');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
-	await expect(page.getByRole('alert')).toContainText('Could not save your review');
-	await expect(page.getByRole('textbox', { name: 'Your review', exact: true })).toHaveValue('Rejected review');
+});
+
+test('shows only the details-card edit link to administrators', async ({ page }) => {
+	await setup(page, 'admin');
+	await page.goto('/books/21');
+	const card = page.getByRole('region', { name: 'Details', exact: true });
+	await expect(card.getByRole('link', { name: 'Edit metadata' })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Edit metadata' })).toHaveCount(1);
+	await expect(page.getByText('Metadata sources', { exact: true })).toHaveCount(0);
+});
+
+test('manages shelf tags on the real tab with permissions, confirmation, keyboard and rollback', async ({ page }) => {
+	const state = await setup(page);
+	await page.goto('/books/21');
+	const tags = page.getByRole('list', { name: 'Shelves', exact: true });
+	await expect(tags.getByRole('link')).toHaveText(['Owned shelf', 'Shared shelf']);
+	await expect(tags.getByRole('link', { name: 'Owned shelf' })).toHaveAttribute('href', '/shelves/43');
+	await expect(page.getByRole('button', { name: 'Remove from Shared shelf', exact: true })).toHaveCount(0);
+	const remove = page.getByRole('button', { name: 'Remove from Owned shelf', exact: true });
+
+	await tags.getByRole('link', { name: 'Owned shelf' }).focus();
+	await page.keyboard.press('Tab');
+	await expect(remove).toBeFocused();
+	page.once('dialog', async (dialog) => {
+		expect(dialog.message()).toBe('Remove “The Emerald Library” from “Owned shelf”?');
+		await dialog.dismiss();
+	});
+	await page.keyboard.press('Enter');
+	await expect(tags.getByRole('link', { name: 'Owned shelf' })).toBeVisible();
+	expect(state.shelfDeletes).toEqual([]);
+
+	state.failShelfDelete = true;
+	page.once('dialog', (dialog) => dialog.accept());
+	await remove.click();
+	await expect(page.getByRole('alert').filter({ hasText: /shelf/i })).toBeVisible();
+	await expect(tags.getByRole('link', { name: 'Owned shelf' })).toBeVisible();
+	expect(state.shelfDeletes).toEqual(['/shelves/43/books/21']);
+
+	state.failShelfDelete = false;
+	page.once('dialog', (dialog) => dialog.accept());
+	await remove.click();
+	await expect(page.getByRole('status').filter({ hasText: 'Removed from Owned shelf' })).toBeVisible();
+	await expect(tags.getByRole('link')).toHaveText(['Shared shelf']);
+	expect(state.shelfDeletes).toEqual(['/shelves/43/books/21', '/shelves/43/books/21']);
+});
+
+test.describe('touch shelf tags', () => {
+	test.use({ hasTouch: true, isMobile: true, viewport: { width: 360, height: 800 } });
+
+	test('shows the remove badge without hover on touch devices', async ({ page }) => {
+		await setup(page);
+		await page.goto('/books/21');
+		await expect(page.getByRole('button', { name: 'Remove from Owned shelf', exact: true })).toHaveCSS('opacity', '1');
+	});
 });
 
 test('shows distinct metadata sources, field provenance and cover source inside the details card', async ({ page }) => {
@@ -558,6 +622,10 @@ test('keeps metadata sources but hides the admin edit control when offline', asy
 	await context.setOffline(true);
 	await page.goto('/books/21');
 	await expect(page.getByText('Reading details are read-only while offline.')).toBeVisible();
+	await expect(page.getByRole('region', { name: 'Reviews', exact: true })).toContainText('Reviews are available when you\'re online.');
+	await expect(page.getByRole('button', { name: 'Write a review' })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Add to shelf' })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: /^Remove from / })).toHaveCount(0);
 	const hero = page.locator('header').filter({ has: page.getByRole('heading', { name: book.title, exact: true }) });
 	const status = hero.getByLabel('Unread', { exact: true });
 	await expect(status).toBeVisible();

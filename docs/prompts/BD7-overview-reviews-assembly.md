@@ -1,6 +1,6 @@
 # BD7: Overview and Reviews cards, Details tab assembly and removals
 
-- Status: Ready
+- Status: Done
 - Wave: 2 (alone). Dependencies merged: BD3, BD4, BD5, BD6 (BD1 and BD2
   recommended; not required)
 - Can run in parallel with: none (it owns `DetailsTab.svelte`)
@@ -171,3 +171,27 @@ Set this prompt to Done, update the BD7 row/log in
 [progress/README.md](../progress/README.md), list the message keys that are
 now unused (for BD8 to prune), and attach 1440/768/360 screenshots of the
 Details tab.
+
+Done (2026-11-09):
+
+- Screenshots: [1440](../plans/assets/book-detail-bd7-1440.png),
+  [768](../plans/assets/book-detail-bd7-768.png),
+  [360](../plans/assets/book-detail-bd7-360.png).
+- Message keys now unused in `web/src` (BD8 prunes): `bv6.synopsis`,
+  `bv6.no_synopsis`, `bv6.personal_review`, `bv6.review_empty`,
+  `bv6.review_write`, `bv6.review_edit`, `bv6.review_conflict`,
+  `bv6.state_loading`, `bv6.reading`, `bv6.last_read`, `bv6.sessions`,
+  `bv6.time`, `bv6.average`, `bv6.no_sessions`, `bv6.chart_summary`,
+  `bv6.reached`, `bv6.source_web`, `bv6.source_koreader`,
+  `bv6.sessions_error`, `bv6.open_log`, `catalog.back_to_library`,
+  `catalog.book.provenance`, `catalog.book.cover_source`,
+  `shelves.book.heading`, `shelves.book.select`, `shelves.book.choose`,
+  `metadata.edit.link`.
+- Removed `ReadingCard.svelte` and `shelves/AddToShelf.svelte` (no other
+  users). `search-shelves.e2e.ts` now adds via the Details-tab popover.
+- `menu-layout.e2e.ts` "accessible titles" fails on the baseline too
+  (header Settings link on `/settings`); left for BD8.
+
+BD8 completion (2026-11-09): the stale header assertion now uses Account
+menu → Profile. The full real-server-enabled suite passes all 221 tests;
+the integration hand-off includes final screenshots and documentation.

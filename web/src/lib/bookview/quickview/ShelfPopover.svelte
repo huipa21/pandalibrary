@@ -31,8 +31,11 @@
 
 	onDestroy(() => controller?.abort());
 
+	// Deriveds only notify on value changes, so refreshing the parent's book object keeps the notice.
+	const currentBookId = $derived(bookId);
+
 	$effect(() => {
-		bookId;
+		currentBookId;
 		open = false;
 		notice = '';
 		error = '';

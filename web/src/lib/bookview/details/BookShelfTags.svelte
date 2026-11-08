@@ -16,9 +16,13 @@
 	let notice = $state('');
 	let error = $state('');
 
+	// Deriveds only notify on value changes, so refreshing the parent's book object keeps the notice.
+	const currentTitle = $derived(bookTitle);
+	const currentShelves = $derived(shelves);
+
 	$effect(() => {
-		bookTitle;
-		shelves;
+		currentTitle;
+		currentShelves;
 		notice = '';
 		error = '';
 	});

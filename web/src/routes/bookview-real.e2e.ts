@@ -1,6 +1,6 @@
 import { expect, request as playwrightRequest, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { crc32 } from 'node:zlib';
 import { pdfFixture, pngFixture } from '../lib/reader/fixtures.js';
 import { signInRealAdmin } from '../lib/real-auth.js';
+import { push, uuidv7 } from '../lib/real-fixtures.js';
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
 
@@ -69,15 +70,6 @@ function uniquePdf(): Buffer {
 	return Buffer.concat([pdfFixture(), Buffer.from(`%${randomUUID()}\n`)]);
 }
 
-function uuidv7(time = Date.now()): string {
-	const bytes = randomBytes(16);
-	bytes.writeUIntBE(time, 0, 6);
-	bytes[6] = 0x70 | (bytes[6] & 0x0f);
-	bytes[8] = 0x80 | (bytes[8] & 0x3f);
-	const hex = bytes.toString('hex');
-	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
 interface BookFile { id: number; format: string; original_filename: string }
 
 async function waitForJob(api: APIRequestContext, jobID: number): Promise<number> {
@@ -109,13 +101,6 @@ async function bookFiles(api: APIRequestContext, bookID: number) {
 	expect(response.ok()).toBe(true);
 	const { book } = await response.json() as { book: { title: string; files: BookFile[] } };
 	return book;
-}
-
-async function push(api: APIRequestContext, mutations: Array<Record<string, unknown>>) {
-	const response = await api.post('/api/v1/sync/push', { data: { mutations } });
-	expect(response.ok(), await response.text()).toBe(true);
-	const { results } = await response.json() as { results: Array<{ status: string; reason?: string }> };
-	expect(results.map((result) => result.reason ?? result.status)).toEqual(mutations.map(() => 'applied'));
 }
 
 function session(bookID: number, startedAt: number, minutes: number, start: number, end: number) {
@@ -314,7 +299,7 @@ test('book view works end to end against the real server', async ({ page, browse
 	await test.step('Reading Log shows attempts, deletes and adds sessions', async () => {
 		const before = await bookSessionCount(page.request, data.covered.id);
 		expect(before.session_count).toBe(4);
-		await page.goto(`/books/${data.covered.id}/reading-log?range=all`);
+		await page.goto(`/books/${data.covered.id}/activities?range=all`);
 		await expect(page.getByRole('heading', { name: 'Reading summary' })).toBeVisible();
 		await expect(page.getByText('Attempts 2', { exact: true })).toBeVisible();
 		await expect(page.getByText(/Attempt 2 began/)).toBeVisible();

@@ -139,13 +139,14 @@ test('book details use synced state and the cached cover while offline', async (
 	});
 	await download(page);
 	await page.goto('/books/21');
-	await expect(page.getByText('No reading sessions yet.', { exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
 	state.online = false;
 	await context.setOffline(true);
 	await page.goto('/books/21');
 	await expect(page.getByRole('heading', { name: 'Offline Fixture' })).toBeVisible();
-	await expect(page.getByText('A synchronized review', { exact: true })).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Back to library' })).toHaveAttribute('href', '/library/1');
+	await expect(page.getByText('A synchronized review', { exact: true })).toHaveCount(0);
+	await expect(page.getByText('Reviews are available when you\'re online.', { exact: true })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Back to library' })).toHaveCount(0);
 	await expect(page.getByRole('img', { name: 'Offline Fixture' })).toHaveAttribute('src', /^blob:/);
 	await expect(page.getByRole('region', { name: 'Your reading' })).toHaveCount(0);
 	await expect(page.getByRole('link', { name: 'Download', exact: true })).toHaveCount(0);

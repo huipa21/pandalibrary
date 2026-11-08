@@ -3,7 +3,6 @@
 	import { untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { readerFormat } from '#lib/reader/types.js';
-	import AddToShelf from '#lib/shelves/AddToShelf.svelte';
 	import { currentAccount } from '#lib/sync/client.js';
 	import BookCover from '../BookCover.svelte';
 	import Icon from '../Icon.svelte';
@@ -12,18 +11,22 @@
 	import { sortedFormats } from '../cover.js';
 	import { BOOK_STATE_CHANGED_EVENT, type BookStateChangedDetail } from '../events.js';
 	import { readTarget } from '../read.js';
+	import BookShelfTags from '../details/BookShelfTags.svelte';
 	import DetailsHero from '../details/DetailsHero.svelte';
 	import DetailsPanel from '../details/DetailsPanel.svelte';
 	import EditionsCard from '../details/EditionsCard.svelte';
-	import ReadingCard from '../details/ReadingCard.svelte';
+	import OverviewCard from '../details/OverviewCard.svelte';
 	import RelatedBooks from '../details/RelatedBooks.svelte';
-	import SynopsisCard from '../details/SynopsisCard.svelte';
+	import ReviewsCard from '../details/ReviewsCard.svelte';
+	import { createBookShelves } from '../details/book-shelves.svelte.js';
 	import { loadDetailsState, loadRelated, type DetailsState, type RelatedBooks as RelatedBookLists } from '../details/details-data.js';
+	import ShelfPopover from '../quickview/ShelfPopover.svelte';
 
 	const context = getBookContext();
 	const book = $derived(context.book);
 	const bookId = $derived(book?.id ?? null);
 	const offline = $derived(context.offline);
+	const shelves = createBookShelves(() => bookId);
 	let details = $state<DetailsState | null>(null);
 	let detailsLoading = $state(true);
 	let detailsError = $state('');
@@ -140,7 +143,6 @@
 			<aside class="min-w-0 space-y-3">
 				<BookCover id={book.id} title={book.title} subtitle={book.subtitle} series={book.series?.name} authors={book.authors.map((author) => author.name)} coverUrl={context.coverSource} files={book.files} size="lg" badge loading="eager" />
 				{#if context.coverError}<p class="text-sm text-amber-800">{context.coverError}</p>{/if}
-				{#if book.cover_source}<p class="text-xs text-slate-500">{m['catalog.book.cover_source']()}: {book.cover_source}</p>{/if}
 				<div class="flex items-center gap-2">
 					<button type="button" class="inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60" disabled={!readable || readBusy} onclick={read}>
 						<Icon name="book-open" class="size-4" />
@@ -170,19 +172,18 @@
 								{/if}
 							</div>
 						{/if}
-						<a class="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100" href="#book-shelf"><Icon name="folder-plus" class="size-4" /> {m['shelves.book.add']()}</a>
+						<ShelfPopover bookId={book.id} variant="button" placement="down" memberIds={shelves.memberIds} />
 					</div>
-					{#if context.canEditMetadata}
-						<a class="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100" href={`/books/${book.id}/edit`}><Icon name="pencil" class="size-4" /> {m['metadata.edit.link']()}</a>
-					{/if}
 				{/if}
-				<a class="block text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href={`/library/${book.library_id}`}>{m['catalog.back_to_library']()}</a>
+				{#if !offline || shelves.status !== 'error'}
+					<BookShelfTags {shelves} bookTitle={book.title} {offline} />
+				{/if}
 			</aside>
 
 			<div class="min-w-0 space-y-6">
 				<DetailsHero {book} details={detailsReady ? details : null} {offline} />
-				<SynopsisCard bookId={book.id} description={book.description} review={details?.review ?? null} ready={detailsReady} failed={!!detailsError} {offline} />
-				{#if detailsReady && details?.summary}<ReadingCard bookId={book.id} summary={details.summary} />{/if}
+				<OverviewCard description={book.description} />
+				<ReviewsCard bookId={book.id} {offline} isAdmin={context.canEditMetadata} />
 			</div>
 
 			<aside class="grid min-w-0 content-start gap-6 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1">
@@ -198,16 +199,6 @@
 						</ul>
 					</section>
 				{/if}
-				{#if book.field_sources.length}
-					<details class="min-w-0 card p-5">
-						<summary class="cursor-pointer text-sm font-semibold text-slate-700 focus-visible:outline-2">{m['catalog.book.provenance']()}</summary>
-						<ul class="mt-3 space-y-2 text-sm text-slate-600 [overflow-wrap:anywhere]">
-							{#each book.field_sources as source (`${source.field}:${source.source}:${source.chosen_at}`)}
-								<li>{source.field}: {source.source}{#if source.source_ref}{' · '}{source.source_ref}{/if}</li>
-							{/each}
-						</ul>
-					</details>
-				{/if}
 			</aside>
 		</div>
 
@@ -217,10 +208,6 @@
 				<span>{relatedError}</span>
 				<button type="button" class="font-semibold underline" onclick={() => (relatedRevision += 1)}>{m['catalog.retry']()}</button>
 			</div>
-		{/if}
-
-		{#if !offline}
-			<div id="book-shelf" class="scroll-mt-24"><AddToShelf bookId={book.id} /></div>
 		{/if}
 	</article>
 {/if}

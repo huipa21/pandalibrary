@@ -178,7 +178,7 @@ async function mockApi(page: Page, count = 31, locale: 'en' | 'zh' = 'en'): Prom
 }
 
 async function openLog(page: Page, query = '') {
-	await page.goto(`/books/21/reading-log${query}`);
+	await page.goto(`/books/21/activities${query}`);
 	await expect(page.getByRole('heading', { name: 'Reading summary' })).toBeVisible();
 }
 
@@ -385,7 +385,7 @@ test('renders explicit empty and offline states and recovers after reconnecting'
 
 test('localizes the log and validation messages in Chinese', async ({ page }) => {
 	await mockApi(page, 0, 'zh');
-	await page.goto('/books/21/reading-log');
+	await page.goto('/books/21/activities');
 	await expect(page.getByRole('heading', { name: '阅读概况' })).toBeVisible();
 	await expect(page.getByText('此范围内没有阅读记录')).toBeVisible();
 	await page.getByRole('button', { name: '添加阅读记录' }).click();
@@ -399,7 +399,7 @@ test('exposes and retries summary, session-page and export errors', async ({ pag
 	const state = await mockApi(page);
 	state.failNextSummary = true;
 	state.failNextFirstPage = true;
-	await page.goto('/books/21/reading-log');
+	await page.goto('/books/21/activities');
 	await expect(page.getByRole('alert').filter({ hasText: 'Could not load the reading log.' })).toBeVisible();
 	await page.getByRole('button', { name: 'Try again' }).click();
 	const table = page.getByRole('region', { name: 'Sessions', exact: true });

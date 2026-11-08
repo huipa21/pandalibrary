@@ -1,9 +1,14 @@
 # Book Detail (BD): back navigation, shelf tags, metadata card, status lifecycle, Overview and Reviews
 
-Status: Planned (prompts Ready). Requested 2026-11-08. Baseline: `d6014b0`
+Status: Done (2026-11-09; BD1-BD8 integrated and full gate green).
+Requested 2026-11-08. Baseline: `d6014b0`
 (`master`). Local issue specifications only; nothing is published to GitHub.
 Reference screenshot (current page, before):
 [assets/book-detail-before.png](./assets/book-detail-before.png).
+
+Completion evidence: [BD8 hand-off and full gate](../prompts/BD8-integration.md#full-gate),
+including the real-server R1-R13/migration tests and
+[38 responsive light/dark screenshots](../prompts/BD8-integration.md#persistent-real-server-screenshots).
 
 ## Request (as given, split into requirements)
 

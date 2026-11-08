@@ -1,9 +1,9 @@
 # BD8: Integration, real-server E2E, visual QA, docs, full gate
 
-- Status: Ready
+- Status: Done (2026-11-09)
 - Wave: 3 (alone). Dependencies merged: BD1-BD7
 - Can run in parallel with: none
-- Branch/worktree: `task/bd8` in `..\pandalibrary-bd8` (or `master`)
+- Branch/worktree: `master` (integrated worktree)
 - Migration: no (BD2's 00006 and BD3's 00007 must already be merged, in that
   order)
 
@@ -40,7 +40,8 @@ real server, documented, and the full gate is green.
 > - `details.e2e.ts` hunks from BD4/BD6/BD7.
 >
 > Then run `rg -n "reading-log|SynopsisCard|ReadingCard|AddToShelf|backUsesHistory" web/src`.
-> Only the legacy redirect route may match.
+> Only legacy parsing/redirect compatibility and its explicit regression
+tests may match; active links and ordinary navigation tests use Activities.
 
 ### BD8.2 – Real-server E2E
 
@@ -99,10 +100,10 @@ real server, documented, and the full gate is green.
 
 ## Acceptance criteria
 
-- [ ] R1-R13 verified on a real server, with screenshots attached.
-- [ ] No unused message keys or dead components remain.
-- [ ] Docs updated.
-- [ ] Full gate green.
+- [x] R1-R13 verified on a real server, with screenshots attached.
+- [x] No unused message keys or dead components remain.
+- [x] Docs updated.
+- [x] Full gate green.
 
 ## Validation commands (full gate)
 
@@ -126,3 +127,91 @@ Playwright skips the real-server specs.
 Fill in a gate table (as in BC8), set this prompt to Done, update the BD8
 row and add a log entry in [progress/README.md](../progress/README.md), and
 list any follow-ups (the plan's open questions).
+
+### Integration and evidence (2026-11-09)
+
+BD1–BD6 were already integrated on `master`; BD7 was present in the worktree.
+BD8 integrates that assembly without reverting earlier work. No BD task
+branches remain to merge. Migrations 00006 then 00007 and sqlc output match.
+
+- Removed 31 unused English/Chinese message keys (including the old
+  back/Reading Log, removed cards/form and obsolete finished label). Kept
+  `bv6.your_review`, which now names the pinned public review.
+- Switched normal Activities tests and the older real-server test off the
+  legacy URL; kept the intentional redirect regression and parser.
+- Updated the stale menu-layout assertion to open Account menu → Profile,
+  matching the existing header instead of expecting the removed Settings link.
+- Updated the real UX integration test's removed shelf select to the new
+  popover. Full-gate language tests also exposed static `html[lang=en]`
+  persisting after language changes. The client now sets document language
+  and direction from the resolved locale on startup and after restoring
+  online/offline account preferences, so the language picker and bilingual
+  Details agree. All 13 shell/UX tests pass on the rebuilt binary.
+- `bookdetail-real.e2e.ts` exercises R1–R13 on the embedded binary with admin
+  and reader sessions, shared/private/Favorites shelves, origin-specific
+  neighbors, confirmed persistent membership deletion, metadata sources,
+  status thresholds, manual On hold, re-read reset/new attempt, KOReader,
+  public review creation/pinning/moderation and private note isolation.
+- A version-5 SQLite fixture is copied before starting the candidate binary.
+  Unread + 30% progress becomes Reading with rev 3; pulling from cursor 2
+  returns the backfilled row.
+- Keyboard-only flows cover back, status, Add, X/confirmation, Plus,
+  save/cancel, own edit and delete/focus recovery. Reduced motion removes
+  the status chevron transition; measured inline-status and X foreground
+  contrast is at least 3:1 in both themes.
+
+The original [before screenshot](../plans/assets/book-detail-before.png)
+was available and compared: text back link, hero format chip, Personal
+review link, cover-area edit/back links, Synopsis/Your reading cards,
+standalone sources and the bottom shelf form are gone or replaced.
+At 768 px the layout retains two usable columns; at 360 px it has no
+horizontal document overflow.
+
+#### Persistent real-server screenshots
+
+All 38 images are in [assets/bd8](../plans/assets/bd8). Reviews uses the
+specified 20-item page size: screenshots show at least three reviews plus
+Show more, and the test loads the twenty-first real author's review.
+
+| Width/theme | Rest | Status menu | Shelf popover | Hover X | Editor | Reviews + Show more |
+|---|---|---|---|---|---|---|
+| 360 light | [rest](../plans/assets/bd8/bd8-360-light-rest.png) | [status](../plans/assets/bd8/bd8-360-light-status.png) | [shelf](../plans/assets/bd8/bd8-360-light-shelf.png) | [hover](../plans/assets/bd8/bd8-360-light-hover.png) | [editor](../plans/assets/bd8/bd8-360-light-editor.png) | [reviews](../plans/assets/bd8/bd8-360-light-reviews.png) |
+| 360 dark | [rest](../plans/assets/bd8/bd8-360-dark-rest.png) | [status](../plans/assets/bd8/bd8-360-dark-status.png) | [shelf](../plans/assets/bd8/bd8-360-dark-shelf.png) | [hover](../plans/assets/bd8/bd8-360-dark-hover.png) | [editor](../plans/assets/bd8/bd8-360-dark-editor.png) | [reviews](../plans/assets/bd8/bd8-360-dark-reviews.png) |
+| 768 light | [rest](../plans/assets/bd8/bd8-768-light-rest.png) | [status](../plans/assets/bd8/bd8-768-light-status.png) | [shelf](../plans/assets/bd8/bd8-768-light-shelf.png) | [hover](../plans/assets/bd8/bd8-768-light-hover.png) | [editor](../plans/assets/bd8/bd8-768-light-editor.png) | [reviews](../plans/assets/bd8/bd8-768-light-reviews.png) |
+| 768 dark | [rest](../plans/assets/bd8/bd8-768-dark-rest.png) | [status](../plans/assets/bd8/bd8-768-dark-status.png) | [shelf](../plans/assets/bd8/bd8-768-dark-shelf.png) | [hover](../plans/assets/bd8/bd8-768-dark-hover.png) | [editor](../plans/assets/bd8/bd8-768-dark-editor.png) | [reviews](../plans/assets/bd8/bd8-768-dark-reviews.png) |
+| 1440 light | [rest](../plans/assets/bd8/bd8-1440-light-rest.png) | [status](../plans/assets/bd8/bd8-1440-light-status.png) | [shelf](../plans/assets/bd8/bd8-1440-light-shelf.png) | [hover](../plans/assets/bd8/bd8-1440-light-hover.png) | [editor](../plans/assets/bd8/bd8-1440-light-editor.png) | [reviews](../plans/assets/bd8/bd8-1440-light-reviews.png) |
+| 1440 dark | [rest](../plans/assets/bd8/bd8-1440-dark-rest.png) | [status](../plans/assets/bd8/bd8-1440-dark-status.png) | [shelf](../plans/assets/bd8/bd8-1440-dark-shelf.png) | [hover](../plans/assets/bd8/bd8-1440-dark-hover.png) | [editor](../plans/assets/bd8/bd8-1440-dark-editor.png) | [reviews](../plans/assets/bd8/bd8-1440-dark-reviews.png) |
+
+Touch X: [360 light](../plans/assets/bd8/bd8-360-light-touch.png),
+[360 dark](../plans/assets/bd8/bd8-360-dark-touch.png).
+
+Regenerate persistent evidence with:
+
+```powershell
+$env:PANDA_E2E_BINARY = (Resolve-Path .\pandalibrary.exe).Path
+$env:PANDA_BD8_SCREENSHOTS = (Join-Path (Get-Location) 'docs\plans\assets\bd8')
+pnpm --dir web exec playwright test src/routes/bookdetail-real.e2e.ts
+```
+
+Without the screenshot variable, images still attach to Playwright results.
+Servers use temporary isolated data and random localhost ports and are
+stopped at teardown; the normal server/database is never modified.
+
+#### Full gate
+
+| Check | Result |
+|---|---|
+| `pnpm --dir web build` (initial embed prerequisite) | Pass |
+| `task sqlc:check lint test build` | Pass; sqlc diff, vet, staticcheck and all Go packages |
+| `pnpm --dir web check` | Pass; 0 errors, 0 warnings |
+| `pnpm --dir web test` | Pass; 58 files, 488 tests |
+| `pnpm --dir web build` + `task build` (final embedded SPA) | Pass |
+| `PANDA_E2E_BINARY=... pnpm --dir web test:e2e` | Pass; 221 passed, 0 skipped (7.6 minutes), including all 3 `bookdetail-real.e2e.ts` tests |
+| Final `bookdetail-real.e2e.ts` rerun with `PANDA_BD8_SCREENSHOTS` | Pass; 3 passed (34 s); all 38 screenshots regenerated from the final binary |
+| Documentation links and `git diff --check` | Pass |
+
+No blocking follow-ups. The plan's existing defaults remain: retain the
+Resume-row status icon, keep ratings/notes private, do not prefill reviews
+from notes, and finish automatically at 99%. No dependencies were added.
+Run Paraglide-generating check/unit/build commands sequentially: concurrent
+regeneration can transiently remove message declaration files during check.

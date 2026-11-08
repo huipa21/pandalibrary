@@ -124,7 +124,8 @@ test('menu destinations keep accessible titles without repeated visible introduc
 		await expect(main.getByRole('heading', { name: destination.heading, level: 1, exact: true })).toHaveClass('sr-only');
 		if (destination.description) await expect(main.getByText(destination.description, { exact: true })).toHaveCount(0);
 		if (destination.path === '/settings') {
-			await expect(page.locator('header').first().getByRole('link', { name: 'Settings', exact: true }))
+			await page.getByRole('button', { name: 'Account menu', exact: true }).click();
+			await expect(page.getByRole('menuitem', { name: 'Profile', exact: true }))
 				.toHaveAttribute('aria-current', 'page');
 		} else {
 			await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator(`a[href="${destination.path}"]`))

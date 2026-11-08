@@ -246,11 +246,15 @@ test('offers shared shelves to administrators and reports shelf permission failu
 	expect(created).toEqual([{ kind: 'shared', name: 'Staff favourites', description: null }]);
 
 	await page.goto('/books/21');
-	await page.getByRole('combobox', { name: '目标书架' }).selectOption({ label: 'Staff picks (共享)' });
-	await page.getByRole('button', { name: '添加到书架' }).click();
-	await expect(page.getByText('你没有权限更改此书架。')).toBeVisible();
-	await page.getByRole('button', { name: '添加到书架' }).click();
-	await expect(page.getByText('已添加到“Staff picks”。')).toBeVisible();
+	const picker = page.getByRole('dialog', { name: '添加到书架' });
+	await page.getByRole('main').getByRole('button', { name: '添加到书架', exact: true }).click();
+	const staffPicks = picker.getByRole('button', { name: /Staff picks/ });
+	await expect(staffPicks).toContainText('共享');
+	await staffPicks.click();
+	await expect(picker.getByText('你没有权限更改此书架。')).toBeVisible();
+	await staffPicks.click();
+	await expect(page.getByText('已添加到“Staff picks”。')).toBeAttached();
+	await expect(picker).toHaveCount(0);
 	expect(attempts).toBe(2);
 });
 

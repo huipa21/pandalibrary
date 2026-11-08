@@ -241,6 +241,7 @@ keyset cursors (`?cursor=…&limit=…`).
 | `/api/v1/me/books/{id}` | session | Status, rating, progress, highlights, notes |
 | `/api/v1/me/book-states?ids=1,2` | session | Batched status and progress for visible book covers (BC2) |
 | `/api/v1/me/books/{id}/reading-summary`, `/sessions`, `/sessions/{sessionId}` | session | Per-book reading log: summary, paginated sessions, owner-only session delete (BV2) |
+| `/api/v1/books/{id}/reviews`, `/reviews/me`, `/reviews/{reviewId}` | session | Public book reviews: list, own write/delete and admin moderation (BD3); notes remain private |
 | `/api/v1/sync/pull`, `/api/v1/sync/push` | session | PWA offline sync (§10) |
 | `/api/v1/me/profile` | session | Read/update the current user's display name and locale |
 | `/api/v1/me/app-passwords` | session | Create (secret shown once), list, revoke |
@@ -253,6 +254,34 @@ keyset cursors (`?cursor=…&limit=…`).
 | `/kosync/*` | KOReader headers (kosync app password) | KOReader sync (§8) |
 | `/healthz` | none | Liveness (DB ping) |
 | everything else | none | Embedded SPA; unknown paths → `index.html`; `/_app/immutable/*` cached for 1 year |
+
+### Book review contract (BD3)
+
+All routes require a session and catalog visibility (an invisible book is
+`404`). Cookie protection applies to writes. Reviews are a separate public
+entity, online-only, and not included in `/sync/pull` or `/sync/push`;
+book-level notes remain private and are never converted into reviews.
+
+- `GET /api/v1/books/{id}/reviews?limit=20&cursor=...` returns
+  `{ "mine": Review | null, "items": Review[], "next_cursor": string | null,
+  "total": number }`. Total includes mine; items excludes mine and sorts by
+  `updated_at DESC, id DESC`. Limit is 1–50 (default 20). Cursors are
+  opaque and bound to the viewer and book.
+- `PUT /api/v1/books/{id}/reviews/me` accepts `{ "body": string }` and
+  returns `200 { "review": Review }`, creating or updating the viewer's one
+  review. Trimmed text must contain 1–10,000 Unicode code points; NUL is
+  rejected. Text is displayed verbatim, not rendered as Markdown.
+- `DELETE /api/v1/books/{id}/reviews/me` returns `204`, or `404` when no
+  own review exists.
+- `DELETE /api/v1/books/{id}/reviews/{reviewId}` is admin-only and returns
+  `204`; ordinary readers cannot moderate other authors.
+- `Review = { id, book_id, author: { id, display_name }, body, created_at,
+  updated_at, mine }`. IDs are numbers; timestamps are RFC3339 UTC strings;
+  mine is boolean. Display name falls back to username. An update preserves
+  created_at. Reviews do not expose private ratings.
+
+See [ADR-0007](../decisions/0007-public-reviews-private-notes.md) and the
+[Details layout](./book-view.md#details-tab-assembly).
 
 ### Maintenance API contract (J1)
 
@@ -586,6 +615,25 @@ uses the same handler as the API download.
 4. The response gives each item a result: `applied`, `stale` or `rejected`. Mutations are
    idempotent: client UUIDv7 ids for highlights, notes and sessions; natural keys for the
    rest.
+
+**Progress side effects (BD2):** an applied `reading_progress` upsert also
+updates `user_books` in the same transaction. Positive progress promotes
+missing/unread/want-to-read status to Reading; at `percentage >= 0.99`,
+those statuses plus Reading/Re-reading become Read (`finished`). On hold,
+Skimmed, Abandoned and already Read stay manual. Derived writes preserve
+rating, initialize started_at if absent, set finished_at on completion and
+use server time plus a fresh rev only when the status changes and the server
+clock is newer than the status row. Stale/rejected progress never changes
+status. KOReader uses the same `PushTx` rules.
+
+An applied status transition into `rereading` resets saved percentage to 0
+and locator to null, keeping the file/source/device and assigning a fresh
+pullable revision. The client status patch sets started_at to now and
+clears finished_at. Selecting Re-reading again does not reset it. The next
+session starts a new derived Activities attempt. Offline replay mirrors
+these side effects without adding extra outbox mutations. Migration 00006
+backfills pre-existing progress with fresh revisions so old cursors receive
+the corrected statuses.
 
 **Pull:** `GET /sync/pull?cursor=N` runs in one read transaction, so it sees a consistent
 WAL snapshot.

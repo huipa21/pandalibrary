@@ -132,12 +132,49 @@ Only BD8 runs the full verification gate.
 | 1 | BD4 | Hero cleanup + borderless status control | baseline | [BD4](../prompts/BD4-hero-status-control.md) | Done | `master` | Hero-only `inline` variant; 201 unit and 42 targeted E2E tests pass |
 | 1 | BD5 | Shelf tags with X + Add-to-shelf popover button | baseline | [BD5](../prompts/BD5-shelf-tags.md) | Done | `master` | Membership store, corner-X tags, downward picker; 21 unit and 38 browser tests pass; BD7 wires the tab |
 | 1 | BD6 | Details card: edit icon + metadata sources | baseline | [BD6](../prompts/BD6-details-card.md) | Done | `master` | Context/override permission, live offline gate and source rows; BD7 removes duplicates |
-| 2 | BD7 | Overview + Reviews cards, Details tab assembly | BD3-BD6 | [BD7](../prompts/BD7-overview-reviews-assembly.md) | Ready | `task/bd7` | Sole owner of `DetailsTab.svelte` |
-| 3 | BD8 | Integration, real-server E2E, visual QA, docs, full gate | BD1-BD7 | [BD8](../prompts/BD8-integration.md) | Ready | `task/bd8` | Prunes unused message keys |
+| 2 | BD7 | Overview + Reviews cards, Details tab assembly | BD3-BD6 | [BD7](../prompts/BD7-overview-reviews-assembly.md) | Done | `master` | Overview + paged Reviews card with Plus; removed back link, edit button, sources card, reading card and shelf form; 488 unit and 113 bookview/shelf browser tests pass |
+| 3 | BD8 | Integration, real-server E2E, visual QA, docs, full gate | BD1-BD7 | [BD8](../prompts/BD8-integration.md) | Done | `master` (integrated worktree) | R1-R13 + migration verified on real server; 38 screenshots; 488 unit and 221 E2E tests; full Go/Svelte/build gate green |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-09 — BD8 — Integrated the existing BD1-BD6 and worktree BD7
+  assembly, pruned 31 dead English/Chinese message keys, and retained only
+  explicit Reading Log redirect/parser compatibility. Added the real-server
+  `bookdetail-real.e2e.ts` with admin/reader, shared/private/Favorites shelves,
+  reader/editor origin round trips and origin-specific neighbors, metadata
+  sources/permissions, web/KOReader lifecycle, visible 0% re-read reset and
+  new attempts, public reviews/pinning/moderation, and private-note isolation.
+  A copied version-5 database backfills Unread + 30% to Reading and returns
+  rev 3 to sync cursor 2. Captured 38 360/768/1440 light/dark rest/menu/shelf/
+  hover/editor/reviews/touch screenshots and checked keyboard, reduced motion
+  and >=3:1 UI contrast. Updated the stale Settings and removed shelf-form
+  E2E assertions. Fixed the embedded SPA's document language/direction sync
+  so the language picker matches bilingual content. Updated architecture,
+  review/progress API contracts and ADR-0007; marked the plan Done.
+  Full gate: sqlc diff, vet, staticcheck, Go tests/build, Svelte check
+  (0 errors/warnings), 488 unit tests, production SPA/build and all 221 browser
+  tests (real server enabled, no skips) pass. The final three BD8 tests pass
+  again with the exact 0% display assertion. Evidence and remaining applied
+  defaults are in [BD8](../prompts/BD8-integration.md).
+
+- 2026-11-09 — BD7 — Renamed Synopsis to `OverviewCard` and added
+  `ReviewsCard`. It has a round Plus to write a review, pins your own review
+  first with edit/delete, lets admins delete others' reviews, pages with
+  "Show more reviews", and has loading, error, empty and offline states.
+  Stale requests are aborted on book switch. `ReviewEditor` now uses the
+  reviews API, so private notes are no longer shown as a review.
+  `details-data` dropped the review/summary loading. The Details tab now
+  has the Add-to-shelf button with shelf tags under Download, then Overview
+  and Reviews in the centre. Removed: Back to library, the cover-source
+  line, the Edit metadata button, the Metadata sources card,
+  `ReadingCard` and `AddToShelf`. Fixed `BookShelfTags`/`ShelfPopover`
+  clearing their notices when the parent refreshed `book` (reset effects now
+  key on `$derived` values). Check, 488 unit tests and 113 bookview plus
+  search-shelves browser tests pass. The full e2e run has one pre-existing
+  `menu-layout` failure, which also fails on the baseline. Unused keys for
+  BD8 and the screenshots are listed in the BD7 prompt hand-off.
 
 - 2026-11-08 — BD6 — Added the admin-only, offline-aware Details-card edit
   pencil and localized metadata/cover source rows with a field disclosure.

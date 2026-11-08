@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
-	import { locales, setLocale, type Locale } from '#lib/paraglide/runtime.js';
+	import { getLocale, getTextDirection, locales, setLocale, type Locale } from '#lib/paraglide/runtime.js';
 	import { ApiError, api } from '#lib/api/client.js';
 	import BuildVersion from '#lib/buildinfo/BuildVersion.svelte';
 	import AppShell from '#lib/shell/AppShell.svelte';
@@ -14,7 +14,17 @@
 	import './layout.css';
 	import type { LayoutProps } from './$types';
 
-	if (typeof document !== 'undefined') applyTheme(readTheme());
+	if (typeof document !== 'undefined') {
+		applyTheme(readTheme());
+		updateDocumentLocale();
+	}
+
+	function updateDocumentLocale() {
+		// The embedded SPA's static HTML cannot reflect the viewer's locale.
+		const locale = getLocale();
+		document.documentElement.lang = locale;
+		document.documentElement.dir = getTextDirection(locale);
+	}
 
 	interface Viewer {
 		id: number;
@@ -68,6 +78,7 @@
 				await activateOffline(response.user);
 				viewer = response.user;
 				if (!preserveDeviceLocale) await setLocale(response.user.locale, { reload: false });
+				updateDocumentLocale();
 				if (path === '/login' || path === '/setup') await goto('/');
 			} catch (error) {
 				if (error instanceof ApiError && error.status === 401) {
@@ -86,6 +97,7 @@
 						await activateOffline(remembered, true);
 						viewer = remembered;
 						if (!preserveDeviceLocale) await setLocale(remembered.locale, { reload: false });
+						updateDocumentLocale();
 						return;
 					}
 				} catch (storageError) {

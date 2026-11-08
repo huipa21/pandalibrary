@@ -1,8 +1,9 @@
 # Book View — architecture
 
-Status: implemented (BV1–BV10 and BC1–BC8; see the
+Status: implemented (BV1–BV10, BC1–BC8 and BD1–BD8; see the
 [book view plan](../plans/book-view-plan.md) and
-[book cover plan](../plans/book-cover-plan.md)).
+[book cover plan](../plans/book-cover-plan.md), and
+[book detail plan](../plans/book-detail-plan.md)).
 This document describes how the book detail pages, the quick view drawer and
 the generated covers fit together. The system overview is in
 [system.md](./system.md); the API conventions are in its §5.
@@ -16,15 +17,20 @@ outside the tab layout:
 |---|---|---|
 | `/books/{id}` | `routes/books/[id]/(tabs)/+page.svelte` | `bookview/tabs/DetailsTab.svelte` |
 | `/books/{id}/files` | `(tabs)/files/+page.svelte` | `bookview/tabs/FilesTab.svelte` |
-| `/books/{id}/reading-log` | `(tabs)/reading-log/+page.svelte` | `bookview/tabs/ReadingLogTab.svelte` |
+| `/books/{id}/activities` | `(tabs)/activities/+page.svelte` | `bookview/tabs/ReadingLogTab.svelte` |
+| `/books/{id}/reading-log` | `(tabs)/reading-log/+page.ts` | legacy redirect to Activities, preserving the query |
 | `/books/{id}/highlights` | `(tabs)/highlights/+page.svelte` | `bookview/tabs/HighlightsTab.svelte` |
 | `/books/{id}/edit` | `routes/books/[id]/edit/+page.svelte` | admin metadata editor (unchanged) |
 
 - `(tabs)/+layout.svelte` creates the book context, renders `BookTabs` and the
   loading/error/not-found states, and renders the active tab. Route files only
   render their tab component.
-- `BookTabs.svelte` shows **‹ Books** (history back when the previous entry is
-  in-app, else the browse-context `href` or `/books`), the four tabs as links
+- `BookTabs.svelte` shows a 36 px **back icon** with an accessible
+  "Back to {label}" name. It returns to the stored origin (pathname and
+  query), falling back to Dashboard (`/`) for a fresh deep link. History back
+  is used only on a direct arrival from that origin; otherwise navigation
+  targets the origin explicitly. Reader and metadata-editor round trips,
+  tabs and book-to-book moves preserve the origin. The four tabs are links
   with `aria-current="page"` (switching tabs replaces the history entry and
   keeps scroll), and the **`i / n` ‹ ›** browse control. `[` and `]` move to
   the previous/next book outside text inputs. The tab strip scrolls
@@ -43,9 +49,55 @@ outside the tab layout:
 - **Browse context** (`bookview/browse-context.ts`). Lists that open books
   (`BookBrowser` — All Books, library/author/series/tag pages — and both shelf
   pages) call `rememberBrowseContext({ ids, label, href })`, stored in
-  `sessionStorage` (at most 5,000 IDs). `browseNeighbors(bookId)` returns
+  `sessionStorage` (at most 5,000 IDs). Dashboard tile activation remembers
+  only the activated row, not whichever row loaded last.
+  `browseNeighbors(bookId, originHref)` returns
   `{ index, total, previousId, nextId, label, href }` or `null`; the browse
-  control is hidden when the page was opened directly.
+  control is hidden unless the remembered list matches the origin.
+- **Book origin** (`bookview/book-origin.ts`). `pandalibrary.book-origin` in
+  per-tab sessionStorage holds `{ href, label }`. Entering the book area
+  from a list records it; reader/editor child flows never overwrite it.
+  Login/setup and unsafe or external URLs are excluded. Origin scroll
+  restoration runs again after asynchronous Dashboard rows load.
+
+### Details tab assembly
+
+The responsive grid is one column below 768 px, two columns from 768 px
+and three columns from 1280 px. The left column holds the cover (with the
+only format badge), Read/Resume plus the retained icon status menu,
+Download, Add to shelf, and shelf tags. The centre holds the title, rating,
+borderless transparent inline status control, Overview and Reviews. The
+right holds Details (including metadata sources and the online admin pencil),
+Editions and identifiers. Related books remain below the grid.
+
+The client shell applies the resolved locale to document language/direction
+at startup and after loading online/offline account preferences. The
+embedded static HTML cannot determine the viewer's language; keeping its
+language attribute in sync also makes the language picker's current option
+and assistive technology agree with English/Chinese Details content.
+
+Shelf tags link to their shelf (Favorites uses its system route and localized
+name). Editable manual shelves have a corner X, visible on hover,
+focus-within and touch, with confirmation before DELETE. Admins can manage
+shared shelves; readers can manage their own private shelves, including
+Favorites. The existing downward Add-to-shelf popover disables current
+memberships and updates tags immediately; removal rolls back visibly on
+failure. Neither operation deletes the book.
+
+The Details pencil opens `/books/{id}/edit` and is hidden offline or for
+non-admins. Distinct metadata source names, a Show fields disclosure and
+optional cover source are inside Details. The bottom shelf form, cover-area
+back/edit links, hero format chips, Personal review link, separate Metadata
+sources card and Your reading card are removed. Reading history is in
+Activities, not duplicated on Details.
+
+Reviews use `book_reviews` (migration 00007), not private book-level notes.
+One plain-text review per author/book is visible to everyone who can see
+that book. The viewer's review is pinned with edit/delete; admins may delete
+others but cannot edit them. Other reviews are newest-updated first, 20 per
+page, with Show more reviews. Plus opens the inline editor only when the
+viewer has no review. Reviews are online-only; no note content is migrated
+or exposed. See [ADR-0007](../decisions/0007-public-reviews-private-notes.md).
 
 ## 3. Events
 
@@ -54,7 +106,7 @@ Defined in `bookview/events.ts`; both are `window` `CustomEvent`s.
 | Event | Detail | Producer | Consumers |
 |---|---|---|---|
 | `pandalibrary-quick-view` (`QUICK_VIEW_EVENT`) | `{ bookId, book?, trigger }` | `openQuickView()` from cover Info buttons; records `document.activeElement` as `trigger` | `QuickViewHost` (mounted once in `AppShell`) |
-| `pandalibrary-book-state-changed` (`BOOK_STATE_CHANGED_EVENT`) | `{ bookId }` | `notifyBookStateChanged()` after every status, rating, date, review or session change | the book-state cache refreshes that book; open views reload it, and started status-filtered dashboard rows and automatic shelf rows refresh their feeds |
+| `pandalibrary-book-state-changed` (`BOOK_STATE_CHANGED_EVENT`) | `{ bookId }` | `notifyBookStateChanged()` after every status, rating, date or session change | the book-state cache refreshes that book; open views reload it, and started status-filtered dashboard rows and automatic shelf rows refresh their feeds |
 
 Shelf membership changes keep using the existing
 `pandalibrary-shelves-changed` event.
@@ -80,6 +132,9 @@ Later features import these and must not fork them.
 | `read.ts` | `readTarget(book, account)` — resume the saved file or the first readable format |
 | `book-states.svelte.ts` | Account-scoped, coalescing status/progress store for cover tiles, with offline replay |
 | `log-api.ts` | Typed reading-log client (`getReadingSummary`, `listBookSessions`, `deleteBookSession`, `addManualSession`, `viewerTimezone`) |
+| `reviews-api.ts`, `details/ReviewsCard.svelte`, `details/ReviewEditor.svelte` | Visibility-scoped public reviews, pinned own review, pagination and moderation |
+| `details/OverviewCard.svelte`, `details/DetailsPanel.svelte` | Description, metadata fields/sources and admin edit link |
+| `details/book-shelves.svelte.ts`, `details/BookShelfTags.svelte` | Reactive membership store, confirmed removal with rollback, permission-aware tags |
 
 Feature folders: `quickview/` (drawer), `details/`, `files/`, `log/`,
 `highlights/` (one per tab).
@@ -182,16 +237,21 @@ visibility rules (an invisible book is `404`).
 | GET | `/api/v1/books/{id}/shelves` | drawer "Collections", Details shelves |
 | GET | `/api/v1/me/books/{id}` | user book, progress, highlights, notes |
 | GET | `/api/v1/me/book-states?ids=1,2` | batched visible-book status and progress for cover tiles |
-| GET | `/api/v1/me/books/{id}/reading-summary?timezone=` | Details "Your reading", Reading Log, status label |
-| GET | `/api/v1/me/books/{id}/sessions?range=&timezone=&limit=&cursor=` | Reading Log sessions table |
-| DELETE | `/api/v1/me/books/{id}/sessions/{sessionId}` | Reading Log delete |
-| POST | `/api/v1/sync/push` | status, rating, dates, review note, manual session |
+| GET | `/api/v1/me/books/{id}/reading-summary?timezone=` | Activities summary |
+| GET | `/api/v1/me/books/{id}/sessions?range=&timezone=&limit=&cursor=` | Activities sessions table |
+| DELETE | `/api/v1/me/books/{id}/sessions/{sessionId}` | Activities delete |
+| POST | `/api/v1/sync/push` | status, rating, dates, private notes, manual sessions, progress lifecycle |
+| GET | `/api/v1/books/{id}/reviews?limit=&cursor=` | Reviews (mine separately, paged others, total) |
+| PUT / DELETE | `/api/v1/books/{id}/reviews/me` | Write/edit or delete own review |
+| DELETE | `/api/v1/books/{id}/reviews/{reviewId}` | Admin moderation |
 | GET | `/api/v1/me/notes/export?book_ids={id}` | Highlights export |
 | GET | `/api/v1/books/{id}/files/{fileId}` (`download_url`) | Read, download, offline save |
 
 The response shapes are in [system.md §5 "Reading log contract
 (BV2)"](./system.md#reading-log-contract-bv2) and the
 [plan](../plans/book-view-plan.md#shared-api-contract-bv1-bv2-json-timestamps-rfc3339-utc).
+The public review contract is in
+[system.md](./system.md#book-review-contract-bd3).
 
 ## 8. Offline behaviour
 
@@ -199,9 +259,9 @@ The response shapes are in [system.md §5 "Reading log contract
 |---|---|
 | Book context | Falls back to the IndexedDB copy of a downloaded book; otherwise shows the not-available-offline state |
 | Quick view drawer | Uses the cached book; hides Collections and the admin Edit metadata link |
-| Details | Read-only notice; editing of status, rating, dates and review is disabled; the reading summary and shelf sections are not loaded |
+| Details | Read-only notice; status/rating/dates are read-only; Download/Add and metadata edit are hidden; shelf tags have no X; Reviews shows its online-only message and makes no requests |
 | Files | Lists cached files; reading saved copies works; download, save and remove actions that need the server are disabled |
-| Reading Log | Shows "Reading log needs a connection" with a retry that reloads once back online |
+| Activities | Shows its connection-required message with a retry that reloads once back online |
 | Highlights | Reads highlights and notes from the local reader state; export is disabled |
 | Cover tiles | Reads synchronized state and pending outbox mutations from IndexedDB; status badges are read-only while offline |
 
@@ -216,6 +276,15 @@ through the outbox and appear in these views after syncing.
 - Real server: `web/src/routes/bookview-real.e2e.ts` seeds books through the
   API and walks catalog → drawer → every tab → reader, then checks that the
   reading summary and sessions survive a server restart.
+- BD integration: `web/src/routes/bookdetail-real.e2e.ts` verifies R1–R13
+  with two users, private/shared/Favorites membership, reader/editor origin
+  round trips, web/KOReader lifecycle, re-read attempts, public reviews and
+  private notes. A copied version-5 database is upgraded by the real binary;
+  its backfilled row is returned to an old sync cursor. The visual matrix
+  covers 360/768/1440 px, light/dark, menus/editor/hover/touch, 21 real review
+  authors and pagination, keyboard flows, reduced motion and UI contrast
+  of at least 3:1. Screenshots attach to Playwright results; set
+  `PANDA_BD8_SCREENSHOTS` to persist a copy outside test-results.
 - Cover integration: `web/src/routes/covers-real.e2e.ts` imports 50 books,
   exercises all eight statuses and the saved file, checks batching and tile
   sizing, measures rendered cloth contrast, and captures rest/hover/menu
