@@ -86,7 +86,7 @@
 </script>
 
 <section class="min-w-0 space-y-5" aria-labelledby="bv8-heading">
-	<h1 id="bv8-heading" class="sr-only">{m['bv4.tabs.reading_log']()}</h1>
+	<h1 id="bv8-heading" class="sr-only">{m['bd1.tabs.activities']()}</h1>
 	{#if offline}
 		<div class="card space-y-3 p-6 text-slate-600" role="status">
 			<p>{m['bv8.offline']()}</p>
