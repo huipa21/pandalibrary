@@ -27,6 +27,13 @@
 	/>
 	<button
 		type="submit"
-		class="shrink-0 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-	>{m['search.submit']()}</button>
+		class="shell-search-submit inline-flex size-9 shrink-0 items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
+		aria-label={m['search.submit']()}
+		title={m['search.submit']()}
+	>
+		<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+			<circle cx="8.5" cy="8.5" r="5.5" />
+			<path d="m12.5 12.5 4 4" />
+		</svg>
+	</button>
 </form>

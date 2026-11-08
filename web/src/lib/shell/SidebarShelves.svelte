@@ -34,10 +34,10 @@
 			<button class="shell-text-button" onclick={() => pager.retry()}>{m['ux1.shelves.retry']()}</button>
 		</div>
 	{:else if pager.status !== 'ready'}
-		<p class="mt-1 px-3 text-sm text-zinc-400">{m['ux1.shelves.loading']()}</p>
+		<p class="mt-1 px-3 text-sm text-[color:var(--shell-muted)]">{m['ux1.shelves.loading']()}</p>
 	{:else}
 		{#if pager.empty}
-			<p class="mt-1 px-3 text-sm text-zinc-400">{m['ux1.shelves.empty']()}</p>
+			<p class="mt-1 px-3 text-sm text-[color:var(--shell-muted)]">{m['ux1.shelves.empty']()}</p>
 		{:else}
 			<ul class="mt-1 space-y-0.5">
 				{#each pager.items as shelf (shelf.id)}
@@ -51,7 +51,7 @@
 				{/each}
 			</ul>
 		{/if}
-		<a class="shell-link mt-0.5 text-zinc-400" href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined}>
+		<a class="shell-link mt-0.5 text-[color:var(--shell-muted)]" href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined}>
 			{m['ux1.shelves.more']()}
 		</a>
 	{/if}

@@ -2,18 +2,22 @@
 	import { onMount, tick, type Snippet } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import * as m from '#lib/paraglide/messages.js';
+	import type { Locale } from '#lib/paraglide/runtime.js';
 	import { isImmersiveRoute } from '#lib/nav.js';
 	import SearchBox from '#lib/search/SearchBox.svelte';
 	import UploadButton from '#lib/bookheap/UploadButton.svelte';
 	import QuickViewHost from '#lib/bookview/quickview/QuickViewHost.svelte';
-	import AccountControls from './AccountControls.svelte';
+	import AvatarMenu from './AvatarMenu.svelte';
+	import LanguageMenu from './LanguageMenu.svelte';
 	import Sidebar from './Sidebar.svelte';
+	import ThemeToggle from './ThemeToggle.svelte';
 	import { focusableWithin, nextTrappedFocus } from './focus.js';
 
 	interface Props {
 		pathname: string;
 		viewer: { username: string; display_name: string; role: string } | null;
 		onlogout: () => void;
+		onlocale: (locale: Locale) => void | Promise<void>;
 		children: Snippet;
 		/** Sidebar SHELVES slot; see `Sidebar.svelte`. */
 		shelves?: Snippet;
@@ -21,7 +25,7 @@
 		footer?: Snippet;
 	}
 
-	let { pathname, viewer, onlogout, children, shelves, footer }: Props = $props();
+	let { pathname, viewer, onlogout, onlocale, children, shelves, footer }: Props = $props();
 
 	const SIDEBAR_ID = 'app-sidebar';
 	let open = $state(false);
@@ -82,12 +86,12 @@
 
 <svelte:window {onkeydown} />
 
-<div class="flex min-h-dvh flex-col bg-shell-950 text-zinc-100">
+<div class="app-shell flex min-h-dvh flex-col">
 	<a
 		class="sr-only z-[60] rounded-md bg-emerald-700 px-3 py-2 text-white focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
 		href="#main-content"
 	>{m['ux1.skip_to_content']()}</a>
-	<header class="sticky top-0 z-50 flex h-shell-header shrink-0 items-center gap-2 border-b border-white/10 bg-shell-900 px-3 sm:gap-3 sm:px-4">
+	<header class="shell-header sticky top-0 z-50 flex h-shell-header shrink-0 items-center gap-1 border-b px-3 sm:gap-3 sm:px-4">
 		{#if viewer}
 			<button
 				bind:this={toggle}
@@ -95,6 +99,7 @@
 				aria-controls={SIDEBAR_ID}
 				aria-expanded={open}
 				aria-label={open ? m['ux1.menu.close']() : m['ux1.menu.open']()}
+				title={open ? m['ux1.menu.close']() : m['ux1.menu.open']()}
 				onclick={() => (open ? closeDrawer() : openDrawer())}
 			>
 				<svg aria-hidden="true" viewBox="0 0 20 20" class="size-5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
@@ -102,12 +107,12 @@
 				</svg>
 			</button>
 		{/if}
-		<a class="shell-control flex shrink-0 items-center gap-2 font-semibold text-white" href="/">
+		<a class="shell-control flex shrink-0 items-center gap-2 font-semibold" href="/">
 			<span aria-hidden="true" class="grid size-7 place-items-center rounded-md bg-emerald-500/20 text-sm text-emerald-300">P</span>
 			<span class={viewer ? 'hidden sm:inline' : ''}>{m['common.app_name']()}</span>
 			{#if viewer}<span class="sr-only sm:hidden">{m['common.app_name']()}</span>{/if}
 		</a>
-		<div class="ml-auto flex min-w-0 items-center gap-2 sm:gap-4">
+		<div class="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
 			{#if viewer && pathname !== '/search'}
 				<div class="shell-search min-w-0">
 					<SearchBox />
@@ -116,9 +121,14 @@
 			{#if viewer?.role === 'admin' && !immersive}
 				<UploadButton />
 			{/if}
-			<div class={viewer ? 'hidden lg:block' : ''}>
-				<AccountControls {pathname} {viewer} {onlogout} variant="header" />
-			</div>
+			{#if viewer}
+				<div class="hidden sm:block"><LanguageMenu {onlocale} /></div>
+				<div class="hidden sm:block"><ThemeToggle /></div>
+				<AvatarMenu {pathname} {viewer} {onlogout} />
+			{:else}
+				<LanguageMenu {onlocale} />
+				<ThemeToggle />
+			{/if}
 		</div>
 	</header>
 
@@ -139,7 +149,7 @@
 				aria-modal={overlay ? 'true' : undefined}
 				role={overlay ? 'dialog' : undefined}
 				class={[
-					'top-shell-header z-40 w-shell-sidebar shrink-0 flex-col border-r border-white/10 bg-shell-900',
+					'shell-sidebar top-shell-header z-40 w-shell-sidebar shrink-0 flex-col border-r',
 					'fixed bottom-0 left-0 max-w-[85vw] shadow-2xl',
 					open ? 'flex' : 'hidden',
 					!immersive && 'lg:sticky lg:bottom-auto lg:flex lg:h-[calc(100dvh-var(--spacing-shell-header))] lg:max-w-none lg:shadow-none'
@@ -147,15 +157,18 @@
 			>
 				<Sidebar role={viewer.role} {pathname} {shelves} {footer}>
 					{#snippet account()}
-						<div class={`shrink-0 border-t border-white/10 py-3 ${immersive ? '' : 'lg:hidden'}`}>
-							<AccountControls {pathname} {viewer} {onlogout} variant="drawer" />
+						<div class="shell-account-rows shrink-0 border-t py-3 sm:hidden">
+							<div class="flex flex-col gap-1 px-3">
+								<LanguageMenu {onlocale} compact />
+								<ThemeToggle compact />
+							</div>
 						</div>
 					{/snippet}
 				</Sidebar>
 			</aside>
 		{/if}
 		<main id="main-content" tabindex="-1" class="min-w-0 flex-1 p-2 focus:outline-none sm:p-4 lg:p-5">
-			<div class="min-h-full rounded-2xl border border-white/10 bg-slate-50 px-4 py-6 text-slate-950 shadow-sm sm:px-6 sm:py-8 lg:px-8">
+			<div class={['min-h-full rounded-2xl border border-zinc-200 bg-slate-50 px-4 py-6 text-slate-950 shadow-sm sm:px-6 sm:py-8 lg:px-8', !immersive && 'app-panel']}>
 				{@render children()}
 			</div>
 		</main>

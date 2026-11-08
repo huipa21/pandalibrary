@@ -108,9 +108,28 @@ the next. Only BC8 runs the full verification gate.
 | 3 | BC7 | All Books / shelves / related: standard grid | BC4 | [BC7](../prompts/BC7-catalog-grids.md) | Done | `master` (uncommitted) | `.book-grid` everywhere; related carousel `w-book`; compact shelf remove button |
 | 4 | BC8 | Integration, real-server E2E, visual QA, full gate | BC1-BC7 | [BC8](../prompts/BC8-integration.md) | Blocked | `master` (uncommitted) | Full gate and written-spec visual QA pass; original reference-image comparison unavailable |
 
+## Header Menu follow-up board
+
+Plan, decisions and implementation contract:
+[header-menu-plan.md](../plans/header-menu-plan.md).
+
+| Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
+|---|---|---|---|---|---|---|---|
+| 1 | HM1 | Icon header, language picker, app theme and account menu | UX1, UX10, BH3 | [HM1](../prompts/HM1-header-menu.md) | Done | `task/hm1` | Responsive shell and locale/theme controls implemented; targeted checks pass; full page-by-page visual contrast review remains a follow-up |
+
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-08 — HM1 — Replaced text account controls with an icon-only responsive
+  header, searchable language picker, local theme toggle and avatar menu.
+  Added a dark page-panel palette remap without changing reader routes; failed
+  locale persistence keeps the selected language on this device until sign-out
+  and displays a one-time notice. No page-specific dark-mode changes were
+  needed. Svelte check, all 392 web unit tests, Go lint/tests and the targeted
+  browser suite passed (16 passed; one real-server release spec skipped because
+  the API backend was not running). The full visual contrast review across the
+  listed product pages remains a follow-up.
 
 - 2026-11-08 — BC8 — BC1-BC7 were already integrated in `master`; shared
   tile-lift CSS now serves catalog and Bookheap, the unused `grid` alias is

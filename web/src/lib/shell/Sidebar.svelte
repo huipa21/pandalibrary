@@ -53,7 +53,7 @@
 		</section>
 	</nav>
 	{@render account?.()}
-	<footer class="shrink-0 border-t border-white/10 px-6 py-3 text-xs text-zinc-300" data-slot="sidebar-footer">
+	<footer class="shell-sidebar-footer shrink-0 border-t px-6 py-3 text-xs" data-slot="sidebar-footer">
 		{@render footer?.()}
 	</footer>
 </div>

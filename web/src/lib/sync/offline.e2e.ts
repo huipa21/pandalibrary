@@ -224,7 +224,8 @@ test('account changes and logout cannot expose a previous account download offli
 	await expect(page.getByRole('link', { name: 'Offline Fixture' })).toHaveCount(0);
 	state.online = true;
 	await context.setOffline(false);
-	await page.getByRole('button', { name: 'Sign out' }).click();
+	await page.getByRole('button', { name: 'Account menu' }).click();
+	await page.getByRole('menuitem', { name: 'Sign out' }).click();
 	await expect(page).toHaveURL('/login');
 	state.online = false;
 	await context.setOffline(true);

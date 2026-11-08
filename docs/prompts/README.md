@@ -90,3 +90,4 @@ hand-offs and update its prompts if the contracts changed.
 | BC6 | [BC6-dashboard-tiles.md](./BC6-dashboard-tiles.md) | Done |
 | BC7 | [BC7-catalog-grids.md](./BC7-catalog-grids.md) | Done |
 | BC8 | [BC8-integration.md](./BC8-integration.md) | Blocked: original reference images unavailable |
+| HM1 | [HM1-header-menu.md](./HM1-header-menu.md) | Done |

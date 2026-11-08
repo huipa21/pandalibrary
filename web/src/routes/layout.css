@@ -19,15 +19,31 @@
 	text-rendering: optimizeLegibility;
 }
 
+:root[data-theme='dark'] {
+	--shell-bg: #121416;
+	--shell-surface: #191c1f;
+	--shell-border: rgb(255 255 255 / 10%);
+	--shell-text: #f4f4f5;
+	--shell-muted: #a1a1aa;
+	--shell-hover: #2e3338;
+	--shell-active: #a7f3d0;
+}
+
+:root[data-theme='light'] {
+	--shell-bg: #f4f4f5;
+	--shell-surface: #ffffff;
+	--shell-border: #d4d4d8;
+	--shell-text: #18181b;
+	--shell-muted: #52525b;
+	--shell-hover: #e4e4e7;
+	--shell-active: #047857;
+}
+
 body {
 	margin: 0;
 	min-width: 20rem;
 }
 
-/*
- * Shell chrome (header and sidebar) is dark; page content keeps its existing light styling inside
- * the rounded main panel, so these classes are scoped to the shell and never restyle pages.
- */
 @layer components {
 	.book-grid {
 		display: grid;
@@ -74,7 +90,7 @@ body {
 		font-weight: 600;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-		color: var(--color-zinc-400);
+		color: var(--shell-muted);
 	}
 
 	.shell-link {
@@ -86,18 +102,18 @@ body {
 		border-radius: 0.5rem;
 		padding: 0.375rem 0.75rem;
 		font-size: 0.875rem;
-		color: var(--color-zinc-200);
+		color: var(--shell-text);
 		transition: background-color 120ms, color 120ms;
 	}
 
 	.shell-link:hover {
-		background-color: var(--color-shell-700);
-		color: var(--color-white);
+		background-color: var(--shell-hover);
+		color: var(--shell-text);
 	}
 
 	.shell-link[aria-current='page'] {
 		background-color: color-mix(in oklab, var(--color-shell-accent) 16%, transparent);
-		color: var(--color-emerald-200);
+		color: var(--shell-active);
 		font-weight: 600;
 	}
 
@@ -114,7 +130,8 @@ body {
 	.shell-link:focus-visible,
 	.shell-icon-button:focus-visible,
 	.shell-text-button:focus-visible,
-	.shell-control:focus-visible {
+	.shell-control:focus-visible,
+	.shell-menu-row:focus-visible {
 		outline: 2px solid var(--color-shell-accent);
 		outline-offset: 2px;
 	}
@@ -122,11 +139,11 @@ body {
 	.shell-count {
 		flex-shrink: 0;
 		border-radius: 9999px;
-		background-color: var(--color-shell-700);
+		background-color: var(--shell-hover);
 		padding: 0 0.5rem;
 		font-size: 0.75rem;
 		line-height: 1.25rem;
-		color: var(--color-zinc-300);
+		color: var(--shell-muted);
 	}
 
 	.shell-icon-button {
@@ -136,12 +153,12 @@ body {
 		width: 1.75rem;
 		height: 1.75rem;
 		border-radius: 0.375rem;
-		color: var(--color-zinc-300);
+		color: var(--shell-muted);
 	}
 
 	.shell-icon-button:hover {
-		background-color: var(--color-shell-700);
-		color: var(--color-emerald-300);
+		background-color: var(--shell-hover);
+		color: var(--shell-active);
 	}
 
 	.shell-text-button {
@@ -153,37 +170,309 @@ body {
 	.shell-control {
 		border-radius: 0.375rem;
 		font-size: 0.875rem;
-		color: var(--color-zinc-300);
+		color: var(--shell-muted);
 		text-underline-offset: 4px;
 	}
 
 	.shell-control:hover {
-		color: var(--color-white);
+		color: var(--shell-text);
 		text-decoration: underline;
 	}
 
 	.shell-control[aria-current='page'] {
-		color: var(--color-emerald-300);
+		color: var(--shell-active);
 		font-weight: 600;
+	}
+
+	.shell-menu-row {
+		display: flex;
+		min-height: 2.25rem;
+		width: 100%;
+		align-items: center;
+		gap: 0.75rem;
+		border-radius: 0.5rem;
+		padding: 0.375rem 0.75rem;
+		text-align: left;
+		font-size: 0.875rem;
+		color: var(--shell-text);
+	}
+
+	.shell-menu-row:hover {
+		background-color: var(--shell-hover);
 	}
 }
 
-/* Unlayered so they win over the search box's light utility classes inside the dark header. */
+.app-shell {
+	background: var(--shell-bg);
+	color: var(--shell-text);
+}
+
+.shell-header,
+.shell-sidebar {
+	border-color: var(--shell-border);
+	background: var(--shell-surface);
+	color: var(--shell-text);
+}
+
+.shell-upload-button {
+	border: 1px solid var(--shell-border);
+	color: var(--shell-muted);
+}
+
+.shell-upload-button:hover {
+	border-color: var(--shell-muted);
+	background: var(--shell-hover);
+	color: var(--shell-active);
+}
+
+.shell-upload-button:focus-visible {
+	outline: 2px solid var(--color-shell-accent);
+	outline-offset: 2px;
+}
+
+.shell-sidebar-footer,
+.shell-account-rows {
+	border-color: var(--shell-border);
+	color: var(--shell-muted);
+}
+
+.header-menu {
+	position: relative;
+	display: inline-flex;
+	flex: 0 0 auto;
+}
+
+.header-menu:has(.shell-menu-row) {
+	display: flex;
+	width: 100%;
+}
+
+.header-menu:has(.shell-menu-row) .header-menu-panel {
+	top: auto;
+	right: auto;
+	bottom: calc(100% + 0.5rem);
+	left: 0;
+}
+
+.header-menu-panel {
+	position: absolute;
+	top: calc(100% + 0.5rem);
+	right: 0;
+	z-index: 60;
+	width: 20rem;
+	max-width: calc(100vw - 1rem);
+	max-height: min(24rem, calc(100dvh - 1rem));
+	overflow: auto;
+	border: 1px solid var(--shell-border);
+	border-radius: 0.75rem;
+	background: var(--shell-surface);
+	padding: 0.5rem;
+	color: var(--shell-text);
+	box-shadow: 0 16px 40px rgb(0 0 0 / 28%);
+}
+
+@media (max-width: 39.999rem) {
+	.shell-header .header-menu:not(:has(.shell-menu-row)) .header-menu-panel {
+		position: fixed;
+		top: calc(var(--spacing-shell-header) + 0.5rem);
+		right: 0.5rem;
+		left: auto;
+		width: min(20rem, calc(100vw - 1rem));
+	}
+}
+
+.avatar-menu-header {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.5rem;
+}
+
+.avatar-initials {
+	display: grid;
+	width: 1.75rem;
+	height: 1.75rem;
+	flex: 0 0 auto;
+	place-items: center;
+	border-radius: 9999px;
+	background: color-mix(in srgb, #10b981 20%, var(--shell-surface));
+	color: var(--shell-active);
+	font-size: 0.75rem;
+	font-weight: 700;
+}
+
+.header-menu-separator {
+	height: 1px;
+	margin: 0.375rem 0;
+	background: var(--shell-border);
+}
+
+.header-menu-item {
+	display: flex;
+	min-height: 2.5rem;
+	width: 100%;
+	align-items: center;
+	gap: 0.75rem;
+	border-radius: 0.5rem;
+	padding: 0.5rem 0.625rem;
+	text-align: left;
+	color: var(--shell-text);
+}
+
+.header-menu-item:hover,
+.header-menu-item:focus-visible,
+.language-option:hover,
+.language-option:focus-visible {
+	background: var(--shell-hover);
+}
+
+.header-menu-item:focus-visible,
+.language-search input:focus-visible,
+.language-option:focus-visible {
+	outline: 2px solid var(--color-shell-accent);
+	outline-offset: 1px;
+}
+
+.header-menu-item[aria-current='page'] {
+	color: var(--shell-active);
+}
+
+.language-menu {
+	display: flex;
+	max-height: calc(24rem - 1rem);
+	flex-direction: column;
+	gap: 0.625rem;
+}
+
+.language-search {
+	display: flex;
+	min-height: 2.5rem;
+	align-items: center;
+	gap: 0.5rem;
+	border: 1px solid var(--shell-border);
+	border-radius: 0.5rem;
+	padding: 0 0.625rem;
+	color: var(--shell-muted);
+}
+
+.language-search input {
+	width: 100%;
+	min-width: 0;
+	border: 0;
+	background: transparent;
+	color: var(--shell-text);
+	font: inherit;
+	outline: none;
+}
+
+.language-search input::placeholder {
+	color: var(--shell-muted);
+}
+
+.language-section {
+	min-width: 0;
+}
+
+.language-section .shell-heading {
+	padding: 0.25rem 0.625rem;
+}
+
+.language-option {
+	display: flex;
+	min-height: 2.5rem;
+	width: 100%;
+	align-items: center;
+	gap: 0.5rem;
+	border-radius: 0.5rem;
+	padding: 0.375rem 0.5rem;
+	text-align: left;
+	color: var(--shell-text);
+}
+
+.language-check {
+	display: flex;
+	width: 1rem;
+	flex: 0 0 auto;
+	color: var(--shell-active);
+}
+
+.language-native {
+	min-width: 0;
+	flex: 1 1 auto;
+	white-space: nowrap;
+}
+
+.language-localized {
+	flex: 0 0 auto;
+	color: var(--shell-muted);
+	font-size: 0.75rem;
+	white-space: nowrap;
+}
+
+.language-empty {
+	padding: 0.75rem 0.625rem;
+	color: var(--shell-muted);
+	font-size: 0.875rem;
+}
+
 .shell-search input {
-	border-color: var(--color-shell-700);
-	background-color: var(--color-shell-800);
-	color: var(--color-zinc-100);
+	min-width: 4rem;
+	border-color: var(--shell-hover);
+	background-color: var(--shell-surface);
+	color: var(--shell-text);
 }
 
 .shell-search input::placeholder {
-	color: var(--color-zinc-500);
+	color: var(--shell-muted);
 }
 
-.shell-search button {
-	background-color: var(--color-emerald-700);
+.shell-search-submit {
+	background-color: #047857;
+	color: #ffffff;
 }
 
 .shell-search input:focus-visible,
-.shell-search button:focus-visible {
+.shell-search-submit:focus-visible {
 	outline-color: var(--color-shell-accent);
+}
+
+:root[data-theme='dark'] .app-panel {
+	--color-white: #0f172a;
+	--color-slate-50: #020617;
+	--color-slate-100: #0f172a;
+	--color-slate-200: #1e293b;
+	--color-slate-300: #334155;
+	--color-slate-400: #94a3b8;
+	--color-slate-500: #94a3b8;
+	--color-slate-600: #94a3b8;
+	--color-slate-700: #cbd5e1;
+	--color-slate-800: #e2e8f0;
+	--color-slate-900: #f1f5f9;
+	--color-slate-950: #f8fafc;
+	--color-red-50: #450a0a;
+	--color-red-100: #7f1d1d;
+	--color-red-700: #fca5a5;
+	--color-red-800: #fecaca;
+	--color-red-900: #fee2e2;
+	--color-amber-50: #451a03;
+	--color-amber-100: #78350f;
+	--color-amber-700: #fcd34d;
+	--color-amber-800: #fde68a;
+	--color-amber-900: #fef3c7;
+	--color-green-50: #052e16;
+	--color-green-100: #14532d;
+	--color-green-700: #86efac;
+	--color-green-800: #bbf7d0;
+	--color-green-900: #dcfce7;
+	--color-emerald-50: #022c22;
+	--color-emerald-100: #064e3b;
+	--color-emerald-700: #6ee7b7;
+	--color-emerald-800: #a7f3d0;
+	--color-emerald-900: #d1fae5;
+	--color-sky-50: #082f49;
+	--color-sky-100: #0c4a6e;
+	--color-sky-700: #7dd3fc;
+	--color-sky-800: #bae6fd;
+	--color-sky-900: #e0f2fe;
+	border-color: #334155;
 }

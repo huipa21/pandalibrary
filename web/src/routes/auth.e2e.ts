@@ -80,9 +80,10 @@ test('setup, manage an app password, sign out, and sign in', async ({ page }) =>
 	await page.getByLabel('Password').fill('correct horse battery');
 	await page.getByRole('button', { name: 'Create administrator' }).click();
 	await expect(page).toHaveURL('/');
-	await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
+	await page.getByRole('button', { name: 'Account menu' }).click();
+	await expect(page.getByRole('menuitem', { name: 'Profile' })).toBeVisible();
 
-	await page.getByRole('link', { name: 'Settings' }).click();
+	await page.getByRole('menuitem', { name: 'Profile' }).click();
 	await page.getByLabel('Service').selectOption('kosync');
 	await page.getByLabel('Device label').fill('E-reader');
 	await page.getByRole('button', { name: 'Create password' }).click();
@@ -90,11 +91,12 @@ test('setup, manage an app password, sign out, and sign in', async ({ page }) =>
 	await page.getByRole('button', { name: 'Revoke' }).click();
 	await expect(page.getByText('E-reader')).toHaveCount(0);
 
-	await page.getByRole('button', { name: 'Sign out' }).click();
+	await page.getByRole('button', { name: 'Account menu' }).click();
+	await page.getByRole('menuitem', { name: 'Sign out' }).click();
 	await expect(page).toHaveURL('/login');
 	await page.getByLabel('Username').fill('admin');
 	await page.getByLabel('Password').fill('correct horse battery');
 	await page.getByRole('button', { name: 'Sign in' }).click();
 	await expect(page).toHaveURL('/');
-	await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
 });

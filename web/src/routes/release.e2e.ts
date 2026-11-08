@@ -122,7 +122,8 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 	await page.getByRole('button', { name: 'Create shelf' }).click();
 	await expect(page.getByRole('link', { name: 'Release Shelf' }).first()).toBeVisible();
 
-	await page.getByRole('button', { name: 'Sign out' }).click();
+	await page.getByRole('button', { name: 'Account menu' }).click();
+	await page.getByRole('menuitem', { name: 'Sign out' }).click();
 	await expect(page).toHaveURL('/login');
 	await page.getByLabel('Username').fill(realAdmin.username);
 	await page.getByLabel('Password').fill(realAdmin.password);

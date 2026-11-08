@@ -3,15 +3,18 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
-	import { setLocale, type Locale } from '#lib/paraglide/runtime.js';
+	import { locales, setLocale, type Locale } from '#lib/paraglide/runtime.js';
 	import { ApiError, api } from '#lib/api/client.js';
 	import BuildVersion from '#lib/buildinfo/BuildVersion.svelte';
 	import AppShell from '#lib/shell/AppShell.svelte';
 	import ShelfNavigation from '#lib/shelves/ShelfNavigation.svelte';
 	import { activateOffline, deactivateOffline, offlineStatus, rememberedViewer, syncNow } from '#lib/sync/client.js';
 	import { withSessionLock } from '#lib/sync/engine.js';
+	import { applyTheme, readTheme } from '#lib/shell/theme.js';
 	import './layout.css';
 	import type { LayoutProps } from './$types';
+
+	if (typeof document !== 'undefined') applyTheme(readTheme());
 
 	interface Viewer {
 		id: number;
@@ -26,14 +29,26 @@
 	let checkingAuth = $state(true);
 	let authError = $state('');
 	let offlineNotice = $state('');
+	let languageNotice = $state('');
+	let preserveDeviceLocale = $state(false);
 	const publicRoute = $derived(page.url.pathname === '/login' || page.url.pathname === '/setup');
 
 	onMount(() => {
 		const accountChanged = () => {
 			viewer = null;
+			clearLocalLanguageOverride();
 			window.location.reload();
 		};
 		window.addEventListener('pandalibrary-account-invalid', accountChanged);
+		try {
+			preserveDeviceLocale = window.localStorage.getItem('pandalibrary.language-local-only') === '1';
+			if (window.localStorage.getItem('pandalibrary.language-local-only-notice') === '1') {
+				window.localStorage.removeItem('pandalibrary.language-local-only-notice');
+				languageNotice = m['hm1.language.local_only']();
+			}
+		} catch (error) {
+			console.error('Could not read the language-change notice', error);
+		}
 		void checkAuth();
 		return () => window.removeEventListener('pandalibrary-account-invalid', accountChanged);
 	});
@@ -52,10 +67,11 @@
 				const response = await api.request<{ user: Viewer }>('/auth/me');
 				await activateOffline(response.user);
 				viewer = response.user;
-				await setLocale(response.user.locale, { reload: false });
+				if (!preserveDeviceLocale) await setLocale(response.user.locale, { reload: false });
 				if (path === '/login' || path === '/setup') await goto('/');
 			} catch (error) {
 				if (error instanceof ApiError && error.status === 401) {
+					clearLocalLanguageOverride();
 					await deactivateOffline();
 					if (path !== '/login') await goto('/login');
 				} else {
@@ -69,7 +85,7 @@
 					if (remembered) {
 						await activateOffline(remembered, true);
 						viewer = remembered;
-						await setLocale(remembered.locale, { reload: false });
+						if (!preserveDeviceLocale) await setLocale(remembered.locale, { reload: false });
 						return;
 					}
 				} catch (storageError) {
@@ -83,6 +99,41 @@
 		}
 	}
 
+	async function changeLocale(locale: Locale) {
+		if (!locales.includes(locale)) {
+			console.error('Rejected unsupported locale', locale);
+			return;
+		}
+		if (viewer) {
+			try {
+				await api.request<{ user: Viewer }, { display_name: string; locale: Locale }>(
+					'/me/profile',
+					{ method: 'PATCH', body: { display_name: viewer.display_name, locale } }
+				);
+				clearLocalLanguageOverride();
+			} catch (error) {
+				console.error('Could not save the selected language to the account', error);
+				try {
+					window.localStorage.setItem('pandalibrary.language-local-only', '1');
+					window.localStorage.setItem('pandalibrary.language-local-only-notice', '1');
+				} catch (storageError) {
+					console.error('Could not save the language-change notice', storageError);
+				}
+			}
+		}
+		await setLocale(locale);
+	}
+
+	function clearLocalLanguageOverride() {
+		preserveDeviceLocale = false;
+		try {
+			window.localStorage.removeItem('pandalibrary.language-local-only');
+			window.localStorage.removeItem('pandalibrary.language-local-only-notice');
+		} catch (error) {
+			console.error('Could not clear the local language override', error);
+		}
+	}
+
 	async function logout() {
 		try {
 			await withSessionLock(async () => {
@@ -90,6 +141,7 @@
 				await deactivateOffline();
 			});
 			viewer = null;
+			clearLocalLanguageOverride();
 			await goto('/login');
 		} catch (error) {
 			console.error('Could not sign out', error);
@@ -113,7 +165,7 @@
 	<meta name="description" content={m['home.description']()} />
 </svelte:head>
 
-<AppShell pathname={page.url.pathname} {viewer} onlogout={logout}>
+<AppShell pathname={page.url.pathname} {viewer} onlogout={logout} onlocale={changeLocale}>
 	{#snippet shelves()}
 		<ShelfNavigation pathname={page.url.pathname} />
 	{/snippet}
@@ -149,6 +201,7 @@
 			</div>
 		{/if}
 		{#if offlineNotice}<p class="mb-4 text-sm text-green-700" role="status">{offlineNotice}</p>{/if}
+		{#if languageNotice}<p class="mb-4 text-sm" role="status">{languageNotice}</p>{/if}
 		{@render children()}
 	{/if}
 </AppShell>

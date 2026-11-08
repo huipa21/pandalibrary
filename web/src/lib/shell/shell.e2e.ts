@@ -60,6 +60,20 @@ async function expectNoHorizontalOverflow(page: Page) {
 	expect(widths.content).toBeLessThanOrEqual(widths.viewport);
 }
 
+function contrastRatio(foreground: string, background: string): number {
+	const luminance = (color: string) => {
+		const channels = color.match(/\d+(?:\.\d+)?/g)?.slice(0, 3).map(Number);
+		if (!channels || channels.length !== 3) throw new Error(`Unexpected computed color: ${color}`);
+		const [red, green, blue] = channels.map((channel) => {
+			const value = channel / 255;
+			return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+		});
+		return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+	};
+	const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+	return (values[0] + 0.05) / (values[1] + 0.05);
+}
+
 test('desktop sidebar lists HOME links, shelves, and All Books across every library', async ({ page }) => {
 	await authenticate(page);
 	const bookQueries = await mockCatalog(page);
@@ -90,8 +104,14 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 	expect(bookQueries[0].has('library_id')).toBe(false);
 	expect(bookQueries[0].get('author_id')).toBe('4');
 	expect(bookQueries[0].get('sort')).toBe('added');
-	await expect(page.getByRole('link', { name: 'Settings' })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+	const account = page.getByRole('button', { name: 'Account menu' });
+	await expect(account).toBeVisible();
+	await account.click();
+	await expect(page.getByRole('menuitem', { name: 'Profile' })).toBeVisible();
+	await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(account).toBeFocused();
 	await expectNoHorizontalOverflow(page);
 
 	const box = await page.locator('#app-sidebar').boundingBox();
@@ -169,7 +189,16 @@ test('mobile drawer toggles by keyboard, traps focus, closes on Escape and navig
 	const drawer = page.getByRole('dialog', { name: 'Sidebar' });
 	await expect(drawer).toBeVisible();
 	await expect(drawer.getByRole('link', { name: 'Dashboard' })).toBeFocused();
-	await expect(drawer.getByRole('button', { name: 'Sign out' })).toBeVisible();
+	await expect(drawer.getByRole('button', { name: 'Language' })).toBeVisible();
+	await expect(drawer.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible();
+	const drawerLanguage = drawer.getByRole('button', { name: 'Language' });
+	await drawerLanguage.click();
+	const languageDialog = page.getByRole('dialog', { name: 'Language' });
+	await expect(languageDialog.getByRole('searchbox', { name: 'Search languages' })).toBeFocused();
+	await page.keyboard.press('Escape');
+	await expect(drawerLanguage).toBeFocused();
+	await expect(drawer).toBeVisible();
+	await drawer.getByRole('link', { name: 'Dashboard' }).focus();
 
 	await page.keyboard.press('Shift+Tab');
 	await expect(close).toBeFocused();
@@ -190,7 +219,7 @@ test('mobile drawer toggles by keyboard, traps focus, closes on Escape and navig
 	await expectNoHorizontalOverflow(page);
 });
 
-test('public pages keep the language switch without the sidebar', async ({ page }) => {
+test('public pages keep language and theme controls without the sidebar', async ({ page }) => {
 	await page.route('**/api/v1/setup', (route) => route.fulfill({ json: { required: false } }));
 	await page.route('**/api/v1/auth/me', (route) => route.fulfill({
 		status: 401, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Unauthorized', status: 401 })
@@ -198,7 +227,137 @@ test('public pages keep the language switch without the sidebar', async ({ page 
 	await page.goto('/books');
 	await expect(page).toHaveURL('/login');
 	await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
-	await expect(page.getByRole('navigation', { name: 'Language' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Language' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible();
 	await expect(page.locator('#app-sidebar')).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Open navigation menu' })).toHaveCount(0);
+});
+
+test('header controls keep their order and responsive visibility', async ({ page }) => {
+	await authenticate(page, 'admin');
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/books');
+	const header = page.getByRole('banner');
+	const orderedControls = [
+		header.getByRole('searchbox', { name: 'Search books' }),
+		header.getByRole('button', { name: 'Search', exact: true }),
+		header.getByRole('button', { name: 'Upload' }),
+		header.getByRole('button', { name: 'Language' }),
+		header.getByRole('button', { name: 'Switch to dark mode' }),
+		header.getByRole('button', { name: 'Account menu' })
+	];
+	const positions = await Promise.all(orderedControls.map(async (control) => (await control.boundingBox())?.x));
+	expect(positions.every((position) => position !== undefined)).toBe(true);
+	expect(positions).toEqual([...positions].sort((a, b) => a! - b!));
+
+	for (const width of [768, 360, 320]) {
+		await page.setViewportSize({ width, height: 844 });
+		await expect(header.getByRole('button', { name: 'Account menu' })).toBeVisible();
+		await expect(header.getByRole('button', { name: 'Upload' })).toBeVisible();
+		if (width < 640) {
+			await expect(header.getByRole('button', { name: 'Language' })).toBeHidden();
+			await expect(header.getByRole('button', { name: 'Switch to dark mode' })).toBeHidden();
+		} else {
+			await expect(header.getByRole('button', { name: 'Language' })).toBeVisible();
+			await expect(header.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible();
+		}
+		await expectNoHorizontalOverflow(page);
+	}
+});
+
+test('language selection persists through the profile API and shows local-only fallback', async ({ page }) => {
+	let selectedLocale = 'en';
+	await authenticate(page);
+	await page.route('**/api/v1/auth/me', (route) =>
+		route.fulfill({ json: { user: { id: 1, username: 'reader', display_name: 'Reader', role: 'user', locale: selectedLocale } } })
+	);
+	let profileBody: unknown;
+	await page.route('**/api/v1/me/profile', async (route) => {
+		profileBody = route.request().postDataJSON();
+		selectedLocale = (profileBody as { locale: string }).locale;
+		await route.fulfill({ json: { user: { id: 1, username: 'reader', display_name: 'Reader', role: 'user', locale: selectedLocale } } });
+	});
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Language' }).click();
+	await expect(page.getByRole('dialog', { name: 'Language' })).toBeVisible();
+	const search = page.getByRole('searchbox', { name: 'Search languages' });
+	await expect(search).toBeFocused();
+	await search.fill('简体中文');
+	const chinese = page.getByRole('option', { name: /简体中文/ });
+	await search.press('ArrowDown');
+	await expect(chinese).toBeFocused();
+	await page.keyboard.press('Enter');
+	await expect.poll(() => profileBody).toEqual({ display_name: 'Reader', locale: 'zh' });
+	await expect(page.locator('html')).toHaveAttribute('lang', 'zh');
+
+	await page.route('**/api/v1/me/profile', (route) =>
+		route.fulfill({ status: 503, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Unavailable', status: 503 }) })
+	);
+	await page.getByRole('button', { name: '语言' }).click();
+	await page.getByRole('searchbox', { name: '搜索语言' }).fill('English');
+	await page.getByRole('option', { name: /English/ }).last().click();
+	const localOnlyNotice = page.getByText('Language changed on this device only', { exact: true });
+	await expect(localOnlyNotice).toHaveAttribute('role', 'status');
+	await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+	await page.reload();
+	await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+	await expect(page.getByText('Language changed on this device only', { exact: true })).toHaveCount(0);
+});
+
+test('signed-out language selection updates the login page', async ({ page }) => {
+	await page.route('**/api/v1/setup', (route) => route.fulfill({ json: { required: false } }));
+	await page.route('**/api/v1/auth/me', (route) => route.fulfill({
+		status: 401, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Unauthorized', status: 401 })
+	}));
+	await page.goto('/login');
+	await page.getByRole('button', { name: 'Language' }).click();
+	await page.getByRole('searchbox', { name: 'Search languages' }).fill('简体中文');
+	await page.getByRole('option', { name: /简体中文/ }).click();
+	await expect(page.locator('html')).toHaveAttribute('lang', 'zh');
+	await expect(page.getByRole('heading', { name: '登录' })).toBeVisible();
+});
+
+test('theme choice persists and avatar menu supports keyboard navigation', async ({ page }) => {
+	await authenticate(page);
+	await page.emulateMedia({ colorScheme: 'light' });
+	await page.goto('/');
+	const theme = page.getByRole('button', { name: 'Switch to dark mode' });
+	const panel = page.locator('.app-panel');
+	const lightPanelColor = await panel.evaluate((element) => getComputedStyle(element).backgroundColor);
+	await theme.focus();
+	await page.keyboard.press('Space');
+	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+	await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
+	const darkPanelColor = await panel.evaluate((element) => getComputedStyle(element).backgroundColor);
+	expect(darkPanelColor).not.toBe(lightPanelColor);
+	const mutedColors = await panel.evaluate((element) =>
+		['text-slate-400', 'text-slate-500'].map((className) => {
+			const sample = document.createElement('span');
+			sample.className = className;
+			element.append(sample);
+			const colors = { foreground: getComputedStyle(sample).color, background: getComputedStyle(element).backgroundColor };
+			sample.remove();
+			return colors;
+		})
+	);
+	for (const colors of mutedColors) {
+		expect(contrastRatio(colors.foreground, colors.background)).toBeGreaterThanOrEqual(4.5);
+	}
+	await page.reload();
+	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+	const account = page.getByRole('button', { name: 'Account menu' });
+	await account.focus();
+	await page.keyboard.press('Enter');
+	const profile = page.getByRole('menuitem', { name: 'Profile' });
+	const signOut = page.getByRole('menuitem', { name: 'Sign out' });
+	await expect(profile).toBeFocused();
+	await page.keyboard.press('ArrowDown');
+	await expect(signOut).toBeFocused();
+	await page.keyboard.press('Home');
+	await expect(profile).toBeFocused();
+	await page.keyboard.press('End');
+	await expect(signOut).toBeFocused();
+	await page.keyboard.press('Escape');
+	await expect(account).toBeFocused();
 });

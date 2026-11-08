@@ -673,6 +673,16 @@ type Provider interface {
   - SvelteKit with `adapter-static`, `fallback: 'index.html'`, `ssr = false`.
   - Vite dev server proxies `/api`, `/opds` and `/kosync` to Go on `:8080`.
   - The build output `web/build` is embedded by `web/embed.go`.
+  - The header orders Search, admin Upload, Language, Theme and the signed-in
+    Account menu. Language and Theme move into the drawer below 640 px.
+  - The language popover searches supported locale names and codes; signed-in
+    selections update `PATCH /api/v1/me/profile`, while failed updates keep a
+    per-device override until sign-out and show a one-time notice.
+  - The app theme is stored in `localStorage['pandalibrary.theme']` and applied
+    to `html[data-theme]`, `color-scheme` and the theme-color meta. Shell
+    semantic variables switch between light and dark; dark page colors are
+    remapped inside `.app-panel`. Immersive reader routes do not receive that
+    remap and continue to use reader settings.
 - **State:** Svelte 5 runes in small store classes (`session`, `library`, `sync`). The API
   client is a typed `fetch` wrapper; TypeScript DTOs mirror the Go DTOs, and OpenAPI
   generation can come later.
@@ -710,7 +720,9 @@ type Provider interface {
     using the user's IANA timezone, which handles DST correctly. The binary imports
     `time/tzdata`.
 - **i18n:** paraglide-js with `messages/en.json` and `messages/zh.json`. The locale comes
-  from `users.locale`, with the browser language as fallback.
+  from `users.locale`, with the browser language as fallback. The header language
+  picker applies supported locales on public pages and persists signed-in changes
+  through the profile API.
 - **Service worker** (`src/service-worker.ts`):
   - Precaches the build assets.
   - API GETs are network-first, falling back to the cache for viewed pages.
