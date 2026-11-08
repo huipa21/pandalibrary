@@ -126,7 +126,7 @@ Only BD8 runs the full verification gate.
 
 | Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
-| 1 | BD1 | Back icon with origin return, previous/next fix, Activities tab | baseline | [BD1](../prompts/BD1-back-navigation.md) | Ready | `task/bd1` | Fixes reader round-trip reopening the reader |
+| 1 | BD1 | Back icon with origin return, previous/next fix, Activities tab | baseline | [BD1](../prompts/BD1-back-navigation.md) | Done | `task/bd1` | Fixes reader round-trip reopening the reader |
 | 1 | BD2 | Automatic status lifecycle + re-read restart | baseline | [BD2](../prompts/BD2-status-lifecycle.md) | Ready | `task/bd2` | Migration 00006 (backfill); merge before BD3 |
 | 1 | BD3 | Multi-user reviews: storage, API, web client | baseline | [BD3](../prompts/BD3-reviews-api.md) | Ready | `task/bd3` | Migration 00007; notes stay private |
 | 1 | BD4 | Hero cleanup + borderless status control | baseline | [BD4](../prompts/BD4-hero-status-control.md) | Ready | `task/bd4` | New `inline` variant only |
@@ -138,6 +138,25 @@ Only BD8 runs the full verification gate.
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-08 — BD1 — The book header's "‹ Books" is now a round arrow-left
+  icon ("Back to {label}") that returns to the page the book was opened from,
+  including after reader and metadata-editor round trips. `book-origin.ts` API:
+  `BOOK_ORIGIN_KEY`, `BookOrigin { href, label | null }`, `isBookArea`,
+  `isBookChildFlow(pathname, bookId?)`, `rememberBookOrigin(href, label?)`,
+  `readBookOrigin()`, `originLabel(href)`, plus `rememberOriginScroll`,
+  `readOriginScroll` and `restoreOriginScroll`. The scroll helpers were added because
+  the router restores the Dashboard scroll before its rows load, which clamps it to 0.
+  Caveats: `/` always labels as "Dashboard" (not the row); `/login` and
+  `/setup` are never origins; popstate arrivals never use `history.back()`.
+  `browseNeighbors(bookId, originHref)` hides previous/next for other lists;
+  Dashboard rows record their context on tile activation. Reading Log →
+  Activities: the route is `(tabs)/activities`. Legacy `(tabs)/reading-log`
+  is a `+page.ts` load redirect (307, keeps the query) with a placeholder
+  `+page.svelte`. It works with the SPA fallback. `log.e2e.ts` and `ReadingCard`
+  still use the old URL (BD7/BD8). Old `bv4.back*`/`bv4.tabs.reading_log` keys remain for
+  BD8. Check, 406 unit tests and 43 targeted e2e tests (details-shell, log,
+  dashboard) pass.
 
 - 2026-11-08 — BD (planning) — Split the book detail page request into
   R1-R13 and eight tasks (BD1-BD8) in three waves. Root cause of the
