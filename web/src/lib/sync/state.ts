@@ -1,4 +1,5 @@
 import type { JsonValue } from '#lib/api/client.js';
+import { autoStatus, userBookFromState } from '#lib/bookview/user-book.js';
 import type { Bookmark, BookState, Highlight, Note, Progress, Setting } from '#lib/reader/types.js';
 import { OfflineStorageError, outbox, rows } from './db.js';
 import type { OutboxEntry, StoredRow, SyncMutation, UserBookRow } from './types.js';
@@ -60,7 +61,23 @@ export function replayMutations(
 				updated_at: updatedAt,
 				rev: progress?.rev ?? 0
 			};
+			const current = userBookFromState(userBook);
+			const next = autoStatus(current?.status ?? null, progress.percentage);
+			if (next !== null) {
+				userBook = {
+					...current,
+					status: next,
+					rating: current?.rating ?? null,
+					started_at: current?.started_at ?? updatedAt,
+					finished_at: next === 'finished' ? updatedAt : current?.finished_at ?? null,
+					updated_at: updatedAt,
+					rev: current?.rev ?? 0
+				};
+			}
 		} else if (entity === 'user_books' && op === 'upsert' && data.book_id === bookId) {
+			if (data.status === 'rereading' && userBookFromState(userBook)?.status !== 'rereading' && progress) {
+				progress = { ...progress, percentage: 0, locator: null, updated_at: updatedAt };
+			}
 			userBook = { ...data, updated_at: updatedAt, rev: 0 };
 		} else if (entity === 'user_settings' && 'key' in mutation && op === 'upsert') {
 			const previous = settings.get(mutation.key);

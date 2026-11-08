@@ -208,6 +208,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.BookheapMount(bookheapService, authentication, logger),
 			httpapi.BookheapAssignMount(bookheapService, authentication, logger),
 			httpapi.ShelfMount(catalogService, authentication, logger),
+			httpapi.ReviewMount(catalogService, authentication, logger),
 			httpapi.DashboardMount(catalogService, authentication, logger),
 			httpapi.KOSyncMount(kosyncService, authentication, logger),
 			httpapi.MaintenanceMount(maintenance, authentication, logger),

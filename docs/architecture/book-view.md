@@ -130,6 +130,17 @@ Covers are generated client-side; there is no server image.
   joins the Read dashboard section but does not increment finished-book stats.
   Migration 00005 preserves existing rows; rollback maps `on_hold` and
   `rereading` to `reading`, and `skimmed` to `finished`.
+- Applied web/KOReader progress promotes missing, `unread` or `want_to_read`
+  status to `reading` above zero. At 99%, these statuses and `reading` or
+  `rereading` become `finished`. Manual `on_hold`, `skimmed`, `abandoned`
+  and `finished` statuses stay unchanged. Derived writes use server time,
+  preserve ratings, respect newer status clocks, and get pullable revisions.
+  Migration 00006 backfills existing books. Offline outbox replay mirrors
+  these transitions without queuing additional mutations.
+- Entering `rereading` resets saved progress to zero and clears its locator,
+  retaining the file, source and device. Selecting it again does not reset
+  progress. The status patch starts a fresh `started_at` and clears
+  `finished_at`.
 - `bookState(id)` returns a stable reactive `{status, percentage, loading,
   error}` per book and account. Requests in one microtask are coalesced and
   split into batches of at most 100. Concurrently loading dashboard rows
@@ -150,11 +161,12 @@ stored:
 2. A new attempt starts at a session whose start position (end position when
    the start is null) is ≤ 10% after the current attempt reached ≥ 95%, or at
    the first session that starts after `user_books.finished_at` when the
-   current attempt began before it.
+   current attempt began before it. An explicit re-read also starts a new
+   attempt at the first session on or after `user_books.started_at` when the
+   current attempt began before that timestamp.
 3. An attempt is `completed` when it reached ≥ 95% or contains `finished_at`.
-   Otherwise the last attempt is `in_progress`; earlier ones would be
-   `stopped`, but under these rules every non-final attempt is `completed`, so
-   `stopped` is currently unreachable.
+   Otherwise the last attempt is `in_progress`; earlier ones are `stopped`
+   (an explicit re-read can restart an unfinished attempt).
 
 Attempts are returned newest first; each session carries its attempt number,
 and the sessions table shows an "Attempt N began" divider.

@@ -127,17 +127,73 @@ Only BD8 runs the full verification gate.
 | Wave | Task | Title | Deps | Prompt | Status | Branch | Notes |
 |---|---|---|---|---|---|---|---|
 | 1 | BD1 | Back icon with origin return, previous/next fix, Activities tab | baseline | [BD1](../prompts/BD1-back-navigation.md) | Ready | `task/bd1` | Fixes reader round-trip reopening the reader |
-| 1 | BD2 | Automatic status lifecycle + re-read restart | baseline | [BD2](../prompts/BD2-status-lifecycle.md) | Ready | `task/bd2` | Migration 00006 (backfill); merge before BD3 |
-| 1 | BD3 | Multi-user reviews: storage, API, web client | baseline | [BD3](../prompts/BD3-reviews-api.md) | Ready | `task/bd3` | Migration 00007; notes stay private |
-| 1 | BD4 | Hero cleanup + borderless status control | baseline | [BD4](../prompts/BD4-hero-status-control.md) | Ready | `task/bd4` | New `inline` variant only |
-| 1 | BD5 | Shelf tags with X + Add-to-shelf popover button | baseline | [BD5](../prompts/BD5-shelf-tags.md) | Ready | `task/bd5` | Components only; wired by BD7 |
-| 1 | BD6 | Details card: edit icon + metadata sources | baseline | [BD6](../prompts/BD6-details-card.md) | Ready | `task/bd6` | Reads `canEditMetadata` from context |
+| 1 | BD2 | Automatic status lifecycle + re-read restart | baseline | [BD2](../prompts/BD2-status-lifecycle.md) | Done | `master` (uncommitted) | Migration 00006; server/KOReader/offline lifecycle and restart tests pass |
+| 1 | BD3 | Multi-user reviews: storage, API, web client | baseline | [BD3](../prompts/BD3-reviews-api.md) | Done | `master` | Migration 00007; visibility-scoped reviews, CRUD API and typed client; notes stay private |
+| 1 | BD4 | Hero cleanup + borderless status control | baseline | [BD4](../prompts/BD4-hero-status-control.md) | Done | `master` (uncommitted) | Hero-only `inline` variant; 201 unit and 42 targeted E2E tests pass |
+| 1 | BD5 | Shelf tags with X + Add-to-shelf popover button | baseline | [BD5](../prompts/BD5-shelf-tags.md) | Done | `master` (uncommitted) | Membership store, corner-X tags, downward picker; 21 unit and 38 browser tests pass; BD7 wires the tab |
+| 1 | BD6 | Details card: edit icon + metadata sources | baseline | [BD6](../prompts/BD6-details-card.md) | Done | `master` (uncommitted) | Context/override permission, live offline gate and source rows; BD7 removes duplicates |
 | 2 | BD7 | Overview + Reviews cards, Details tab assembly | BD3-BD6 | [BD7](../prompts/BD7-overview-reviews-assembly.md) | Ready | `task/bd7` | Sole owner of `DetailsTab.svelte` |
 | 3 | BD8 | Integration, real-server E2E, visual QA, docs, full gate | BD1-BD7 | [BD8](../prompts/BD8-integration.md) | Ready | `task/bd8` | Prunes unused message keys |
 
 ## Log
 
 Newest first. Format: `YYYY-MM-DD — <task> — what happened (decisions, blockers, follow-ups)`.
+
+- 2026-11-08 — BD6 — Added the admin-only, offline-aware Details-card edit
+  pencil and localized metadata/cover source rows with a field disclosure.
+  Covered permission overrides, live offline transitions, source ordering,
+  empty sources, localization and existing date edits. Svelte check, build
+  and 23 targeted browser tests pass, including the real-server editor flow.
+  BD7 removes the separate provenance card, cover-source line and old edit
+  button.
+
+- 2026-11-08 — BD5 — Added `createBookShelves(getBookId)` with reactive
+  `items/status/error/memberIds`, permission checks, abort/stale guards,
+  sorted optimistic removal/rollback and shelf-change reloads (excluding
+  its own event). Added localized `BookShelfTags` with corner X,
+  confirmation, keyboard focus recovery, notices, retry and offline
+  read-only chips. `ShelfPopover` now accepts opt-in `button`/`down` props
+  with viewport clamping; default quick-view rendering remains unchanged.
+  BD7 owns Details-tab wiring and removal of the old shelf form. The
+  appended kit fixture uses actual store logic with mocked shelf data;
+  nine new browser cases cover add/remove, cancel, permissions,
+  keyboard/touch, rollback, retry, focus, offline, book changes and Chinese
+  copy. Svelte check, production build, 21 Details unit tests and all 38
+  targeted shelf/quick-view/cover browser tests pass. Build/browser tests
+  used an isolated frontend snapshot and task-owned preview to avoid
+  concurrent generated-output races; no dependencies were added.
+
+- 2026-11-08 — BD4 — Removed the hero format chips and Personal review
+  link; identifiers and cover format badges remain. Added a borderless,
+  transparent inline status with tone icon, label, rotating down arrow and
+  emerald keyboard focus outline; offline uses a non-interactive icon/label.
+  Reused viewport positioning without changing pill/icon/badge behavior.
+  Checked light/dark layouts at 360/768/1440 px, keyboard selection, reduced
+  motion, optimistic updates and offline rendering. Svelte check (zero
+  errors/warnings), production build, 201 bookview unit tests and 42 targeted
+  E2E tests pass. Browser tests used an isolated localhost static server to
+  avoid shared-checkout preview/build interference. Hero screenshots:
+  [before](../plans/assets/book-detail-bd4-before.png) /
+  [after](../plans/assets/book-detail-bd4-after.png).
+
+- 2026-11-08 — BD3 — Added `book_reviews` migration 00007, sqlc queries,
+  transaction-scoped visibility checks, own-review upsert/delete and admin
+  moderation. Lists pin the viewer's review separately, count all reviews and
+  use viewer/book-bound update-time/ID cursors. Mounted all four session API
+  routes with cookie-protected writes and added the typed BD7 client. Private
+  notes and UI components are untouched. The shared API client now handles
+  empty 204 delete responses. Targeted Go migration/catalog/HTTP/app tests,
+  vet, sqlc diff, Svelte/TypeScript check (zero errors/warnings), and 11 web
+  client tests pass. JSON shape and signatures are recorded in the BD3 handoff.
+
+- 2026-11-08 — BD2 — Implemented automatic status at first positive progress
+  and completion at 99%, preserving manual states and newer status clocks.
+  Re-reading resets progress/locator once and splits the next reading attempt
+  at `started_at`. Migration 00006 corrects existing books with unique pullable
+  revisions. Added `ReadingAutoUpdateUserBookStatus` and `ReadingResetProgress`;
+  push/pull DTOs are unchanged. Offline replay mirrors the rules without adding
+  mutations. Targeted Go tests, sqlc diff, web check and 118 targeted frontend
+  tests pass; unrelated concurrent work is preserved.
 
 - 2026-11-08 — BD (planning) — Split the book detail page request into
   R1-R13 and eight tasks (BD1-BD8) in three waves. Root cause of the

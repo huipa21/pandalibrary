@@ -6,6 +6,13 @@ afterEach(() => {
 });
 
 describe('API client', () => {
+	it('accepts a 204 response without attempting to parse JSON', async () => {
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+		await expect(createApiClient({ fetcher }).request<void>('/books/1/reviews/me', {
+			method: 'DELETE'
+		})).resolves.toBeUndefined();
+	});
+
 	it('exposes RFC problem details and the HTTP status', async () => {
 		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
 			new Response(

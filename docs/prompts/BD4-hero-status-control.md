@@ -1,6 +1,6 @@
 # BD4: Hero cleanup and borderless status control
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline (`d6014b0`)
 - Can run in parallel with: BD1, BD2, BD3, BD5, BD6
 - Branch/worktree: `task/bd4` in `..\pandalibrary-bd4`
@@ -80,11 +80,11 @@ variant only; do not change the others), the hero assertions in
 
 ## Acceptance criteria
 
-- [ ] R7, R8, R9 are visible on the Details tab at 360/768/1440 px. The
+- [x] R7, R8, R9 are visible on the Details tab at 360/768/1440 px. The
       stars and the status share one baseline.
-- [ ] `pill`, `icon` and `badge` render exactly as before (LogSummary, quick
+- [x] `pill`, `icon` and `badge` render exactly as before (LogSummary, quick
       view and tiles are unchanged).
-- [ ] Targeted tests pass.
+- [x] Targeted tests pass.
 
 ## Validation commands (targeted only)
 
@@ -99,3 +99,23 @@ pnpm --dir web exec playwright test src/lib/bookview/details/details.e2e.ts src/
 Set this prompt to Done, update the BD4 row/log in
 [progress/README.md](../progress/README.md), and attach before/after
 screenshots of the hero row.
+
+### Completed 2026-11-08
+
+- Added the hero-only `inline` variant, retaining the existing accessible
+  name, keyboard handling, optimistic update and error line. Its menu reuses
+  the badge's viewport positioning helper for flipping/clamping; the other
+  variants keep their existing appearance and behavior.
+- Removed the hero format chips and review link, kept identifier links,
+  aligned the rating/status icons, and made the offline status a borderless,
+  non-interactive icon and label without a chevron. Message keys remain.
+- Verified light/dark layouts at 360, 768 and 1440 px, keyboard opening,
+  reduced motion, optimistic selection, menu bounds and offline rendering.
+- Validation: Svelte/TypeScript check has zero errors/warnings; 201 bookview
+  unit tests and all 42 targeted Details/quick-view/cover E2E tests pass.
+  Production build passes. Browser tests used a session-local configuration
+  and localhost static server on port 4185 to avoid concurrent preview/build
+  interference in the shared checkout.
+- Hero screenshots: [before](../plans/assets/book-detail-bd4-before.png),
+  [after](../plans/assets/book-detail-bd4-after.png). The E2E visual test also
+  attaches all six light/dark viewport screenshots.

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { pushMutation, SyncError } from '#lib/reader/api.js';
 import { notifyBookStateChanged } from './events.js';
 import {
-	isUserBook, previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, statusTone,
+	autoStatus, AUTO_FINISH_THRESHOLD, isUserBook, previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, statusTone,
 	userBookFromState, type UserBook
 } from './user-book.js';
 
@@ -20,6 +20,27 @@ const current: UserBook = {
 afterEach(() => {
 	vi.resetAllMocks();
 	vi.useRealTimers();
+});
+
+describe('automatic status', () => {
+	it('uses the 99% completion threshold', () => {
+		expect(AUTO_FINISH_THRESHOLD).toBe(0.99);
+	});
+
+	for (const current of [null, ...READ_STATUSES]) {
+		for (const percentage of [0, 0.001, 0.5, 0.989, 0.99, 1]) {
+			it(`${current} at ${percentage}`, () => {
+				let expected = null;
+				if (current === null || current === 'unread' || current === 'want_to_read') {
+					if (percentage > 0) expected = 'reading';
+					if (percentage >= 0.99) expected = 'finished';
+				} else if ((current === 'reading' || current === 'rereading') && percentage >= 0.99) {
+					expected = 'finished';
+				}
+				expect(autoStatus(current, percentage)).toBe(expected);
+			});
+		}
+	}
 });
 
 describe('saveUserBook', () => {

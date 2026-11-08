@@ -149,6 +149,28 @@ func TestRawRoundTripUnknownAndUserIsolation(t *testing.T) {
 	}
 }
 
+func TestPutAutomaticReadingStatus(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	viewer := reading.Viewer{UserID: 2}
+	f.put(t, "epub", "/body/DocFragment[1]/body/p[1].0", "device")
+	state, err := f.reading.GetBookState(ctx, viewer, 101)
+	if err != nil || state.UserBook == nil || state.UserBook.Status != "reading" || state.UserBook.StartedAt == nil {
+		t.Fatalf("KOReader first progress status = %+v, %v", state.UserBook, err)
+	}
+	f.now = f.now.Add(time.Second)
+	in := input("epub", "/body/DocFragment[9]/body/p[1].0", "device")
+	p := 0.99
+	in.Percentage = &p
+	if _, err := f.service.Put(ctx, viewer, in); err != nil {
+		t.Fatal(err)
+	}
+	state, err = f.reading.GetBookState(ctx, viewer, 101)
+	if err != nil || state.UserBook.Status != "finished" || state.UserBook.FinishedAt == nil {
+		t.Fatalf("KOReader completion status = %+v, %v", state.UserBook, err)
+	}
+}
+
 func TestKnownVisibleBridgeAllFormatsAndVisibility(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()

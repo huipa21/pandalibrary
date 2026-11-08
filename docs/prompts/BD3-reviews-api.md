@@ -1,6 +1,6 @@
 # BD3: Multi-user book reviews: storage, API, web client
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline (`d6014b0`)
 - Can run in parallel with: BD1, BD2, BD4, BD5, BD6
 - Branch/worktree: `task/bd3` in `..\pandalibrary-bd3`
@@ -37,7 +37,7 @@ web has a typed client, which BD7 uses for the Reviews card.
 ## Scope
 
 **Owns:** `internal/db/migrations/00007_book_reviews.sql` (+ `migrations.sum`,
-migration test case), `internal/db/queries/reviews.sql` (new) + generated
+`migrations/reviews_test.go`), `internal/db/queries/reviews.sql` (new) + generated
 sqlc, `internal/catalog/reviews.go` + `reviews_test.go` (new),
 `internal/httpapi/reviews.go` + `reviews_test.go` (new), one
 `httpapi.ReviewMount(...)` line in `internal/app/app.go`,
@@ -123,11 +123,11 @@ sqlc, `internal/catalog/reviews.go` + `reviews_test.go` (new),
 
 ## Acceptance criteria
 
-- [ ] The API matches the plan contract (or the plan is updated in the same
+- [x] The API matches the plan contract (or the plan is updated in the same
       commit).
-- [ ] No private data leaks: notes are untouched, and reviews respect book
+- [x] No private data leaks: notes are untouched, and reviews respect book
       visibility for both reading and writing.
-- [ ] Go service/HTTP/migration tests and the web client tests pass.
+- [x] Go service/HTTP/migration tests and the web client tests pass.
       `task sqlc:check` is clean.
 
 ## Validation commands (targeted only)
@@ -141,6 +141,52 @@ pnpm --dir web exec vitest run src/lib/bookview/reviews-api.test.ts
 
 ## Hand-off
 
-Set this prompt to Done, update the BD3 row/log in
-[progress/README.md](../progress/README.md), and record the final JSON shape
-and client signatures for BD7.
+Implemented 2026-11-08 with migration **00007**, after BD2's **00006**.
+No note data or UI components were changed.
+
+Final JSON contract for BD7:
+
+```ts
+type ReviewAuthor = { id: number; display_name: string };
+type Review = {
+  id: number;
+  book_id: number;
+  author: ReviewAuthor;
+  body: string;
+  created_at: string; // RFC3339, UTC
+  updated_at: string; // RFC3339, UTC
+  mine: boolean;
+};
+type ReviewPage = {
+  mine: Review | null;
+  items: Review[];
+  next_cursor: string | null;
+  total: number;
+};
+```
+
+`items` excludes the viewer's review and sorts by `updated_at DESC, id DESC`.
+`total` includes the viewer's review. Cursors are bound to the book and viewer.
+`PUT` returns `{ review: Review }`; both successful deletes return empty `204`
+responses, now supported by the shared API client. Missing reviews return `404`.
+
+Exports from `web/src/lib/bookview/reviews-api.ts`:
+
+```ts
+listReviews(bookId: number, options?: {
+  cursor?: string | null; limit?: number; signal?: AbortSignal;
+}): Promise<ReviewPage>;
+saveMyReview(bookId: number, body: string): Promise<Review>;
+deleteMyReview(bookId: number): Promise<void>;
+deleteReview(bookId: number, reviewId: number): Promise<void>;
+```
+
+IDs must be positive safe integers. Page limits are 1-50, default 20.
+Bodies are trimmed and validated as 1-10,000 Unicode code points; NUL
+characters are rejected to avoid SQLite's NUL-terminated text-length behavior.
+These validation failures raise `RangeError` in the client and HTTP `400` on
+the server. Request failures propagate unchanged.
+
+Verified: `task sqlc:check`, the targeted Go packages above, targeted Go vet,
+`pnpm --dir web check` (zero errors/warnings), and the reviews API plus shared
+API client Vitest tests (11 passed).

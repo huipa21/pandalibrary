@@ -1,6 +1,6 @@
 # BD5: Shelf tags with remove (X) and the Add-to-shelf popover button
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline (`d6014b0`)
 - Can run in parallel with: BD1, BD2, BD3, BD4, BD6
 - Branch/worktree: `task/bd5` in `..\pandalibrary-bd5`
@@ -131,12 +131,12 @@ the default rendering stays the same), a new section appended to
 
 ## Acceptance criteria
 
-- [ ] The plan's "Shelf membership" contract is implemented as written.
-- [ ] R2: tags with a corner X, removal only after confirmation, and
+- [x] The plan's "Shelf membership" contract is implemented as written.
+- [x] R2: tags with a corner X, removal only after confirmation, and
       permissions respected.
-- [ ] The quick view `ShelfPopover` is unchanged by default (the quick view
+- [x] The quick view `ShelfPopover` is unchanged by default (the quick view
       e2e still passes).
-- [ ] Targeted tests pass.
+- [x] Targeted tests pass.
 
 ## Validation commands (targeted only)
 
@@ -149,6 +149,29 @@ pnpm --dir web exec playwright test src/lib/bookview/quickview/quickview.e2e.ts 
 
 ## Hand-off
 
-Set this prompt to Done, update the BD5 row/log in
-[progress/README.md](../progress/README.md), and record the final store API
-and the test harness used, so BD7 can move the tests onto the real tab.
+- `createBookShelves(getBookId: () => number | null)` returns reactive
+  `items`, `status`, translated `error`, derived `memberIds`, `canRemove`,
+  async `remove`, and `reload(): void`. Call the factory during component
+  initialization; its effects manage book changes, abort/cleanup, and the
+  shelf-change listener. Successful viewer loads are cached for the store;
+  failed viewer loads can be retried. Optimistic removals roll back in sorted
+  order, ignore stale book responses, and ignore their own change event.
+- BD7 should pass this store to `BookShelfTags` with `bookTitle` and
+  `offline`, and share `memberIds` with
+  `<ShelfPopover variant="button" placement="down">`. The icon/up defaults
+  are unchanged. The downward panel clamps horizontally and limits its
+  scrollable height to the viewport.
+- `shelves.e2e.ts` copies the existing in-memory Vite fixture build without
+  changing `covers.e2e.ts`. Its mocked APIs supply an owned private shelf,
+  Favorites, an unmanageable shared shelf, and an addable shelf. The fixture
+  uses the actual store, not a second implementation of its mutations.
+  Nine browser cases cover all BD5.4 hand-off cases, error/retry, empty-state
+  focus, offline read-only tags, book changes, viewport bounds, and Chinese
+  confirmation/notices. Move these assertions to the real Details tab in
+  BD7; `DetailsTab.svelte` and the old bottom shelf form remain untouched.
+- Verified: Svelte check with zero errors/warnings; 21 targeted Details unit
+  tests (13 membership tests); production build; all 38 targeted browser
+  tests across shelf tags, quick view, and covers. Browser/build validation
+  used an isolated frontend snapshot, existing dependencies, and a
+  task-owned preview to avoid concurrent generated-file/build races in the
+  shared checkout. No new dependencies or application test routes.

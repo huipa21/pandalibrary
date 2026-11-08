@@ -1,6 +1,6 @@
 # BD2: Automatic reading-status lifecycle and re-read restart
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline (`d6014b0`)
 - Can run in parallel with: BD1, BD3, BD4, BD5, BD6
 - Branch/worktree: `task/bd2` in `..\pandalibrary-bd2`
@@ -138,13 +138,13 @@ review files (BD3), and the KOReader protocol code.
 
 ## Acceptance criteria
 
-- [ ] R10: Unread → Reading on first progress; Reading/Re-reading → Read at
+- [x] R10: Unread → Reading on first progress; Reading/Re-reading → Read at
       ≥ 99%; manual states unchanged; re-read resets progress and starts a
       new attempt. This works for web, KOReader and offline displays.
-- [ ] Existing libraries are corrected by 00006, and clients pull the
+- [x] Existing libraries are corrected by 00006, and clients pull the
       corrected rows.
-- [ ] LWW is safe: a newer client status write is never overwritten.
-- [ ] Go and web tests above pass. `task sqlc:check` is clean.
+- [x] LWW is safe: a newer client status write is never overwritten.
+- [x] Go and web tests above pass. `task sqlc:check` is clean.
 
 ## Validation commands (targeted only)
 
@@ -161,3 +161,11 @@ Set this prompt to Done, update the BD2 row/log in
 [progress/README.md](../progress/README.md), and note the final query names,
 the threshold, and whether the push response or the pull changed shape (it
 should not).
+
+Implemented on 2026-11-08. New queries: `ReadingAutoUpdateUserBookStatus`
+and `ReadingResetProgress`; the existing `ReadingGetUserBook` reads the
+current status within the write transaction. The completion threshold is
+`0.99` in Go, TypeScript and migration 00006. Push/pull response shapes are
+unchanged: derived status writes and re-read resets receive their own revisions
+and arrive through the existing pull arrays. Entering Re-reading without a
+start date also initializes it from the accepted mutation timestamp.

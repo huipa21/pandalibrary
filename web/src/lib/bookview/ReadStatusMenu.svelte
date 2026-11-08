@@ -10,7 +10,7 @@
 	interface Props {
 		bookId: number;
 		userBook: UserBook | null;
-		variant?: 'pill' | 'icon' | 'badge';
+		variant?: 'pill' | 'icon' | 'badge' | 'inline';
 		loadCurrentUserBook?: (bookId: number) => Promise<UserBook | null>;
 	}
 
@@ -23,7 +23,8 @@
 	let root = $state<HTMLDivElement | null>(null);
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let menu = $state<HTMLDivElement | null>(null);
-	let badgePosition = $state<{ left: number; top: number } | null>(null);
+	let menuPosition = $state<{ left: number; top: number } | null>(null);
+	const positioned = $derived(variant === 'badge' || variant === 'inline');
 	let propVersion = 0;
 	const current = $derived(optimistic ?? userBook);
 	const selected = $derived(current?.status ?? 'unread');
@@ -43,16 +44,16 @@
 	});
 
 	$effect(() => {
-		if (!open || variant !== 'badge') return;
-		window.addEventListener('resize', positionBadgeMenu);
-		window.addEventListener('scroll', positionBadgeMenu, true);
+		if (!open || !positioned) return;
+		window.addEventListener('resize', positionMenu);
+		window.addEventListener('scroll', positionMenu, true);
 		return () => {
-			window.removeEventListener('resize', positionBadgeMenu);
-			window.removeEventListener('scroll', positionBadgeMenu, true);
+			window.removeEventListener('resize', positionMenu);
+			window.removeEventListener('scroll', positionMenu, true);
 		};
 	});
 
-	function positionBadgeMenu() {
+	function positionMenu() {
 		if (!root || !trigger || !menu) return;
 		const triggerBox = trigger.getBoundingClientRect();
 		const menuBox = menu.getBoundingClientRect();
@@ -66,12 +67,12 @@
 		const desiredTop = opensUp ? triggerBox.top - gap - menuBox.height : triggerBox.bottom + gap;
 		const left = Math.max(padding, Math.min(triggerBox.left, width - padding - menuBox.width));
 		const top = Math.max(padding, Math.min(desiredTop, height - padding - menuBox.height));
-		badgePosition = { left, top };
+		menuPosition = { left, top };
 	}
 
 	async function openMenu(position: 'first' | 'last' | 'current' = 'current') {
 		if (busy) return;
-		badgePosition = null;
+		menuPosition = null;
 		open = true;
 		await tick();
 		if (!open) return;
@@ -90,7 +91,9 @@
 				error = m['bc4.menu_failed']();
 				return;
 			}
-			positionBadgeMenu();
+		}
+		if (positioned) {
+			positionMenu();
 			await tick();
 			if (!open) return;
 		}
@@ -191,6 +194,8 @@
 			? 'inline-flex size-7 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/5 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 aria-disabled:opacity-60'
 			: variant === 'icon'
 				? 'inline-flex size-10 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 aria-disabled:opacity-60'
+				: variant === 'inline'
+					? 'inline-flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 text-sm font-medium text-slate-800 hover:bg-slate-900/5 focus-visible:outline-2 focus-visible:outline-emerald-700 aria-disabled:opacity-60'
 				: 'inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 aria-disabled:opacity-60'}
 		aria-label={variant === 'badge'
 			? m['bc1.status_badge']({ status: readStatusLabel(selected) })
@@ -204,8 +209,12 @@
 		onclick={toggleMenu}
 		onkeydown={triggerKey}
 	>
-		<StatusIcon status={selected} class={`size-5 shrink-0 ${statusTone(selected).text}`} />
+		<StatusIcon status={selected} class={`${variant === 'inline' ? 'size-4' : 'size-5'} shrink-0 ${statusTone(selected).text}`} />
 		{#if variant === 'pill'}<span>{readStatusLabel(selected)}</span><Icon name="chevron-down" class="size-4" />{/if}
+		{#if variant === 'inline'}
+			<span>{readStatusLabel(selected)}</span>
+			<Icon name="chevron-down" class={`size-4 text-slate-500 transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`} />
+		{/if}
 	</button>
 	{#if open}
 		<div
@@ -216,9 +225,9 @@
 			aria-label={m['bv3.status_menu']()}
 			popover={variant === 'badge' ? 'manual' : undefined}
 			class="absolute top-full z-30 mt-2 max-h-[calc(100dvh-1rem)] w-48 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
-			style={variant === 'badge'
-				? badgePosition
-					? `position: fixed; inset: auto; left: ${badgePosition.left}px; top: ${badgePosition.top}px; margin: 0; z-index: 100`
+			style={positioned
+				? menuPosition
+					? `position: fixed; inset: auto; left: ${menuPosition.left}px; top: ${menuPosition.top}px; margin: 0; z-index: 100`
 					: 'position: fixed; inset: auto; left: 0; top: 0; margin: 0; z-index: 100; visibility: hidden'
 				: undefined}
 			onkeydown={menuKey}

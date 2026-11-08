@@ -120,6 +120,8 @@ export function createApiClient({ basePath = '/api/v1', fetcher = fetch }: ApiCl
 				throw await toApiError(response);
 			}
 
+			if (response.status === 204) return undefined as TResponse;
+
 			return (await response.json()) as TResponse;
 		}
 	};

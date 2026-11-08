@@ -8,6 +8,17 @@ export const READ_STATUSES = [
 ] as const;
 export type ReadStatus = (typeof READ_STATUSES)[number];
 
+export const AUTO_FINISH_THRESHOLD = 0.99;
+
+export function autoStatus(current: ReadStatus | null, percentage: number): ReadStatus | null {
+	const status = current ?? 'unread';
+	if (['unread', 'want_to_read', 'reading', 'rereading'].includes(status)) {
+		if (percentage >= AUTO_FINISH_THRESHOLD) return 'finished';
+		if (percentage > 0 && (status === 'unread' || status === 'want_to_read')) return 'reading';
+	}
+	return null;
+}
+
 export function readStatusLabel(status: ReadStatus): string {
 	switch (status) {
 		case 'unread': return m['bv3.status_unread']();

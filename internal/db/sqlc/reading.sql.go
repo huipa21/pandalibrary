@@ -10,6 +10,54 @@ import (
 	"database/sql"
 )
 
+const readingAutoUpdateUserBookStatus = `-- name: ReadingAutoUpdateUserBookStatus :execrows
+INSERT INTO user_books (user_id, book_id, status, started_at, finished_at, updated_at, rev)
+SELECT ?1, b.id, ?2, ?3,
+       ?4,
+       ?3, ?5
+FROM books b
+WHERE b.id = ?6
+AND (CAST(?7 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
+)
+ON CONFLICT (user_id, book_id) DO UPDATE SET
+    status = excluded.status,
+    started_at = COALESCE(user_books.started_at, excluded.started_at),
+    finished_at = CASE WHEN excluded.status = 'finished' THEN excluded.finished_at ELSE user_books.finished_at END,
+    updated_at = excluded.updated_at, rev = excluded.rev
+WHERE excluded.updated_at > user_books.updated_at
+`
+
+type ReadingAutoUpdateUserBookStatusParams struct {
+	UserID     int64
+	Status     string
+	UpdatedAt  sql.NullInt64
+	FinishedAt sql.NullInt64
+	Rev        int64
+	BookID     int64
+	IsAdmin    int64
+}
+
+func (q *Queries) ReadingAutoUpdateUserBookStatus(ctx context.Context, arg ReadingAutoUpdateUserBookStatusParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, readingAutoUpdateUserBookStatus,
+		arg.UserID,
+		arg.Status,
+		arg.UpdatedAt,
+		arg.FinishedAt,
+		arg.Rev,
+		arg.BookID,
+		arg.IsAdmin,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const readingCountBookSessions = `-- name: ReadingCountBookSessions :one
 SELECT COUNT(*) FROM reading_sessions
 WHERE user_id = ?1 AND book_id = ?2
@@ -1386,6 +1434,29 @@ WHERE n.highlight_id = ?1 AND n.deleted_at IS NULL AND h.deleted_at IS NULL
 
 func (q *Queries) ReadingReindexHighlightNotesFTS(ctx context.Context, highlightID sql.NullString) error {
 	_, err := q.db.ExecContext(ctx, readingReindexHighlightNotesFTS, highlightID)
+	return err
+}
+
+const readingResetProgress = `-- name: ReadingResetProgress :exec
+UPDATE reading_progress
+SET percentage = 0, locator = NULL, updated_at = ?1, rev = ?2
+WHERE user_id = ?3 AND book_id = ?4
+`
+
+type ReadingResetProgressParams struct {
+	UpdatedAt int64
+	Rev       int64
+	UserID    int64
+	BookID    int64
+}
+
+func (q *Queries) ReadingResetProgress(ctx context.Context, arg ReadingResetProgressParams) error {
+	_, err := q.db.ExecContext(ctx, readingResetProgress,
+		arg.UpdatedAt,
+		arg.Rev,
+		arg.UserID,
+		arg.BookID,
+	)
 	return err
 }
 

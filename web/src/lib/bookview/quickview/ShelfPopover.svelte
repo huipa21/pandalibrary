@@ -8,7 +8,12 @@
 	import type { Shelf } from '#lib/shelves/types.js';
 	import Icon from '../Icon.svelte';
 
-	let { bookId, memberIds = [] }: { bookId: number; memberIds?: readonly number[] } = $props();
+	let { bookId, memberIds = [], variant = 'icon', placement = 'up' }: {
+		bookId: number;
+		memberIds?: readonly number[];
+		variant?: 'icon' | 'button';
+		placement?: 'up' | 'down';
+	} = $props();
 	const panelId = $props.id();
 	let open = $state(false);
 	let status = $state<'loading' | 'ready' | 'error'>('loading');
@@ -20,6 +25,8 @@
 	let root = $state<HTMLDivElement | null>(null);
 	let trigger = $state<HTMLButtonElement | null>(null);
 	let panel = $state<HTMLDivElement | null>(null);
+	let panelOffset = $state(0);
+	let panelMaxHeight = $state<number | undefined>(undefined);
 	let controller: AbortController | null = null;
 
 	onDestroy(() => controller?.abort());
@@ -60,8 +67,17 @@
 		notice = '';
 		error = '';
 		await tick();
+		clampPanel();
 		panel?.focus();
 		void load();
+	}
+
+	function clampPanel() {
+		if (!open || placement !== 'down' || !panel) return;
+		const bounds = panel.getBoundingClientRect();
+		const left = bounds.left - panelOffset;
+		panelOffset = Math.max(16 - left, Math.min(0, window.innerWidth - 16 - left - bounds.width));
+		panelMaxHeight = Math.max(0, window.innerHeight - 16 - bounds.top);
 	}
 
 	function hide(restoreFocus = false) {
@@ -117,19 +133,22 @@
 </script>
 
 <svelte:document onpointerdown={outside} onfocusin={outside} />
+<svelte:window onresize={clampPanel} />
 
 <div bind:this={root} class="relative inline-block">
 	<button
 		bind:this={trigger}
 		type="button"
-		class="inline-flex size-10 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700"
+		class={variant === 'button'
+			? 'inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700'
+			: 'inline-flex size-10 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700'}
 		aria-label={m['bv5.add_to_shelf']()}
 		title={m['bv5.add_to_shelf']()}
 		aria-haspopup="dialog"
 		aria-expanded={open}
 		aria-controls={open ? panelId : undefined}
 		onclick={() => (open ? hide() : void show())}
-	><Icon name="folder-plus" /></button>
+	><Icon name="folder-plus" />{#if variant === 'button'}{m['shelves.book.add']()}{/if}</button>
 	{#if open}
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<div
@@ -138,7 +157,9 @@
 			role="dialog"
 			aria-label={m['bv5.add_to_shelf']()}
 			tabindex="-1"
-			class="absolute right-0 bottom-full z-20 mb-2 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-2 text-left shadow-lg focus:outline-none"
+			class={`absolute z-20 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-2 text-left shadow-lg focus:outline-none ${placement === 'down' ? 'top-full left-0 mt-2 overflow-y-auto' : 'right-0 bottom-full mb-2'}`}
+			style:margin-left={placement === 'down' ? `${panelOffset}px` : undefined}
+			style:max-height={placement === 'down' && panelMaxHeight !== undefined ? `${panelMaxHeight}px` : undefined}
 			onkeydown={keydown}
 		>
 			<p class="px-2 pt-1 pb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">{m['bv5.add_to_shelf']()}</p>

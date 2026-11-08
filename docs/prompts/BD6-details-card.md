@@ -1,6 +1,6 @@
 # BD6: Details card with an edit icon and metadata sources
 
-- Status: Ready
+- Status: Done
 - Wave: 1. Dependencies merged: baseline (`d6014b0`)
 - Can run in parallel with: BD1, BD2, BD3, BD4, BD5
 - Branch/worktree: `task/bd6` in `..\pandalibrary-bd6`
@@ -83,10 +83,10 @@ line and the button), `book-context.svelte.ts`, and the edit page.
 
 ## Acceptance criteria
 
-- [ ] R5: an admin can open the metadata editor from the Details card's top
+- [x] R5: an admin can open the metadata editor from the Details card's top
       right icon. It is hidden for non-admins and offline.
-- [ ] R6: the metadata and cover sources are visible inside the Details card.
-- [ ] The date pencils still work. Targeted tests pass.
+- [x] R6: the metadata and cover sources are visible inside the Details card.
+- [x] The date pencils still work. Targeted tests pass.
 
 ## Validation commands (targeted only)
 
@@ -97,7 +97,14 @@ pnpm --dir web exec playwright test src/lib/bookview/details/details.e2e.ts
 
 ## Hand-off
 
-Set this prompt to Done, update the BD6 row/log in
-[progress/README.md](../progress/README.md), and tell BD7 which old elements
-in `DetailsTab` are now redundant (the provenance card and the cover-source
-line).
+`DetailsPanel` reads permission from the book context unless `canEdit` is
+provided, and also hides the link on a live connectivity loss. The source
+rows use raw provider names in first-seen order.
+
+BD7 should remove the now-redundant Metadata sources card, cover-source line,
+and Edit metadata button from `DetailsTab`; the new Details card already
+provides their replacements.
+
+Svelte/TypeScript check and production build pass. The targeted Details,
+metadata editor, offline and real-server browser suites pass (23 tests); an
+isolated embedded server was used to avoid concurrent preview build races.

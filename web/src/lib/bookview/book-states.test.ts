@@ -359,6 +359,24 @@ describe('bookState', () => {
 		expect(state).toMatchObject({ status: 'unread', percentage: 0.5, loading: false });
 	});
 
+	it('shows reading for queued first progress on an unread book offline', async () => {
+		online = false;
+		mocks.offlineAvailable.mockReturnValue(true);
+		mocks.rows.mockResolvedValue([{ account: 1, entity: 'user_books', key: '1', value: {
+			book_id: 1, status: 'unread', rating: null, started_at: null, finished_at: null,
+			updated_at: '2026-01-01T00:00:00Z', rev: 1
+		} }]);
+		mocks.outbox.mockResolvedValue([{ sequence: 1, account: 1, status: 'pending', mutation: {
+			entity: 'reading_progress', key: '1', op: 'upsert', updated_at: Date.UTC(2026, 1, 1),
+			data: { book_id: 1, book_file_id: null, source: 'web', percentage: 0.4,
+				locator: null, device: '', device_id: '' }
+		} }]);
+		const state = store.bookState(1);
+		await settle();
+		expect(state).toMatchObject({ status: 'reading', percentage: 0.4, loading: false, error: false });
+		expect(mocks.request).not.toHaveBeenCalled();
+	});
+
 	it('reports unavailable state instead of claiming unread when offline without storage', async () => {
 		online = false;
 		const warn = vi.spyOn(console, 'warn');

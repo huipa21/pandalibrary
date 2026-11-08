@@ -227,7 +227,8 @@ Change them here and in the affected prompts before launching a wave.
     `items` excludes `mine` and is ordered `updated_at DESC, id DESC`.
     `limit` is 1-50 (default 20). `404` if the viewer cannot see the book.
   - `PUT /api/v1/books/{id}/reviews/me` body `{ "body": string }` (trimmed,
-    1-10,000 characters) → `200 { "review": Review }` (create or update).
+    1-10,000 Unicode code points; NUL characters rejected because SQLite
+    text length stops at NUL) → `200 { "review": Review }` (create or update).
   - `DELETE /api/v1/books/{id}/reviews/me` → `204` (`404` if none).
   - `DELETE /api/v1/books/{id}/reviews/{reviewId}` → admin only, `204`.
   - `Review = { "id": number, "book_id": number, "author": { "id": number,

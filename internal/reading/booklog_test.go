@@ -24,6 +24,7 @@ func TestDeriveAttempts(t *testing.T) {
 		name       string
 		sessions   []attemptSession
 		finishedAt *int64
+		restartAt  *int64
 		numbers    []int
 		statuses   []string
 		maxima     []*float64
@@ -76,6 +77,26 @@ func TestDeriveAttempts(t *testing.T) {
 			maxima:   []*float64{percent(0.96)},
 		},
 		{
+			name: "explicit restart splits an unfinished attempt inclusively",
+			sessions: []attemptSession{
+				session(1000, percent(0.1), percent(0.4)),
+				session(5000, percent(0.4), percent(0.5)),
+				session(6000, percent(0.5), percent(0.6)),
+			},
+			restartAt: &finished,
+			numbers:   []int{1, 2, 2}, statuses: []string{attemptStopped, attemptInProgress},
+			maxima: []*float64{percent(0.4), percent(0.6)},
+		},
+		{
+			name: "restart before first session does not split",
+			sessions: []attemptSession{
+				session(5000, nil, nil), session(6000, nil, percent(0.5)),
+			},
+			restartAt: &finished,
+			numbers:   []int{1, 1}, statuses: []string{attemptInProgress},
+			maxima: []*float64{percent(0.5)},
+		},
+		{
 			name: "finished_at before the first session does not split",
 			sessions: []attemptSession{
 				session(6000, percent(0), percent(0.4)), session(7000, percent(0.4), percent(0.5)),
@@ -88,7 +109,7 @@ func TestDeriveAttempts(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			attempts, numbers := deriveAttempts(test.sessions, test.finishedAt)
+			attempts, numbers := deriveAttempts(test.sessions, test.finishedAt, test.restartAt)
 			if !reflect.DeepEqual(numbers, test.numbers) {
 				t.Fatalf("numbers = %v, want %v", numbers, test.numbers)
 			}
@@ -110,7 +131,7 @@ func TestDeriveAttempts(t *testing.T) {
 	attempts, _ := deriveAttempts([]attemptSession{
 		{StartedAt: 1000, EndedAt: 9000, ActiveSeconds: 30, Source: "web"},
 		{StartedAt: 2000, EndedAt: 3000, ActiveSeconds: 40, Source: "koreader"},
-	}, nil)
+	}, nil, nil)
 	if len(attempts) != 1 || attempts[0].Sessions != 2 || attempts[0].Seconds != 70 ||
 		!attempts[0].StartedAt.Equal(time.UnixMilli(1000)) || !attempts[0].EndedAt.Equal(time.UnixMilli(9000)) ||
 		!reflect.DeepEqual(attempts[0].Sources, []string{"koreader", "web"}) {

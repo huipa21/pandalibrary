@@ -1,4 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build } from 'vite';
 import type { Book } from '#lib/catalog/types.js';
 import type { Note, Progress } from '#lib/reader/types.js';
 import type { UserBook } from '../user-book.js';
@@ -67,8 +71,10 @@ function statusValue(value: unknown): UserBook['status'] {
 	}
 }
 
-async function setup(page: Page, role = 'user') {
+async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 	const state: {
+		book: Book;
+		online: boolean;
 		userBook: UserBook | null;
 		progress: Progress;
 		notes: Note[];
@@ -76,6 +82,8 @@ async function setup(page: Page, role = 'user') {
 		rejectNext: boolean;
 		shelfAdds: number;
 	} = {
+		book,
+		online: true,
 		userBook: { status: 'reading', rating: 6, started_at: null, finished_at: null, updated_at: stamp, rev: 1 },
 		progress: { book_file_id: 31, source: 'web', locator: null, percentage: 0.21, device: 'Web', device_id: 'device', updated_at: stamp, rev: 1 },
 		notes: [],
@@ -104,10 +112,11 @@ async function setup(page: Page, role = 'user') {
 	}));
 	let rev = 1;
 	await page.route('**/api/v1/**', async (route) => {
+		if (!state.online) return route.abort('internetdisconnected');
 		const url = new URL(route.request().url());
 		const path = url.pathname.slice('/api/v1'.length);
 		if (path === '/setup') return route.fulfill({ json: { required: false } });
-		if (path === '/auth/me') return route.fulfill({ json: { user: { id: 1, username: role, display_name: role, role, locale: 'en' } } });
+		if (path === '/auth/me') return route.fulfill({ json: { user: { id: 1, username: role, display_name: role, role, locale } } });
 		if (path === '/sync/pull') return route.fulfill({ json: { cursor: 0, user_books: [], reading_progress: [], highlights: [], bookmarks: [], notes: [], user_settings: [] } });
 		if (path === '/sync/push') {
 			const { mutations } = route.request().postDataJSON() as { mutations: CapturedMutation[] };
@@ -144,11 +153,12 @@ async function setup(page: Page, role = 'user') {
 			}
 			return route.fulfill({ json: { results: mutations.map((_, index) => ({ index, status: 'applied' })) } });
 		}
-		if (path === '/books/21') return route.fulfill({ json: { book } });
+		if (path === '/books/21') return route.fulfill({ json: { book: state.book } });
+		if (path === '/books/21/files/31') return route.fulfill({ contentType: 'application/epub+zip', body: 'book fixture' });
 		if (path === '/books') {
-			const items = url.searchParams.has('author_id') ? [book, authorBook]
-				: url.searchParams.has('series_id') ? [book, seriesBook]
-					: url.searchParams.has('tag_id') ? [seriesBook, tagBook] : [book];
+			const items = url.searchParams.has('author_id') ? [state.book, authorBook]
+				: url.searchParams.has('series_id') ? [state.book, seriesBook]
+					: url.searchParams.has('tag_id') ? [seriesBook, tagBook] : [state.book];
 			return route.fulfill({ json: { items, next_cursor: null } });
 		}
 		if (path === '/libraries/1') return route.fulfill({ json: { library: { id: 1, name: 'Fiction', slug: 'fiction', created_at: stamp, updated_at: stamp } } });
@@ -219,13 +229,14 @@ test('renders details, reading statistics, editions and related books responsive
 	await expect(relatedRegion.getByTitle('Earlier in the Series', { exact: true })).toHaveAttribute('href', '/books/23');
 	await expect(relatedRegion.getByTitle('A Similar Tale', { exact: true })).toHaveAttribute('href', '/books/24');
 	await expect(page.getByRole('heading', { name: 'Identifiers' })).toBeVisible();
-	await page.getByText('Metadata sources', { exact: true }).click();
-	await expect(page.getByText('title: import · fixture')).toBeVisible();
+	const provenance = page.locator('details').filter({ has: page.getByText('Metadata sources', { exact: true }) });
+	await provenance.locator('summary').click();
+	await expect(provenance.getByText('title: import · fixture')).toBeVisible();
 	// Per-file read and offline actions live on the Files tab (BV7), not in Details.
 	await expect(page.getByRole('heading', { name: 'Available formats' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Download for offline' })).toHaveCount(0);
 
-	for (const width of [1440, 1024, 390, 360]) {
+	for (const width of [1440, 1024, 768, 390, 360]) {
 		await page.setViewportSize({ width, height: 900 });
 		const dimensions = await page.evaluate(() => ({
 			viewport: document.documentElement.clientWidth,
@@ -254,6 +265,95 @@ test('renders details, reading statistics, editions and related books responsive
 	await page.getByRole('button', { name: 'Add to shelf', exact: true }).click();
 	await expect(page.getByText('Added to “My shelf”.')).toBeVisible();
 	expect(state.shelfAdds).toBe(1);
+});
+
+test('shows a borderless hero status without duplicate format chips or review link', async ({ page }, testInfo) => {
+	await setup(page);
+	await page.goto('/books/21');
+	const hero = page.locator('header').filter({ has: page.getByRole('heading', { name: book.title, exact: true }) });
+	const trigger = hero.getByRole('button', { name: 'Reading status: Reading', exact: true });
+	await expect(trigger).toBeVisible();
+	await expect(hero.getByText(/^(PDF|EPUB)$/)).toHaveCount(0);
+	await expect(hero.getByRole('link', { name: 'Personal review', exact: true })).toHaveCount(0);
+	await expect(hero.getByRole('link', { name: /Open Library:/ })).toBeVisible();
+	await expect(page.locator('.book-cover').first().getByText('EPUB', { exact: true })).toBeVisible();
+
+	for (const theme of ['light', 'dark']) {
+		await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+		for (const width of [360, 768, 1440]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.evaluate(() => window.scrollTo(0, 0));
+			await page.mouse.move(0, 0);
+			await expect(trigger).toHaveCSS('border-top-width', '0px');
+			await expect(trigger).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+			await expect(trigger).toHaveCSS('box-shadow', 'none');
+			await expect(trigger.locator('[data-status-icon]')).toHaveCSS('width', '16px');
+			const stars = await hero.getByRole('radiogroup').boundingBox();
+			const statusIcon = await trigger.locator('[data-status-icon]').boundingBox();
+			if (!stars || !statusIcon) throw new Error('Missing hero rating or status icon.');
+			expect(Math.abs(stars.y + stars.height / 2 - statusIcon.y - statusIcon.height / 2)).toBeLessThanOrEqual(2);
+			const screenshot = testInfo.outputPath(`bd4-hero-${theme}-${width}.png`);
+			await hero.screenshot({ path: screenshot });
+			await testInfo.attach(`Hero ${theme} ${width}px`, { path: screenshot, contentType: 'image/png' });
+		}
+		if (theme === 'dark') {
+			await expect(trigger).toHaveCSS('color', 'rgb(223, 226, 230)');
+			await expect(trigger.locator('svg').last()).toHaveCSS('color', 'rgb(160, 167, 175)');
+		}
+	}
+});
+
+test('opens the inline status with the keyboard and updates it optimistically', async ({ page }) => {
+	const state = await setup(page);
+	if (!state.userBook) throw new Error('Expected the fixture user book.');
+	state.userBook.status = 'unread';
+	await page.goto('/books/21');
+	const hero = page.locator('header').filter({ has: page.getByRole('heading', { name: book.title, exact: true }) });
+	const trigger = hero.getByRole('button', { name: /Reading status:/ });
+	const chevron = trigger.locator('svg').last();
+	await trigger.focus();
+	await expect(trigger).toHaveCSS('outline-width', '2px');
+	await trigger.press('Enter');
+	await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByRole('menuitemradio', { name: 'Unread', exact: true })).toBeFocused();
+	await expect(chevron).toHaveCSS('rotate', '180deg');
+	await page.keyboard.press('Escape');
+	await expect(trigger).toBeFocused();
+	await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await expect(chevron).toHaveCSS('transition-property', 'none');
+	await trigger.press('ArrowDown');
+	await expect(page.getByRole('menuitemradio', { name: 'Unread', exact: true })).toBeFocused();
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await expect(page.getByRole('menuitemradio', { name: 'Reading', exact: true })).toBeFocused();
+	const pending = Promise.withResolvers<void>();
+	await page.route('**/api/v1/sync/push', async (route) => {
+		await pending.promise;
+		await route.fallback();
+	});
+	try {
+		await page.keyboard.press('Enter');
+		await expect(trigger).toHaveAccessibleName('Reading status: Reading');
+		await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+		expect(state.mutations).toHaveLength(0);
+	} finally {
+		pending.resolve();
+	}
+	await expect.poll(() => state.userBook?.status).toBe('reading');
+	await expect(trigger).toHaveAttribute('aria-busy', 'false');
+
+	await page.setViewportSize({ width: 360, height: 600 });
+	await trigger.evaluate((element) => element.scrollIntoView({ block: 'end' }));
+	await trigger.press('ArrowDown');
+	const menu = await page.getByRole('menu', { name: 'Reading status', exact: true }).boundingBox();
+	const button = await trigger.boundingBox();
+	if (!menu || !button) throw new Error('Missing status menu or trigger.');
+	expect(menu.x).toBeGreaterThanOrEqual(8);
+	expect(menu.x + menu.width).toBeLessThanOrEqual(352);
+	expect(menu.y + menu.height).toBeLessThanOrEqual(button.y);
+	await page.keyboard.press('Escape');
 });
 
 test('keeps library navigation available when loading its metadata fails', async ({ page }) => {
@@ -336,16 +436,32 @@ test('uses the stored status and persists a new re-read without a finish date', 
 	await expect(page.getByRole('button', { name: 'Reading status: Re-reading' })).toBeVisible();
 });
 
-test('shows edit metadata only to administrators', async ({ page }) => {
+test('opens the metadata editor from the administrator details card', async ({ page }) => {
 	await setup(page, 'admin');
 	await page.goto('/books/21');
-	await expect(page.getByRole('link', { name: 'Edit metadata' })).toHaveAttribute('href', '/books/21/edit');
+	const card = page.getByRole('region', { name: 'Details', exact: true });
+	const edit = card.getByRole('link', { name: 'Edit metadata', exact: true });
+	await expect(edit).toHaveAttribute('href', '/books/21/edit');
+	await expect(edit).toHaveAttribute('title', 'Edit metadata');
+	await expect(edit.locator('svg')).toHaveCSS('width', '16px');
+	await edit.focus();
+	await expect(edit).toHaveCSS('outline-width', '2px');
+	const headingBox = await card.getByRole('heading', { name: 'Details' }).boundingBox();
+	const editBox = await edit.boundingBox();
+	if (!headingBox || !editBox) throw new Error('Missing details heading or edit control.');
+	expect(editBox.width).toBe(32);
+	expect(editBox.height).toBe(32);
+	expect(editBox.x).toBeGreaterThan(headingBox.x + headingBox.width);
+	await edit.click();
+	await expect(page).toHaveURL('/books/21/edit');
+	await expect(page.getByRole('heading', { name: 'Edit metadata: The Emerald Library' })).toBeVisible();
 });
 
 test('hides edit metadata from non-admins and reports rejected review writes', async ({ page }) => {
 	const state = await setup(page);
 	await page.goto('/books/21');
 	await expect(page.getByRole('button', { name: 'Write', exact: true })).toBeVisible();
+	await expect(page.getByRole('region', { name: 'Details', exact: true }).getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
 	await expect(page.getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
 	state.rejectNext = true;
 	await page.getByRole('button', { name: 'Write', exact: true }).click();
@@ -353,4 +469,157 @@ test('hides edit metadata from non-admins and reports rejected review writes', a
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByRole('alert')).toContainText('Could not save your review');
 	await expect(page.getByRole('textbox', { name: 'Your review', exact: true })).toHaveValue('Rejected review');
+});
+
+test('shows distinct metadata sources, field provenance and cover source inside the details card', async ({ page }) => {
+	const state = await setup(page);
+	const longReference = 'reference'.repeat(30);
+	state.book = {
+		...book,
+		field_sources: [
+			{ field: 'title', source: 'openlibrary', source_ref: '/works/OL1W', chosen_by: null, chosen_at: stamp },
+			{ field: 'subtitle', source: 'import', source_ref: null, chosen_by: null, chosen_at: stamp },
+			{ field: 'publisher', source: 'openlibrary', source_ref: 'fixture', chosen_by: null, chosen_at: stamp },
+			{ field: 'description', source: 'googlebooks', source_ref: longReference, chosen_by: null, chosen_at: stamp }
+		]
+	};
+	await page.setViewportSize({ width: 360, height: 900 });
+	await page.goto('/books/21');
+	const card = page.getByRole('region', { name: 'Details', exact: true });
+	const metadata = card.locator('dl > div').filter({ has: page.getByText('Metadata source', { exact: true }) });
+	const cover = card.locator('dl > div').filter({ has: page.getByText('Cover source', { exact: true }) });
+	await expect(metadata.locator('dd > span')).toHaveText('openlibrary, import, googlebooks');
+	await expect(cover.locator('dd')).toHaveText('Imported');
+
+	const disclosure = metadata.locator('details');
+	await expect(disclosure.locator('li').first()).toBeHidden();
+	await disclosure.getByText('Show fields', { exact: true }).click();
+	await expect(disclosure.locator('li')).toHaveText([
+		'title: openlibrary · /works/OL1W',
+		'subtitle: import',
+		'publisher: openlibrary · fixture',
+		`description: googlebooks · ${longReference}`
+	]);
+	await expect(disclosure.locator('li').last()).toBeVisible();
+	const dimensions = await page.evaluate(() => ({
+		viewport: document.documentElement.clientWidth,
+		content: document.documentElement.scrollWidth
+	}));
+	expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
+	await disclosure.getByText('Show fields', { exact: true }).click();
+	await expect(disclosure.locator('li').first()).toBeHidden();
+
+	state.book = { ...state.book, field_sources: [], cover_source: null };
+	await page.evaluate(() => window.dispatchEvent(new CustomEvent('pandalibrary-book-state-changed', { detail: { bookId: 21 } })));
+	await expect(metadata.locator('dd > span')).toHaveText('–');
+	await expect(metadata.locator('details')).toHaveCount(0);
+	await expect(cover).toHaveCount(0);
+});
+
+test('localizes details card metadata controls', async ({ page }) => {
+	await setup(page, 'admin', 'zh');
+	await page.goto('/books/21');
+	const card = page.getByRole('region', { name: '详情', exact: true });
+	const edit = card.getByRole('link', { name: '编辑元数据', exact: true });
+	await expect(edit).toHaveAttribute('title', '编辑元数据');
+	await expect(card.getByText('元数据来源', { exact: true })).toBeVisible();
+	await expect(card.getByText('封面来源', { exact: true })).toBeVisible();
+	await card.getByText('显示字段', { exact: true }).click();
+	await expect(card.getByText('title: import · fixture', { exact: true })).toBeVisible();
+});
+
+test('keeps metadata sources but hides the admin edit control when offline', async ({ page, context }) => {
+	const state = await setup(page, 'admin');
+	await page.goto('/books/21');
+	const card = page.getByRole('region', { name: 'Details', exact: true });
+	await expect(card.getByRole('link', { name: 'Edit metadata' })).toBeVisible();
+	await page.goto('/books/21/files');
+	const filePanel = page.getByRole('region', { name: 'This file' });
+	await filePanel.getByRole('button', { name: 'Actions for library.epub' }).click();
+	await filePanel.getByRole('menuitem', { name: 'Save for offline' }).click();
+	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();
+	await page.evaluate(async () => {
+		await navigator.serviceWorker.ready;
+		if (!navigator.serviceWorker.controller) {
+			await new Promise<void>((resolve) => navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true }));
+		}
+	});
+
+	await page.goto('/books/21');
+	await expect(card.getByRole('link', { name: 'Edit metadata' })).toBeVisible();
+	state.online = false;
+	await context.setOffline(true);
+	await expect(card.getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
+	state.online = true;
+	await context.setOffline(false);
+	await expect(card.getByRole('link', { name: 'Edit metadata' })).toBeVisible();
+
+	state.online = false;
+	await context.setOffline(true);
+	await page.goto('/books/21');
+	await expect(page.getByText('Reading details are read-only while offline.')).toBeVisible();
+	const hero = page.locator('header').filter({ has: page.getByRole('heading', { name: book.title, exact: true }) });
+	const status = hero.getByLabel('Unread', { exact: true });
+	await expect(status).toBeVisible();
+	await expect(status).toHaveCSS('border-top-width', '0px');
+	await expect(status).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+	await expect(status.locator('svg')).toHaveCount(1);
+	await expect(status.locator('[data-status-icon="unread"]')).toBeVisible();
+	await expect(status.getByRole('button')).toHaveCount(0);
+	await expect(hero.getByRole('button')).toHaveCount(0);
+	await expect(hero.getByRole('link', { name: 'Personal review', exact: true })).toHaveCount(0);
+	await expect(card.getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
+	await expect(card.getByRole('button', { name: 'Edit Date started' })).toHaveCount(0);
+	await expect(card.getByText('import', { exact: true })).toBeVisible();
+	await expect(card.getByText('Imported', { exact: true })).toBeVisible();
+	await card.getByText('Show fields', { exact: true }).click();
+	await expect(card.getByText('title: import · fixture', { exact: true })).toBeVisible();
+});
+
+test.describe('details card permission overrides', () => {
+	test.use({ serviceWorkers: 'block', bypassCSP: true });
+
+	test('honors explicit permissions and always hides the edit link offline', async ({ page }) => {
+		await setup(page);
+		await page.goto('/books/21');
+		const fixtureDirectory = dirname(fileURLToPath(import.meta.url));
+		const result = await build({
+			configFile: false,
+			plugins: [svelte()],
+			resolve: { alias: [{ find: '#lib', replacement: resolve(fixtureDirectory, '..', '..') }] },
+			build: {
+				write: false,
+				lib: { entry: resolve(fixtureDirectory, 'details-panel-fixture.ts'), formats: ['es'] }
+			}
+		});
+		const outputs = (Array.isArray(result) ? result : [result]).flatMap((item) => {
+			if (!('output' in item)) throw new Error('Unexpected fixture build result.');
+			return item.output;
+		});
+		const script = outputs.find((output) => output.type === 'chunk' && output.isEntry);
+		if (!script || script.type !== 'chunk') throw new Error('The details fixture did not produce JavaScript.');
+		await page.evaluate(() => {
+			const root = document.createElement('div');
+			root.id = 'bd6-test-root';
+			document.body.append(root);
+		});
+		await page.addScriptTag({ content: script.code, type: 'module' });
+		const root = page.locator('#bd6-test-root');
+		const edit = root.getByRole('link', { name: 'Edit metadata', exact: true });
+		await expect(root.getByRole('heading', { name: 'Details', exact: true })).toBeVisible();
+		await expect(edit).toHaveCount(0);
+		await root.getByLabel('Context permission').check();
+		await expect(edit).toHaveAttribute('href', '/books/21/edit');
+		await root.getByLabel('Edit permission override').selectOption('deny');
+		await expect(edit).toHaveCount(0);
+		await root.getByLabel('Context permission').uncheck();
+		await root.getByLabel('Edit permission override').selectOption('allow');
+		await expect(edit).toBeVisible();
+		await root.getByLabel('Offline').check();
+		await expect(edit).toHaveCount(0);
+		await root.getByLabel('Offline').uncheck();
+		await expect(edit).toBeVisible();
+		await root.getByRole('button', { name: 'Switch book' }).click();
+		await expect(edit).toHaveAttribute('href', '/books/22/edit');
+	});
 });

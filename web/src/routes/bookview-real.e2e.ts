@@ -376,7 +376,7 @@ test('book view works end to end against the real server', async ({ page, browse
 
 	await test.step('admins can still open the metadata editor', async () => {
 		await page.goto(`/books/${data.covered.id}`);
-		await page.getByRole('link', { name: 'Edit metadata' }).click();
+		await page.getByRole('region', { name: 'Details', exact: true }).getByRole('link', { name: 'Edit metadata' }).click();
 		await expect(page).toHaveURL(`/books/${data.covered.id}/edit`);
 		await expect(page.getByRole('heading', { name: `Edit metadata: ${data.covered.title}` })).toBeVisible();
 	});

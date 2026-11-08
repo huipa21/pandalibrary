@@ -141,6 +141,32 @@ ON CONFLICT (user_id, book_id) DO UPDATE SET
     updated_at = excluded.updated_at, rev = excluded.rev
 WHERE excluded.updated_at > reading_progress.updated_at;
 
+-- name: ReadingAutoUpdateUserBookStatus :execrows
+INSERT INTO user_books (user_id, book_id, status, started_at, finished_at, updated_at, rev)
+SELECT sqlc.arg(user_id), b.id, sqlc.arg(status), sqlc.arg(updated_at),
+       sqlc.narg(finished_at),
+       sqlc.arg(updated_at), sqlc.arg(rev)
+FROM books b
+WHERE b.id = sqlc.arg(book_id)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
+)
+ON CONFLICT (user_id, book_id) DO UPDATE SET
+    status = excluded.status,
+    started_at = COALESCE(user_books.started_at, excluded.started_at),
+    finished_at = CASE WHEN excluded.status = 'finished' THEN excluded.finished_at ELSE user_books.finished_at END,
+    updated_at = excluded.updated_at, rev = excluded.rev
+WHERE excluded.updated_at > user_books.updated_at;
+
+-- name: ReadingResetProgress :exec
+UPDATE reading_progress
+SET percentage = 0, locator = NULL, updated_at = sqlc.arg(updated_at), rev = sqlc.arg(rev)
+WHERE user_id = sqlc.arg(user_id) AND book_id = sqlc.arg(book_id);
+
 -- name: ReadingUpsertHighlight :execrows
 INSERT INTO highlights (
     id, user_id, book_id, book_file_id, locator, position, text, color, chapter,

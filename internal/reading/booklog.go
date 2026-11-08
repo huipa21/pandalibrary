@@ -128,8 +128,8 @@ type sessionRecord struct {
 // and returns each session's 1-based attempt number. A new attempt starts at a session
 // whose start position (end when the start is unknown) is at most 10% after the current
 // attempt reached 95%, or at the first session after finishedAt when the current
-// attempt began before it.
-func deriveAttempts(sessions []attemptSession, finishedAt *int64) ([]Attempt, []int) {
+// attempt began before it. An explicit restart also splits at restartAt, inclusively.
+func deriveAttempts(sessions []attemptSession, finishedAt, restartAt *int64) ([]Attempt, []int) {
 	attempts := []Attempt{}
 	numbers := make([]int, len(sessions))
 	starts := []int64{}
@@ -146,7 +146,8 @@ func deriveAttempts(sessions []attemptSession, finishedAt *int64) ([]Attempt, []
 			restarted := current.MaxPercentage != nil && *current.MaxPercentage >= attemptCompleteThreshold &&
 				position != nil && *position <= attemptRestartThreshold
 			afterFinish := finishedAt != nil && session.StartedAt > *finishedAt && starts[len(starts)-1] < *finishedAt
-			if restarted || afterFinish {
+			afterRestart := restartAt != nil && session.StartedAt >= *restartAt && starts[len(starts)-1] < *restartAt
+			if restarted || afterFinish || afterRestart {
 				attempts, starts, sources = appendAttempt(attempts, starts, sources, session.StartedAt)
 			}
 		}
@@ -224,15 +225,15 @@ func dateNumber(date string) int64 {
 
 func (s *Service) loadBookSessions(
 	ctx context.Context, q *sqlc.Queries, viewer Viewer, bookID int64,
-) ([]sessionRecord, *int64, error) {
+) ([]sessionRecord, *int64, *int64, error) {
 	if err := s.requireVisibleBook(ctx, q, viewer, bookID); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	rows, err := q.ReadingListBookSessions(ctx, sqlc.ReadingListBookSessionsParams{
 		UserID: viewer.UserID, BookID: bookID,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("list book sessions: %w", err)
+		return nil, nil, nil, fmt.Errorf("list book sessions: %w", err)
 	}
 	sessions := make([]sessionRecord, 0, len(rows))
 	for _, row := range rows {
@@ -244,16 +245,17 @@ func (s *Service) loadBookSessions(
 			Seq: row.Seq, ID: row.ID, Device: row.Device,
 		})
 	}
-	var finishedAt *int64
+	var finishedAt, restartAt *int64
 	userBook, err := q.ReadingGetUserBook(ctx, sqlc.ReadingGetUserBookParams{
 		UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
 	})
 	if err == nil {
 		finishedAt = nullableInt(userBook.FinishedAt)
+		restartAt = nullableInt(userBook.StartedAt)
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return nil, nil, fmt.Errorf("get user book state: %w", err)
+		return nil, nil, nil, fmt.Errorf("get user book state: %w", err)
 	}
-	return sessions, finishedAt, nil
+	return sessions, finishedAt, restartAt, nil
 }
 
 func attemptInputs(sessions []sessionRecord) []attemptSession {
@@ -279,12 +281,13 @@ func (s *Service) GetReadingSummary(ctx context.Context, viewer Viewer, bookID i
 	var (
 		sessions   []sessionRecord
 		finishedAt *int64
+		restartAt  *int64
 		progress   float64
 	)
 	err = readSnapshot(ctx, s.reader, func(tx *sql.Tx) error {
 		q := sqlc.New(tx)
 		var err error
-		sessions, finishedAt, err = s.loadBookSessions(ctx, q, viewer, bookID)
+		sessions, finishedAt, restartAt, err = s.loadBookSessions(ctx, q, viewer, bookID)
 		if err != nil {
 			return err
 		}
@@ -301,10 +304,10 @@ func (s *Service) GetReadingSummary(ctx context.Context, viewer Viewer, bookID i
 	if err != nil {
 		return ReadingSummary{}, err
 	}
-	return summarize(sessions, finishedAt, progress, location), nil
+	return summarize(sessions, finishedAt, restartAt, progress, location), nil
 }
 
-func summarize(sessions []sessionRecord, finishedAt *int64, progress float64, location *time.Location) ReadingSummary {
+func summarize(sessions []sessionRecord, finishedAt, restartAt *int64, progress float64, location *time.Location) ReadingSummary {
 	summary := ReadingSummary{
 		Progress: math.Min(1, math.Max(0, progress)), Sessions: int64(len(sessions)),
 		Attempts: []Attempt{}, Days: []ReadingDay{},
@@ -312,7 +315,7 @@ func summarize(sessions []sessionRecord, finishedAt *int64, progress float64, lo
 	if len(sessions) == 0 {
 		return summary
 	}
-	attempts, _ := deriveAttempts(attemptInputs(sessions), finishedAt)
+	attempts, _ := deriveAttempts(attemptInputs(sessions), finishedAt, restartAt)
 	for index := len(attempts) - 1; index >= 0; index-- {
 		summary.Attempts = append(summary.Attempts, attempts[index])
 	}
@@ -478,11 +481,11 @@ func (s *Service) ListBookSessions(
 	page := SessionsPage{Items: []Session{}}
 	err = readSnapshot(ctx, s.reader, func(tx *sql.Tx) error {
 		q := sqlc.New(tx)
-		sessions, finishedAt, err := s.loadBookSessions(ctx, q, viewer, bookID)
+		sessions, finishedAt, restartAt, err := s.loadBookSessions(ctx, q, viewer, bookID)
 		if err != nil {
 			return err
 		}
-		_, numbers := deriveAttempts(attemptInputs(sessions), finishedAt)
+		_, numbers := deriveAttempts(attemptInputs(sessions), finishedAt, restartAt)
 		attemptByID := make(map[string]int, len(sessions))
 		for index, session := range sessions {
 			attemptByID[session.ID] = numbers[index]

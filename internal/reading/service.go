@@ -523,6 +523,19 @@ func (s *Service) applyMutation(
 		if exists && updatedAt <= clock {
 			return stale()
 		}
+		previous, err := q.ReadingGetUserBook(ctx, sqlc.ReadingGetUserBookParams{
+			UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
+		})
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", "", fmt.Errorf("get previous reading status: %w", err)
+		}
+		restarting := data.Status == "rereading" && previous.Status != "rereading"
+		if restarting {
+			if data.StartedAt == nil {
+				data.StartedAt = &updatedAt
+			}
+			data.FinishedAt = nil
+		}
 		rev, err := db.NextRev(ctx, tx)
 		if err != nil {
 			return "", "", err
@@ -532,6 +545,11 @@ func (s *Service) applyMutation(
 			Rating: nullableIntInput(data.Rating), StartedAt: nullableIntInput(data.StartedAt),
 			FinishedAt: nullableIntInput(data.FinishedAt), UpdatedAt: updatedAt, Rev: rev,
 		})
+		if err == nil && rows == 1 && restarting {
+			if err := resetProgress(ctx, q, tx, viewer, bookID, now); err != nil {
+				return "", "", err
+			}
+		}
 		return writeResult(rows, err)
 
 	case "reading_progress":
@@ -593,6 +611,11 @@ func (s *Service) applyMutation(
 			Locator: nullableJSONInput(data.Locator), Percentage: data.Percentage,
 			Device: data.Device, DeviceID: data.DeviceID, UpdatedAt: updatedAt, Rev: rev,
 		})
+		if err == nil && rows == 1 {
+			if err := updateAutoStatus(ctx, q, tx, viewer, bookID, data.Percentage, now); err != nil {
+				return "", "", err
+			}
+		}
 		return writeResult(rows, err)
 
 	case "highlights":

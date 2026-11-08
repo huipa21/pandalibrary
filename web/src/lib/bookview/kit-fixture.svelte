@@ -7,8 +7,14 @@
 	import RatingStars from './RatingStars.svelte';
 	import ReadStatusMenu from './ReadStatusMenu.svelte';
 	import type { UserBook } from './user-book.js';
+	import BookShelfTags from './details/BookShelfTags.svelte';
+	import { createBookShelves } from './details/book-shelves.svelte.js';
+	import ShelfPopover from './quickview/ShelfPopover.svelte';
 
 	let rating = $state<number | null>(7);
+	let shelfBookId = $state(21);
+	let shelvesOffline = $state(false);
+	const shelves = createBookShelves(() => shelfBookId);
 	let coverUrl = $state('/cover-broken.png');
 	const userBook: UserBook = {
 		status: 'reading', rating: 7, started_at: '2026-01-02T03:04:05Z',
@@ -76,5 +82,16 @@
 				authors={['An exceptionally long author name '.repeat(10)]}
 			/>
 		</div>
+	</section>
+	<section aria-label="Shelf tags" data-test="shelf-tags" class="space-y-4 pb-80">
+		<h2>Shelf tags</h2>
+		<label><input type="checkbox" bind:checked={shelvesOffline} /> Offline shelves</label>
+		<button type="button" onclick={() => (shelfBookId = shelfBookId === 21 ? 22 : 21)}>Switch shelf book</button>
+		<div data-test="shelf-picker">
+			{#if !shelvesOffline}
+				<ShelfPopover bookId={shelfBookId} memberIds={shelves.memberIds} variant="button" placement="down" />
+			{/if}
+		</div>
+		<BookShelfTags {shelves} bookTitle={`Shelf Book ${shelfBookId}`} offline={shelvesOffline} />
 	</section>
 </div>

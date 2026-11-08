@@ -85,6 +85,15 @@ type BookIdentifier struct {
 	Value  string
 }
 
+type BookReview struct {
+	ID        int64
+	BookID    int64
+	UserID    int64
+	Body      string
+	CreatedAt int64
+	UpdatedAt int64
+}
+
 type BookTag struct {
 	BookID int64
 	TagID  int64

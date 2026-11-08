@@ -133,7 +133,7 @@ test('admin compares candidates per field, recovers from a stale key, and applie
 	});
 
 	await page.goto('/books/21');
-	await page.getByRole('link', { name: 'Edit metadata' }).click();
+	await page.getByRole('region', { name: 'Details', exact: true }).getByRole('link', { name: 'Edit metadata' }).click();
 	await expect(page.getByRole('heading', { name: 'Edit metadata: Old Title' })).toBeVisible();
 	await page.getByRole('button', { name: 'Find metadata candidates' }).click();
 	await expect(page.getByText('Found 2 candidates.')).toBeVisible();

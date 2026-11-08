@@ -4,9 +4,9 @@
 	import IdentifierLinks from '../IdentifierLinks.svelte';
 	import RatingStars from '../RatingStars.svelte';
 	import ReadStatusMenu from '../ReadStatusMenu.svelte';
-	import { formatTone, sortedFormats } from '../cover.js';
+	import StatusIcon from '../StatusIcon.svelte';
 	import { formatPercent } from '../format.js';
-	import { readStatusLabel, saveUserBook } from '../user-book.js';
+	import { readStatusLabel, saveUserBook, statusTone } from '../user-book.js';
 	import type { DetailsState } from './details-data.js';
 
 	let { book, details, offline }: {
@@ -19,7 +19,7 @@
 	let ratingError = $state('');
 	let optimisticRating = $state<number | null | undefined>(undefined);
 	const rating = $derived(optimisticRating === undefined ? details?.userBook?.rating ?? null : optimisticRating);
-	const formats = $derived(sortedFormats(book.files));
+	const status = $derived(details?.userBook?.status ?? 'unread');
 	const progress = $derived(details?.progress?.percentage ?? 0);
 
 	$effect(() => {
@@ -89,7 +89,7 @@
 	{/if}
 
 	<div class="flex flex-wrap items-center gap-3">
-		<div aria-busy={ratingBusy}>
+		<div class="flex items-center" aria-busy={ratingBusy}>
 			{#if details && !offline}
 				<RatingStars value={rating} editable onChange={(value) => void changeRating(value)} />
 			{:else}
@@ -97,19 +97,18 @@
 			{/if}
 		</div>
 		{#if details && !offline}
-			<ReadStatusMenu bookId={book.id} userBook={details.userBook} />
+			<ReadStatusMenu bookId={book.id} userBook={details.userBook} variant="inline" />
 		{:else if details}
-			<span class="rounded-full border border-slate-300 px-3 py-2 text-sm text-slate-700">{readStatusLabel(details.userBook?.status ?? 'unread')}</span>
+			<span class="inline-flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 text-sm font-medium text-slate-800" aria-label={readStatusLabel(status)}>
+				<StatusIcon {status} class={`size-4 shrink-0 ${statusTone(status).text}`} />
+				<span>{readStatusLabel(status)}</span>
+			</span>
 		{/if}
-		<a class="text-sm font-medium text-emerald-800 underline underline-offset-4" href="#book-review">{m['bv6.personal_review']()}</a>
 	</div>
 	{#if ratingError}<p class="text-sm text-red-800" role="alert">{ratingError}</p>{/if}
 
-	{#if formats.length || book.identifiers.length}
+	{#if book.identifiers.length}
 		<div class="flex flex-wrap items-center gap-2">
-			{#each formats as format}
-				<span class={`rounded-md px-2 py-1 text-xs font-semibold ${formatTone(format)}`}>{format.toUpperCase()}</span>
-			{/each}
 			<IdentifierLinks identifiers={book.identifiers} variant="chips" />
 		</div>
 	{/if}
