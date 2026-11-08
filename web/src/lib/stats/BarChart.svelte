@@ -23,7 +23,7 @@
 {:else}
 	<figure class="space-y-1">
 		<svg
-			class="h-40 w-full rounded-md border border-slate-200 bg-white"
+			class="h-40 w-full card"
 			viewBox={`0 0 ${width} ${HEIGHT}`}
 			preserveAspectRatio="none"
 			role="img"

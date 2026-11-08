@@ -275,7 +275,7 @@
 			<p class="text-slate-700">{m['bh4.empty.scan']()}</p>
 		</section>
 	{:else if list.empty}
-		<div class="space-y-3 rounded-lg border border-slate-200 bg-white p-6">
+		<div class="space-y-3 card p-6">
 			<p class="text-slate-700">{m['bh4.list.no_matches']()}</p>
 			<button type="button" class={linkClass} onclick={clearFilters}>{m['bh4.filter.clear']()}</button>
 		</div>

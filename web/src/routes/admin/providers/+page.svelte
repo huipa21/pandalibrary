@@ -133,7 +133,7 @@
 	{:else if status === 'loading'}
 		<p class="text-slate-600" role="status">{m['admin.providers.loading']()}</p>
 	{:else if rows.length === 0}
-		<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['admin.providers.empty']()}</p>
+		<p class="card p-6 text-slate-600">{m['admin.providers.empty']()}</p>
 	{:else}
 		<div class="space-y-6">
 			{#each rows as row (row.settings.provider)}

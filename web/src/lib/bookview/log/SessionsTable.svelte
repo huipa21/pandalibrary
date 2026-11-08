@@ -211,7 +211,7 @@
 	}
 </script>
 
-<section class="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white" aria-labelledby="bv8-sessions-heading">
+<section class="min-w-0 overflow-hidden card" aria-labelledby="bv8-sessions-heading">
 	<div class="space-y-4 p-5">
 		<div class="flex flex-wrap items-baseline justify-between gap-2">
 			<h2 id="bv8-sessions-heading" bind:this={heading} tabindex="-1" class="text-xs font-semibold uppercase tracking-wider text-slate-500 focus:outline-none">{m['bv8.sessions']()}</h2>

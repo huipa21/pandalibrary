@@ -221,7 +221,7 @@
 			<AdminAlert message={translate(adminErrorKey(refreshError, 'load'))} error={refreshError} onretry={manualRefresh} />
 		{/if}
 		{#if jobs.length === 0}
-			<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['admin.maintenance.empty']()}</p>
+			<p class="card p-6 text-slate-600">{m['admin.maintenance.empty']()}</p>
 		{:else}
 			<ul class="grid gap-4 md:grid-cols-2">
 				{#each jobs as job (job.name)}

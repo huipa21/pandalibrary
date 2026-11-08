@@ -42,7 +42,7 @@
 	const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900';
 </script>
 
-<aside class="rounded-2xl border border-slate-200 bg-white p-4 lg:sticky lg:top-24 lg:p-5" aria-labelledby="highlights-overview-heading">
+<aside class="card p-4 lg:sticky lg:top-[calc(var(--shell-content-top)+4.5rem)] lg:p-5" aria-labelledby="highlights-overview-heading">
 	<div class="flex items-center justify-between gap-2">
 		<h2 id="highlights-overview-heading" class="text-sm font-semibold text-slate-900">
 			{m['bv9.summary']({ marks: stats.total, chapters: stats.chapters })}

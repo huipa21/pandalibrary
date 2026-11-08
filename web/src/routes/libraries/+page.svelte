@@ -69,11 +69,11 @@
 	{:else if loading}
 		<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 	{:else if libraries.length === 0}
-		<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['catalog.home.empty']()}</p>
+		<p class="card p-6 text-slate-600">{m['catalog.home.empty']()}</p>
 	{:else}
 		<ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 			{#each libraries as library (library.id)}
-				<li class="rounded-lg border border-slate-200 bg-white p-5">
+				<li class="card p-5">
 					<h2 class="text-lg font-semibold">
 						<a class="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={`/library/${library.id}`}>
 							{library.name}

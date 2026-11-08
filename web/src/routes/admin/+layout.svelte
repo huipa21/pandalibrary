@@ -59,7 +59,7 @@
 {:else if access === 'forbidden'}
 	<section class="space-y-3" aria-labelledby="admin-forbidden-heading">
 		<h1 id="admin-forbidden-heading" class="text-3xl font-semibold tracking-tight">{m['admin.title']()}</h1>
-		<p class="rounded-md border border-slate-200 bg-white p-4 text-slate-700" role="alert">{m['admin.forbidden']()}</p>
+		<p class="card p-4 text-slate-700" role="alert">{m['admin.forbidden']()}</p>
 		<a class={`rounded-sm underline underline-offset-4 ${focusRing}`} href="/">{m['admin.back_home']()}</a>
 	</section>
 {:else}

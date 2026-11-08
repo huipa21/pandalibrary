@@ -24,7 +24,7 @@
 	]);
 </script>
 
-<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="bv8-records-heading">
+<section class="min-w-0 card p-5" aria-labelledby="bv8-records-heading">
 	<h2 id="bv8-records-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-500">{m['bv8.records']()}</h2>
 	<dl class="mt-4 space-y-4 text-sm">
 		{#each rows as row (row.label)}

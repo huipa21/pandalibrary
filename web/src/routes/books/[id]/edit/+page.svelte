@@ -361,7 +361,7 @@
 				{/if}
 				<ul class="space-y-3">
 					{#each lookup.providers as provider (provider.provider)}
-						<li class="rounded-md border border-slate-200 bg-white p-3" data-provider={provider.provider}>
+						<li class="card p-3" data-provider={provider.provider}>
 							{#if provider.error}
 								<p class="text-sm text-amber-900">{m['metadata.provider.failed']({ provider: provider.provider, code: provider.error.code || '—' })}</p>
 							{/if}
@@ -394,7 +394,7 @@
 			<form class="space-y-6" onsubmit={(event) => { event.preventDefault(); void apply(); }}>
 				{#each MERGE_FIELDS as field (field)}
 					{@const options = candidates.map((candidate, index) => ({ candidate, index })).filter(({ candidate }) => candidateOffers(candidate, field))}
-					<fieldset class="space-y-2 rounded-md border border-slate-200 bg-white p-4" data-field={field}>
+					<fieldset class="space-y-2 card p-4" data-field={field}>
 						<legend class="px-1 font-semibold">{fieldLabels[field]()}</legend>
 						<div class="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
 							<label class="flex cursor-pointer gap-2 rounded-md border border-slate-200 p-3 has-[:checked]:border-slate-900 has-[:checked]:bg-slate-50" for={radioId(field, 'keep')}>
@@ -463,7 +463,7 @@
 					</fieldset>
 				{/each}
 
-				<div class="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-slate-200 bg-slate-50 py-3">
+				<div class="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-slate-200 bg-[var(--shell-bg)] py-3">
 					<button
 						type="submit"
 						class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"

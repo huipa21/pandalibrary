@@ -235,7 +235,7 @@
 				{/if}
 			</div>
 		{:else}
-			<section class="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600" aria-labelledby="files-empty-heading">
+			<section class="card p-6 text-slate-600" aria-labelledby="files-empty-heading">
 				<h2 id="files-empty-heading" class="font-semibold text-slate-900">{m['bv7.empty_title']()}</h2>
 				<p class="mt-2">{m['bv7.empty_description']()}</p>
 			</section>

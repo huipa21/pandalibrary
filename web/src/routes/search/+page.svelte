@@ -104,7 +104,7 @@
 	{/if}
 
 	{#if !query}
-		<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['search.prompt']()}</p>
+		<p class="card p-6 text-slate-600">{m['search.prompt']()}</p>
 	{:else if !tooLong}
 		<section class="space-y-4" aria-labelledby="search-results-heading" aria-busy={pager.status === 'loading'}>
 			<h2 id="search-results-heading" class="text-xl font-semibold break-words">{m['search.results_heading']({ query })}</h2>
@@ -120,7 +120,7 @@
 			{:else if pager.status === 'loading' || pager.status === 'idle'}
 				<p class="text-slate-600" role="status">{m['search.loading']()}</p>
 			{:else if pager.empty}
-				<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600" role="status">{m['search.empty']({ query })}</p>
+				<p class="card p-6 text-slate-600" role="status">{m['search.empty']({ query })}</p>
 			{:else}
 				<ol class="space-y-3">
 					{#each pager.items as result (result.id)}

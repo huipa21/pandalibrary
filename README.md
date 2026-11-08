@@ -135,6 +135,9 @@ previous release is the rollback path.
 - **Dashboard and bookmarks:** The signed-in home page has configurable reading
   feeds and shelf sections, including an intentionally empty layout. The sidebar
   contains All Books, Bookmarks, Notes, live shelf counts and the build version.
+  The header and sidebar float as rounded panels; page content sits in cards
+  directly on the background and scrolls beneath an opaque header band. On
+  smaller screens, the sidebar opens as a floating navigation drawer.
   Its plus button creates manual or rule-based automatic shelves. Reader bookmarks
   save exact PDF/CFI positions; Bookmarks opens, renames and deletes them across
   books. Changes survive offline reload and synchronize after reconnect, isolated

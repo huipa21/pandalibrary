@@ -150,7 +150,7 @@
 <section
 	bind:this={panel}
 	aria-labelledby={headingId}
-	class="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+	class="min-w-0 space-y-4 card p-4 sm:p-5"
 	data-dashboard-section={id}
 >
 	<div class="flex flex-wrap items-center justify-between gap-3">

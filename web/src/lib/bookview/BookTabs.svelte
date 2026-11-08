@@ -79,8 +79,8 @@
 
 <svelte:window onkeydown={shortcut} />
 
-<div class="sticky top-shell-header z-20 flex items-center gap-3 rounded-t-2xl border-b border-slate-200 bg-white px-2 sm:px-4">
-	<nav bind:this={tabNav} class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" aria-label={m['bv4.tabs.label']()}>
+<div class="card sticky top-[var(--shell-content-top)] z-20 flex items-center gap-3 px-2 sm:px-4">
+	<nav bind:this={tabNav} class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden" aria-label={m['bv4.tabs.label']()}>
 		<a
 			class="flex shrink-0 items-center gap-1 rounded-md px-2 py-3 text-sm font-medium text-slate-600 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-600"
 			href={backHref}
@@ -97,7 +97,7 @@
 				<li class="flex">
 					<a
 						class={[
-							'-mb-px flex items-center whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-600',
+							'flex items-center whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-emerald-600',
 							active ? 'border-emerald-600 text-slate-900' : 'border-transparent text-slate-600 hover:text-slate-900'
 						]}
 						href={bookTabPath(bookId, tab)}

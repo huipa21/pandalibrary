@@ -257,7 +257,7 @@
 	{:else if loading}
 		<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 	{:else if books.length === 0}
-		<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['catalog.books.empty']()}</p>
+		<p class="card p-6 text-slate-600">{m['catalog.books.empty']()}</p>
 	{:else}
 		<ul class={mode === 'grid' ? 'book-grid' : 'space-y-3'}>
 			{#each books as book (book.id)}

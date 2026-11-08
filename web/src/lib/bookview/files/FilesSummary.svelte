@@ -19,7 +19,7 @@
 	const primary = $derived(model.groups.flatMap((group) => group.files).find((file) => file.id === model.primaryFileId));
 </script>
 
-<section class="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+<section class="card p-4 sm:p-6">
 	<h1 class="sr-only">{m['bv7.title']()}</h1>
 	<div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 		<div class="flex min-w-0 items-center gap-4">

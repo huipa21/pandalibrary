@@ -118,7 +118,7 @@
 		{:else}
 			<ul class="space-y-4">
 				{#each bookmarks.items as bookmark (bookmark.id)}
-					<li class="flex gap-4 rounded-md border border-slate-200 bg-white p-4">
+					<li class="flex gap-4 card p-4">
 						{#if bookmark.book?.cover_url}
 							<img src={bookmark.book.cover_url} alt="" class="h-24 w-16 shrink-0 rounded object-cover" />
 						{:else}

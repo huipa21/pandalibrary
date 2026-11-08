@@ -13,30 +13,47 @@
 }
 
 :root {
+	--shell-gap: 0.5rem;
+	--shell-content-top: calc(var(--spacing-shell-header) + 2 * var(--shell-gap));
 	font-family:
 		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 	font-synthesis: none;
 	text-rendering: optimizeLegibility;
 }
 
+@media (min-width: 40rem) {
+	:root {
+		--shell-gap: 1rem;
+	}
+}
+
+@media (min-width: 64rem) {
+	:root {
+		--shell-gap: 1.25rem;
+	}
+}
+
+/* Surfaces (header, sidebar, cards) sit one visible step above the page background. */
 :root[data-theme='dark'] {
-	--shell-bg: #121416;
-	--shell-surface: #191c1f;
-	--shell-border: rgb(255 255 255 / 10%);
-	--shell-text: #f4f4f5;
-	--shell-muted: #a1a1aa;
-	--shell-hover: #2e3338;
+	--shell-bg: #111315;
+	--shell-surface: #1b1e21;
+	--shell-border: #2f3439;
+	--shell-text: #f5f6f7;
+	--shell-muted: #a0a7af;
+	--shell-hover: #2a2e33;
 	--shell-active: #a7f3d0;
+	--card-shadow: none;
 }
 
 :root[data-theme='light'] {
-	--shell-bg: #f4f4f5;
+	--shell-bg: #eef1f4;
 	--shell-surface: #ffffff;
-	--shell-border: #d4d4d8;
-	--shell-text: #18181b;
-	--shell-muted: #52525b;
-	--shell-hover: #e4e4e7;
+	--shell-border: #dde2e8;
+	--shell-text: #1f2328;
+	--shell-muted: #56657a;
+	--shell-hover: #e9edf1;
 	--shell-active: #047857;
+	--card-shadow: 0 1px 2px rgb(16 24 40 / 5%);
 }
 
 body {
@@ -45,6 +62,14 @@ body {
 }
 
 @layer components {
+	/* Top-level content surface. Inside `.app-panel` the dark theme remaps white/slate-200 to surface tokens. */
+	.card {
+		border: 1px solid var(--color-slate-200);
+		border-radius: 0.75rem;
+		background-color: var(--color-white);
+		box-shadow: var(--card-shadow);
+	}
+
 	.book-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -207,6 +232,36 @@ body {
 	color: var(--shell-text);
 }
 
+/* Opaque band behind the floating header: scrolled content is clipped at the sidebar's top edge. */
+.shell-header-band {
+	position: sticky;
+	top: 0;
+	z-index: 50;
+	padding: var(--shell-gap);
+	background: var(--shell-bg);
+}
+
+.shell-body {
+	gap: var(--shell-gap);
+	padding: 0 var(--shell-gap) var(--shell-gap);
+}
+
+.shell-sidebar {
+	top: var(--shell-content-top);
+	bottom: var(--shell-gap);
+	left: var(--shell-gap);
+}
+
+.shell-backdrop {
+	top: var(--shell-content-top);
+}
+
+@media (min-width: 64rem) {
+	.shell-sidebar-column {
+		height: calc(100dvh - var(--shell-content-top) - var(--shell-gap));
+	}
+}
+
 .shell-header,
 .shell-sidebar {
 	border-color: var(--shell-border);
@@ -274,7 +329,7 @@ body {
 @media (max-width: 39.999rem) {
 	.shell-header .header-menu:not(:has(.shell-menu-row)) .header-menu-panel {
 		position: fixed;
-		top: calc(var(--spacing-shell-header) + 0.5rem);
+		top: var(--shell-content-top);
 		right: 0.5rem;
 		left: auto;
 		width: min(20rem, calc(100vw - 1rem));
@@ -436,19 +491,25 @@ body {
 	outline-color: var(--color-shell-accent);
 }
 
+:root[data-theme='light'] .app-panel {
+	/* Stock slate-500 is 4.2:1 on the page background; keep muted text at AA without a card behind it. */
+	--color-slate-500: #56657a;
+}
+
+/* Neutral greys matching the shell: white = card surface, slate-50 = recessed, slate-100 = raised/hover. */
 :root[data-theme='dark'] .app-panel {
-	--color-white: #0f172a;
-	--color-slate-50: #020617;
-	--color-slate-100: #0f172a;
-	--color-slate-200: #1e293b;
-	--color-slate-300: #334155;
-	--color-slate-400: #94a3b8;
-	--color-slate-500: #94a3b8;
-	--color-slate-600: #94a3b8;
-	--color-slate-700: #cbd5e1;
-	--color-slate-800: #e2e8f0;
-	--color-slate-900: #f1f5f9;
-	--color-slate-950: #f8fafc;
+	--color-white: #1b1e21;
+	--color-slate-50: #16191c;
+	--color-slate-100: #25292d;
+	--color-slate-200: #2f3439;
+	--color-slate-300: #454b52;
+	--color-slate-400: #959ca4;
+	--color-slate-500: #a0a7af;
+	--color-slate-600: #adb3ba;
+	--color-slate-700: #c9ced3;
+	--color-slate-800: #dfe2e6;
+	--color-slate-900: #eceef0;
+	--color-slate-950: #f5f6f7;
 	--color-red-50: #450a0a;
 	--color-red-100: #7f1d1d;
 	--color-red-700: #fca5a5;
@@ -474,5 +535,4 @@ body {
 	--color-sky-700: #7dd3fc;
 	--color-sky-800: #bae6fd;
 	--color-sky-900: #e0f2fe;
-	border-color: #334155;
 }

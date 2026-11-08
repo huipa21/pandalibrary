@@ -74,6 +74,102 @@ function contrastRatio(foreground: string, background: string): number {
 	return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
+test('header and sidebar float as matching panels, content cards sit on an invisible area and scroll under an opaque header band', async ({ page }) => {
+	await authenticate(page);
+	await mockCatalog(page);
+	await page.emulateMedia({ colorScheme: 'light' });
+	await page.goto('/books');
+	await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
+
+	for (const theme of ['light', 'dark']) {
+		if (theme === 'dark') await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+		for (const width of [1024, 1280, 1600]) {
+			await page.setViewportSize({ width, height: 900 });
+			const metrics = await page.evaluate(() => {
+				const measure = (selector: string) => {
+					const element = document.querySelector(selector);
+					if (!(element instanceof HTMLElement)) throw new Error(`Missing panel: ${selector}`);
+					const box = element.getBoundingClientRect();
+					const style = getComputedStyle(element);
+					return {
+						left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+						radius: style.borderTopLeftRadius,
+						borders: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
+						shadow: style.boxShadow,
+						background: style.backgroundColor
+					};
+				};
+				const body = document.querySelector('.shell-body');
+				if (!(body instanceof HTMLElement)) throw new Error('The shell body is missing');
+				return {
+					gap: parseFloat(getComputedStyle(body).gap),
+					pageBackground: getComputedStyle(document.querySelector('.app-shell')!).backgroundColor,
+					band: measure('.shell-header-band'),
+					header: measure('.shell-header'),
+					sidebar: measure('#app-sidebar'),
+					panel: measure('#main-content > div')
+				};
+			});
+			expect(metrics.header.left).toBe(metrics.gap);
+			expect(metrics.header.top).toBe(metrics.gap);
+			expect(metrics.header.right).toBe(width - metrics.gap);
+			expect(metrics.sidebar.left).toBe(metrics.header.left);
+			expect(metrics.sidebar.top - metrics.header.bottom).toBe(metrics.gap);
+			expect(metrics.band.bottom).toBe(metrics.sidebar.top);
+			expect(metrics.band.background).toBe(metrics.pageBackground);
+			expect(metrics.panel.top).toBe(metrics.sidebar.top);
+			expect(metrics.panel.left - metrics.sidebar.right).toBe(metrics.gap);
+			expect(metrics.panel.right).toBe(metrics.header.right);
+			expect(metrics.sidebar.bottom).toBe(900 - metrics.gap);
+			expect(metrics.panel.background).toBe('rgba(0, 0, 0, 0)');
+			expect(metrics.panel.borders).toEqual(['0px', '0px', '0px', '0px']);
+			expect(metrics.panel.shadow).toBe('none');
+			expect(metrics.sidebar.radius).toBe(metrics.header.radius);
+			for (const panel of [metrics.header, metrics.sidebar]) {
+				expect(panel.borders).toEqual(['1px', '1px', '1px', '1px']);
+				expect(panel.shadow).not.toBe('none');
+			}
+			await expectNoHorizontalOverflow(page);
+		}
+	}
+
+	await page.locator('#main-content > div').evaluate((panel) => {
+		const spacer = document.createElement('div');
+		spacer.style.height = '2000px';
+		panel.append(spacer);
+	});
+	await page.evaluate(() => window.scrollTo(0, 600));
+	await expect(page.locator('.shell-header-band')).toHaveCSS('top', '0px');
+	const [band, header, sidebar] = await Promise.all([
+		page.locator('.shell-header-band').boundingBox(),
+		page.getByRole('banner').boundingBox(),
+		page.locator('#app-sidebar').boundingBox()
+	]);
+	if (!band || !header || !sidebar) throw new Error('A sticky panel is missing');
+	expect(band.y).toBe(0);
+	expect(band.y + band.height).toBe(sidebar.y);
+	expect(header.y).toBe(20);
+	expect(sidebar.y).toBe(header.y + header.height + 20);
+	expect(sidebar.y + sidebar.height).toBe(880);
+
+	await page.goto('/books/21');
+	const tabs = page.getByRole('navigation', { name: 'Book sections' });
+	await expect(tabs).toBeVisible();
+	await tabs.evaluate((nav) => {
+		const content = nav.parentElement?.parentElement;
+		if (!content) throw new Error('The book tabs container is missing');
+		const spacer = document.createElement('div');
+		spacer.style.height = '2000px';
+		content.append(spacer);
+	});
+	await page.evaluate(() => window.scrollTo(0, 600));
+	await expect(tabs.locator('..')).toHaveCSS('top', '96px');
+	const tabsBox = await tabs.locator('..').boundingBox();
+	if (!tabsBox) throw new Error('The sticky book tabs are missing');
+	expect(tabsBox.y).toBe(96);
+	expect(tabsBox.y).toBe(band.y + band.height);
+});
+
 test('desktop sidebar lists HOME links, shelves, and All Books across every library', async ({ page }) => {
 	await authenticate(page);
 	const bookQueries = await mockCatalog(page);
@@ -188,6 +284,15 @@ test('mobile drawer toggles by keyboard, traps focus, closes on Escape and navig
 	await expect(close).toHaveAttribute('aria-expanded', 'true');
 	const drawer = page.getByRole('dialog', { name: 'Sidebar' });
 	await expect(drawer).toBeVisible();
+	const [headerBox, drawerBox] = await Promise.all([
+		page.getByRole('banner').boundingBox(), drawer.boundingBox()
+	]);
+	if (!headerBox || !drawerBox) throw new Error('A mobile shell panel is missing');
+	expect(headerBox.x).toBe(8);
+	expect(drawerBox.x).toBe(headerBox.x);
+	expect(drawerBox.y).toBe(headerBox.y + headerBox.height + 8);
+	expect(drawerBox.y + drawerBox.height).toBe(836);
+	await expect(drawer).toHaveCSS('border-radius', '16px');
 	await expect(drawer.getByRole('link', { name: 'Dashboard' })).toBeFocused();
 	await expect(drawer.getByRole('button', { name: 'Language' })).toBeVisible();
 	await expect(drawer.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible();
@@ -323,25 +428,38 @@ test('theme choice persists and avatar menu supports keyboard navigation', async
 	await page.goto('/');
 	const theme = page.getByRole('button', { name: 'Switch to dark mode' });
 	const panel = page.locator('.app-panel');
-	const lightPanelColor = await panel.evaluate((element) => getComputedStyle(element).backgroundColor);
+	const surfaces = () => panel.evaluate((element) => {
+		const card = document.createElement('div');
+		card.className = 'card';
+		element.append(card);
+		const shell = document.querySelector('.app-shell');
+		if (!shell) throw new Error('The app shell is missing');
+		const colors = { page: getComputedStyle(shell).backgroundColor, card: getComputedStyle(card).backgroundColor };
+		const muted = ['text-slate-400', 'text-slate-500'].map((className) => {
+			const sample = document.createElement('span');
+			sample.className = className;
+			card.append(sample);
+			const color = getComputedStyle(sample).color;
+			sample.remove();
+			return color;
+		});
+		card.remove();
+		return { ...colors, muted };
+	});
+	const light = await surfaces();
+	expect(light.card).not.toBe(light.page);
+	expect(contrastRatio(light.muted[1], light.page)).toBeGreaterThanOrEqual(4.5);
 	await theme.focus();
 	await page.keyboard.press('Space');
 	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 	await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
-	const darkPanelColor = await panel.evaluate((element) => getComputedStyle(element).backgroundColor);
-	expect(darkPanelColor).not.toBe(lightPanelColor);
-	const mutedColors = await panel.evaluate((element) =>
-		['text-slate-400', 'text-slate-500'].map((className) => {
-			const sample = document.createElement('span');
-			sample.className = className;
-			element.append(sample);
-			const colors = { foreground: getComputedStyle(sample).color, background: getComputedStyle(element).backgroundColor };
-			sample.remove();
-			return colors;
-		})
-	);
-	for (const colors of mutedColors) {
-		expect(contrastRatio(colors.foreground, colors.background)).toBeGreaterThanOrEqual(4.5);
+	const dark = await surfaces();
+	expect(dark.page).not.toBe(light.page);
+	// Cards must read as raised: lighter than the page in dark mode, not darker.
+	expect(contrastRatio('rgb(0, 0, 0)', dark.card)).toBeGreaterThan(contrastRatio('rgb(0, 0, 0)', dark.page));
+	for (const color of dark.muted) {
+		expect(contrastRatio(color, dark.card)).toBeGreaterThanOrEqual(4.5);
+		expect(contrastRatio(color, dark.page)).toBeGreaterThanOrEqual(4.5);
 	}
 	await page.reload();
 	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

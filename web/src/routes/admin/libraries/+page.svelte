@@ -175,11 +175,11 @@
 		{:else if libraries.status !== 'ready'}
 			<p class="text-slate-600" role="status">{m['admin.libraries.loading']()}</p>
 		{:else if libraries.empty}
-			<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['admin.libraries.empty']()}</p>
+			<p class="card p-6 text-slate-600">{m['admin.libraries.empty']()}</p>
 		{:else}
 			<ul class="space-y-3">
 				{#each libraries.items as library (library.id)}
-					<li class="space-y-3 rounded-lg border border-slate-200 bg-white p-4" aria-label={library.name}>
+					<li class="space-y-3 card p-4" aria-label={library.name}>
 						{#if editing === library.id}
 							<h3 class="font-semibold">{m['admin.libraries.edit_heading']({ name: library.name })}</h3>
 							<LibraryForm

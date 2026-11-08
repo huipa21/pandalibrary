@@ -683,6 +683,13 @@ type Provider interface {
     semantic variables switch between light and dark; dark page colors are
     remapped inside `.app-panel`. Immersive reader routes do not receive that
     remap and continue to use reader settings.
+  - Layout: the header and sidebar float as bordered surfaces on the page
+    background (`--shell-bg`). The header sits in an opaque sticky band
+    (`.shell-header-band`) that ends level with the sidebar's top edge, so
+    content scrolling with the window is clipped there. The main content area
+    is invisible: pages place top-level sections, list items and empty states
+    in `.card` surfaces directly on the background and never nest cards. In
+    dark mode, cards are lighter than the page.
 - **State:** Svelte 5 runes in small store classes (`session`, `library`, `sync`). The API
   client is a typed `fetch` wrapper; TypeScript DTOs mirror the Go DTOs, and OpenAPI
   generation can come later.

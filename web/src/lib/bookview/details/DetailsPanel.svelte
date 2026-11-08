@@ -84,7 +84,7 @@
 	}
 </script>
 
-<section class="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="book-details-heading">
+<section class="min-w-0 space-y-4 card p-5" aria-labelledby="book-details-heading">
 	<h2 id="book-details-heading" class="text-xs font-semibold tracking-wider text-slate-500 uppercase">{m['bv6.details']()}</h2>
 	<dl class="space-y-3 text-sm">
 		<div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-2"><dt class="text-slate-500">{m['catalog.book.publisher']()}</dt><dd class="text-slate-800 [overflow-wrap:anywhere]">{book.publisher || '–'}</dd></div>

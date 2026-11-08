@@ -30,7 +30,7 @@
 	}
 </script>
 
-<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="files-list-heading">
+<section class="min-w-0 card p-4 sm:p-6" aria-labelledby="files-list-heading">
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
 		<h2 id="files-list-heading" class="font-semibold uppercase tracking-wide text-slate-900">{m['bv7.title']()}</h2>
 		<p class="text-sm text-slate-500">{m['bv7.grouped']()}</p>

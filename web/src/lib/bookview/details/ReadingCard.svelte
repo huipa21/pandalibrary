@@ -41,7 +41,7 @@
 	});
 </script>
 
-<section class="min-w-0 space-y-5 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="book-reading-heading">
+<section class="min-w-0 space-y-5 card p-5 sm:p-6" aria-labelledby="book-reading-heading">
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
 		<h2 id="book-reading-heading" class="text-xs font-semibold tracking-wider text-slate-500 uppercase">{m['bv6.reading']()}</h2>
 		{#if summary.last_read_at}

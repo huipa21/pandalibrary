@@ -91,7 +91,7 @@
 		{#if !books.length && !error}
 			<p class="text-slate-600">{m['reader.launch.empty']()}</p>
 		{:else if books.length}
-			<ul class="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
+			<ul class="divide-y divide-slate-200 card">
 				{#each books as book (book.id)}
 					<li class="space-y-3 p-4">
 						<h2 class="text-lg font-semibold"><a class="underline-offset-4 hover:underline focus-visible:outline-2" href={`/books/${book.id}`}>{book.title}</a></h2>

@@ -16,7 +16,7 @@
 	}
 </script>
 
-<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="bv8-attempts-heading">
+<section class="min-w-0 card p-5" aria-labelledby="bv8-attempts-heading">
 	<h2 id="bv8-attempts-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-500">{m['bv8.attempts']({ count: attempts.length })}</h2>
 	{#if attempts.length === 0}
 		<p class="mt-4 text-sm text-slate-500">{m['bv8.attempts_empty']()}</p>

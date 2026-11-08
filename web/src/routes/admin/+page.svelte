@@ -21,7 +21,7 @@
 
 	<ul class="grid gap-3 sm:grid-cols-2">
 		{#each cards as card (card.href)}
-			<li class="rounded-lg border border-slate-200 bg-white p-4">
+			<li class="card p-4">
 				<h2 class="font-semibold">
 					<a class={`rounded-sm underline-offset-4 hover:underline ${focusRing}`} href={card.href}>{card.title()}</a>
 				</h2>

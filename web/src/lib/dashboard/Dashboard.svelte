@@ -295,7 +295,7 @@
 		</div>
 	{:else if layout?.valid}
 		{#if layout.sections.length === 0}
-			<div class="space-y-2 rounded-2xl border border-slate-200 bg-white p-6">
+			<div class="space-y-2 card p-6">
 				<h2 class="text-lg font-semibold">{m['ux5.empty_dashboard']()}</h2>
 				<p class="text-slate-600">{m['ux5.empty_dashboard_help']()}</p>
 			</div>

@@ -190,7 +190,7 @@
 	{/if}
 
 	{#if !query}
-		<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['notes.prompt']()}</p>
+		<p class="card p-6 text-slate-600">{m['notes.prompt']()}</p>
 	{:else if !queryIssue}
 		<section class="space-y-4" aria-labelledby="notes-results-heading" aria-busy={search.status === 'loading'}>
 			<h2 id="notes-results-heading" class="text-xl font-semibold break-words">{m['notes.results_heading']({ query })}</h2>
@@ -212,14 +212,14 @@
 			{:else if search.status === 'loading' || search.status === 'idle'}
 				<p class="text-slate-600" role="status">{m['notes.loading']()}</p>
 			{:else if search.empty}
-				<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600" role="status">{m['notes.empty']({ query })}</p>
+				<p class="card p-6 text-slate-600" role="status">{m['notes.empty']({ query })}</p>
 			{:else}
 				<p class="text-sm text-slate-600" role="status">
 					{m['notes.result_count']({ count: search.results.length })}
 					{#if search.capped}{m['notes.capped']({ max: MAX_ANNOTATION_RESULTS })}{/if}
 				</p>
 
-				<section class="space-y-3 rounded-md border border-slate-200 bg-white p-4" aria-labelledby="notes-export-heading">
+				<section class="space-y-3 card p-4" aria-labelledby="notes-export-heading">
 					<h3 id="notes-export-heading" class="text-lg font-semibold">{m['notes.export.heading']()}</h3>
 					<p class="text-sm text-slate-600">{m['notes.export.description']({ max: MAX_EXPORT_BOOKS })}</p>
 					<fieldset class="space-y-2">
@@ -287,7 +287,7 @@
 				<ol class="space-y-3" aria-label={m['notes.results_label']()}>
 					{#each search.results as result (`${result.kind}:${result.id}`)}
 						{@const percent = positionPercent(result)}
-						<li class="space-y-2 rounded-md border border-slate-200 bg-white p-4">
+						<li class="space-y-2 card p-4">
 							<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
 								<span class="rounded-full px-2 py-0.5 font-medium {result.kind === 'highlight' ? 'bg-amber-100 text-amber-900' : 'bg-sky-100 text-sky-900'}">{kindLabel(result)}</span>
 								{#if percent !== null}<span>{m['notes.position']({ percent })}</span>{/if}

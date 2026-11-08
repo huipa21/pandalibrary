@@ -122,7 +122,7 @@
 <section class="space-y-8" aria-labelledby="stats-heading">
 	<h1 id="stats-heading" class="sr-only">{m['stats.title']()}</h1>
 
-	<form class="space-y-4 rounded-md border border-slate-200 bg-white p-4" onsubmit={submit} novalidate>
+	<form class="space-y-4 card p-4" onsubmit={submit} novalidate>
 		<fieldset class="space-y-3">
 			<legend class="font-medium">{m['stats.range.legend']()}</legend>
 			<div class="flex flex-wrap items-end gap-3">
@@ -197,24 +197,24 @@
 			</p>
 
 			<dl class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-				<div class="rounded-md border border-slate-200 bg-white p-4">
+				<div class="card p-4">
 					<dt class="text-sm text-slate-600">{m['stats.summary.total_time']()}</dt>
 					<dd class="text-2xl font-semibold">{formatDuration(summary.activeSeconds)}</dd>
 				</div>
-				<div class="rounded-md border border-slate-200 bg-white p-4">
+				<div class="card p-4">
 					<dt class="text-sm text-slate-600">{m['stats.summary.sessions']()}</dt>
 					<dd class="text-2xl font-semibold">{summary.sessions}</dd>
 				</div>
-				<div class="rounded-md border border-slate-200 bg-white p-4">
+				<div class="card p-4">
 					<dt class="text-sm text-slate-600">{m['stats.summary.active_days']()}</dt>
 					<dd class="text-2xl font-semibold">{summary.activeDays}</dd>
 				</div>
-				<div class="rounded-md border border-slate-200 bg-white p-4">
+				<div class="card p-4">
 					<dt class="text-sm text-slate-600">{m['stats.streaks.current']()}</dt>
 					<dd class="text-2xl font-semibold" data-testid="current-streak">{data.streaks.current_days}</dd>
 					<dd class="text-xs text-slate-500">{m['stats.streaks.current_hint']({ to: formatCalendar(data.to, locale) })}</dd>
 				</div>
-				<div class="rounded-md border border-slate-200 bg-white p-4">
+				<div class="card p-4">
 					<dt class="text-sm text-slate-600">{m['stats.streaks.longest']()}</dt>
 					<dd class="text-2xl font-semibold" data-testid="longest-streak">{data.streaks.longest_days}</dd>
 					<dd class="text-xs text-slate-500">{m['stats.streaks.longest_hint']({ to: formatCalendar(data.to, locale) })}</dd>
@@ -231,7 +231,7 @@
 				<!-- The scrollable table must be focusable so keyboard users can scroll every day. -->
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<div
-					class="max-h-80 overflow-auto rounded-md border border-slate-200 bg-white {focusRing}"
+					class="max-h-80 overflow-auto card {focusRing}"
 					role="region"
 					aria-labelledby="stats-daily-caption"
 					tabindex="0"
@@ -261,7 +261,7 @@
 			<section class="space-y-3" aria-labelledby="stats-finished-heading">
 				<h2 id="stats-finished-heading" class="text-xl font-semibold">{m['stats.finished.heading']()}</h2>
 				<BarChart bars={monthBars} label={m['stats.finished.chart_label']()} empty={m['stats.finished.empty']()} />
-				<div class="overflow-auto rounded-md border border-slate-200 bg-white">
+				<div class="overflow-auto card">
 					<table class="w-full text-left text-sm">
 						<caption class="px-3 py-2 text-left text-slate-600">{m['stats.finished.table_caption']()}</caption>
 						<thead class="bg-slate-100">
@@ -287,7 +287,7 @@
 				{#if data.time_per_book.length === 0}
 					<p class="rounded-md border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600">{m['stats.books.empty']()}</p>
 				{:else}
-					<div class="overflow-auto rounded-md border border-slate-200 bg-white">
+					<div class="overflow-auto card">
 						<table class="w-full text-left text-sm">
 							<caption class="px-3 py-2 text-left text-slate-600">{m['stats.books.table_caption']()}</caption>
 							<thead class="bg-slate-100">

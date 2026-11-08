@@ -39,7 +39,7 @@
 	}
 </script>
 
-<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6" aria-labelledby="bv8-chart-heading">
+<section class="min-w-0 card p-5 sm:p-6" aria-labelledby="bv8-chart-heading">
 	<div class="flex flex-wrap items-start justify-between gap-4">
 		<div>
 			<h2 id="bv8-chart-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-500">{m['bv8.chart']()}</h2>

@@ -262,7 +262,7 @@
 							</button>
 						</div>
 					{:else}
-						<div class="rounded-2xl border border-slate-200 bg-white px-4 py-5 sm:px-6">
+						<div class="card px-4 py-5 sm:px-6">
 							<HighlightList {groups} {chapterIds} {bookId} {files} {query} {compact} {locale} />
 						</div>
 					{/if}

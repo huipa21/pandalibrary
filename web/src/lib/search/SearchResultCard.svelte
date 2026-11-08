@@ -10,7 +10,7 @@
 	const formatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
 </script>
 
-<li class="flex gap-4 rounded-lg border border-slate-200 bg-white p-3 sm:p-4" data-rank={result.rank}>
+<li class="flex gap-4 card p-3 sm:p-4" data-rank={result.rank}>
 	<CoverActions book={result} variant="search" />
 	<div class="min-w-0 flex-1 space-y-2">
 		<h3 class="font-semibold leading-snug break-words">

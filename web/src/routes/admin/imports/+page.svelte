@@ -244,11 +244,11 @@
 		{:else if history.status !== 'ready'}
 			<p class="text-slate-600" role="status">{m['admin.imports.loading']()}</p>
 		{:else if history.empty}
-			<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['admin.imports.empty']()}</p>
+			<p class="card p-6 text-slate-600">{m['admin.imports.empty']()}</p>
 		{:else}
 			<ul class="space-y-3">
 				{#each history.items as job (job.id)}
-					<li class="space-y-2 rounded-lg border border-slate-200 bg-white p-4">
+					<li class="space-y-2 card p-4">
 						<div class="flex flex-wrap items-start justify-between gap-2">
 							<h3 class="min-w-0 font-medium break-all">{job.original_name}</h3>
 							<span class={`rounded-full border px-2 py-0.5 text-xs ${statusClass(job.status)}`}>{statusLabel(job.status)}</span>

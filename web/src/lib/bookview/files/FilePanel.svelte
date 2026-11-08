@@ -23,7 +23,7 @@
 	let { bookId, file, primary, progressUpdatedAt, online, offlineAvailable, busy, onSave, onRemove, onCopy }: Props = $props();
 </script>
 
-<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 lg:self-start" aria-labelledby="file-panel-heading">
+<section class="min-w-0 card p-4 sm:p-6 lg:self-start" aria-labelledby="file-panel-heading">
 	<h2 id="file-panel-heading" class="font-semibold uppercase tracking-wide text-slate-900">{m['bv7.this_file']()}</h2>
 	<div class="mt-5 flex min-w-0 items-center gap-4">
 		<FileIcon format={file.format} size="lg" />

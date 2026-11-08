@@ -230,7 +230,7 @@
 		{#if actionError}<p class="rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">{actionError}</p>{/if}
 
 		{#if editable}
-			<section class="space-y-4 rounded-lg border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="edit-shelf-heading">
+			<section class="space-y-4 card p-4 sm:p-6" aria-labelledby="edit-shelf-heading">
 				<h2 id="edit-shelf-heading" class="text-xl font-semibold">{m['shelves.edit.heading']()}</h2>
 				{#if editing}
 					<ShelfForm
@@ -284,7 +284,7 @@
 			{:else if books.status !== 'ready'}
 				<p class="text-slate-600" role="status">{m['shelves.books.loading']()}</p>
 			{:else if books.empty}
-				<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['shelves.books.empty']()}</p>
+				<p class="card p-6 text-slate-600">{m['shelves.books.empty']()}</p>
 			{:else}
 				<ul class={mode === 'grid' ? 'book-grid' : 'space-y-3'}>
 					{#each books.items as book (book.id)}
@@ -330,7 +330,7 @@
 		</section>
 
 		{#if membershipEditable}
-			<section class="space-y-4 rounded-lg border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="add-books-heading">
+			<section class="space-y-4 card p-4 sm:p-6" aria-labelledby="add-books-heading">
 				<h2 id="add-books-heading" class="text-xl font-semibold">{m['shelves.add.heading']()}</h2>
 				<form role="search" aria-labelledby="add-books-heading" class="flex flex-wrap items-end gap-3" onsubmit={findCandidates} novalidate>
 					<label class="grid min-w-0 flex-1 gap-1 text-sm font-medium" for="add-book-query">

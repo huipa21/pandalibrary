@@ -34,7 +34,7 @@
 	]);
 </script>
 
-<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="bv8-summary-heading">
+<section class="min-w-0 card p-5" aria-labelledby="bv8-summary-heading">
 	<h2 id="bv8-summary-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-500">{m['bv8.summary']()}</h2>
 	<div class="mt-5 flex flex-col items-center gap-3 text-center">
 		<ProgressRing fraction={progress} size="lg" {locale} label={m['bv8.progress']({ percent: formatPercent(progress, locale) })} />

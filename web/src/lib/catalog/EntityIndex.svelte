@@ -77,9 +77,9 @@
 	{:else if loading}
 		<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 	{:else if entities.length === 0}
-		<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['catalog.entities.empty']()}</p>
+		<p class="card p-6 text-slate-600">{m['catalog.entities.empty']()}</p>
 	{:else}
-		<ul class="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+		<ul class="divide-y divide-slate-200 card">
 			{#each entities as entity (entity.id)}
 				<li class="flex flex-wrap items-center justify-between gap-3 p-4">
 					<a class="font-medium underline-offset-4 hover:underline focus-visible:outline-2" href={`/${kind}/${entity.id}`}>

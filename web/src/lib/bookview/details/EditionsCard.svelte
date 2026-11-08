@@ -8,7 +8,7 @@
 	let { book, progress }: { book: Book; progress: Progress | null } = $props();
 </script>
 
-<section class="min-w-0 space-y-4 rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="book-editions-heading">
+<section class="min-w-0 space-y-4 card p-5" aria-labelledby="book-editions-heading">
 	<h2 id="book-editions-heading" class="text-xs font-semibold tracking-wider text-slate-500 uppercase">{m['bv6.editions']()}</h2>
 	{#if book.files.length}
 		<ul class="space-y-4">

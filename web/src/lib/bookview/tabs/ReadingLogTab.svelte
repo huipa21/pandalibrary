@@ -88,7 +88,7 @@
 <section class="min-w-0 space-y-5" aria-labelledby="bv8-heading">
 	<h1 id="bv8-heading" class="sr-only">{m['bv4.tabs.reading_log']()}</h1>
 	{#if offline}
-		<div class="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-slate-600" role="status">
+		<div class="card space-y-3 p-6 text-slate-600" role="status">
 			<p>{m['bv8.offline']()}</p>
 			<button type="button" class="font-medium text-emerald-700 underline underline-offset-4 focus-visible:outline-2" onclick={retry}>{m['bv8.retry']()}</button>
 			{#if retryNotice}<p>{retryNotice}</p>{/if}
@@ -115,7 +115,7 @@
 				<ProgressChart {summary} />
 			{/key}
 		{:else if loading && !error}
-			<p class="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600" role="status">{m['bv8.loading']()}</p>
+			<p class="card p-6 text-slate-600" role="status">{m['bv8.loading']()}</p>
 		{/if}
 	{/if}
 </section>

@@ -189,7 +189,7 @@
 				<DetailsPanel {book} {primaryFile} userBook={details?.userBook ?? null} ready={detailsReady} {offline} />
 				<EditionsCard {book} progress={details?.progress ?? null} />
 				{#if book.identifiers.length}
-					<section class="min-w-0 space-y-2 rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="book-identifiers-heading">
+					<section class="min-w-0 space-y-2 card p-5" aria-labelledby="book-identifiers-heading">
 						<h2 id="book-identifiers-heading" class="text-xs font-semibold tracking-wider text-slate-500 uppercase">{m['catalog.book.identifiers']()}</h2>
 						<ul class="space-y-1 text-sm text-slate-700 [overflow-wrap:anywhere]">
 							{#each book.identifiers as identifier (`${identifier.scheme}:${identifier.value}`)}
@@ -199,7 +199,7 @@
 					</section>
 				{/if}
 				{#if book.field_sources.length}
-					<details class="min-w-0 rounded-2xl border border-slate-200 bg-white p-5">
+					<details class="min-w-0 card p-5">
 						<summary class="cursor-pointer text-sm font-semibold text-slate-700 focus-visible:outline-2">{m['catalog.book.provenance']()}</summary>
 						<ul class="mt-3 space-y-2 text-sm text-slate-600 [overflow-wrap:anywhere]">
 							{#each book.field_sources as source (`${source.field}:${source.source}:${source.chosen_at}`)}

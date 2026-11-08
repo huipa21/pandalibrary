@@ -90,7 +90,7 @@
 	}
 </script>
 
-<section aria-labelledby="pdf-cover-heading" class="space-y-4 rounded-md border border-slate-200 bg-white p-4">
+<section aria-labelledby="pdf-cover-heading" class="space-y-4 card p-4">
 	<div class="space-y-1">
 		<h2 id="pdf-cover-heading" class="text-xl font-semibold">{m['metadata.pdf.title']()}</h2>
 		<p class="text-sm text-slate-600">{m['metadata.pdf.description']()}</p>

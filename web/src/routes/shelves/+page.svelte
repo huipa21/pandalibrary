@@ -48,7 +48,7 @@
 <section class="space-y-10" aria-labelledby="shelves-heading">
 	<h1 id="shelves-heading" class="sr-only">{m['shelves.title']()}</h1>
 
-	<section class="space-y-4 rounded-lg border border-slate-200 bg-white p-4 sm:p-6" aria-labelledby="create-shelf-heading">
+	<section class="space-y-4 card p-4 sm:p-6" aria-labelledby="create-shelf-heading">
 		<h2 id="create-shelf-heading" class="text-xl font-semibold">{m['shelves.create.heading']()}</h2>
 		<ShelfForm
 			idPrefix="create-shelf"
@@ -78,11 +78,11 @@
 		{:else if pager.status !== 'ready'}
 			<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 		{:else if pager.empty}
-			<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['shelves.empty']()}</p>
+			<p class="card p-6 text-slate-600">{m['shelves.empty']()}</p>
 		{:else}
 			<ul class="grid gap-3 sm:grid-cols-2">
 				{#each pager.items as shelf (shelf.id)}
-					<li class="space-y-2 rounded-lg border border-slate-200 bg-white p-4">
+					<li class="space-y-2 card p-4">
 						<div class="flex flex-wrap items-start justify-between gap-2">
 							<h3 class="min-w-0 font-semibold break-words">
 								<a class="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={`/shelves/${shelf.id}`}>{shelf.name}</a>

@@ -17,7 +17,7 @@
 	onDestroy(() => pager.dispose());
 </script>
 
-<nav class="space-y-3 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="library-shelves-heading">
+<nav class="space-y-3 card p-4" aria-labelledby="library-shelves-heading">
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
 		<h2 id="library-shelves-heading" class="font-semibold">{m['shelves.library.heading']()}</h2>
 		<a class="text-sm underline underline-offset-4 focus-visible:outline-2" href="/shelves">{m['shelves.library.all']()}</a>

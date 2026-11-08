@@ -80,7 +80,7 @@
 		{:else if pager.status !== 'ready'}
 			<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 		{:else if pager.empty}
-			<p class="rounded-md border border-slate-200 bg-white p-6 text-slate-600">{m['shelves.empty']()}</p>
+			<p class="card p-6 text-slate-600">{m['shelves.empty']()}</p>
 		{:else}
 			<ul class="book-grid">
 				{#each pager.items as book (book.id)}

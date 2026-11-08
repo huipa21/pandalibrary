@@ -49,7 +49,7 @@
 	{:else if access === 'error'}
 		<AdminAlert message={translate(adminErrorKey(failure, 'load'))} error={failure} onretry={checkAccess} />
 	{:else if access === 'forbidden'}
-		<p class="rounded-md border border-slate-200 bg-white p-4 text-slate-700" role="alert">{m['admin.forbidden']()}</p>
+		<p class="card p-4 text-slate-700" role="alert">{m['admin.forbidden']()}</p>
 		<a class={`rounded-sm underline underline-offset-4 ${focusRing}`} href="/">{m['admin.back_home']()}</a>
 	{:else}
 		<BookheapPage />
