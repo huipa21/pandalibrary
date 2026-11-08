@@ -3,6 +3,8 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
 	import { holdBookStateBatch } from '#lib/bookview/book-states.svelte.js';
+	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
+	import { rememberOriginScroll } from '#lib/bookview/book-origin.js';
 	import { BOOK_STATE_CHANGED_EVENT } from '#lib/bookview/events.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
 	import type { Book } from '#lib/catalog/types.js';
@@ -145,6 +147,18 @@
 	function scroll(direction: -1 | 1) {
 		if (scroller) scroller.scrollBy({ left: direction * scroller.clientWidth * 0.8, behavior: 'smooth' });
 	}
+
+	// Several rows render at once, so the row's list is only remembered when one
+	// of its book links is activated.
+	function rememberRow(event: MouseEvent | KeyboardEvent) {
+		if (event instanceof KeyboardEvent && event.key !== 'Enter') return;
+		const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+		if (!(anchor instanceof HTMLAnchorElement)) return;
+		const url = new URL(anchor.href, location.href);
+		if (url.origin !== location.origin || !/^\/books\/\d+\/?$/.test(url.pathname)) return;
+		rememberBrowseContext({ ids: pager.items.map((book) => book.id), label, href: '/' });
+		rememberOriginScroll('/', window.scrollY);
+	}
 </script>
 
 <section
@@ -180,7 +194,7 @@
 	{:else}
 		{#if pager.items.length}
 			<div bind:this={scroller} class="min-w-0 overflow-x-auto pb-2" role="region" aria-label={m['ux5.cover_row']({ section: label })}>
-				<ul class="flex gap-5 pt-1 pb-3 [&>li]:w-36 [&>li]:shrink-0 sm:[&>li]:w-book">
+				<ul class="flex gap-5 pt-1 pb-3 [&>li]:w-36 [&>li]:shrink-0 sm:[&>li]:w-book" onclickcapture={rememberRow} onkeydowncapture={rememberRow}>
 					{#each pager.items as book (book.id)}
 						<BookCard {book} />
 					{/each}

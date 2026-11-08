@@ -91,10 +91,12 @@ export function readBrowseContext(): BrowseContext | null {
 	}
 }
 
-export function browseNeighbors(bookId: number): BrowseNeighbors | null {
+/** Neighbors of `bookId` in the remembered list; null when `originHref` is given and the list came from elsewhere. */
+export function browseNeighbors(bookId: number, originHref?: string): BrowseNeighbors | null {
 	if (!validID(bookId)) return null;
 	const context = readBrowseContext();
 	if (!context) return null;
+	if (originHref !== undefined && context.href !== originHref) return null;
 	const position = context.ids.indexOf(bookId);
 	if (position < 0) return null;
 	return {
