@@ -488,3 +488,133 @@ test('theme choice persists and avatar menu supports keyboard navigation', async
 	await page.keyboard.press('Escape');
 	await expect(account).toBeFocused();
 });
+
+test('header brand uses the favicon and weight feedback without shifting', async ({ page }) => {
+	await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+	await authenticate(page, 'admin');
+	await mockCatalog(page);
+	await page.route('**/api/v1/books/count', (route) => route.fulfill({ json: { count: 1 } }));
+	await page.route('**/api/v1/admin/bookheap/items?*', (route) =>
+		route.fulfill({ json: { items: [], total: 0, next_cursor: null } })
+	);
+	await page.route('**/api/v1/version', (route) => route.fulfill({ json: {
+		version: 'test', commit: 'test', commit_date: '2026-11-09T00:00:00Z', dirty: false, release: null
+	} }));
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.goto('/books');
+	await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
+
+	const brand = page.getByRole('banner').getByRole('link', { name: 'PandaLibrary', exact: true });
+	const logo = brand.locator('img');
+	const text = brand.locator('.shell-brand-text');
+	const width = () => brand.evaluate((element) => element.getBoundingClientRect().width);
+	const expectActive = async (color: string) => {
+		await expect(brand).toHaveCSS('text-decoration-line', 'none');
+		await expect(text).toHaveCSS('text-decoration-line', 'none');
+		await expect(text).toHaveCSS('font-weight', '700');
+		await expect(text).toHaveCSS('color', color);
+	};
+
+	await brand.hover();
+	await expect(brand).toHaveCSS('text-decoration-line', 'none');
+	await page.mouse.move(0, 0);
+	await expect(brand).toHaveAttribute('href', '/');
+	await expect(brand).toHaveCSS('font-size', '14px');
+	await expect(logo).toHaveAttribute('src', '/panda-icon.svg');
+	await expect(logo).toHaveAttribute('alt', '');
+	await expect(logo).toHaveAttribute('width', '28');
+	await expect(logo).toHaveAttribute('height', '28');
+	await expect.poll(() => logo.evaluate((element) =>
+		element instanceof HTMLImageElement ? element.naturalWidth : 0
+	)).toBeGreaterThan(0);
+	await expect(logo).not.toHaveCSS('box-shadow', 'none');
+	await expect(text).toHaveAttribute('data-text', 'PandaLibrary');
+	const imageUrl = await logo.evaluate((element) => {
+		if (!(element instanceof HTMLImageElement)) throw new Error('The brand logo is not an image');
+		return element.src;
+	});
+	await expect(page.locator('head link[rel="icon"]')).toHaveJSProperty('href', imageUrl);
+	await page.evaluate(async () => { await document.fonts.ready; });
+
+	const themes = [
+		{ name: 'light', active: 'rgb(4, 120, 87)' },
+		{ name: 'dark', active: 'rgb(167, 243, 208)' }
+	] as const;
+	for (const theme of themes) {
+		if (theme.name === 'dark') await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+		await expect(page.locator('html')).toHaveAttribute('data-theme', theme.name);
+		await page.mouse.move(0, 0);
+		await expect(text).toHaveCSS('font-weight', '600');
+		const originalWidth = await width();
+		await brand.hover();
+		await expectActive(theme.active);
+		await expect(logo).toHaveCSS('transform', 'matrix(1.06, 0, 0, 1.06, 0, 0)');
+		expect(await width()).toBe(originalWidth);
+
+		await page.mouse.move(0, 0);
+		await expect(text).toHaveCSS('font-weight', '600');
+		await expect(logo).toHaveCSS('transform', 'none');
+		await page.getByRole('link', { name: 'Skip to main content' }).focus();
+		await page.keyboard.press('Tab');
+		await expect(brand).toBeFocused();
+		await expectActive(theme.active);
+		await expect(logo).toHaveCSS('transform', 'matrix(1.06, 0, 0, 1.06, 0, 0)');
+		await expect(brand).toHaveCSS('outline-style', 'solid');
+		await expect(brand).toHaveCSS('outline-width', '2px');
+		await expect(brand).toHaveCSS('outline-color', 'rgb(52, 211, 153)');
+		await expect(brand).toHaveCSS('outline-offset', '2px');
+		expect(await width()).toBe(originalWidth);
+	}
+
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await expect(logo).toHaveCSS('transition-duration', '0s');
+	await expect(logo).toHaveCSS('transform', 'none');
+	await expectActive(themes[1].active);
+	await page.getByRole('searchbox', { name: 'Search books' }).focus();
+	await brand.hover();
+	await expect(logo).toHaveCSS('transform', 'none');
+
+	for (const viewportWidth of [320, 360, 1440]) {
+		await page.setViewportSize({ width: viewportWidth, height: 844 });
+		await expect(brand).toHaveAccessibleName('PandaLibrary');
+		if (viewportWidth < 640) await expect(text).toBeHidden();
+		else await expect(text).toBeVisible();
+		await expect(logo).toBeVisible();
+		await expectNoHorizontalOverflow(page);
+	}
+
+	await page.route('**/api/v1/auth/me', (route) => route.fulfill({
+		status: 401, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Unauthorized', status: 401 })
+	}));
+	for (const publicPage of [
+		{ path: '/login', required: false, heading: 'Sign in' },
+		{ path: '/setup', required: true, heading: 'Set up PandaLibrary' }
+	]) {
+		await page.route('**/api/v1/setup', (route) => route.fulfill({ json: { required: publicPage.required } }));
+		await page.goto(publicPage.path);
+		await expect(page.getByRole('heading', { name: publicPage.heading })).toBeVisible();
+		for (const theme of themes) {
+			if (await page.locator('html').getAttribute('data-theme') !== theme.name) {
+				await page.getByRole('button', { name: `Switch to ${theme.name} mode` }).click();
+			}
+			for (const viewportWidth of [320, 360, 1440]) {
+				await page.setViewportSize({ width: viewportWidth, height: 844 });
+				await expect(brand).toHaveAccessibleName('PandaLibrary');
+				await expect(text).toBeVisible();
+				await expectNoHorizontalOverflow(page);
+			}
+			await page.setViewportSize({ width: 320, height: 844 });
+			await page.mouse.move(0, 0);
+			const originalWidth = await width();
+			await brand.hover();
+			await expectActive(theme.active);
+			expect(await width()).toBe(originalWidth);
+			await page.mouse.move(0, 0);
+			await page.getByRole('link', { name: 'Skip to main content' }).focus();
+			await page.keyboard.press('Tab');
+			await expect(brand).toBeFocused();
+			await expectActive(theme.active);
+			expect(await width()).toBe(originalWidth);
+		}
+	}
+});

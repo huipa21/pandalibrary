@@ -113,9 +113,9 @@
 					</svg>
 				</button>
 			{/if}
-			<a class="shell-control flex shrink-0 items-center gap-2 font-semibold" href="/">
-				<span aria-hidden="true" class="grid size-7 place-items-center rounded-md bg-emerald-500/20 text-sm text-emerald-300">P</span>
-				<span class={viewer ? 'hidden sm:inline' : ''}>{m['common.app_name']()}</span>
+			<a class="shell-brand shrink-0" href="/">
+				<img class="shell-brand-logo size-7 rounded-md" src="/panda-icon.svg" alt="" width="28" height="28" />
+				<span class={['shell-brand-text', viewer ? 'hidden sm:inline-grid' : '']} data-text={m['common.app_name']()}>{m['common.app_name']()}</span>
 				{#if viewer}<span class="sr-only sm:hidden">{m['common.app_name']()}</span>{/if}
 			</a>
 			<div class="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
