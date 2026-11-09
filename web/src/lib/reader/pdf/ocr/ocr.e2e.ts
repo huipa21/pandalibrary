@@ -1,9 +1,9 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { createServer, preview, type ViteDevServer } from 'vite';
 import { resolve } from 'node:path';
 import { readdirSync } from 'node:fs';
 import { ocrAssets } from '../../../../../scripts/ocr-assets.js';
-import { mixedPdfFixture, scannedPdfFixture } from '../../fixtures.js';
+import { mixedPdfFixture, scannedFixtureImage, scannedPdfFixture } from '../../fixtures.js';
 
 let server: ViteDevServer;
 let origin: string;
@@ -23,23 +23,6 @@ test.afterEach(async ({ page }) => {
 	await page.evaluate(() => window.ocrHarness?.dispose());
 });
 
-async function fixtureImage(page: Page) {
-	const png = await page.evaluate(() => {
-		const canvas = document.createElement('canvas');
-		canvas.width = 1200;
-		canvas.height = 480;
-		const context = canvas.getContext('2d')!;
-		context.fillStyle = 'white';
-		context.fillRect(0, 0, canvas.width, canvas.height);
-		context.fillStyle = 'black';
-		context.font = '64px SimSun, serif';
-		context.fillText('Scanned PDF sample', 70, 180);
-		context.fillText('扫描样本', 70, 300);
-		return canvas.toDataURL('image/png').split(',')[1];
-	});
-	return { png: Buffer.from(png, 'base64'), width: 600, height: 240 };
-}
-
 test('real self-hosted Chinese/English OCR, selectable text, rotation, cache, mixed and disabled pages', async ({ page }) => {
 	test.slow();
 	const external: string[] = [];
@@ -50,7 +33,7 @@ test('real self-hosted Chinese/English OCR, selectable text, rotation, cache, mi
 	});
 	await page.goto(`${origin}/src/lib/reader/pdf/ocr/Ocr.harness.html`);
 	await page.waitForFunction(() => !!window.ocrHarness);
-	const image = await fixtureImage(page);
+	const image = await scannedFixtureImage(page);
 	const scanned = scannedPdfFixture([image]).toString('base64');
 	const start = Date.now();
 	await page.evaluate((pdf) => window.ocrHarness.open(pdf), scanned);
@@ -97,7 +80,7 @@ test('live PdfReader runs OCR through its page-enhancer hook, with selection, ro
 	page.on('request', (request) => { if (request.url().endsWith('/worker.min.js')) workerStarts++; });
 	await page.goto(`${origin}/src/lib/reader/pdf/ocr/Ocr.harness.html`);
 	await page.waitForFunction(() => !!window.ocrHarness);
-	const image = await fixtureImage(page);
+	const image = await scannedFixtureImage(page);
 	const mixed = mixedPdfFixture(image).toString('base64');
 	await page.evaluate((pdf) => window.ocrHarness.openLive(pdf), mixed);
 	const text = page.locator('.reader-pdf-page[data-page="2"] .reader-pdf-enhancement .pv-ocr-text');
@@ -136,7 +119,7 @@ test('cancelled pages do not cache results and missing models expose a working r
 	test.slow();
 	await page.goto(`${origin}/src/lib/reader/pdf/ocr/Ocr.harness.html`);
 	await page.waitForFunction(() => !!window.ocrHarness);
-	const scanned = scannedPdfFixture([await fixtureImage(page)]).toString('base64');
+	const scanned = scannedPdfFixture([await scannedFixtureImage(page)]).toString('base64');
 	let workerStarts = 0;
 	page.on('request', (request) => { if (request.url().endsWith('/worker.min.js')) workerStarts++; });
 	await page.evaluate(async (pdf) => {

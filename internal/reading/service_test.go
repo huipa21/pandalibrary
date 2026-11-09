@@ -351,3 +351,50 @@ func TestSettingsAndCursorValidation(t *testing.T) {
 		t.Fatalf("oversized push error = %v", err)
 	}
 }
+
+func TestIdenticalSettingReplayAcknowledgesWithoutNewRevision(t *testing.T) {
+	fixture := newReadingFixture(t)
+	ctx := context.Background()
+	viewer := Viewer{UserID: 2}
+	key := "reader.book.101"
+	value := `{"value":{"pdfLayout":"single","theme":"light"}}`
+	original := mutation("user_settings", "", key, "upsert", value, 1000)
+	push := func(item Mutation, want string) {
+		t.Helper()
+		result, err := fixture.service.Push(ctx, viewer, PushRequest{Mutations: []Mutation{item}})
+		if err != nil || len(result.Results) != 1 || result.Results[0].Status != want {
+			t.Fatalf("setting push = %+v, %v; want %s", result, err, want)
+		}
+	}
+
+	push(original, "applied")
+	before, err := fixture.service.Pull(ctx, viewer, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	push(original, "applied")
+	push(mutation("user_settings", "", key, "upsert", `{"value":{"pdfLayout":"split"}}`, 1000), "stale")
+	push(mutation("user_settings", "", key, "upsert", `{"value":{"theme":"light","pdfLayout":"single"}}`, 1000), "stale")
+	push(mutation("user_settings", "", key, "upsert", value, 999), "stale")
+	after, err := fixture.service.Pull(ctx, viewer, before.Cursor)
+	if err != nil || after.Cursor != before.Cursor || len(after.Settings) != 0 {
+		t.Fatalf("replayed setting advanced the cursor: before=%d after=%+v err=%v", before.Cursor, after, err)
+	}
+	settings, err := fixture.service.ListSettings(ctx, viewer)
+	if err != nil || len(settings) != 1 || string(settings[0].Value) != `{"pdfLayout":"single","theme":"light"}` {
+		t.Fatalf("setting after replay = %+v, %v", settings, err)
+	}
+	push(mutation("user_settings", "", key, "upsert", `{"value":{"pdfLayout":"split"}}`, 1001), "applied")
+
+	other := Viewer{UserID: 3}
+	for i := 0; i < 2; i++ {
+		result, err := fixture.service.Push(ctx, other, PushRequest{Mutations: []Mutation{original}})
+		if err != nil || len(result.Results) != 1 || result.Results[0].Status != "applied" {
+			t.Fatalf("other user's setting push %d = %+v, %v", i, result, err)
+		}
+	}
+	otherSettings, err := fixture.service.ListSettings(ctx, other)
+	if err != nil || len(otherSettings) != 1 || string(otherSettings[0].Value) != `{"pdfLayout":"single","theme":"light"}` {
+		t.Fatalf("other user's setting = %+v, %v", otherSettings, err)
+	}
+}

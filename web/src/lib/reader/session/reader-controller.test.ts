@@ -220,6 +220,42 @@ describe('reader controller PDF extensions', () => {
 		controller.dispose();
 	});
 
+	it('clears a sync-status save alert once the outbox drains', async () => {
+		const controller = createReaderController(params);
+		await controller.retry();
+		vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+		vi.stubGlobal('document', { hidden: true, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+		const release = controller.mount();
+		offlineStatus.update((status) => ({ ...status, error: true, pending: 1 }));
+		expect(controller.pendingError).not.toBe('');
+		offlineStatus.update((status) => ({ ...status, syncing: true, error: false }));
+		expect(controller.pendingError).not.toBe('');
+		offlineStatus.update((status) => ({ ...status, syncing: false, pending: 0 }));
+		expect(controller.pendingError).toBe('');
+		release();
+		controller.dispose();
+	});
+
+	it('does not replace or clear an independent close failure when sync recovers', async () => {
+		const controller = createReaderController(params);
+		await controller.retry();
+		vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+		vi.stubGlobal('document', { hidden: true, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+		const release = controller.mount();
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		controller.setViewSave(async () => { throw new Error('View save failed'); });
+		await controller.close();
+		const closeError = controller.pendingError;
+		expect(closeError).not.toBe('');
+		offlineStatus.update((status) => ({ ...status, error: true, pending: 1 }));
+		expect(controller.pendingError).toBe(closeError);
+		offlineStatus.update((status) => ({ ...status, error: false, pending: 0 }));
+		expect(controller.pendingError).toBe(closeError);
+		log.mockRestore();
+		release();
+		controller.dispose();
+	});
+
 	it('persists book and format settings without losing unknown JSON', async () => {
 		vi.mocked(getSettings).mockResolvedValue([
 			{ key: 'reader.book.21', value: { futureBook: { keep: true } }, updated_at: '', rev: 1 },

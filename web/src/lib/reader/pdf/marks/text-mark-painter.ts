@@ -67,6 +67,7 @@ export function textMarkPainter(marks: () => readonly TextMark[], commentLabel: 
 		z: 3,
 		paint({ page, layer, toCss }) {
 			const label = commentLabel();
+			const painted = document.createDocumentFragment();
 			for (const mark of marks()) {
 				if (mark.page !== page) continue;
 				for (const rect of mark.rects) {
@@ -74,9 +75,9 @@ export function textMarkPainter(marks: () => readonly TextMark[], commentLabel: 
 					element.className = 'reader-pdf-highlight';
 					element.dataset.annotationId = mark.id;
 					element.dataset.style = mark.style;
-					Object.assign(element.style, toCss(rect));
-					element.style.setProperty('--pv-mark', HIGHLIGHT_HEX[mark.color]);
-					layer.append(element);
+					const { left, top, width, height } = toCss(rect);
+					element.setAttribute('style', `left:${left};top:${top};width:${width};height:${height};--pv-mark:${HIGHLIGHT_HEX[mark.color]}`);
+					painted.append(element);
 				}
 				const last = mark.rects.at(-1);
 				if (mark.hasNote && last) {
@@ -90,9 +91,10 @@ export function textMarkPainter(marks: () => readonly TextMark[], commentLabel: 
 					marker.style.left = `${(last.x + last.width) * 100}%`;
 					marker.style.top = `${last.y * 100}%`;
 					marker.style.setProperty('--pv-mark', HIGHLIGHT_HEX[mark.color]);
-					layer.append(marker);
+					painted.append(marker);
 				}
 			}
+			layer.append(painted);
 		}
 	};
 }

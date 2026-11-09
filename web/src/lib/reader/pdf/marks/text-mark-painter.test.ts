@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Highlight, Note } from '../../types.js';
-import { changedPages, textMarks } from './text-mark-painter.js';
+import { percentCss } from '../page-layers.js';
+import { changedPages, textMarkPainter, textMarks } from './text-mark-painter.js';
 import { ocrNeedsRerun } from './ocr-wiring.js';
 
 const rect = { x: 0.1, y: 0.2, width: 0.3, height: 0.02 };
@@ -75,6 +76,50 @@ describe('changedPages', () => {
 	it('repaints when a note is added', () => {
 		const first = changedPages(new Map(), textMarks([onPage('a', 4)], [], 31));
 		expect([...changedPages(first.signatures, textMarks([onPage('a', 4)], [note('n', 'a')], 31)).pages]).toEqual([4]);
+	});
+});
+
+describe('textMarkPainter', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('batches marks and comment markers in paint order with unchanged geometry and labels', () => {
+		class Element {
+			className = '';
+			dataset: Record<string, string> = {};
+			attributes: Record<string, string> = {};
+			style = { cssText: '', left: '', top: '', setProperty: vi.fn() };
+			type = '';
+			tabIndex = 0;
+			title = '';
+			children: Element[] = [];
+			constructor(readonly tag: string) {}
+			append(child: Element) { this.children.push(child); }
+			setAttribute(key: string, value: string) { this.attributes[key] = value; }
+		}
+		const layer = new Element('layer');
+		vi.stubGlobal('document', {
+			createElement: (tag: string) => tag === 'layer' ? layer : new Element(tag),
+			createDocumentFragment: () => new Element('fragment')
+		});
+		const marks = textMarks([
+			highlight('a', { style: 'underline' }),
+			highlight('b', { color: 'blue', locator: { type: 'pdf', page: 2, rects: [rect] } })
+		], [note('n', 'a')], 31);
+		textMarkPainter(() => marks, () => 'Open comment').paint({
+			page: 1, layer: document.createElement('layer'), width: 600, height: 800, rotation: 90,
+			toCss: percentCss, fromClient: (x, y) => ({ x, y })
+		});
+		expect(layer.children).toHaveLength(1);
+		const [mark, comment] = layer.children[0].children;
+		expect(mark).toMatchObject({
+			className: 'reader-pdf-highlight', dataset: { annotationId: 'a', style: 'underline' },
+			attributes: { style: 'left:10%;top:20%;width:30%;height:2%;--pv-mark:#facc15' }
+		});
+		expect(comment).toMatchObject({
+			className: 'pv-mark-comment', dataset: { annotationId: 'a' }, attributes: { 'aria-label': 'Open comment' },
+			type: 'button', tabIndex: -1, title: 'Open comment', style: { left: '40%', top: '20%' }
+		});
+		expect(comment.style.setProperty).toHaveBeenCalledWith('--pv-mark', '#facc15');
 	});
 });
 

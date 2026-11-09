@@ -21,7 +21,7 @@
 </div>
 
 <style>
-	.pv4-toolbar { display: flex; flex: 1; align-items: center; gap: 4px; width: 100%; min-width: 0; height: 44px; min-height: 44px; box-sizing: border-box; padding: 0 4px; background: var(--shell-surface, white); color: var(--shell-text, #1f2937); font: 14px/1.4 Inter, ui-sans-serif, system-ui, sans-serif; }
+	.pv4-toolbar { position: relative; display: flex; flex: 1; align-items: center; gap: 4px; width: 100%; min-width: 0; height: 44px; min-height: 44px; box-sizing: border-box; padding: 0 4px; background: var(--shell-surface, white); color: var(--shell-text, #1f2937); font: 14px/1.4 Inter, ui-sans-serif, system-ui, sans-serif; }
 	.pv4-left, .pv4-right, .pv4-collapsible { display: flex; align-items: center; gap: 2px; flex: none; }
 	.pv4-left { gap: 6px; }
 	.pv4-centre { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; color: #64748b; }

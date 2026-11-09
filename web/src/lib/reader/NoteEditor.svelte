@@ -71,6 +71,11 @@
 </div>
 
 <style>
+	.reader-note-editor,
+	.reader-note-preview {
+		color: #0f172a;
+	}
+
 	.reader-note-editor :global(.cm-editor) {
 		min-height: 8rem;
 	}

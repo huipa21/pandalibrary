@@ -48,6 +48,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let loadError = $state('');
 	let actionError = $state('');
 	let pendingError = $state('');
+	// True while pendingError only mirrors a failed outbox sync, which clears itself once the outbox drains.
+	let statusAlert = false;
 	let settingsWarning = $state('');
 	let savedMessage = $state('');
 	let closing = $state(false);
@@ -100,7 +102,13 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		const releaseReader = readerOpened();
 		let syncing = false;
 		const unsubscribe = offlineStatus.subscribe((status) => {
-			if (status.online && status.error && status.pending) pendingError = m['reader.error.save']();
+			if (status.online && status.error && status.pending && (!pendingError || statusAlert)) {
+				pendingError = m['reader.error.save']();
+				statusAlert = true;
+			} else if (statusAlert && !status.error && !status.pending && !status.issues) {
+				pendingError = '';
+				statusAlert = false;
+			}
 			if (syncing && !status.syncing && !status.error && offlineAvailable()) void refreshPageAnnotations();
 			syncing = status.syncing;
 		});
@@ -170,9 +178,12 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 
 	function reportPendingError(error: unknown) {
 		console.error('Could not save reading progress or session', error);
-		if (mounted) pendingError = error instanceof SyncError && error.status === 'stale'
-			? m['reader.error.conflict']()
-			: m['reader.error.save']();
+		if (mounted) {
+			statusAlert = false;
+			pendingError = error instanceof SyncError && error.status === 'stale'
+				? m['reader.error.conflict']()
+				: m['reader.error.save']();
+		}
 	}
 
 	function reportActionError(error: unknown) {
@@ -347,6 +358,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			await goto(`/books/${book.id}`);
 		} catch (error) {
 			console.error('Could not save while closing the reader', error);
+			statusAlert = false;
 			pendingError = m['reader.error.leave']();
 			closing = false;
 		}
@@ -360,6 +372,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				if (result.issues) throw new SyncError('stale');
 			}
 			pendingError = '';
+			statusAlert = false;
 			savedMessage = navigator.onLine ? m['reader.saved']() : m['offline.queued']();
 		} catch (error) {
 			reportPendingError(error);

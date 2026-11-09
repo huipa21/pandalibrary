@@ -9,6 +9,7 @@ import { crc32 } from 'node:zlib';
 import { pdfFixture, pngFixture } from '../lib/reader/fixtures.js';
 import { signInRealAdmin } from '../lib/real-auth.js';
 import { push, uuidv7 } from '../lib/real-fixtures.js';
+import { openedPdf, pdfPageBox } from '../lib/real-pdf.js';
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
 
@@ -334,7 +335,8 @@ test('book view works end to end against the real server', async ({ page, browse
 		const closing = list.getByRole('listitem').filter({ hasText: 'Second PDF page text' });
 		await closing.getByRole('link', { name: 'Open' }).click();
 		await expect(page).toHaveURL(new RegExp(`/read/${data.pdf.id}/${data.pdf.file.id}\\?highlight=`));
-		await expect(page.locator('.reader-pdf-text')).toContainText('Second PDF page text');
+		await openedPdf(page, 2, 'Second PDF page text');
+		await expect(pdfPageBox(page)).toHaveValue('2');
 	});
 
 	await test.step('previous and next walk the All Books list', async () => {

@@ -173,6 +173,7 @@ test('image preparation, upload, aspect-locked resize, cached offline reload and
 	const image = page.getByRole('img', { name: 'Image', exact: true });
 	await expect(image.locator('img')).toHaveJSProperty('complete', true);
 	await expect.poll(() => state.pushes.filter((row) => row.data.kind === 'image').length).toBe(1);
+	await expect(page.locator('#reader-surface')).toHaveAttribute('data-tool', 'select');
 	await image.click();
 	const handle = page.getByRole('button', { name: 'Resize se', exact: true });
 	const box = await handle.boundingBox();

@@ -99,6 +99,15 @@ it('durably queues before registering Background Sync and does not claim deliver
 	expect(register).toHaveBeenCalledWith('pandalibrary-outbox');
 });
 
+it('does not report a sync failure when Background Sync registration is refused', async () => {
+	const { client, register } = await setup();
+	register.mockRejectedValueOnce(new DOMException('Permission denied.', 'NotAllowedError'));
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+	await client.saveMutation(mutation);
+	await vi.waitFor(() => expect(warn).toHaveBeenCalledOnce());
+	expect(get(client.offlineStatus).error).toBe(false);
+});
+
 it('keeps an explicit online retry path when Background Sync is absent', async () => {
 	const { client, synchronize, network, window, register } = await setup(false);
 	network.onLine = false;

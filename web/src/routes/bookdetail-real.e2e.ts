@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { Book } from '../lib/catalog/types.js';
 import { pdfFixture } from '../lib/reader/fixtures.js';
 import { signInRealAdmin } from '../lib/real-auth.js';
+import { openedPdf, pdfPageBox } from '../lib/real-pdf.js';
 import { push, uuidv7 } from '../lib/real-fixtures.js';
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled real server');
@@ -114,7 +115,8 @@ test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private no
 			expect(context.ids).toContain(data.book.id);
 			await page.getByRole('button', { name: 'Resume', exact: true }).click();
 			await expect(page).toHaveURL(`/read/${data.book.id}/${data.book.files[0].id}`);
-			await page.getByRole('link', { name: 'Back to book details' }).click();
+			await openedPdf(page);
+			await page.getByRole('button', { name: 'Close reader', exact: true }).click();
 			await expect(page).toHaveURL(bookPath);
 			await expect(back(page)).toHaveAttribute('href', origin);
 			await page.getByRole('region', { name: 'Details', exact: true }).getByRole('link', { name: 'Edit metadata' }).click();
@@ -238,9 +240,11 @@ test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private no
 			await expect(editions.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
 			await reader.getByRole('button', { name: 'Read', exact: true }).click();
 			await expect(reader).toHaveURL(`/read/${data.book.id}/${data.book.files[0].id}`);
-			await expect(reader.getByRole('slider')).toBeEnabled();
-			await expect(reader.getByRole('slider')).toHaveValue('0');
-			await reader.getByRole('link', { name: 'Back to book details' }).click();
+			await openedPdf(reader);
+			await expect(pdfPageBox(reader)).toHaveValue('1');
+			await expect(reader.getByLabel('Progress 0.00%', { exact: true })).toBeVisible();
+			await reader.getByRole('button', { name: 'Close reader', exact: true }).click();
+			await expect(reader).toHaveURL(bookPath);
 			await push(reader.request, [session(Date.now() - 1000, 0, 0.1)]);
 			await reader.getByRole('link', { name: 'Activities', exact: true }).click();
 			await expect(reader.getByText('Attempt 2', { exact: false }).first()).toBeVisible();

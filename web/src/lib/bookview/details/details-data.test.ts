@@ -96,7 +96,7 @@ describe('details state', () => {
 		vi.mocked(readerState).mockResolvedValue({ state: local, settings: [] });
 		fetchMock.mockImplementation(async () => json(emptyState));
 		expect((await loadDetailsState(21)).progress).toEqual(progress);
-		expect(readerState).toHaveBeenCalledWith(4, 21, { state: emptyState, settings: [] });
+		expect(readerState).toHaveBeenCalledWith(4, 21, { state: { ...emptyState, page_annotations: [] }, settings: [] });
 	});
 
 	it('propagates invalid state, API failures, and cancellation', async () => {

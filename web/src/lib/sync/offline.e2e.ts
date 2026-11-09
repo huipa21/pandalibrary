@@ -158,23 +158,29 @@ test('offline progress and notes survive reload and reconnect pushes then pulls 
 	const state = await setup(page);
 	await download(page);
 	await page.goto('/read/21/31');
-	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+	const pageBox = page.getByRole('textbox', { name: /^Page \d+ of \d+$/ });
+	await expect(pageBox).toBeEnabled();
 	await expect.poll(async () => (await databaseRows(page, 'outbox')).length).toBe(0);
 
 	state.online = false;
 	await context.setOffline(true);
-	await page.getByRole('button', { name: 'Next page' }).click();
-	await expect(page.locator('.reader-pdf-text')).toContainText('Second PDF page text');
-	await page.getByRole('button', { name: 'Add book note' }).click();
-	await page.getByRole('textbox', { name: 'Note in Markdown' }).fill('Written offline');
-	await page.getByRole('button', { name: 'Save note' }).click();
+	await pageBox.fill('2');
+	await pageBox.press('Enter');
+	await expect(page.locator('.reader-pdf-page[data-page="2"] .reader-pdf-text')).toContainText('Second PDF page text');
+	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
+	const bookNotes = page.getByRole('complementary', { name: 'Annotations', exact: true }).getByRole('region', { name: 'Book notes' });
+	await bookNotes.getByRole('button', { name: 'Add book note' }).click();
+	await bookNotes.getByRole('textbox', { name: 'Note in Markdown' }).fill('Written offline');
+	await bookNotes.getByRole('button', { name: 'Save note' }).click();
 	await expect.poll(async () => (await databaseRows(page, 'outbox')).filter((row) => row.status === 'pending').length).toBeGreaterThanOrEqual(2);
 	const queued = await databaseRows(page, 'outbox');
 	expect(queued.some((row) => JSON.stringify(row.mutation).includes('Written offline'))).toBe(true);
 
 	await page.reload();
-	await expect(page.locator('.reader-pdf-text')).toContainText('Second PDF page text');
-	await expect(page.getByText('Written offline', { exact: true })).toBeVisible();
+	await expect(page.locator('.reader-pdf-page[data-page="2"] .reader-pdf-text')).toContainText('Second PDF page text');
+	await expect(pageBox).toHaveValue('2');
+	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
+	await expect(bookNotes.getByText('Written offline', { exact: true })).toBeVisible();
 	const countBefore = state.mutations.length;
 	state.calls.length = 0;
 	state.online = true;

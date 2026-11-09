@@ -90,8 +90,10 @@ test('pending writes appear in the status dot and can be retried', async ({ page
 	await page.keyboard.press('Escape');
 	await expect(page.locator('#reader-sync-status')).toHaveCount(0);
 	await expect(status).toBeFocused();
+	const retry = page.getByRole('button', { name: 'Retry unsaved changes' });
+	await expect(retry).toBeVisible();
 	state.failPushes(false);
-	await page.getByRole('button', { name: 'Retry unsaved changes' }).click();
+	await retry.click();
 	await expect.poll(() => state.pushes.filter((mutation) => mutation.entity === 'reading_progress').length).toBe(1);
 });
 

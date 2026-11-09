@@ -310,12 +310,22 @@ test('saves files, confirms removal of all downloaded copies, and preserves them
 
 test('reports progress and download failures, including revoked access, and shows busy state', async ({ page }) => {
 	const state = await setup(page);
+	const sync: { release: (() => void) | null } = { release: null };
+	await page.route('**/api/v1/sync/pull**', async (route) => {
+		await new Promise<void>((resolve) => { sync.release = resolve; });
+		await route.fallback();
+	}, { times: 1 });
 	state.progressStatus = 503;
-	await page.goto('/books/21/files');
-	await expect(page.getByRole('alert').filter({ hasText: 'Could not load reading progress.' })).toBeVisible();
-	state.progressStatus = 200;
-	await page.getByRole('alert').getByRole('button', { name: 'Try again' }).click();
-	await expect(panel(page)).toContainText('You are 21% through this copy');
+	try {
+		await page.goto('/books/21/files');
+		await expect.poll(() => sync.release !== null).toBe(true);
+		await expect(page.getByRole('alert').filter({ hasText: 'Could not load reading progress.' })).toBeVisible();
+		state.progressStatus = 200;
+		await page.getByRole('alert').getByRole('button', { name: 'Try again' }).click();
+		await expect(panel(page)).toContainText('You are 21% through this copy');
+	} finally {
+		sync.release?.();
+	}
 
 	state.holdFile = true;
 	state.fileStatus = 503;

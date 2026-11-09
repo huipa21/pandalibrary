@@ -1,4 +1,23 @@
+import type { Page } from '@playwright/test';
 import { crc32, deflateSync, inflateSync } from 'node:zlib';
+
+export async function scannedFixtureImage(page: Page) {
+	const png = await page.evaluate(() => {
+		const canvas = document.createElement('canvas');
+		canvas.width = 1200;
+		canvas.height = 480;
+		const context = canvas.getContext('2d');
+		if (!context) throw new Error('Canvas is unavailable for the scanned fixture.');
+		context.fillStyle = 'white';
+		context.fillRect(0, 0, canvas.width, canvas.height);
+		context.fillStyle = 'black';
+		context.font = '64px SimSun, serif';
+		context.fillText('Scanned PDF sample', 70, 180);
+		context.fillText('扫描样本', 70, 300);
+		return canvas.toDataURL('image/png').split(',')[1];
+	});
+	return { png: Buffer.from(png, 'base64'), width: 600, height: 240 };
+}
 
 export function pngFixture(width: number, height: number, [red, green, blue]: [number, number, number]): Buffer {
 	const chunk = (type: string, data: Buffer) => {
@@ -128,8 +147,7 @@ export function fbzFixture(): Buffer {
 	return zip({ 'fixture.fb2': fb2Fixture() });
 }
 
-export function cbzFixture(): Buffer {
-	const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXcAAAAASUVORK5CYII=', 'base64');
+export function cbzFixture(image: Buffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXcAAAAASUVORK5CYII=', 'base64')): Buffer {
 	return zip({ '001.png': image, '002.png': image });
 }
 
@@ -218,22 +236,26 @@ export function azw3Fixture(): Buffer {
 	return Buffer.concat([pdb, ...records]);
 }
 
-export function pdfFixture(pageCount = 2): Buffer {
+export function pdfFixture(pageCount = 2, withInternalLink = false): Buffer {
+	if (withInternalLink && pageCount < 2) throw new Error('An internal link requires at least two pages.');
 	const fontId = 3 + pageCount * 2;
+	const linkId = fontId + 1;
 	const objects = [
 		'<< /Type /Catalog /Pages 2 0 R >>',
 		`<< /Type /Pages /Kids [${Array.from({ length: pageCount }, (_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pageCount} >>`
 	];
 	for (let index = 0; index < pageCount; index++) {
 		const label = index === 0 ? 'First' : index === 1 ? 'Second' : `Page ${index + 1}`;
-		const text = `BT /F1 24 Tf 72 700 Td (${label} PDF page text) Tj ET`;
+		const text = `BT /F1 24 Tf 72 700 Td (${label} PDF page text) Tj ET` +
+			(index === 0 && withInternalLink ? '\nBT /F1 14 Tf 72 620 Td (Jump to page 2) Tj ET' : '');
 		objects.push(
-			`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${4 + index * 2} 0 R >>`,
+			`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${4 + index * 2} 0 R${index === 0 && withInternalLink ? ` /Annots [${linkId} 0 R]` : ''} >>`,
 			`<< /Length ${Buffer.byteLength(text)} >>\nstream\n${text}\nendstream`
 		);
 	}
 
 	objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+	if (withInternalLink) objects.push('<< /Type /Annot /Subtype /Link /Rect [72 615 200 635] /Border [0 0 0] /Dest [5 0 R /Fit] >>');
 	let output = '%PDF-1.7\n';
 	const offsets = [0];
 	for (const [index, object] of objects.entries()) {
@@ -296,6 +318,7 @@ function pngRgb(png: Buffer): { pixels: Buffer; width: number; height: number } 
 
 function imagePdf(pages: ScannedFixturePage[], textPage: boolean): Buffer {
 	const objects: Buffer[] = [];
+	const images = new WeakMap<Buffer, { width: number; height: number; compressed: Buffer }>();
 	const add = (value: string | Buffer) => objects.push(typeof value === 'string' ? Buffer.from(value) : value);
 	const count = pages.length + Number(textPage);
 	const kids = pages.map((_, index) => `${3 + index * 3} 0 R`);
@@ -303,15 +326,19 @@ function imagePdf(pages: ScannedFixturePage[], textPage: boolean): Buffer {
 	add('<< /Type /Catalog /Pages 2 0 R >>');
 	add(`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${count} >>`);
 	for (const [index, page] of pages.entries()) {
-		const image = pngRgb(page.png);
+		let image = images.get(page.png);
+		if (!image) {
+			const rgb = pngRgb(page.png);
+			image = { width: rgb.width, height: rgb.height, compressed: deflateSync(rgb.pixels) };
+			images.set(page.png, image);
+		}
 		const id = 3 + index * 3;
 		const command = `q ${page.width} 0 0 ${page.height} 0 0 cm /Image Do Q`;
-		const compressed = deflateSync(image.pixels);
 		add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${page.width} ${page.height}] /Resources << /XObject << /Image ${id + 2} 0 R >> >> /Contents ${id + 1} 0 R >>`);
 		add(`<< /Length ${Buffer.byteLength(command)} >>\nstream\n${command}\nendstream`);
 		add(Buffer.concat([
-			Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${compressed.length} >>\nstream\n`),
-			compressed, Buffer.from('\nendstream')
+			Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${image.compressed.length} >>\nstream\n`),
+			image.compressed, Buffer.from('\nendstream')
 		]));
 	}
 	if (textPage) {
@@ -321,14 +348,15 @@ function imagePdf(pages: ScannedFixturePage[], textPage: boolean): Buffer {
 		add(`<< /Length ${Buffer.byteLength(command)} >>\nstream\n${command}\nendstream`);
 		add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
 	}
-	const parts = [Buffer.from('%PDF-1.7\n')];
+	const parts: Buffer[] = [Buffer.from('%PDF-1.7\n')];
 	const offsets = [0];
 	let length = parts[0].length;
 	for (const [index, object] of objects.entries()) {
 		offsets.push(length);
-		const part = Buffer.concat([Buffer.from(`${index + 1} 0 obj\n`), object, Buffer.from('\nendobj\n')]);
-		parts.push(part);
-		length += part.length;
+		const header = Buffer.from(`${index + 1} 0 obj\n`);
+		const footer = Buffer.from('\nendobj\n');
+		parts.push(header, object, footer);
+		length += header.length + object.length + footer.length;
 	}
 	parts.push(Buffer.from(`xref\n0 ${offsets.length}\n0000000000 65535 f \n` +
 		offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('') +

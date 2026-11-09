@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { pdfFixture, epubFixture } from '../lib/reader/fixtures.js';
 import { realAdmin, signInRealAdmin } from '../lib/real-auth.js';
+import { bookmarkPdfSelection, jumpToPdfPage, openAnnotationsPanel, openedPdf, pdfPageBox, pdfPageText, renamePdfBookmark } from '../lib/real-pdf.js';
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
 
@@ -11,6 +12,21 @@ async function login(page: Page, username: string, password: string) {
 	await page.getByLabel('Password', { exact: true }).fill(password);
 	await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 	await expect(page).toHaveURL('/');
+}
+
+async function selectAdminUser(page: Page, id: number) {
+	const select = page.getByLabel('User ID', { exact: true });
+	await expect(select).toBeEnabled();
+	const options = select.locator('option');
+	const target = select.locator(`option[value="${id}"]`);
+	while (await target.count() === 0) {
+		const count = await options.count();
+		const more = page.getByRole('button', { name: 'Load more users', exact: true });
+		await expect(more).toBeVisible();
+		await more.click();
+		await expect.poll(() => options.count()).toBeGreaterThan(count);
+	}
+	await select.selectOption(String(id));
 }
 
 async function importBook(page: Page, name: string, bytes: Buffer) {
@@ -45,7 +61,13 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 	await create.getByLabel('Username', { exact: true }).fill('ux-reader');
 	await create.getByLabel('Display name').fill('UX Reader');
 	await create.getByLabel('Password', { exact: true }).fill('ux-reader-password');
+	const creation = page.waitForResponse((response) =>
+		new URL(response.url()).pathname === '/api/v1/admin/users' && response.request().method() === 'POST'
+	);
 	await create.getByRole('button', { name: 'Create account' }).click();
+	const created = await creation;
+	expect(created.status()).toBe(201);
+	const { user: { id } } = await created.json() as { user: { id: number } };
 	const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'ux-reader', exact: true }) });
 	await expect(row).toBeVisible();
 	await row.getByRole('button', { name: /^Edit / }).click();
@@ -81,19 +103,17 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await row.getByRole('button', { name: /^Revoke credentials / }).click();
 		await expect(page.getByText('Browser sessions and device credentials revoked.', { exact: true })).toBeVisible();
 		expect((await reader.request.get('/api/v1/auth/me')).status()).toBe(401);
-		const users = await (await page.request.get('/api/v1/admin/users?limit=100')).json() as { items: Array<{ id: number; username: string }> };
-		const id = users.items.find((item) => item.username === 'ux-reader')!.id;
 		await page.goto('/admin/libraries');
 		const library = page.getByRole('region', { name: 'New library' });
 		await library.getByLabel('Name').fill('UX Grants');
 		await library.getByLabel('Slug').fill('ux-grants');
 		await library.getByRole('button', { name: 'Create library' }).click();
 		await page.getByRole('button', { name: 'Manage access UX Grants' }).click();
-		await page.getByLabel('User ID', { exact: true }).selectOption(String(id));
+		await selectAdminUser(page, id);
 		await page.getByRole('button', { name: 'Grant access', exact: true }).click();
 		await expect(page.getByText(`User #${id} can now see “UX Grants”.`)).toBeVisible();
 		await page.goto('/admin/hidden-books');
-		await page.getByLabel('User ID', { exact: true }).selectOption(String(id));
+		await selectAdminUser(page, id);
 		await page.getByRole('button', { name: 'Show hidden books' }).click();
 		await expect(page.getByRole('heading', { name: `Books hidden from user #${id}` })).toBeVisible();
 		await page.goto('/admin/users');
@@ -142,31 +162,30 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 	await signInRealAdmin(page);
 	const pdf = await importBook(page, 'UXPDF', pdfFixture());
 	const epub = await importBook(page, 'UXEPUB', epubFixture('UX EPUB Fixture'));
-	for (const [book, label] of [[pdf, 'PDF saved page'], [epub, 'CFI saved position']] as const) {
-		await page.goto(`/read/${book.bookID}/${book.fileID}`);
-		await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeEnabled();
-		await page.getByRole('button', { name: 'Save position', exact: true }).click();
-		await page.getByLabel('Label (optional)').fill(label);
-		await page.getByRole('button', { name: 'Save', exact: true }).click();
-		await expect(page.getByText('Bookmark saved.', { exact: true })).toBeVisible();
-	}
+	await page.goto(`/read/${pdf.bookID}/${pdf.fileID}`);
+	await openedPdf(page, 1, 'First PDF page text');
+	await bookmarkPdfSelection(page, 'First PDF page text', 'PDF saved page');
+	await page.goto(`/read/${epub.bookID}/${epub.fileID}`);
+	await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeEnabled();
+	await page.getByRole('button', { name: 'Save position', exact: true }).click();
+	await page.getByLabel('Label (optional)').fill('CFI saved position');
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(page.getByText('Bookmark saved.', { exact: true })).toBeVisible();
 	await page.goto('/bookmarks');
 	await expect(page.getByText('CFI saved position', { exact: true })).toBeVisible();
 	await expect(page.getByText('PDF saved page', { exact: true })).toBeVisible();
 	await page.screenshot({ path: info.outputPath('bookmarks-populated.png'), fullPage: true });
 	const pdfItem = page.getByRole('listitem').filter({ hasText: 'PDF saved page' });
 	await pdfItem.getByRole('link', { name: 'Open bookmark' }).click();
-	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
-	await page.getByRole('button', { name: 'Next page', exact: true }).click();
-	await page.getByRole('button', { name: 'Show', exact: false }).filter({ hasText: 'Show (' }).click();
-	await page.getByRole('button', { name: 'Edit', exact: true }).click();
-	await page.getByLabel('Label (optional)').fill('PDF renamed');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
-	await expect(page.getByLabel('Label (optional)')).toHaveCount(0);
+	await openedPdf(page, 1, 'First PDF page text');
+	await jumpToPdfPage(page, 2);
+	const panel = await openAnnotationsPanel(page);
+	await renamePdfBookmark(panel.locator('[data-panel-entry]').filter({ hasText: 'PDF saved page' }).first(), 'PDF renamed');
 	// Renaming must not move the saved position to page two.
 	await page.goto('/bookmarks');
 	await page.getByRole('listitem').filter({ hasText: 'PDF renamed' }).getByRole('link', { name: 'Open bookmark' }).click();
-	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+	await openedPdf(page, 1, 'First PDF page text');
+	await expect(pdfPageBox(page)).toHaveValue('1');
 	await page.goto('/bookmarks');
 	await page.getByRole('listitem').filter({ hasText: 'CFI saved position' }).getByRole('link', { name: 'Open bookmark' }).click();
 	await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeEnabled();
@@ -182,16 +201,23 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 			navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true }));
 	});
 	await page.goto(`/read/${pdf.bookID}/${pdf.fileID}`);
-	await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeEnabled();
+	await openedPdf(page);
 	await context.setOffline(true);
-	await page.getByRole('button', { name: 'Next page', exact: true }).click();
-	await page.getByRole('button', { name: 'Save position', exact: true }).click();
-	await page.getByLabel('Label (optional)').fill('Offline page two');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
-	await expect(page.getByText('Bookmark change saved on this device and waiting to sync.', { exact: true }).first()).toBeVisible();
+	await jumpToPdfPage(page, 2);
+	await expect(pdfPageText(page, 2)).toContainText('Second PDF page text');
+	const offlineBookmark = await bookmarkPdfSelection(page, 'Second PDF page text', 'Offline page two');
+	await expect.poll(() => page.evaluate((id) => new Promise<boolean>((resolve, reject) => {
+		const request = indexedDB.open('pandalibrary-offline');
+		request.onerror = () => reject(request.error);
+		request.onsuccess = () => {
+			const all = request.result.transaction('outbox').objectStore('outbox').getAll();
+			all.onsuccess = () => { request.result.close(); resolve(JSON.stringify(all.result).includes(id)); };
+			all.onerror = () => { request.result.close(); reject(all.error ?? new Error('Could not read the outbox.')); };
+		};
+	}), offlineBookmark)).toBe(true);
 	await page.reload();
-	await page.getByRole('button', { name: 'Show', exact: false }).filter({ hasText: 'Show (' }).click();
-	await expect(page.getByRole('paragraph').filter({ hasText: /^Offline page two$/ })).toBeVisible();
+	await openedPdf(page);
+	await expect((await openAnnotationsPanel(page)).getByText('Offline page two', { exact: true })).toBeVisible();
 	await page.goto('/bookmarks');
 	await expect(page.getByText('Offline page two', { exact: true })).toBeVisible();
 	await context.setOffline(false);
@@ -207,7 +233,8 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 		await second.goto('/bookmarks');
 		const saved = second.getByRole('listitem').filter({ hasText: 'Offline page two' });
 		await saved.getByRole('link', { name: 'Open bookmark' }).click();
-		await expect(second.locator('.reader-pdf-text')).toContainText('Second PDF page text');
+		await openedPdf(second, 2, 'Second PDF page text');
+		await expect(pdfPageBox(second)).toHaveValue('2');
 		await second.goto('/bookmarks');
 		second.once('dialog', (dialog) => dialog.accept());
 		await saved.getByRole('button', { name: 'Delete', exact: true }).click();
@@ -222,8 +249,12 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 	// Restore the intentionally empty dashboard left by its persistence test.
 	await page.getByRole('button', { name: 'Configure dashboard' }).click();
 	const config = page.getByRole('dialog', { name: 'Configure dashboard' });
-	while (await config.getByRole('button', { name: /^Remove / }).count()) {
-		await config.getByRole('button', { name: /^Remove / }).first().click();
+	await expect(config).toBeVisible();
+	const sections = config.locator('[data-config-section]');
+	let remaining = await sections.count();
+	while (remaining > 0) {
+		await sections.first().getByRole('button', { name: /^Remove / }).click();
+		await expect(sections).toHaveCount(--remaining);
 	}
 	for (const label of ['Continue Reading', 'Recently Added', 'Read']) {
 		await config.getByLabel('Choose a section').selectOption({ label });

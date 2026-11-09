@@ -217,7 +217,11 @@ function registerBackgroundSync(): void {
 			typeof sync.register === 'function') {
 			await sync.register('pandalibrary-outbox');
 		}
-	}).catch(report);
+	}).catch((error: unknown) => {
+		// Background Sync is an optional enhancement (denied in headless and some
+		// privacy modes); the foreground retry still flushes the outbox.
+		console.warn('Background Sync registration was refused', error);
+	});
 }
 
 export async function queueMutation(mutation: Mutation): Promise<number | null> {

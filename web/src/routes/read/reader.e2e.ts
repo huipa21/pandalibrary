@@ -1,5 +1,6 @@
 import { expect, test, type Frame, type Page, type Route } from '@playwright/test';
 import { azw3Fixture, cbzFixture, epubFixture, fb2Fixture, fbzFixture, mobiFixture, pdfFixture } from '../../lib/reader/fixtures';
+import { pdfPageBox, pdfPageText } from '../../lib/real-pdf.js';
 
 type TestMutation = {
 	entity: string;
@@ -317,8 +318,8 @@ test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async (
 	const surface = page.locator('.reader-pdf');
 	const progress = page.locator('.pv-frame-toolbar');
 	await expect(progress).toContainText('10.05%');
-	await expect(page.locator('.reader-pdf-text')).toContainText('Page 21 PDF page text');
-	// PV1 hides PDF settings until the new toolbar is assembled. Exercise persisted engine settings.
+	await expect(pdfPageText(page, 21)).toContainText('Page 21 PDF page text');
+	// Exercise persisted engine settings independently of the toolbar.
 	async function settings(patch: Record<string, unknown>) {
 		const previous = state.settings.find((setting) => setting.key === 'reader.book.21')?.value;
 		state.rev += 1;
@@ -356,8 +357,10 @@ test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async (
 	await page.locator('#reader-surface').focus();
 	await page.keyboard.press('ArrowRight');
 	await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', '23');
+	await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 23 });
 	await page.keyboard.press('ArrowLeft');
 	await expect(progress).toContainText('10.05%');
+	await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 21 });
 
 	for (const value of ['single-continuous', 'split-continuous']) {
 		await settings({ pdfLayout: value });
@@ -373,8 +376,10 @@ test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async (
 		await expect(progress).toContainText('20.10%');
 		await expect(page.locator('.reader-pdf-page[data-page="41"] .reader-pdf-text')).toContainText('Page 41 PDF page text');
 		await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 41 });
-		state.rev += 1;
-		state.progress = { ...state.progress, locator: { type: 'pdf', page: 21 }, percentage: 20 / 199, updated_at: new Date().toISOString(), rev: state.rev };
+		await pdfPageBox(page).fill('21');
+		await pdfPageBox(page).press('Enter');
+		await expect(progress).toContainText('10.05%');
+		await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 21 });
 		await page.reload();
 		await expect(progress).toContainText('10.05%');
 	}

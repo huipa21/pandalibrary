@@ -86,6 +86,15 @@ inactive in editable fields and open menus.
 Existing highlights remain visible, and links to saved highlights
 or bookmarks still open at their saved positions.
 
+In **Select** mode, select text to open the floating actions: Copy, Highlight,
+Underline, Strikeout, Comment and Bookmark. The arrow beside Highlight opens
+the colour palette; the main Highlight button uses your last colour. Selecting
+text across pages creates a separate mark on each page. Click a mark to change
+its colour or style, add or edit its comment, copy its text, or delete it.
+Comment editors show a live Markdown preview.
+Bookmarks made from selected text use that text as their initial label; you can
+rename them in the Annotations panel.
+
 The borderless **X** saves progress and reading time before returning to the
 book's details. If saving fails, retry the unsaved changes or explicitly
 choose to leave without saving. A coloured status dot indicates offline,
@@ -105,10 +114,16 @@ and sync when connected.
 Scanned PDF pages (pages that are images with little or no text) are recognized
 in your browser so you can select and copy their text. Recognition supports
 English and Simplified Chinese. While a page is processed, the toolbar shows its
-progress and offers a retry if recognition fails. Page images are never uploaded.
+progress and offers a retry if recognition fails. On narrow screens the status
+uses a compact **OCR** indicator; on the smallest screens it appears just below
+the toolbar. Page images are never uploaded.
 Results are saved on this device, so reopening the book does not run recognition
 again. Signing out clears them. Turn recognition off in the layout menu; this
-device remembers the choice.
+device remembers the choice. OCR models are downloaded from your PandaLibrary
+server on first use, not from an external service. Let recognition complete
+while online before relying on OCR offline; browser storage eviction may
+require downloading the models again. Large image-heavy PDFs can use
+substantial device memory, especially during OCR.
 
 ### Inserting items in PDFs
 
@@ -140,6 +155,10 @@ Install PandaLibrary as an app (PWA) from a supported browser. On a book's
 While offline you can read saved books. Your progress, highlights, notes and
 bookmarks are kept and synced when you reconnect. If the same item changed on
 two devices, the latest change wins. Manage offline storage in Settings.
+For PDFs, text and drawings can also be added offline. Adding a new image needs
+a connection; an existing image is available offline only after it has been
+viewed and cached on that device. Scanned-page recognition needs the relevant
+OCR models to have been downloaded beforehand.
 
 ## Bookmarks
 

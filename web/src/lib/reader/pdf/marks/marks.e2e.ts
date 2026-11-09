@@ -3,7 +3,7 @@ import { pdfFixture, scannedPdfFixture } from '../../fixtures';
 
 const id = (n: number) => `0190f5c2-7a00-7000-8000-${String(n).padStart(12, '0')}`;
 
-// Headless Chromium rejects Background Sync registration, which the reader reports as a stuck save alert over the page.
+// Keep mocked API traffic independent of service-worker caching.
 test.use({ serviceWorkers: 'block' });
 const base = {
 	book_id: 21, book_file_id: 31, position: 0,
@@ -170,6 +170,7 @@ test('comment saves a note with a marker, and cancelling an empty comment remove
 	const popover = page.getByRole('dialog', { name: 'Add comment', exact: true });
 	await expect(popover).toBeVisible();
 	await popover.getByRole('textbox', { name: 'Note in Markdown' }).fill('A **useful** comment');
+	await expect(popover.locator('.reader-note-preview strong')).toHaveText('useful');
 	await popover.getByRole('button', { name: 'Save note' }).click();
 	await expect(popover).toHaveCount(0);
 	const mark = highlightPushes(state)[0];
@@ -321,6 +322,13 @@ for (const theme of ['light', 'dark']) {
 		await page.locator('.reader-pdf-highlight').first().click();
 		await expect(markToolbar(page)).toBeVisible();
 		await page.screenshot({ path: test.info().outputPath(`mark-toolbar-${theme}.png`) });
+		await markToolbar(page).getByRole('button', { name: 'Add comment', exact: true }).click();
+		const comment = page.getByRole('dialog', { name: 'Add comment', exact: true });
+		const editor = comment.getByRole('textbox', { name: 'Note in Markdown' });
+		await editor.fill('A **readable** comment');
+		await expect(comment.locator('.reader-note-preview strong')).toHaveText('readable');
+		await expect(editor).toHaveCSS('color', 'rgb(15, 23, 42)');
+		await expect(comment.locator('.reader-note-preview')).toHaveCSS('color', 'rgb(15, 23, 42)');
 	});
 }
 

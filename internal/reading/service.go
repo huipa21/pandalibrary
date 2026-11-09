@@ -861,6 +861,18 @@ func (s *Service) applyMutation(
 			return "", "", err
 		}
 		if exists && updatedAt <= clock {
+			if updatedAt == clock {
+				current, err := q.ReadingGetSetting(ctx, sqlc.ReadingGetSettingParams{
+					UserID: viewer.UserID, Key: key,
+				})
+				if err != nil {
+					return "", "", fmt.Errorf("get existing setting: %w", err)
+				}
+				// A response can be lost after the identical setting was committed.
+				if current.Value == string(data.Value) {
+					return applied()
+				}
+			}
 			return stale()
 		}
 		rev, err := db.NextRev(ctx, tx)

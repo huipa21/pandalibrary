@@ -51,7 +51,7 @@
 	data-testid="pv8-comment"
 	{onkeydown}
 >
-	<NoteEditor value={initial} onChange={(value) => { body = value; }} />
+	<NoteEditor value={body} onChange={(value) => { body = value; }} />
 	<div class="pv8-comment-actions">
 		<button type="button" class="pv8-text-button" onclick={() => oncancel(body)}>{m['reader.note.cancel']()}</button>
 		<button type="button" class="pv8-text-button pv8-primary" disabled={disabled || !body.trim()} onclick={() => onsave(body)}>{m['reader.note.save']()}</button>
