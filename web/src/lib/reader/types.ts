@@ -29,17 +29,6 @@ export interface ReaderAnnotation {
 export type PdfLayout = 'single' | 'single-continuous' | 'split' | 'split-continuous';
 export type PdfZoom = 'auto' | 'page-actual' | 'page-fit' | 'page-width' | number;
 
-export interface PdfViewState {
-	page: number;
-	pageCount: number;
-	layout: PdfLayout;
-	zoom: PdfZoom;
-	scale: number;
-	rotation: 0 | 90 | 180 | 270;
-	coverAlone: boolean;
-	theme: ReaderSettings['theme'];
-}
-
 export interface ReaderSettings {
 	font: 'serif' | 'sans-serif' | 'system';
 	size: number;

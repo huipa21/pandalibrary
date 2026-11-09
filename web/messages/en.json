@@ -1,5 +1,20 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"pv6.loading": "Loading OCR model...",
+	"pv6.recognizing": "Recognizing text · p. {page} · {progress}%",
+	"pv6.failed": "Text recognition failed",
+	"pv6.retry": "Retry",
+	"pv7.maintenance.name": "Unused annotation images",
+	"pv7.maintenance.description": "Remove unreferenced annotation images older than 24 hours, keeping files still owned by other accounts.",
+	"pv7.error.unsupported_media_type": "Choose an image. Uploaded images must be PNG, JPEG or WebP.",
+	"pv7.error.input_too_large": "Choose an image no larger than 20 MiB.",
+	"pv7.error.asset_too_large": "This image is too large. Try a smaller image.",
+	"pv7.error.invalid_image": "This image could not be decoded or encoded.",
+	"pv7.error.invalid_image_dimensions": "Image dimensions must be between 1 and 8192 pixels.",
+	"pv7.error.invalid_asset_hash": "The image reference is invalid.",
+	"pv7.error.asset_not_found": "This image is no longer available for your account.",
+	"pv7.error.offline": "Go online to upload or download this image. Cached images remain available offline.",
+	"pv7.error.invalid_response": "The image service returned an invalid response.",
 	"pv1.page_progress": "p. {page} · {progress}",
 	"pv1.sync_status": "Reader sync status",
 	"pv4.toolbar": "Reader controls",
@@ -1525,5 +1540,6 @@
 	"bd7.reviews_loading": "Loading reviews…",
 	"bd7.reviews_error": "Could not load reviews.",
 	"bd7.more_reviews": "Show more reviews",
-	"bd7.review_invalid": "A review must contain 1 to 10,000 characters."
+	"bd7.review_invalid": "A review must contain 1 to 10,000 characters.",
+	"pv5.preference_error": "Could not save or restore PDF tool preferences."
 }

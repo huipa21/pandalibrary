@@ -96,7 +96,7 @@ func TestMaintenanceAdminStatusAndRuns(t *testing.T) {
 	var body struct {
 		Jobs []jobs.JobStatus `json:"jobs"`
 	}
-	if err := json.Unmarshal(list.Body.Bytes(), &body); err != nil || len(body.Jobs) != 6 {
+	if err := json.Unmarshal(list.Body.Bytes(), &body); err != nil || len(body.Jobs) != 7 {
 		t.Fatalf("job DTO = %+v, %v", body, err)
 	}
 	for _, job := range body.Jobs {

@@ -15,7 +15,7 @@ export interface ProblemDetails {
 	readonly [extension: string]: unknown;
 }
 
-export interface ApiRequestOptions<TBody extends JsonValue = JsonValue>
+export interface ApiRequestOptions<TBody extends JsonValue | Blob = JsonValue>
 	extends Omit<RequestInit, 'body'> {
 	readonly body?: TBody;
 }
@@ -62,7 +62,7 @@ function isProblemDetails(value: unknown): value is ProblemDetails {
 	);
 }
 
-async function toApiError(response: Response): Promise<ApiError> {
+export async function toApiError(response: Response): Promise<ApiError> {
 	const responseBody = await response.text();
 	const mediaType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
 
@@ -102,7 +102,7 @@ function joinBasePath(basePath: string, path: string): string {
 
 export function createApiClient({ basePath = '/api/v1', fetcher = fetch }: ApiClientOptions = {}) {
 	return {
-		async request<TResponse, TBody extends JsonValue = JsonValue>(
+		async request<TResponse, TBody extends JsonValue | Blob = JsonValue>(
 			path: string,
 			options: ApiRequestOptions<TBody> = {}
 		): Promise<TResponse> {
@@ -111,8 +111,13 @@ export function createApiClient({ basePath = '/api/v1', fetcher = fetch }: ApiCl
 			const request: RequestInit = { ...init, headers };
 
 			if (body !== undefined) {
-				headers.set('content-type', 'application/json');
-				request.body = JSON.stringify(body);
+				if (body instanceof Blob) {
+					if (!headers.has('content-type') && body.type) headers.set('content-type', body.type);
+					request.body = body;
+				} else {
+					headers.set('content-type', 'application/json');
+					request.body = JSON.stringify(body);
+				}
 			}
 
 			const response = await fetcher(joinBasePath(basePath, path), request);

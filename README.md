@@ -78,11 +78,11 @@ variables.
 
 | Environment variable | Default | Purpose |
 |---|---|---|
-| `PANDA_DATA_DIR` | `/data` | Database, books, covers, drop folder, temporary files, backups |
+| `PANDA_DATA_DIR` | `/data` | Database, books, covers, annotation images, drop folder, temporary files, backups |
 | `PANDA_LISTEN` | `:8080` | HTTP listen address |
 | `PANDA_BASE_URL` | unset | Public origin; enables secure cookies on HTTPS and validates origins |
 | `PANDA_DROP_DIR` | `<data-dir>/drop` | Watched import folder |
-| `PANDA_BOOKHEAP_DIR` | `<data-dir>/bookheap` | Admin staging folder for unsorted books; must not overlap the drop folder or `files/`, `covers/`, `tmp/`, `backups/` |
+| `PANDA_BOOKHEAP_DIR` | `<data-dir>/bookheap` | Admin staging folder for unsorted books; must not overlap the drop folder or `files/`, `covers/`, `assets/`, `tmp/`, `backups/` |
 | `PANDA_DROP_POLL` | `0` | Optional polling fallback for network mounts; use a duration of at least `1s` |
 | `PANDA_TRUSTED_PROXIES` | unset | Comma-separated CIDRs allowed to set forwarded headers |
 | `PANDA_MAX_UPLOAD_MB` | `1024` | Maximum request size in MiB |
@@ -97,14 +97,14 @@ the application or its first-run setup to the public internet without TLS and an
 administrator setup plan.
 
 Persist `/data` across container replacement. The application stores the SQLite database,
-content-addressed book files and covers, import drop folder, Bookheap folder, and backups
+content-addressed book files, covers and annotation images, import drop folder, Bookheap folder, and backups
 there. The automatic maintenance job retains seven verified database backups; it does not
-replace an off-site backup of both the database and book/cover files. Database backups
+replace an off-site backup of both the database and book/cover/image files. Database backups
 include the Bookheap index but not the files waiting in the Bookheap folder; back that
 folder up separately if it holds books you have no other copy of. After a restore, run
 **Scan** on the Bookheap page to re-index it.
 
-To restore, stop the server, restore the database and matching `files/` and `covers/`
+To restore, stop the server, restore the database and matching `files/`, `covers/` and `assets/`
 directories from the same backup point, then start with the matching or a newer binary.
 Never start an older binary against a database already upgraded by a newer release. A
 pre-migration backup is also retained in `/data/backups/`; restoring that backup with the
@@ -112,7 +112,7 @@ previous release is the rollback path.
 
 In a container the default Bookheap folder (`PANDA_BOOKHEAP_DIR`) is inside the `/data`
 volume, owned by UID/GID `65532:65532`. When mounting a separate folder, make it writable
-by that user and keep it outside the drop folder and `files/`, `covers/`, `tmp/`,
+by that user and keep it outside the drop folder and `files/`, `covers/`, `assets/`, `tmp/`,
 `backups/`.
 
 ## Using the library
@@ -232,6 +232,39 @@ back to saved settings when offering gesture-driven zoom. Continuous layouts
 keep page placeholders but render only nearby canvases. Highlight rectangles
 remain normalized in the page's original orientation; rotation is applied
 only when selecting or painting them.
+
+### Annotation image assets
+
+Session-authenticated `POST /api/v1/me/annotation-assets` accepts a raw PNG, JPEG
+or WebP body (maximum 5 MiB; dimensions 1–8192 pixels). Writes require the same
+origin protection as other session APIs. It returns
+`{ "asset": { "sha256", "media_type", "size", "width", "height" } }` with `201`
+for a new owner or `200` for a repeat upload. Validation failures expose problem
+codes `asset_too_large` (413), `unsupported_media_type` (415), `invalid_image`
+or `invalid_image_dimensions` (400).
+
+`GET /api/v1/me/annotation-assets/{sha256}` serves only the current account's
+images, with `private, no-store`, `nosniff` and a restrictive CSP. Identical images
+share a file under `assets/<prefix>/<sha256>.<png|jpg|webp>` but have separate
+ownership rows. The daily `annotation-assets-gc` job removes ownership older than
+24 hours without a live page annotation; a blob is removed only after its last
+owner is gone. Orphan sweep also recovers abandoned files and deleted-account
+images. Both jobs can be run from **Admin -> Maintenance**.
+
+For the insert-tool integration, [prepare-image.ts](web/src/lib/reader/assets/prepare-image.ts)
+exports `prepareAnnotationImage(file: Blob)`, returning
+`{ blob, width, height, media_type }` (at most 2048 pixels / 2 MiB).
+[assets-api.ts](web/src/lib/reader/assets/assets-api.ts) exports
+`uploadAnnotationAsset(prepared)` and typed, localized errors.
+[asset-cache.ts](web/src/lib/reader/assets/asset-cache.ts) exports
+`annotationAssetUrl(sha256, signal?)`, `revokeAssetUrls()` and `clearAssetCache()`.
+URLs come from an account-keyed IndexedDB cache with a 200 MiB per-account LRU
+budget. Uploads and uncached downloads require a connection; cached images work
+offline. Revoke URLs when the reader is destroyed; sign-out also revokes them
+and clears the cache. These helpers use the active offline viewer and the
+existing Web Locks session guard.
+
+### Release verification
 
 Run the release checks locally after building the web assets and binary (PowerShell):
 

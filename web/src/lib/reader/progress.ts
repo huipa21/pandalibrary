@@ -11,6 +11,20 @@ export async function restorePosition(
 	fileId: number,
 	format: ReaderFormat
 ): Promise<'locator' | 'fraction'> {
+	const locator = progress?.locator;
+	// KOReader reports an exact page for PDFs; it is honoured for the same file only.
+	if (
+		format === 'pdf' && progress?.source === 'koreader' && progress.book_file_id === fileId &&
+		typeof locator === 'object' && locator !== null && !Array.isArray(locator) &&
+		typeof locator.page === 'number' && Number.isSafeInteger(locator.page) && locator.page > 0
+	) {
+		try {
+			await reader.goTo({ type: 'pdf', page: locator.page });
+			return 'locator';
+		} catch (error) {
+			console.error('Could not restore the KOReader page; using its percentage', error);
+		}
+	}
 	if (
 		progress?.source === 'web' &&
 		progress.book_file_id === fileId &&

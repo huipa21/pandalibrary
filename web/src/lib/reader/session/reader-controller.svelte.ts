@@ -18,7 +18,11 @@ import {
 } from '#lib/sync/client.js';
 import { OfflineStorageError } from '#lib/sync/db.js';
 import { loadBook as loadOfflineBook, loadFile, loadReaderState } from '#lib/sync/library.js';
+import { readerState as cachedReaderState } from '#lib/sync/state.js';
 import { flushReaderWrites } from './flush.js';
+import { deletePageAnnotation, makePageAnnotation, validatePageAnnotationInput } from '#lib/reader/page-annotations.js';
+import type { HighlightStyle, PageAnnotation, PageAnnotationInput } from '#lib/reader/types.js';
+import { pdfSettingsForScope, initialPdfSettings } from './pdf-settings.js';
 
 export interface NoteDraft {
 	id: string;
@@ -53,6 +57,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let highlights = $state<Highlight[]>([]);
 	let bookmarks = $state<Bookmark[]>([]);
 	let notes = $state<Note[]>([]);
+	let pageAnnotations = $state<PageAnnotation[]>([]);
 	let location = $state<Relocation | null>(null);
 	let selection = $state<ReaderSelection | null>(null);
 	let reader: Reader | null = null;
@@ -65,6 +70,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let canSaveSettings = $state(true);
 	let browserDeviceId = '';
 	let requestVersion = 0;
+	let annotationVersion = 0;
 	let mounted = true;
 	const sessionWriter = new SessionWriter(reportPendingError, async (mutation) => {
 		await saveMutation(mutation);
@@ -79,17 +85,23 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	});
 	let draftGuard = () => true;
 	function setDraftGuard(guard: () => boolean) { draftGuard = guard; }
+	let saveView = async () => {};
+	function setViewSave(save: () => Promise<void>) { saveView = save; }
 
 	function mount() {
 		const releaseReader = readerOpened();
+		let syncing = false;
 		const unsubscribe = offlineStatus.subscribe((status) => {
 			if (status.online && status.error && status.pending) pendingError = m['reader.error.save']();
+			if (syncing && !status.syncing && !status.error && offlineAvailable()) void refreshPageAnnotations();
+			syncing = status.syncing;
 		});
 		const activity = () => { if (ready && !document.hidden) sessionClock?.activity(); };
 		const visibility = () => {
 			if (!ready) return;
 			if (document.hidden) {
 				sessionClock?.stop();
+				if (!closing) void saveView().catch(reportPendingError);
 				flushInBackground();
 			} else {
 				sessionClock?.start();
@@ -111,12 +123,30 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		};
 	}
 
+	async function refreshPageAnnotations() {
+		if (!book || !file || format !== 'pdf') return;
+		const version = requestVersion;
+		while (busy && mounted && version === requestVersion) await new Promise((resolve) => setTimeout(resolve, 25));
+		if (!mounted || version !== requestVersion) return;
+		const revision = annotationVersion;
+		const fileId = file.id;
+		try {
+			const { state } = await cachedReaderState(currentAccount(), book.id);
+			if (mounted && version === requestVersion && revision === annotationVersion && !busy) {
+				pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
+			}
+		} catch (error) {
+			if (version === requestVersion) reportActionError(error);
+		}
+	}
+
 	function beforeNavigate(navigation: { cancel(): void }) {
 		if (!closing && !draftGuard()) {
 			navigation.cancel();
 			return;
 		}
 		sessionClock?.stop();
+		if (!closing) void saveView().catch(reportPendingError);
 		flushInBackground();
 	}
 
@@ -154,6 +184,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	async function flushForClose() {
+		await saveView();
 		await flushReaderWrites(progressWriter, retiredProgressWriters, sessionWriter);
 	}
 
@@ -184,6 +215,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		highlights = [];
 		bookmarks = [];
 		notes = [];
+		pageAnnotations = [];
 		opening = true;
 		loadError = '';
 		actionError = '';
@@ -231,7 +263,9 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			if (version !== requestVersion) return;
 			browserDeviceId = deviceId();
 			const loadedSettings = loadReaderSettings(storedSettings, selectedFormat, bookId);
-			settings = loadedSettings.settings;
+			settings = selectedFormat === 'pdf'
+				? initialPdfSettings(loadedSettings.settings, loadedSettings.bookValue, storedSettings.find((row) => row.key === 'reader.pdf')?.value)
+				: loadedSettings.settings;
 			savedBookSettings = loadedSettings.bookValue;
 			const formatValue = storedSettings.find((setting) => setting.key === `reader.${selectedFormat}`)?.value;
 			canSaveFormatSettings = formatValue === undefined || (typeof formatValue === 'object' && formatValue !== null && !Array.isArray(formatValue));
@@ -246,6 +280,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			highlights = state.highlights.filter((highlight) => !highlight.deleted_at);
 			bookmarks = state.bookmarks.filter((bookmark) => !bookmark.deleted_at);
 			notes = state.notes.filter((note) => !note.deleted_at);
+			pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
 			progressWriter = new DurableProgressWriter(reportPendingError);
 			loaded = { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId };
 		} catch (cause) {
@@ -261,6 +296,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	function onKeydown(event: KeyboardEvent) {
+		// PDF owns navigation, including continuous scrolling and menu guards.
+		if (format === 'pdf') return;
 		if (!ready || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 		const target = event.target as HTMLElement | null;
 		if (target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target?.tagName ?? '')) return;
@@ -338,37 +375,57 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
-	async function saveSettings(partial: Partial<ReaderSettings> = {}, scope: 'book' | 'format' = 'book') {
-		settings = { ...settings, ...partial };
-		if (!book || busy) return;
-		if (!(scope === 'book' ? canSaveSettings : canSaveFormatSettings)) {
-			actionError = m['reader.error.settings_locked']();
-			return;
+	async function saveSettings(partial: Partial<ReaderSettings> = {}, options: 'book' | 'format' | { scope: 'book' | 'format' | 'both' } = 'book') {
+		const scope = typeof options === 'string' ? options : options.scope;
+		const next = { ...settings, ...partial };
+		if (!isReaderSettings(next)) {
+			console.error('Rejected invalid reader settings');
+			actionError = m['reader.error.settings']();
+			return false;
 		}
+		settings = next;
+		if (!book || busy) return false;
+		if ((scope !== 'format' && !canSaveSettings) || (scope !== 'book' && !canSaveFormatSettings)) {
+			actionError = m['reader.error.settings_locked']();
+			settingsWarning = actionError;
+			return false;
+		}
+		const version = requestVersion;
+		const bookId = book.id;
+		const selectedFormat = format;
 		busy = true;
 		actionError = '';
 		savedMessage = '';
 		try {
-			const value = mergeBookSettings(scope === 'book' ? savedBookSettings : savedFormatSettings, settings);
-			const outcome = await saveMutation({
-				entity: 'user_settings',
-				key: scope === 'book' ? `reader.book.${book.id}` : `reader.${format}`,
-				op: 'upsert',
-				data: { value },
-				updated_at: Date.now()
-			});
-			if (scope === 'book') savedBookSettings = value;
-			else savedFormatSettings = value;
+			let outcome: Awaited<ReturnType<typeof saveMutation>> = 'applied';
+			for (const target of scope === 'both' ? ['book', 'format'] as const : [scope]) {
+				const original = target === 'book' ? savedBookSettings : savedFormatSettings;
+				const value = selectedFormat === 'pdf'
+					? pdfSettingsForScope(original, settings, target)
+					: mergeBookSettings(original, settings);
+				outcome = await saveMutation({
+					entity: 'user_settings', key: target === 'book' ? `reader.book.${bookId}` : `reader.${selectedFormat}`,
+					op: 'upsert', data: { value }, updated_at: Date.now()
+				});
+				if (version !== requestVersion) return false;
+				if (target === 'book') savedBookSettings = value;
+				else savedFormatSettings = value;
+			}
 			settingsWarning = '';
 			savedMessage = outcome === 'applied' ? m['reader.saved']() : m['offline.queued']();
+			return true;
 		} catch (error) {
-			reportActionError(error);
+			if (version === requestVersion) {
+				reportActionError(error);
+				settingsWarning = actionError;
+			}
+			return false;
 		} finally {
 			busy = false;
 		}
 	}
 
-	async function addHighlight(chosenSelection: ReaderSelection | null = selection, color: HighlightColor = 'yellow') {
+	async function addHighlight(chosenSelection: ReaderSelection | null = selection, color: HighlightColor = 'yellow', style: HighlightStyle = 'highlight') {
 		if (!book || !file || !format || !reader || busy) return;
 		const chosen = chosenSelection ?? (format === 'cbz' && location ? { ...location, text: '' } : null);
 		if (!chosen) {
@@ -378,13 +435,13 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		busy = true;
 		actionError = '';
 		try {
-			const mutation = makeHighlight(book.id, file.id, chosen, color);
+			const mutation = makeHighlight(book.id, file.id, chosen, color, undefined, style);
 			if (!('id' in mutation)) throw new Error('Highlight ID is missing.');
 			await saveMutation(mutation);
 			const now = new Date(mutation.updated_at).toISOString();
 			const highlight: Highlight = {
 				id: mutation.id, book_id: book.id, book_file_id: file.id, locator: chosen.locator,
-				position: chosen.fraction, text: chosen.text, color, chapter: null,
+				position: chosen.fraction, text: chosen.text, color, style, chapter: null,
 				created_at: now, updated_at: now, deleted_at: null, rev: 0
 			};
 			highlights = [...highlights, highlight];
@@ -400,9 +457,10 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
-	async function changeHighlightColor(highlight: Highlight, color: string) {
+	async function changeHighlight(highlight: Highlight, patch: { color?: string; style?: HighlightStyle }) {
 		if (!reader || !file || !format || busy) return;
-		const nextColor = highlightColor(color);
+		const nextColor = highlightColor(patch.color ?? highlight.color);
+		const style = patch.style ?? highlight.style ?? 'highlight';
 		busy = true;
 		actionError = '';
 		try {
@@ -411,11 +469,11 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				data: {
 					book_id: highlight.book_id, book_file_id: highlight.book_file_id,
 					locator: highlight.locator, position: highlight.position, text: highlight.text,
-					color: nextColor, chapter: highlight.chapter
+					color: nextColor, style, chapter: highlight.chapter
 				}
 			});
 			const previous = annotationForReader(highlight, file.id, format);
-			const updated = { ...highlight, color: nextColor };
+			const updated = { ...highlight, color: nextColor, style };
 			highlights = highlights.map((item) => item.id === highlight.id ? updated : item);
 			if (previous) {
 				await reader.removeAnnotation(previous);
@@ -558,6 +616,62 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
+	async function writePageAnnotation(input: PageAnnotationInput, existing?: PageAnnotation) {
+		if (!book || !file || format !== 'pdf' || busy) return false;
+		annotationVersion += 1;
+		const version = requestVersion;
+		const previous = pageAnnotations;
+		busy = true;
+		actionError = '';
+		try {
+			const mutation = makePageAnnotation(book.id, file.id, input, existing);
+			if (!('id' in mutation)) throw new Error('Page annotation ID is missing.');
+			const now = new Date(mutation.updated_at).toISOString();
+			const row: PageAnnotation = {
+				...input, id: mutation.id, book_id: book.id, book_file_id: file.id,
+				created_at: existing?.created_at ?? now, updated_at: now, deleted_at: null, rev: existing?.rev ?? 0
+			};
+			pageAnnotations = existing ? pageAnnotations.map((item) => item.id === existing.id ? row : item) : [...pageAnnotations, row];
+			await saveMutation(mutation);
+			return true;
+		} catch (error) {
+			if (version === requestVersion) {
+				pageAnnotations = previous;
+				reportActionError(error);
+			}
+			return false;
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function removePageAnnotation(row: PageAnnotation) {
+		if (busy) return false;
+		if (row.book_file_id !== file?.id || !pageAnnotations.some((item) => item.id === row.id)) {
+			console.error('Rejected unavailable page annotation deletion');
+			actionError = m['reader.error.save']();
+			return false;
+		}
+		annotationVersion += 1;
+		const version = requestVersion;
+		const previous = pageAnnotations;
+		busy = true;
+		actionError = '';
+		pageAnnotations = pageAnnotations.filter((item) => item.id !== row.id);
+		try {
+			await saveMutation(deletePageAnnotation(row.id));
+			return true;
+		} catch (error) {
+			if (version === requestVersion) {
+				pageAnnotations = previous;
+				reportActionError(error);
+			}
+			return false;
+		} finally {
+			busy = false;
+		}
+	}
+
 	let loaded: {
 		version: number; bookId: number; fileId: number; selectedFormat: ReaderFormat;
 		blob: Blob; state: Awaited<ReturnType<typeof getBookState>>;
@@ -570,7 +684,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		try {
 			const currentReader = await createReader(selectedFormat, surface, {
 				relocate: (next) => { if (version === requestVersion) relocate(next); },
-				selection: (next) => { if (version === requestVersion && next) selection = next; },
+				selection: (next) => { if (version === requestVersion && (selectedFormat === 'pdf' || next)) selection = next; },
 				activity: () => { if (ready && !document.hidden) sessionClock?.activity(); },
 				keyboard: onKeydown,
 				error: (error) => {
@@ -597,7 +711,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 					}
 				}
 			}
-			await restorePosition(currentReader, state.progress, fileId, selectedFormat);
+			const progress = state.progress;
+			await restorePosition(currentReader, progress, fileId, selectedFormat);
 			if (bookmarkId) {
 				const requested = bookmarks.find((item) => item.id === bookmarkId);
 				if (!requested || !bookmarkForPosition(requested, fileId, selectedFormat)) {
@@ -665,16 +780,28 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		get settingsWarning() { return settingsWarning; },
 		get highlights() { return highlights; },
 		get notes() { return notes; },
+		get pageAnnotations() { return pageAnnotations; },
 		get bookmarks() { return bookmarks; },
 		get location() { return location; },
 		get selection() { return selection; },
 		get orderedHighlights() { return orderedHighlights; },
 		get bookNotes() { return bookNotes; },
 		get availableBookmarks() { return availableBookmarks; },
-		mount, dispose, beforeNavigate, setDraftGuard, attach, turnPage, goToFraction, goToHighlight, removeHighlight, removeBookmark, jumpToBookmark, retryWrites, applySettings, saveSettings, addHighlight, saveNote,
+		mount, dispose, beforeNavigate, setDraftGuard, setViewSave, attach, turnPage, goToFraction, goToHighlight, removeHighlight, removeBookmark, jumpToBookmark, retryWrites, applySettings, saveSettings, addHighlight, saveNote,
+		addPageAnnotation: (input: PageAnnotationInput) => writePageAnnotation(input),
+		updatePageAnnotation: (row: PageAnnotation, patch: Partial<PageAnnotationInput>) => {
+			const input = { ...row, ...patch };
+			if (row.book_file_id !== file?.id || !pageAnnotations.some((item) => item.id === row.id) || !validatePageAnnotationInput(input)) {
+				console.error('Rejected invalid page annotation update');
+				actionError = m['reader.error.save']();
+				return Promise.resolve(false);
+			}
+			return writePageAnnotation(input, row);
+		},
+		removePageAnnotation,
 		close: closeReader,
 		retry: () => { const p = params(); return openBook(p.bookId, p.fileId, p.bookmarkId, p.highlightId); },
-		updateHighlight: (highlight: Highlight, patch: { color?: string }) => changeHighlightColor(highlight, patch.color ?? highlight.color),
+		updateHighlight: changeHighlight,
 		deleteNote: removeNote,
 		addBookmark: (input: { label: string; id?: string }) => saveBookmark({ id: input.id ?? uuidv7(), label: input.label, original: '', editing: false }),
 		updateBookmark: (bookmark: Bookmark, input: { label: string }) => saveBookmark({ id: bookmark.id, label: input.label, original: bookmark.label, editing: true }),

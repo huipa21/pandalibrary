@@ -6,8 +6,8 @@ export async function createReader(
 	events: ReaderEvents
 ): Promise<Reader> {
 	if (format === 'pdf') {
-		const { PdfReader } = await import('./pdf.js');
-		return new PdfReader(container, events);
+		const { PdfViewerEngine } = await import('./pdf/engine.js');
+		return new PdfViewerEngine(container, events);
 	}
 	const { FoliateReader } = await import('./foliate.js');
 	return new FoliateReader(container, format, events);

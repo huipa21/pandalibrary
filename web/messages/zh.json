@@ -1,5 +1,20 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"pv6.loading": "正在加载文字识别模型...",
+	"pv6.recognizing": "正在识别文字 · 第 {page} 页 · {progress}%",
+	"pv6.failed": "文字识别失败",
+	"pv6.retry": "重试",
+	"pv7.maintenance.name": "未使用的批注图片",
+	"pv7.maintenance.description": "删除超过 24 小时且未被批注引用的图片，保留其他账号仍持有的文件。",
+	"pv7.error.unsupported_media_type": "请选择图片。上传的图片必须为 PNG、JPEG 或 WebP 格式。",
+	"pv7.error.input_too_large": "请选择不超过 20 MiB 的图片。",
+	"pv7.error.asset_too_large": "此图片过大，请尝试较小的图片。",
+	"pv7.error.invalid_image": "无法解码或编码此图片。",
+	"pv7.error.invalid_image_dimensions": "图片的宽度和高度必须在 1 至 8192 像素之间。",
+	"pv7.error.invalid_asset_hash": "图片引用无效。",
+	"pv7.error.asset_not_found": "此图片已无法供当前账号使用。",
+	"pv7.error.offline": "请联网后上传或下载此图片。已缓存的图片仍可离线查看。",
+	"pv7.error.invalid_response": "图片服务返回了无效响应。",
 	"pv1.page_progress": "第 {page} 页 · {progress}",
 	"pv1.sync_status": "阅读器同步状态",
 	"pv4.toolbar": "阅读控件",
@@ -1525,5 +1540,6 @@
 	"bd7.reviews_loading": "正在加载书评…",
 	"bd7.reviews_error": "无法加载书评。",
 	"bd7.more_reviews": "显示更多书评",
-	"bd7.review_invalid": "书评须包含 1 到 10,000 个字符。"
+	"bd7.review_invalid": "书评须包含 1 到 10,000 个字符。",
+	"pv5.preference_error": "无法保存或恢复 PDF 工具偏好设置。"
 }

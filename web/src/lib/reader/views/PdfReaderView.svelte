@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { readerChrome } from '#lib/shell/reader-chrome.js';
 	import ReaderFrame from '#lib/reader/frame/ReaderFrame.svelte';
@@ -13,70 +13,160 @@
 	import RotateMenu from '#lib/reader/toolbar/RotateMenu.svelte';
 	import ToolToggle from '#lib/reader/toolbar/ToolToggle.svelte';
 	import InsertToggle from '#lib/reader/toolbar/InsertToggle.svelte';
-	import type { PdfReader } from '#lib/reader/pdf.js';
+	import PanelToggle from '#lib/reader/toolbar/PanelToggle.svelte';
+	import { PdfViewerEngine } from '#lib/reader/pdf/engine.js';
 	import type { ReaderController } from '#lib/reader/session/reader-controller.svelte.js';
-	import type { PdfLayout, PdfViewState, PdfZoom, ReaderSettings } from '#lib/reader/types.js';
-	import { PDF_TOOL_KEY, storedTool, toolShortcut, viewSettings, viewSettingsChanged, type PdfTool } from './pdf-view-state.js';
+	import type { PdfLayout, PdfZoom, ReaderSettings } from '#lib/reader/types.js';
+	import type { PdfViewState } from '#lib/reader/pdf/types.js';
+	import { PDF_TOOL_KEY, storedTool, viewSettings, viewSettingsChanged, type PdfTool } from './pdf-view-state.js';
+	import { setPdfReaderContext } from '#lib/reader/pdf/context.js';
+	import { attachPdfGestures } from '#lib/reader/pdf/gestures.js';
+	import { editableTarget, viewKey } from '#lib/reader/pdf/view-keys.js';
+	import MarksLayer from '#lib/reader/pdf/marks/MarksLayer.svelte';
+	import InsertLayer from '#lib/reader/pdf/insert/InsertLayer.svelte';
+	import AnnotationsPanel from '#lib/reader/pdf/panel/AnnotationsPanel.svelte';
+	import type { HighlightColor } from '#lib/reader/annotations.js';
+	import { offlineStatus } from '#lib/sync/client.js';
 
 	const SAVE_DELAY = 1000;
+	const OCR_KEY = 'pandalibrary.pdf-ocr';
 	let { controller }: { controller: ReaderController } = $props();
 	let surface = $state<HTMLDivElement>();
-	let engine = $state<PdfReader | null>(null);
+	let engine = $state<PdfViewerEngine | null>(null);
 	let view = $state<PdfViewState | null>(null);
 	let tool = $state<PdfTool>('select');
-	let previousTool: 'select' | 'hand' = 'select';
-	let panning: { id: number; x: number; y: number; left: number; top: number } | null = null;
+	let previousTool = $state<'select' | 'hand'>('select');
+	let markColor = $state<HighlightColor>('yellow');
+	let panelOpen = $state(false);
+	let panelTarget = $state<{ kind: 'mark' | 'bookmark' | 'insert' | 'note'; id: string } | null>(null);
+	let ocrEnabled = $state(true);
+	let announcement = $state('');
+	let statuses = $state<Record<string, Snippet>>({});
+	let saving: Promise<void> | null = null;
+	let dirty = false;
+	let closingView = false;
+	let boundBookId: number | undefined;
+	let boundFileId: number | undefined;
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
 	// The "Saved" status of view-state autosaves is not shown; explicit saves still report.
 	let autosavedMessage = $state('');
 
 	const page = $derived(view?.page ?? (controller.location?.locator.type === 'pdf' ? controller.location.locator.page : 1));
 	const savedMessage = $derived(controller.savedMessage === autosavedMessage ? '' : controller.savedMessage);
+	const annotationCount = $derived(
+		controller.highlights.filter((row) => row.book_file_id === controller.file?.id).length +
+		controller.availableBookmarks.length + controller.pageAnnotations.length
+	);
+
+	setPdfReaderContext({
+		get engine() {
+			if (!engine) throw new Error('The PDF engine is not ready.');
+			return engine;
+		},
+		get controller() { return controller; },
+		get view() {
+			if (!view) throw new Error('The PDF view is not ready.');
+			return view;
+		},
+		tool: { get current() { return tool; }, get previous() { return previousTool; }, set: setTool },
+		markColor: { get current() { return markColor; }, set: (color) => { markColor = color; } },
+		get offline() { return !$offlineStatus.online; },
+		get bookLanguage() { return controller.book?.language ?? null; },
+		announce: (message) => { announcement = message; },
+		panel: {
+			get open() { return panelOpen; },
+			get target() { return panelTarget; },
+			toggle: () => { panelOpen = !panelOpen; },
+			reveal: (kind, id) => { panelTarget = { kind, id }; panelOpen = true; }
+		},
+		ocr: {
+			get enabled() { return ocrEnabled; },
+			set: setOcr
+		},
+		setToolbarStatus: (owner, content) => {
+			const next = { ...statuses };
+			if (content) next[owner] = content;
+			else delete next[owner];
+			statuses = next;
+		}
+	});
+
+	function storePreference(key: string, value: string) {
+		try {
+			localStorage.setItem(key, value);
+		} catch (error) {
+			console.error('Could not save PDF tool preferences', error);
+			announcement = m['pv5.preference_error']();
+		}
+	}
+
+	function setOcr(enabled: boolean) {
+		ocrEnabled = enabled;
+		storePreference(OCR_KEY, String(enabled));
+	}
 
 	/** Engine view fields override the controller's copy, which may lag behind wheel/keyboard zoom. */
-	function currentSettings(): Partial<ReaderSettings> {
-		return view ? viewSettings(view) : {};
+	function currentSettings(theme = controller.settings.theme): Partial<ReaderSettings> {
+		return view ? { ...viewSettings(view), theme } : { theme };
 	}
 
 	function scheduleSave() {
+		dirty = true;
 		clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => void persist(), SAVE_DELAY);
+		if (!closingView) saveTimer = setTimeout(() => void persist(), SAVE_DELAY);
 	}
 
 	async function persist() {
+		clearTimeout(saveTimer);
 		saveTimer = undefined;
-		if (!view || !controller.canSaveSettings) return;
-		if (controller.busy) {
-			scheduleSave();
-			return;
-		}
-		await controller.saveSettings(currentSettings());
-		autosavedMessage = controller.savedMessage;
+		if (saving) await saving;
+		if (!dirty || !view || controller.book?.id !== boundBookId || controller.file?.id !== boundFileId) return;
+		let saved = false;
+		saving = (async () => {
+			while (controller.busy) await new Promise((resolve) => setTimeout(resolve, 25));
+			if (controller.book?.id !== boundBookId || controller.file?.id !== boundFileId) return;
+			dirty = false;
+			saved = await controller.saveSettings(currentSettings(), { scope: 'both' });
+			if (!saved) dirty = true;
+			autosavedMessage = controller.savedMessage;
+		})();
+		try { await saving; } finally { saving = null; }
+		if (saved && dirty && closingView) await persist();
 	}
 
 	function onView(state: PdfViewState) {
 		view = state;
-		if (viewSettingsChanged(controller.settings, state)) scheduleSave();
+		if (controller.ready && viewSettingsChanged(controller.settings, state)) scheduleSave();
 	}
 
-	function run(action: Promise<void> | undefined) {
-		void action?.catch((error) => console.error('Could not change the PDF view', error));
+	function viewError(error: unknown) {
+		console.error('Could not change the PDF view', error);
+		announcement = m['reader.error.render']();
+	}
+
+	/** Engine view calls are mostly synchronous; navigation and settings are asynchronous. */
+	function run(action: () => Promise<void> | void) {
+		try {
+			void action()?.catch(viewError);
+		} catch (error) {
+			viewError(error);
+		}
 	}
 
 	function setTheme(theme: ReaderSettings['theme']) {
-		run(controller.applySettings({ ...currentSettings(), theme }));
+		run(() => controller.applySettings(currentSettings(theme)));
 		scheduleSave();
 	}
 
 	function jump(next: number) {
-		run(engine?.goTo({ type: 'pdf', page: next }));
+		run(() => engine?.goToPage(next));
 	}
 
 	function setTool(next: PdfTool) {
 		if (next === tool) return;
 		if (next !== 'insert') {
 			previousTool = next;
-			localStorage.setItem(PDF_TOOL_KEY, next);
+			storePreference(PDF_TOOL_KEY, next);
 		} else if (tool !== 'insert') previousTool = tool;
 		if (next !== 'select') document.getSelection()?.removeAllRanges();
 		tool = next;
@@ -84,56 +174,76 @@
 
 	function onKeydown(event: KeyboardEvent) {
 		if (event.defaultPrevented || !engine) return;
-		if (event.key === 'Escape' && tool === 'insert') {
-			event.preventDefault();
-			setTool(previousTool);
-			return;
-		}
-		const next = toolShortcut(event, event.target);
-		if (next) {
-			event.preventDefault();
-			setTool(next === tool && next === 'insert' ? previousTool : next);
-		}
-	}
-
-	function startPan(event: PointerEvent) {
-		if (tool !== 'hand' || event.button !== 0 || !surface) return;
-		panning = { id: event.pointerId, x: event.clientX, y: event.clientY, left: surface.scrollLeft, top: surface.scrollTop };
-		surface.setPointerCapture(event.pointerId);
-		surface.classList.add('pv-panning');
+		const menuOpen = !!document.querySelector('[role="menu"], #reader-sync-status');
+		if (event.target instanceof Element && event.target.closest('button, a, [role="dialog"]') && event.key !== 'Escape') return;
+		const action = viewKey(event, editableTarget(event.target), menuOpen);
+		if (!action) return;
 		event.preventDefault();
+		switch (action.type) {
+			case 'turn': run(() => turn(action.direction)); break;
+			case 'page': jump(action.end ? engine.state.pageCount : 1); break;
+			case 'zoom': {
+				const active = engine;
+				run(() => action.direction ? active.zoomBy(action.direction) : active.setZoom('auto'));
+				break;
+			}
+			case 'rotate': {
+				const active = engine;
+				run(() => active.rotate(action.delta));
+				break;
+			}
+			case 'tool': setTool(action.tool === 'insert' && tool === 'insert' ? previousTool : action.tool); break;
+			case 'escape':
+				if (tool === 'insert') setTool(previousTool);
+				else document.getSelection()?.removeAllRanges();
+				break;
+		}
 	}
 
-	function pan(event: PointerEvent) {
-		if (!panning || panning.id !== event.pointerId || !surface) return;
-		surface.scrollLeft = panning.left - (event.clientX - panning.x);
-		surface.scrollTop = panning.top - (event.clientY - panning.y);
-	}
-
-	function endPan(event: PointerEvent) {
-		if (!panning || panning.id !== event.pointerId) return;
-		panning = null;
-		surface?.classList.remove('pv-panning');
+	async function turn(direction: -1 | 1) {
+		if (!engine) return;
+		const viewport = engine.viewport;
+		if (engine.state.layout.endsWith('continuous')) viewport.scrollTop += direction * viewport.clientHeight;
+		else await engine[direction === 1 ? 'next' : 'previous']();
 	}
 
 	onMount(() => {
 		if (!surface) throw new Error('The reader surface is unavailable.');
-		tool = storedTool(localStorage.getItem(PDF_TOOL_KEY));
+		boundBookId = controller.book?.id;
+		boundFileId = controller.file?.id;
+		try {
+			tool = storedTool(localStorage.getItem(PDF_TOOL_KEY));
+			ocrEnabled = localStorage.getItem(OCR_KEY) !== 'false';
+		} catch (error) {
+			console.error('Could not restore PDF tool preferences', error);
+			announcement = m['pv5.preference_error']();
+		}
 		previousTool = tool === 'hand' ? 'hand' : 'select';
 		readerChrome.set('full');
 		let destroyed = false;
 		let unsubscribe: (() => void) | undefined;
+		let detachGestures: (() => void) | undefined;
+		controller.setViewSave(persist);
 		void controller.attach(surface).then((reader) => {
 			if (destroyed) return;
-			engine = reader as PdfReader;
-			unsubscribe = engine.subscribeView(onView);
+			if (!(reader instanceof PdfViewerEngine)) throw new Error('The attached reader does not support PDF view controls.');
+			engine = reader;
+			unsubscribe = reader.subscribe(onView);
+			detachGestures = attachPdfGestures(reader, {
+				tool: () => tool,
+				turn,
+				error: (error) => { console.error('Could not apply PDF gesture', error); announcement = m['reader.error.render'](); }
+			});
 		}).catch((error) => {
 			console.error('Could not open the PDF reader view', error);
 			if (!destroyed) readerChrome.set('default');
 		});
 		return () => {
 			destroyed = true;
+			closingView = true;
 			unsubscribe?.();
+			detachGestures?.();
+			controller.setViewSave(async () => {});
 			if (saveTimer !== undefined) {
 				clearTimeout(saveTimer);
 				void persist();
@@ -150,30 +260,36 @@
 		<ReaderToolbar>
 			{#snippet left()}
 				<PageCounter {page} pageCount={view?.pageCount ?? 0} disabled={!engine} onjump={jump} />
-				<ProgressLabel fraction={controller.location?.fraction ?? 0} />
+				<ProgressLabel fraction={view?.fraction ?? controller.location?.fraction ?? 0} />
 			{/snippet}
-			{#snippet status()}<ReaderStatusDot />{/snippet}
+			{#snippet status()}
+				<ReaderStatusDot warning={controller.settingsWarning} onretry={() => controller.retryWrites()} />
+				{#each Object.keys(statuses).sort() as owner (owner)}{@render statuses[owner]()}{/each}
+			{/snippet}
 			{#snippet centre()}<h1 class="pv-title">{controller.book?.title}</h1>{/snippet}
 			{#snippet overflow()}
 				<ZoomMenu
 					zoom={view?.zoom ?? controller.settings.pdfZoom ?? 'page-width'}
 					scale={view?.scale ?? 1}
-					onzoom={(zoom: PdfZoom) => run(engine?.setZoom(zoom))}
-					onstep={(step) => run(engine?.zoomBy(step))}
+					onzoom={(zoom: PdfZoom) => run(() => engine?.setZoom(zoom))}
+					onstep={(step) => run(() => engine?.zoomBy(step))}
 				/>
 				<LayoutMenu
-					layout={view?.layout ?? controller.settings.pdfLayout ?? 'single'}
+					layout={view?.layout ?? controller.settings.pdfLayout ?? 'single-continuous'}
 					coverAlone={view?.coverAlone ?? controller.settings.pdfCoverAlone ?? false}
 					theme={controller.settings.theme}
-					onlayout={(layout: PdfLayout) => run(engine?.setLayout(layout))}
-					oncoveralone={(alone) => run(engine?.setCoverAlone(alone))}
+					{ocrEnabled}
+					onlayout={(layout: PdfLayout) => run(() => engine?.setLayout(layout))}
+					oncoveralone={(alone) => run(() => engine?.setLayout(engine.state.layout, alone))}
 					ontheme={setTheme}
+					onocr={setOcr}
 				/>
-				<RotateMenu onrotate={(delta) => run(engine?.rotate(delta))} />
+				<RotateMenu onrotate={(delta) => run(() => engine?.rotate(delta))} />
 			{/snippet}
 			{#snippet right()}
 				<ToolToggle tool={tool === 'hand' ? 'hand' : 'select'} ontoggle={() => setTool(tool === 'hand' ? 'select' : 'hand')} />
 				<InsertToggle active={tool === 'insert'} disabled={!engine} ontoggle={() => setTool(tool === 'insert' ? previousTool : 'insert')} />
+				<PanelToggle open={panelOpen} count={annotationCount} ontoggle={() => panelOpen = !panelOpen} />
 				<span class="pv-divider" aria-hidden="true"></span>
 				<ReaderCloseButton closing={controller.closing} onclose={() => controller.close()} />
 			{/snippet}
@@ -187,12 +303,14 @@
 		aria-label={m['reader.surface']()}
 		tabindex="0"
 		data-tool={tool}
-		class="absolute inset-0 overflow-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-500"
-		onpointerdown={startPan}
-		onpointermove={pan}
-		onpointerup={endPan}
-		onpointercancel={endPan}
+		class="absolute inset-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-500"
 	></div>
+	{#if engine}
+		<MarksLayer />
+		<InsertLayer />
+		<AnnotationsPanel />
+	{/if}
+	<p class="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
 	{#if controller.pendingError || controller.actionError || controller.opening || savedMessage}
 		<div class="absolute inset-x-2 top-2 z-20 max-h-[50%] overflow-auto rounded-md bg-[var(--pv-chrome)] p-3 text-sm shadow-md">
 			{#if controller.pendingError}
@@ -215,4 +333,6 @@
 	[data-tool='hand'], [data-tool='hand'] :global(*) { cursor: grab; user-select: none; }
 	:global(.pv-panning), :global(.pv-panning *) { cursor: grabbing !important; }
 	[data-tool='insert'], [data-tool='insert'] :global(*) { cursor: crosshair; user-select: none; }
+	[data-tool='hand'] :global(.textLayer span),
+	[data-tool='insert'] :global(.textLayer span) { user-select: none; }
 </style>

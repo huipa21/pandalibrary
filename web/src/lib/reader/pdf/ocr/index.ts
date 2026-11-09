@@ -1,0 +1,10 @@
+export { needsOcr } from './detect.js';
+export { ocrLanguagesFor } from './languages.js';
+export type { OcrLanguage } from './languages.js';
+export { createOcrEnhancer } from './enhancer.js';
+export type { OcrEnhancerOptions } from './enhancer.js';
+export { clearOcrCache } from './cache.js';
+export type { OcrStatus } from './status.js';
+export type { OcrPage, OcrWord, OcrPageContext, OcrEnhancer } from './types.js';
+export { default as OcrStatusChip } from './OcrStatusChip.svelte';
+export { default as OcrLayer } from './OcrLayer.svelte';

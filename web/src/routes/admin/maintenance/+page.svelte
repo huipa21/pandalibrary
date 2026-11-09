@@ -116,6 +116,8 @@
 
 	function jobName(name: string): string {
 		switch (name) {
+			case 'annotation-assets-gc':
+				return m['pv7.maintenance.name']();
 			case 'cleanup-expired':
 				return m['admin.maintenance.job.cleanup_expired']();
 			case 'backup':
@@ -135,6 +137,8 @@
 
 	function jobDescription(name: string): string {
 		switch (name) {
+			case 'annotation-assets-gc':
+				return m['pv7.maintenance.description']();
 			case 'cleanup-expired':
 				return m['admin.maintenance.describe.cleanup_expired']();
 			case 'backup':

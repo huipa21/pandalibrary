@@ -1,0 +1,95 @@
+.reader-pdf {
+	overflow: auto;
+	background: #e2e8f0;
+	overflow-anchor: none;
+	scroll-behavior: auto;
+}
+
+.reader-pdf .pdfViewer.removePageBorders .page {
+	margin: 0 auto 8px;
+	background: white;
+	box-shadow: 0 1px 3px rgb(15 23 42 / 25%);
+}
+
+.reader-pdf .pdfViewer.removePageBorders .spread {
+	margin-bottom: 8px;
+}
+
+.reader-pdf .pdfViewer.removePageBorders .spread .page {
+	margin: 0;
+}
+
+/* Paged layouts show one page/spread; page-fit must not overflow, so wheel edges turn pages. */
+.reader-pdf:is([data-layout='single'], [data-layout='split']) .pdfViewer.removePageBorders .page,
+.reader-pdf:is([data-layout='single'], [data-layout='split']) .pdfViewer.removePageBorders .spread {
+	margin-block: 0;
+}
+
+.reader-pdf .pdfViewer .page canvas {
+	transition: filter 120ms;
+}
+
+.reader-pdf[data-theme='dark'] {
+	background: #0f172a;
+}
+
+.reader-pdf[data-theme='dark'] .page canvas {
+	filter: invert(1) hue-rotate(180deg);
+}
+
+.reader-pdf[data-theme='sepia'] .page canvas {
+	filter: sepia(0.25);
+}
+
+.reader-pdf .textLayer ::selection {
+	background: rgb(37 99 235 / 35%);
+}
+
+.reader-pdf .pv-layer,
+.reader-pdf .reader-pdf-enhancement {
+	position: absolute;
+	top: 0;
+	left: 0;
+	transform-origin: 0 0;
+	pointer-events: none;
+}
+
+.reader-pdf .reader-pdf-enhancement > * {
+	pointer-events: auto;
+}
+
+.reader-pdf-highlight {
+	position: absolute;
+	background: var(--pv-mark);
+	opacity: 0.35;
+	mix-blend-mode: multiply;
+}
+
+.reader-pdf-highlight[data-style='underline'],
+.reader-pdf-highlight[data-style='strikeout'] {
+	background: none;
+	opacity: 0.9;
+}
+
+.reader-pdf-highlight[data-style='underline']::after,
+.reader-pdf-highlight[data-style='strikeout']::after {
+	content: '';
+	position: absolute;
+	inset-inline: 0;
+	height: max(1px, 8%);
+	background: var(--pv-mark);
+}
+
+.reader-pdf-highlight[data-style='underline']::after {
+	bottom: 0;
+}
+
+.reader-pdf-highlight[data-style='strikeout']::after {
+	top: 46%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.reader-pdf .pdfViewer .page canvas {
+		transition: none;
+	}
+}

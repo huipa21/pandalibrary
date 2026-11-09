@@ -22,6 +22,7 @@ var ErrInvalidKey = errors.New("invalid blob key")
 type Store struct {
 	root        string
 	publication chan struct{}
+	assets      chan struct{}
 }
 
 // WithPublicationLock serializes orphan removal with content publication.
@@ -55,7 +56,7 @@ func New(dataDir string) (*Store, error) {
 	if !info.IsDir() {
 		return nil, errors.New("blob data directory is not a directory")
 	}
-	return &Store{root: root, publication: make(chan struct{}, 1)}, nil
+	return &Store{root: root, publication: make(chan struct{}, 1), assets: make(chan struct{}, 1)}, nil
 }
 
 // ValidHash reports whether hash is a lowercase hexadecimal SHA-256 digest.

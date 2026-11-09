@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '#lib/reader/settings.js';
-import type { PdfViewState } from '#lib/reader/types.js';
+import type { PdfViewState } from '#lib/reader/pdf/types.js';
 import { storedTool, toolShortcut, viewSettings, viewSettingsChanged } from './pdf-view-state.js';
 
 const state: PdfViewState = {
-	page: 3, pageCount: 9, layout: 'split', zoom: 1.375, scale: 1.375, rotation: 90, coverAlone: true, theme: 'dark'
+	page: 3, pageCount: 9, fraction: 0.25, offset: 0, layout: 'split', zoom: 1.375, scale: 1.375, rotation: 90, coverAlone: true
 };
 const key = (value: string, modifiers: Partial<KeyboardEvent> = {}) => ({ key: value, ctrlKey: false, metaKey: false, altKey: false, ...modifiers });
 
@@ -13,9 +13,9 @@ describe('viewSettings', () => {
 		expect(viewSettings(state)).toEqual({ pdfLayout: 'split', pdfZoom: 1.375, pdfRotation: 90, pdfCoverAlone: true });
 	});
 
-	it('detects free-zoom and other engine-side changes, ignoring page and theme', () => {
+	it('detects free-zoom and other engine-side changes, ignoring position and rendered scale', () => {
 		const synced = { ...DEFAULT_SETTINGS, ...viewSettings(state) };
-		expect(viewSettingsChanged(synced, { ...state, page: 4, theme: 'light', scale: 2 })).toBe(false);
+		expect(viewSettingsChanged(synced, { ...state, page: 4, fraction: 0.4, offset: 0.5, scale: 2 })).toBe(false);
 		expect(viewSettingsChanged(synced, { ...state, zoom: 1.5 })).toBe(true);
 		expect(viewSettingsChanged(synced, { ...state, zoom: 'auto' })).toBe(true);
 		expect(viewSettingsChanged(synced, { ...state, layout: 'single' })).toBe(true);

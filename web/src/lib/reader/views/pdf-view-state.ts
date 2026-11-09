@@ -1,23 +1,16 @@
-import type { PdfViewState, ReaderSettings } from '#lib/reader/types.js';
+import type { ReaderSettings } from '#lib/reader/types.js';
+import type { PdfTool, PdfViewState } from '#lib/reader/pdf/types.js';
+import { pdfViewStatePatch } from '#lib/reader/pdf/view-state.js';
 
-export type PdfTool = 'select' | 'hand' | 'insert';
+export type { PdfTool };
 export const PDF_TOOL_KEY = 'pandalibrary.pdf-tool';
 
-type ViewSettings = Pick<ReaderSettings, 'pdfLayout' | 'pdfZoom' | 'pdfRotation' | 'pdfCoverAlone'>;
-
 /** The persisted part of the engine view state, in ReaderSettings field names. */
-export function viewSettings(state: PdfViewState): Required<ViewSettings> {
-	return {
-		pdfLayout: state.layout,
-		pdfZoom: state.zoom,
-		pdfRotation: state.rotation,
-		pdfCoverAlone: state.coverAlone
-	};
-}
+export const viewSettings = pdfViewStatePatch;
 
 export function viewSettingsChanged(settings: ReaderSettings, state: PdfViewState): boolean {
 	const next = viewSettings(state);
-	return (Object.keys(next) as (keyof ViewSettings)[]).some((key) => settings[key] !== next[key]);
+	return (Object.keys(next) as (keyof typeof next)[]).some((key) => settings[key] !== next[key]);
 }
 
 export function storedTool(value: string | null): 'select' | 'hand' {

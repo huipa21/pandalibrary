@@ -145,6 +145,7 @@ func TestValidateBookheapDirRejectsOverlaps(t *testing.T) {
 		filepath.Join(drop, "heap"):              "drop directory",
 		filepath.Join(data, "files"):             "files",
 		filepath.Join(data, "covers", "ab"):      "covers",
+		filepath.Join(data, "assets", "ab"):      "assets",
 		filepath.Join(data, "tmp"):               "tmp",
 		filepath.Join(data, "backups", "x", "y"): "backups",
 	}

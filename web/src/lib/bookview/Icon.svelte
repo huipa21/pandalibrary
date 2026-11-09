@@ -7,7 +7,9 @@
 		| 'zoom-in' | 'zoom-out' | 'zoom-auto' | 'fit-page' | 'fit-width'
 		| 'actual-size' | 'layout-single' | 'layout-continuous' | 'layout-split'
 		| 'layout-split-continuous' | 'rotate-ccw' | 'rotate-cw' | 'hand'
-		| 'text-cursor' | 'insert' | 'panel-right';
+		| 'text-cursor' | 'insert' | 'panel-right'
+		| 'highlighter' | 'underline' | 'strikethrough' | 'message' | 'bookmark-plus'
+		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move';
 </script>
 
 <script lang="ts">
@@ -17,7 +19,7 @@
 <svg
 	aria-hidden="true"
 	class={className}
-	viewBox={['zoom-in', 'zoom-out', 'zoom-auto', 'fit-page', 'fit-width', 'actual-size', 'layout-single', 'layout-continuous', 'layout-split', 'layout-split-continuous', 'rotate-ccw', 'rotate-cw', 'hand', 'text-cursor', 'insert', 'panel-right'].includes(name) ? '0 0 20 20' : '0 0 24 24'}
+	viewBox={['zoom-in', 'zoom-out', 'zoom-auto', 'fit-page', 'fit-width', 'actual-size', 'layout-single', 'layout-continuous', 'layout-split', 'layout-split-continuous', 'rotate-ccw', 'rotate-cw', 'hand', 'text-cursor', 'insert', 'panel-right', 'highlighter', 'underline', 'strikethrough', 'message', 'bookmark-plus', 'type', 'pen', 'image', 'undo', 'check', 'move'].includes(name) ? '0 0 20 20' : '0 0 24 24'}
 	fill="none"
 	stroke="currentColor"
 	stroke-width="1.75"
@@ -100,5 +102,27 @@
 		<circle cx="10" cy="10" r="8" /><path d="M10 6v8M6 10h8" />
 	{:else if name === 'panel-right'}
 		<rect x="2" y="3" width="16" height="14" rx="1" /><path d="M12 3v14m3-10h.01M15 10h.01M15 13h.01" />
+	{:else if name === 'highlighter'}
+		<path d="m6 11 8-8 3 3-8 8-3-3Zm0 0-2 4 2 2 3-3M2 18h8" />
+	{:else if name === 'underline'}
+		<path d="M5 3v7a5 5 0 0 0 10 0V3M3 18h14" />
+	{:else if name === 'strikethrough'}
+		<path d="M15 5c-1-3-10-3-10 1 0 2 2 3 5 4s5 2 5 4c0 4-9 4-10 1M2 10h16" />
+	{:else if name === 'message'}
+		<path d="M3 3h14v11H8l-5 3V3Zm3 4h8m-8 3h5" />
+	{:else if name === 'bookmark-plus'}
+		<path d="M4 2h12v16l-6-4-6 4V2Zm6 3v6M7 8h6" />
+	{:else if name === 'type'}
+		<path d="M3 5V3h14v2M10 3v14m-3 0h6" />
+	{:else if name === 'pen'}
+		<path d="m4 13 9-10 4 4-10 9-4 1 1-4Zm7-8 4 4M2 19h16" />
+	{:else if name === 'image'}
+		<rect x="2" y="3" width="16" height="14" rx="1" /><circle cx="7" cy="7" r="1" /><path d="m2 14 5-4 4 3 3-3 4 4" />
+	{:else if name === 'undo'}
+		<path d="M7 3 2 8l5 5M2 8h10a5 5 0 0 1 0 10h-2" />
+	{:else if name === 'check'}
+		<path d="m3 10 5 5L17 5" />
+	{:else if name === 'move'}
+		<path d="M10 2v16M2 10h16M7 5l3-3 3 3m-6 10 3 3 3-3M5 7l-3 3 3 3m10-6 3 3-3 3" />
 	{/if}
 </svg>

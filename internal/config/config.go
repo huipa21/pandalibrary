@@ -104,7 +104,7 @@ func Parse(args []string, output io.Writer) (Config, error) {
 }
 
 // ValidateBookheapDir rejects a heap directory that equals, contains or is inside
-// the drop directory or a storage root (<data-dir>/{files,covers,tmp,backups}),
+// the drop directory or a storage root (<data-dir>/{files,covers,assets,tmp,backups}),
 // or that equals or contains the data (database) directory. Existing paths are
 // compared after resolving symbolic links.
 func ValidateBookheapDir(dataDir, dropDir, heapDir string) error {
@@ -120,7 +120,7 @@ func ValidateBookheapDir(dataDir, dropDir, heapDir string) error {
 		return errors.New("invalid bookheap directory: it must not equal or contain the data directory")
 	}
 	guarded := map[string]string{"drop directory": dropDir}
-	for _, name := range []string{"files", "covers", "tmp", "backups"} {
+	for _, name := range []string{"files", "covers", "assets", "tmp", "backups"} {
 		guarded["data "+name+" directory"] = filepath.Join(dataDir, name)
 	}
 	for label, path := range guarded {

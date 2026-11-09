@@ -58,10 +58,15 @@ assigned again.
 | **Hidden books** | Hide specific books from one reader. Hidden books disappear from that reader's lists, search and downloads |
 | **Uploads & imports** | Import history, including failures and their reasons |
 | **Metadata providers** | Turn online sources on or off and set their priority. Open Library and Google Books are on by default; NeoDB and Hardcover need a token |
-| **Maintenance** | See scheduled jobs and run one now: database backup, cleanup, orphaned file removal, database optimization and search index checks |
+| **Maintenance** | See scheduled jobs and run one now: database backup, cleanup, unused annotation images, orphaned file removal, database optimization and search index checks |
 
 Resetting a password or disabling an account signs the user out everywhere and
 revokes their app passwords.
+
+The daily **Unused annotation images** job removes image ownership older than
+24 hours when no live page annotation uses it. Shared image files are kept
+while another account still owns them. Orphaned file removal also cleans up
+abandoned images and images belonging to deleted accounts.
 
 ## Editing book metadata
 
@@ -72,5 +77,6 @@ current value next to the values from each provider, so you can pick each field.
 
 The maintenance job keeps seven verified database backups. These do not replace
 an off-site backup of the whole data folder: back up the database and the book
-and cover files together. Database backups do not include files waiting in the
-Bookheap folder; after a restore, run **Scan** on the Bookheap page.
+files, covers and annotation images (`assets/`) together. Database backups do
+not include files waiting in the Bookheap folder; after a restore, run **Scan**
+on the Bookheap page.

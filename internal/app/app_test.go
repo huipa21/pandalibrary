@@ -56,7 +56,7 @@ func TestStartupMigratesAndCreatesRuntimeDirectories(t *testing.T) {
 	err = app.databases.Reader.QueryRow(
 		"SELECT MAX(version_id) FROM goose_db_version WHERE is_applied = 1",
 	).Scan(&version)
-	if err != nil || version != 7 || !app.ready.Load() {
+	if err != nil || version != 8 || !app.ready.Load() {
 		t.Fatalf("migration version = %d, readiness = %v, error = %v", version, app.ready.Load(), err)
 	}
 	setupResponse := httptest.NewRecorder()
@@ -64,7 +64,7 @@ func TestStartupMigratesAndCreatesRuntimeDirectories(t *testing.T) {
 	if setupResponse.Code != http.StatusOK || !strings.Contains(setupResponse.Body.String(), `"required":true`) {
 		t.Fatalf("first-run auth route = %d %s", setupResponse.Code, setupResponse.Body.String())
 	}
-	for _, directory := range []string{"files", "covers", "tmp", "backups", "drop", "bookheap"} {
+	for _, directory := range []string{"files", "covers", "assets", "tmp", "backups", "drop", "bookheap"} {
 		if info, err := os.Stat(filepath.Join(cfg.DataDir, directory)); err != nil || !info.IsDir() {
 			t.Fatalf("runtime directory %s: %v", directory, err)
 		}

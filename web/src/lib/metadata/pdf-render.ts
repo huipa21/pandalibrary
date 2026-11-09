@@ -33,7 +33,7 @@ export async function renderPdfFirstPage(pdf: Blob, maxEdge = PDF_COVER_MAX_EDGE
 	const [pdfjs, worker, { PdfBinaryDataFactory }, data] = await Promise.all([
 		import('pdfjs-dist'),
 		import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-		import('#lib/reader/pdf.js'),
+		import('#lib/reader/pdf/binary-data.js'),
 		pdf.arrayBuffer()
 	]);
 	pdfjs.GlobalWorkerOptions.workerSrc = worker.default;

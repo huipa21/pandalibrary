@@ -4,6 +4,7 @@ import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { loadEnv } from 'vite';
+import { ocrAssets } from './scripts/ocr-assets.js';
 
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, '.', 'VITE_');
@@ -11,6 +12,7 @@ export default defineConfig(({ mode }) => {
 
 	return {
 		plugins: [
+			ocrAssets(),
 			tailwindcss(),
 			sveltekit({
 				adapter: adapter({ fallback: 'index.html' }),

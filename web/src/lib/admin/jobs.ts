@@ -3,7 +3,7 @@ import type { ImportJob, MaintenanceJob } from './types.js';
 
 export const IMPORT_STATUSES = ['pending', 'processing', 'imported', 'duplicate', 'failed'] as const;
 export const MAINTENANCE_STATUSES = ['idle', 'accepted', 'running', 'completed', 'error'] as const;
-export const MAINTENANCE_JOBS = ['cleanup-expired', 'backup', 'orphan-sweep', 'optimize', 'fts-check', 'wal-checkpoint'] as const;
+export const MAINTENANCE_JOBS = ['annotation-assets-gc', 'cleanup-expired', 'backup', 'orphan-sweep', 'optimize', 'fts-check', 'wal-checkpoint'] as const;
 
 export function isActiveImport(job: ImportJob): boolean {
 	return job.status === 'pending' || job.status === 'processing';

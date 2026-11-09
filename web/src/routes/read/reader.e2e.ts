@@ -35,7 +35,7 @@ async function setupReader(
 		highlights: [],
 		notes: [],
 		settings: [
-			{ key: `reader.${format}`, value: { font: 'serif' }, updated_at: '2026-11-03T00:00:00Z', rev: 1 },
+			{ key: `reader.${format}`, value: { font: 'serif', ...(format === 'pdf' ? { pdfLayout: 'single', pdfZoom: 'page-width' } : {}) }, updated_at: '2026-11-03T00:00:00Z', rev: 1 },
 			{ key: 'reader.book.21', value: { futureOption: { keep: true } }, updated_at: '2026-11-03T00:00:00Z', rev: 1 }
 		],
 		mutations: [],
@@ -329,18 +329,19 @@ test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async (
 		await page.reload();
 		await expect(page.locator('.reader-pdf-page[data-page="21"] .reader-pdf-text')).toContainText('Page 21 PDF page text');
 	}
+	// pdf.js scale 1 is 4/3 CSS px per point: a 612 pt page is 816 px wide at actual size.
 	const pageWidth = () => page.locator('.reader-pdf-page[data-page="21"]').evaluate((element) => element.getBoundingClientRect().width);
 
 	await settings({ pdfZoom: 'page-actual' });
-	await expect.poll(pageWidth).toBeCloseTo(612, 0);
+	await expect.poll(pageWidth).toBeCloseTo(816, 0);
 	await settings({ pdfZoom: 1.375 });
-	await expect.poll(pageWidth).toBeCloseTo(841.5, 0);
+	await expect.poll(pageWidth).toBeCloseTo(1122, 0);
 	await settings({ pdfRotation: 90 });
-	await expect.poll(pageWidth).toBeCloseTo(1089, 0);
+	await expect.poll(pageWidth).toBeCloseTo(1452, 0);
 	await settings({ pdfRotation: 180 });
-	await expect.poll(pageWidth).toBeCloseTo(841.5, 0);
+	await expect.poll(pageWidth).toBeCloseTo(1122, 0);
 	await settings({ pdfRotation: 270 });
-	await expect.poll(pageWidth).toBeCloseTo(1089, 0);
+	await expect.poll(pageWidth).toBeCloseTo(1452, 0);
 	await settings({ pdfRotation: 0, pdfZoom: 'page-fit' });
 	await expect.poll(async () => page.locator('.reader-pdf-page').evaluate((element) =>
 		element.getBoundingClientRect().height <= (element.closest('.reader-pdf')?.clientHeight ?? 0) + 1
@@ -365,13 +366,13 @@ test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async (
 		await expect(progress).toContainText('10.05%');
 		await expect.poll(() => page.locator('.reader-pdf-page canvas').count()).toBeLessThan(12);
 		await surface.evaluate((element) => {
-			const target = element.querySelector<HTMLElement>('.reader-pdf-page[data-page="41"]')?.parentElement;
+			const target = element.querySelector<HTMLElement>('.reader-pdf-page[data-page="41"]');
 			if (!target) throw new Error('Missing scroll target');
 			element.scrollTop += target.getBoundingClientRect().top - element.getBoundingClientRect().top - element.clientTop;
 		});
 		await expect(progress).toContainText('20.10%');
 		await expect(page.locator('.reader-pdf-page[data-page="41"] .reader-pdf-text')).toContainText('Page 41 PDF page text');
-		await expect.poll(() => state.progress?.locator).toEqual({ type: 'pdf', page: 41 });
+		await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 41 });
 		state.rev += 1;
 		state.progress = { ...state.progress, locator: { type: 'pdf', page: 21 }, percentage: 20 / 199, updated_at: new Date().toISOString(), rev: state.rev };
 		await page.reload();
@@ -384,8 +385,8 @@ test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async (
 	});
 	await page.reload();
 	await expect(progress).toContainText('10.05%');
-	await expect.poll(pageWidth).toBeCloseTo(1089, 0);
-	await expect.poll(() => state.progress?.locator).toEqual({ type: 'pdf', page: 21 });
+	await expect.poll(pageWidth).toBeCloseTo(1452, 0);
+	await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 21 });
 });
 
 test('PDF odd spreads and cover-alone navigation retain every page', async ({ page }) => {
@@ -403,6 +404,10 @@ test('PDF odd spreads and cover-alone navigation retain every page', async ({ pa
 	}
 	await page.keyboard.press('ArrowLeft');
 	await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', '2');
+	await expect(page.locator('.reader-pdf-text').first()).toContainText('Second PDF page text');
+	await page.keyboard.press('Home');
+	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+	await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 1 });
 	state.settings = [{ key: 'reader.book.21', value: { pdfLayout: 'split', pdfCoverAlone: false }, updated_at: new Date().toISOString(), rev: ++state.rev }];
 	await page.reload();
 	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
@@ -431,7 +436,7 @@ test('PDF free zoom preserves rotated text and highlight geometry', async ({ pag
 	const pdfPage = page.locator('.reader-pdf-page');
 	const width = () => pdfPage.evaluate((element) => element.getBoundingClientRect().width);
 	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
-	await expect.poll(width).toBeCloseTo(792, 0);
+	await expect.poll(width).toBeCloseTo(1056, 0);
 	const geometry = () => pdfPage.evaluate((element) => {
 		const page = element.getBoundingClientRect();
 		const mark = element.querySelector('.reader-pdf-highlight')?.getBoundingClientRect();
@@ -452,12 +457,14 @@ test('PDF free zoom preserves rotated text and highlight geometry', async ({ pag
 	expect(original.textInside).toBe(true);
 	expect(original.textRotated).toBe(true);
 	await surface.focus();
+	// pdf.js floors page CSS sizes to whole pixels.
+	const widthNear = (expected: number) => expect.poll(async () => Math.abs(await width() - expected)).toBeLessThan(1);
 	await page.keyboard.press('Control+=');
-	await expect.poll(width).toBeCloseTo(871.2, 0);
+	await widthNear(1161.6);
 	await page.keyboard.press('Control+-');
-	await expect.poll(width).toBeCloseTo(792, 0);
+	await expect.poll(width).toBeCloseTo(1056, 0);
 	await surface.dispatchEvent('wheel', { deltaY: -100, ctrlKey: true });
-	await expect.poll(width).toBeCloseTo(871.2, 0);
+	await widthNear(1056 * Math.exp(0.2));
 	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
 	const zoomed = await geometry();
 	expect(zoomed.x).toBeCloseTo(original.x, 3);
@@ -466,7 +473,9 @@ test('PDF free zoom preserves rotated text and highlight geometry', async ({ pag
 	await surface.evaluate((element) => {
 		for (let index = 0; index < 30; index++) element.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, cancelable: true }));
 	});
-	await expect.poll(width).toBeCloseTo(3960, 0);
+	// At 500% the canvas is capped and pdf.js rounds the page to its output-scale grid.
+	await expect(page.getByRole('button', { name: 'Zoom', exact: true })).toHaveText('500%');
+	await expect.poll(async () => Math.abs(await width() - 5280)).toBeLessThan(5280 * 0.01);
 	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
 	await surface.focus();
 	await page.keyboard.press('Control+0');

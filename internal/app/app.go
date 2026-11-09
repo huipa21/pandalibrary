@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"pandalibrary/internal/annotations"
 	"pandalibrary/internal/auth"
 	"pandalibrary/internal/blobstore"
 	"pandalibrary/internal/bookheap"
@@ -57,7 +58,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		cfg.BookheapDir = filepath.Join(cfg.DataDir, "bookheap")
 	}
 	for _, directory := range []string{
-		cfg.DataDir, filepath.Join(cfg.DataDir, "files"), filepath.Join(cfg.DataDir, "covers"),
+		cfg.DataDir, filepath.Join(cfg.DataDir, "files"), filepath.Join(cfg.DataDir, "covers"), filepath.Join(cfg.DataDir, "assets"),
 		filepath.Join(cfg.DataDir, "tmp"), filepath.Join(cfg.DataDir, "backups"), cfg.DropDir, cfg.BookheapDir,
 	} {
 		if err := os.MkdirAll(directory, 0o750); err != nil {
@@ -148,6 +149,10 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure reading: %w", err)
 	}
+	annotationAssets, err := annotations.NewService(databases.Writer, databases.Reader, blobs)
+	if err != nil {
+		return nil, fmt.Errorf("configure annotation assets: %w", err)
+	}
 	exportService, err := notesexport.NewService(databases.Writer, databases.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("configure notes export: %w", err)
@@ -202,6 +207,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.CatalogMount(catalogService, authentication, logger),
 			httpapi.MetadataMount(metadataService, authentication, logger),
 			httpapi.ReadingMount(readingService, authentication, logger),
+			httpapi.AnnotationAssetsMount(annotationAssets, authentication, logger),
 			httpapi.ExportMount(exportService, authentication, logger),
 			httpapi.SearchMount(searchService, authentication, logger),
 			httpapi.ImportMount(importService, catalogService, authentication, logger),

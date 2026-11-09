@@ -1,4 +1,4 @@
-import { crc32, deflateSync } from 'node:zlib';
+import { crc32, deflateSync, inflateSync } from 'node:zlib';
 
 export function pngFixture(width: number, height: number, [red, green, blue]: [number, number, number]): Buffer {
 	const chunk = (type: string, data: Buffer) => {
@@ -232,6 +232,7 @@ export function pdfFixture(pageCount = 2): Buffer {
 			`<< /Length ${Buffer.byteLength(text)} >>\nstream\n${text}\nendstream`
 		);
 	}
+
 	objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
 	let output = '%PDF-1.7\n';
 	const offsets = [0];
@@ -244,4 +245,101 @@ export function pdfFixture(pageCount = 2): Buffer {
 	for (const offset of offsets.slice(1)) output += `${String(offset).padStart(10, '0')} 00000 n \n`;
 	output += `trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
 	return Buffer.from(output);
+}
+
+interface ScannedFixturePage {
+	png: Buffer;
+	width: number;
+	height: number;
+}
+
+function pngRgb(png: Buffer): { pixels: Buffer; width: number; height: number } {
+	const width = png.readUInt32BE(16);
+	const height = png.readUInt32BE(20);
+	const color = png[25];
+	if (png[24] !== 8 || ![2, 6].includes(color) || png[28] !== 0) {
+		throw new Error('The PDF fixture requires a non-interlaced 8-bit RGB/RGBA PNG.');
+	}
+	const channels = color === 6 ? 4 : 3;
+	const chunks: Buffer[] = [];
+	for (let offset = 8; offset < png.length;) {
+		const length = png.readUInt32BE(offset);
+		if (png.toString('ascii', offset + 4, offset + 8) === 'IDAT') chunks.push(png.subarray(offset + 8, offset + 8 + length));
+		offset += length + 12;
+	}
+	const filtered = inflateSync(Buffer.concat(chunks));
+	const raw = Buffer.alloc(width * height * channels);
+	const stride = width * channels;
+	for (let y = 0; y < height; y++) {
+		const filter = filtered[y * (stride + 1)];
+		for (let x = 0; x < stride; x++) {
+			const index = y * stride + x;
+			const a = x >= channels ? raw[index - channels] : 0;
+			const b = y ? raw[index - stride] : 0;
+			const c = y && x >= channels ? raw[index - stride - channels] : 0;
+			const p = a + b - c;
+			const distances = [Math.abs(p - a), Math.abs(p - b), Math.abs(p - c)];
+			const paeth = distances[0] <= distances[1] && distances[0] <= distances[2] ? a
+				: distances[1] <= distances[2] ? b : c;
+			const predictors = [0, a, b, Math.floor((a + b) / 2), paeth];
+			if (filter > 4) throw new Error('Unsupported PNG row filter.');
+			raw[index] = (filtered[y * (stride + 1) + x + 1] + predictors[filter]) & 255;
+		}
+	}
+	const pixels = Buffer.alloc(width * height * 3);
+	for (let i = 0; i < width * height; i++) {
+		const alpha = channels === 4 ? raw[i * channels + 3] / 255 : 1;
+		for (let c = 0; c < 3; c++) pixels[i * 3 + c] = Math.round(raw[i * channels + c] * alpha + 255 * (1 - alpha));
+	}
+	return { pixels, width, height };
+}
+
+function imagePdf(pages: ScannedFixturePage[], textPage: boolean): Buffer {
+	const objects: Buffer[] = [];
+	const add = (value: string | Buffer) => objects.push(typeof value === 'string' ? Buffer.from(value) : value);
+	const count = pages.length + Number(textPage);
+	const kids = pages.map((_, index) => `${3 + index * 3} 0 R`);
+	if (textPage) kids.unshift(`${3 + pages.length * 3} 0 R`);
+	add('<< /Type /Catalog /Pages 2 0 R >>');
+	add(`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${count} >>`);
+	for (const [index, page] of pages.entries()) {
+		const image = pngRgb(page.png);
+		const id = 3 + index * 3;
+		const command = `q ${page.width} 0 0 ${page.height} 0 0 cm /Image Do Q`;
+		const compressed = deflateSync(image.pixels);
+		add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${page.width} ${page.height}] /Resources << /XObject << /Image ${id + 2} 0 R >> >> /Contents ${id + 1} 0 R >>`);
+		add(`<< /Length ${Buffer.byteLength(command)} >>\nstream\n${command}\nendstream`);
+		add(Buffer.concat([
+			Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${compressed.length} >>\nstream\n`),
+			compressed, Buffer.from('\nendstream')
+		]));
+	}
+	if (textPage) {
+		const id = 3 + pages.length * 3;
+		const command = 'BT /F1 24 Tf 30 180 Td (True text page already has selectable content.) Tj ET';
+		add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${id + 2} 0 R >> >> /Contents ${id + 1} 0 R >>`);
+		add(`<< /Length ${Buffer.byteLength(command)} >>\nstream\n${command}\nendstream`);
+		add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+	}
+	const parts = [Buffer.from('%PDF-1.7\n')];
+	const offsets = [0];
+	let length = parts[0].length;
+	for (const [index, object] of objects.entries()) {
+		offsets.push(length);
+		const part = Buffer.concat([Buffer.from(`${index + 1} 0 obj\n`), object, Buffer.from('\nendobj\n')]);
+		parts.push(part);
+		length += part.length;
+	}
+	parts.push(Buffer.from(`xref\n0 ${offsets.length}\n0000000000 65535 f \n` +
+		offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('') +
+		`trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`));
+	return Buffer.concat(parts);
+}
+
+export function scannedPdfFixture(pages: ScannedFixturePage[]): Buffer {
+	return imagePdf(pages, false);
+}
+
+export function mixedPdfFixture(page: ScannedFixturePage = { png: pngFixture(100, 100, [255, 255, 255]), width: 612, height: 792 }): Buffer {
+	return imagePdf([page], true);
 }

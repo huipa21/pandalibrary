@@ -47,7 +47,7 @@ describe('reader selection and progress', () => {
 			expect(readerFormat(format.toUpperCase())).toBe(format);
 			expect((await createReader(format, container, events)).constructor.name).toBe('FoliateReader');
 		}
-		expect((await createReader('pdf', container, events)).constructor.name).toBe('PdfReader');
+		expect((await createReader('pdf', container, events)).constructor.name).toBe('PdfViewerEngine');
 		expect(readerFormat('txt')).toBeNull();
 	}, 30_000);
 
@@ -66,6 +66,18 @@ describe('reader selection and progress', () => {
 		expect(reader.goTo).toHaveBeenLastCalledWith(0.6);
 		await restorePosition(reader, null, 3, 'pdf');
 		expect(reader.goTo).toHaveBeenLastCalledWith(0);
+		const koreader: Progress = { ...savedProgress, source: 'koreader', locator: { page: 7 } };
+		expect(await restorePosition(reader, koreader, 3, 'pdf')).toBe('locator');
+		expect(reader.goTo).toHaveBeenLastCalledWith({ type: 'pdf', page: 7 });
+		expect(await restorePosition(reader, koreader, 4, 'pdf')).toBe('fraction');
+		vi.mocked(reader.goTo).mockRejectedValueOnce(new Error('page out of range'));
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		expect(await restorePosition(reader, koreader, 3, 'pdf')).toBe('fraction');
+		expect(reader.goTo).toHaveBeenLastCalledWith(0.6);
+		logged.mockRestore();
+		const web: Progress = { ...savedProgress, locator: { type: 'pdf', page: 4, offset: 0.25 } };
+		expect(await restorePosition(reader, web, 3, 'pdf')).toBe('locator');
+		expect(reader.goTo).toHaveBeenLastCalledWith(web.locator);
 	});
 
 	it('creates the exact R1 progress envelope and bounds the fraction', () => {

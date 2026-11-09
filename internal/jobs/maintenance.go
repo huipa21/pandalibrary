@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"pandalibrary/internal/annotations"
 	"pandalibrary/internal/blobstore"
 )
 
@@ -111,7 +112,13 @@ func NewMaintenance(parent context.Context, writer, reader *sql.DB, blobs *blobs
 		writer: writer, blobs: blobs, dataDir: absoluteDir, dropDir: absoluteDrop, logger: logger,
 		jobs: make(map[string]*jobState), ctx: ctx, cancel: cancel,
 	}
+	assets, err := annotations.NewService(writer, reader, blobs)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 	for _, job := range []maintenanceJob{
+		{name: "annotation-assets-gc", interval: dailyInterval, run: assets.GarbageCollect},
 		{name: "cleanup-expired", interval: cleanupInterval, run: service.cleanupExpired},
 		{name: "backup", interval: dailyInterval, run: service.backup},
 		{name: "orphan-sweep", interval: dailyInterval, run: service.sweepOrphans},
@@ -662,7 +669,7 @@ func (m *Maintenance) sweepOrphans(ctx context.Context) (returnErr error) {
 	remaining := maxOrphanScanEntries
 	removed := 0
 	cutoff := time.Now().Add(-orphanGracePeriod)
-	for _, category := range []string{"files", "covers"} {
+	for _, category := range []string{"files", "covers", "assets"} {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -860,10 +867,11 @@ func (m *Maintenance) removeOrphan(ctx context.Context, root *os.Root, name, has
 	if err := tx.QueryRowContext(ctx, `
 		SELECT EXISTS(SELECT 1 FROM book_files WHERE sha256 = ?)
 			OR EXISTS(SELECT 1 FROM books WHERE cover_sha256 = ?)
+			OR EXISTS(SELECT 1 FROM annotation_assets WHERE sha256 = ?)
 			OR (? = 'cover' AND EXISTS(SELECT 1 FROM bookheap_items WHERE cover_sha256 = ?))
 			OR EXISTS(SELECT 1 FROM import_jobs WHERE status IN ('pending', 'processing')
 				AND (? = 'cover' OR sha256 = ?))
-	`, hash, hash, kind, hash, kind, hash).Scan(&referenced); err != nil {
+	`, hash, hash, hash, kind, hash, kind, hash).Scan(&referenced); err != nil {
 		return false, rollback(tx, fmt.Errorf("check orphan references: %w", err))
 	}
 	deleted := false
@@ -908,6 +916,17 @@ func validShard(name string) bool {
 
 func parseStoredName(category, shard, name string) (hash, kind string, ok bool) {
 	switch category {
+	case "assets":
+		hash, extension, found := strings.Cut(name, ".")
+		if !found || !blobstore.ValidHash(hash) || hash[:2] != shard {
+			return "", "", false
+		}
+		switch extension {
+		case "png", "jpg", "webp":
+			return hash, "asset", true
+		default:
+			return "", "", false
+		}
 	case "files":
 		hash, format, found := strings.Cut(name, ".")
 		if !found || !blobstore.ValidHash(hash) || hash[:2] != shard {

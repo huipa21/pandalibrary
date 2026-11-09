@@ -64,17 +64,45 @@ Reading time is recorded as sessions for your stats; idle time is not counted.
 
 PDFs fill the screen below a compact toolbar, without the app header or
 sidebar. Progress shows two decimal places (for example, **10.05%**), while
-saved positions retain the exact page. Use the left and right arrow keys to
-turn pages. Existing highlights remain visible, and links to saved highlights
+saved positions retain the page and your scroll position within it. Type a page
+number in the counter to jump there. Use Zoom, Page display and Rotate to
+adjust the view; below 640 px these menus are inside **More view options**.
+New books start in continuous mode with Automatic zoom unless you have saved
+a different PDF default.
+
+View changes save automatically after one second. Layout, cover display, zoom
+presets and page theme also become defaults for other PDFs; rotation and free
+numeric zoom apply only to the current book. Ctrl/Command plus the mouse wheel,
+trackpad pinch and two-finger touch pinch zoom around the pointer or midpoint.
+One-finger touch scrolling stays native.
+
+Use the arrow keys, Page Up/Down, or Space/Shift+Space to turn pages (or scroll
+one viewport in continuous mode). Home/End jump to the first/last page.
+Ctrl/Command `+`, `-`, and `0` zoom in, out, and Automatic. `R`/Shift+`R`
+rotate right/left. `V`, `H`, and `I` select the Select, Hand, and Insert tools;
+Escape leaves Insert. Hand mode pans with a mouse drag. Tool shortcuts are
+inactive in editable fields and open menus.
+
+Existing highlights remain visible, and links to saved highlights
 or bookmarks still open at their saved positions.
 
 The borderless **X** saves progress and reading time before returning to the
 book's details. If saving fails, retry the unsaved changes or explicitly
 choose to leave without saving. A coloured status dot indicates offline,
-pending or failed sync; open it for details and a retry action.
+pending or failed sync, or a settings-save warning; open it for details and a
+retry action when synchronization is available.
 
 PDF annotation and bookmark creation is temporarily unavailable while the
-new PDF tools are being assembled. Other formats keep their existing controls.
+new PDF tools are being assembled. Insert and Annotations currently expose
+their toggle state only. Other formats keep their existing controls.
+
+Scanned PDF pages (pages that are images with little or no text) are recognized
+in your browser so you can select and copy their text. Recognition supports
+English and Simplified Chinese. While a page is processed, the toolbar shows its
+progress and offers a retry if recognition fails. Page images are never uploaded.
+Results are saved on this device, so reopening the book does not run recognition
+again. Signing out clears them. Turn recognition off in the layout menu; this
+device remembers the choice.
 
 ## Offline reading
 

@@ -2,12 +2,13 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { offlineStatus, syncNow } from '#lib/sync/client.js';
 
+	let { warning = '', onretry }: { warning?: string; onretry?: () => Promise<void> } = $props();
 	let open = $state(false);
 	let retryError = $state(false);
-	const visible = $derived(!$offlineStatus.available || !$offlineStatus.online || $offlineStatus.pending > 0 || $offlineStatus.issues > 0 || $offlineStatus.error);
-	const failed = $derived($offlineStatus.error || $offlineStatus.issues > 0 || !$offlineStatus.available);
+	const visible = $derived(warning || !$offlineStatus.available || !$offlineStatus.online || $offlineStatus.pending > 0 || $offlineStatus.issues > 0 || $offlineStatus.error);
+	const failed = $derived(warning || $offlineStatus.error || $offlineStatus.issues > 0 || !$offlineStatus.available);
 	const message = $derived(
-		!$offlineStatus.available ? m['offline.status.unavailable']()
+		warning ? warning : !$offlineStatus.available ? m['offline.status.unavailable']()
 		: !$offlineStatus.online ? m['offline.status.offline']()
 		: $offlineStatus.issues ? m['offline.status.conflict']()
 		: $offlineStatus.error ? m['offline.status.failed']()
@@ -28,7 +29,8 @@
 	async function retry() {
 		retryError = false;
 		try {
-			await syncNow(true);
+			if (onretry) await onretry();
+			else await syncNow(true);
 		} catch (error) {
 			console.error('Could not retry reader synchronization', error);
 			retryError = true;

@@ -105,15 +105,16 @@ func TestMaintenanceRegistersExpectedSchedules(t *testing.T) {
 	if err := service.Register(scheduler); err != nil {
 		t.Fatal(err)
 	}
-	if len(scheduler.jobs) != 6 {
-		t.Fatalf("registered jobs = %d, want 6", len(scheduler.jobs))
+	if len(scheduler.jobs) != 7 {
+		t.Fatalf("registered jobs = %d, want 7", len(scheduler.jobs))
 	}
 	got := make(map[string]time.Duration, len(scheduler.jobs))
 	for _, job := range scheduler.jobs {
 		got[job.name] = job.interval
 	}
 	want := map[string]time.Duration{
-		"cleanup-expired": time.Hour, "backup": 24 * time.Hour, "orphan-sweep": 24 * time.Hour,
+		"annotation-assets-gc": 24 * time.Hour,
+		"cleanup-expired":      time.Hour, "backup": 24 * time.Hour, "orphan-sweep": 24 * time.Hour,
 		"optimize": 24 * time.Hour, "fts-check": 24 * time.Hour, "wal-checkpoint": 5 * time.Minute,
 	}
 	for name, interval := range want {

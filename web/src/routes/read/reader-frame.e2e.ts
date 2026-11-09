@@ -20,7 +20,9 @@ async function setup(page: Page, format = 'pdf', locale = 'en') {
 		if (path === '/api/v1/books/21') return route.fulfill({ json: { book } });
 		if (path === '/api/v1/books/21/files/31') return route.fulfill({ contentType: 'application/octet-stream', body: bytes });
 		if (path === '/api/v1/me/books/21') return route.fulfill({ json: { user_book: null, progress: null, highlights: [], notes: [], bookmarks } });
-		if (path === '/api/v1/me/settings') return route.fulfill({ json: { settings: [] } });
+		if (path === '/api/v1/me/settings') return route.fulfill({ json: { settings: [
+			{ key: 'reader.pdf', value: { pdfLayout: 'single', pdfZoom: 'page-width' }, updated_at: '2026-11-03T00:00:00Z', rev: 1 }
+		] } });
 		if (path === '/api/v1/sync/pull') return route.fulfill({ json: { cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], bookmarks: [], user_settings: [] } });
 		if (path === '/api/v1/sync/push') {
 			if (fail) return route.fulfill({ status: 503, json: { status: 503, title: 'Unavailable' } });

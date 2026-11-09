@@ -6,6 +6,14 @@ afterEach(() => {
 });
 
 describe('API client', () => {
+	it('sends Blob bodies without JSON encoding or replacing their media type', async () => {
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ asset: {} }));
+		const body = new Blob(['image'], { type: 'image/webp' });
+		await createApiClient({ fetcher }).request('/me/annotation-assets', { method: 'POST', body });
+		const [, request] = fetcher.mock.calls[0];
+		expect(request?.body).toBe(body);
+		expect(new Headers(request?.headers).get('content-type')).toBe('image/webp');
+	});
 	it('accepts a 204 response without attempting to parse JSON', async () => {
 		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
 		await expect(createApiClient({ fetcher }).request<void>('/books/1/reviews/me', {
