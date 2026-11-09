@@ -38,7 +38,6 @@ export const navigation: readonly NavigationItem[] = [
 	{ id: 'series', href: '/series', label: m['catalog.nav.series'] },
 	{ id: 'tags', href: '/tags', label: m['catalog.nav.tags'] },
 	{ id: 'reader', href: '/read', label: m['reader.nav'] },
-	{ id: 'search', href: '/search', label: m['search.nav'] },
 	{ id: 'stats', href: '/stats', label: m['stats.nav'] },
 	{ id: 'admin', href: '/admin', label: m['admin.nav'], role: 'admin' }
 ];

@@ -184,9 +184,10 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 	await expect(sidebar.getByRole('link', { name: 'All Books' })).toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0);
-	for (const name of ['Libraries', 'Authors', 'Series', 'Tags', 'Read', 'Search', 'Stats']) {
+	for (const name of ['Libraries', 'Authors', 'Series', 'Tags', 'Read', 'Stats']) {
 		await expect(sidebar.getByRole('link', { name, exact: true })).toBeVisible();
 	}
+	await expect(sidebar.getByRole('link', { name: 'Search', exact: true })).toHaveCount(0);
 
 	const shelves = sidebar.getByRole('region', { name: 'Shelves' });
 	await expect(shelves.getByRole('link', { name: /Weekend reads/ })).toHaveAttribute('href', '/shelves/7');
