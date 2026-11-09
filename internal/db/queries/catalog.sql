@@ -407,3 +407,13 @@ DELETE FROM book_identifiers WHERE book_id = ?;
 
 -- name: CatalogInsertBookIdentifier :exec
 INSERT INTO book_identifiers (book_id, scheme, value) VALUES (?, ?, ?);
+
+-- name: CatalogVisibleBookCount :one
+SELECT count(*) FROM books b
+WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
+);

@@ -176,6 +176,22 @@ func (s *Service) ListBooks(ctx context.Context, viewer Viewer, filters BookFilt
 	})
 }
 
+// CountBooks returns the number of books visible to the viewer across all libraries.
+func (s *Service) CountBooks(ctx context.Context, viewer Viewer) (int64, error) {
+	if err := checkViewer(viewer); err != nil {
+		return 0, err
+	}
+	count, err := readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (int64, error) {
+		return queries.CatalogVisibleBookCount(ctx, sqlc.CatalogVisibleBookCountParams{
+			IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
+		})
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count books: %w", err)
+	}
+	return count, nil
+}
+
 // GetBook returns a visible book and its related catalog data.
 func (s *Service) GetBook(ctx context.Context, viewer Viewer, id int64) (Book, error) {
 	if err := checkViewer(viewer); err != nil {

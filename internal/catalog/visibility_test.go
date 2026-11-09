@@ -278,6 +278,65 @@ func TestBookDerivedReadVisibility(t *testing.T) {
 	}
 }
 
+func TestCountBooksVisibility(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	ctx := context.Background()
+	for _, test := range visibilityCases() {
+		t.Run(test.name, func(t *testing.T) {
+			count, err := fixture.service.CountBooks(ctx, test.viewer)
+			if err != nil || count != int64(len(test.visible)) {
+				t.Fatalf("count = %d, %v, want %d", count, err, len(test.visible))
+			}
+			var listed int64
+			options := PageOptions{Limit: 1}
+			for {
+				page, err := fixture.service.ListBooks(ctx, test.viewer, BookFilters{}, options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				listed += int64(len(page.Items))
+				if page.NextCursor == nil {
+					break
+				}
+				options.Cursor = *page.NextCursor
+			}
+			if count != listed {
+				t.Errorf("count = %d, paged list has %d books", count, listed)
+			}
+		})
+	}
+	admin := Viewer{UserID: 1, IsAdmin: true}
+	if err := fixture.service.SetHidden(ctx, admin, 1, 103, false); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := fixture.service.CountBooks(ctx, admin); err != nil || count != 4 {
+		t.Fatalf("admin count after unhide = %d, %v, want 4", count, err)
+	}
+	if count, err := fixture.service.CountBooks(ctx, Viewer{UserID: 2}); err != nil || count != 2 {
+		t.Fatalf("reader count after admin unhide = %d, %v, want 2", count, err)
+	}
+	if err := fixture.service.SetAccess(ctx, admin, 10, 3, true); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := fixture.service.CountBooks(ctx, Viewer{UserID: 3}); err != nil || count != 4 {
+		t.Fatalf("other reader count after grant = %d, %v, want 4", count, err)
+	}
+}
+
+func TestCountBooksErrors(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	for _, viewer := range []Viewer{{}, {UserID: -1}, {IsAdmin: true}} {
+		if _, err := fixture.service.CountBooks(context.Background(), viewer); !errors.Is(err, ErrInvalid) {
+			t.Errorf("invalid viewer %+v: %v, want ErrInvalid", viewer, err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := fixture.service.CountBooks(ctx, Viewer{UserID: 2}); !errors.Is(err, context.Canceled) {
+		t.Errorf("canceled count error = %v, want context.Canceled", err)
+	}
+}
+
 func TestCatalogFilteredListsAndEntityCounts(t *testing.T) {
 	fixture := newCatalogFixture(t)
 	ctx := context.Background()

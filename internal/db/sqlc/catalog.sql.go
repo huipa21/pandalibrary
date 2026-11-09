@@ -1608,3 +1608,26 @@ func (q *Queries) CatalogUserRole(ctx context.Context, id int64) (string, error)
 	err := row.Scan(&role)
 	return role, err
 }
+
+const catalogVisibleBookCount = `-- name: CatalogVisibleBookCount :one
+SELECT count(*) FROM books b
+WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+)
+`
+
+type CatalogVisibleBookCountParams struct {
+	IsAdmin int64
+	UserID  int64
+}
+
+func (q *Queries) CatalogVisibleBookCount(ctx context.Context, arg CatalogVisibleBookCountParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, catalogVisibleBookCount, arg.IsAdmin, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}

@@ -208,6 +208,20 @@ func TestCatalogHTTPVisibilityAndRouting(t *testing.T) {
 		{"other", fixture.other, []int64{103}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			for _, target := range []string{
+				"/api/v1/books/count",
+				"/api/v1/books/count?library_id=20&limit=invalid&unknown=value",
+			} {
+				response := fixture.request(http.MethodGet, target, nil, test.cookie, nil)
+				want := fmt.Sprintf(`{"count":%d}`, len(test.want))
+				if response.Code != http.StatusOK || strings.TrimSpace(response.Body.String()) != want {
+					t.Fatalf("count response = %d %s, want 200 %s", response.Code, response.Body.String(), want)
+				}
+				if response.Header().Get("Content-Type") != "application/json; charset=utf-8" ||
+					response.Header().Get("Cache-Control") != "no-store" {
+					t.Errorf("count response headers = %v", response.Header())
+				}
+			}
 			response := fixture.request(http.MethodGet, "/api/v1/books", nil, test.cookie, nil)
 			if response.Code != http.StatusOK {
 				t.Fatalf("books response = %d %s", response.Code, response.Body.String())
@@ -257,6 +271,7 @@ func TestCatalogHTTPVisibilityAndRouting(t *testing.T) {
 		t.Fatalf("author visibility = %d %s", authors.Code, authors.Body.String())
 	}
 	requireProblem(t, fixture.request(http.MethodGet, "/api/v1/books", nil, nil, nil), http.StatusUnauthorized)
+	requireProblem(t, fixture.request(http.MethodGet, "/api/v1/books/count", nil, nil, nil), http.StatusUnauthorized)
 	requireProblem(t, fixture.request(http.MethodGet, "/api/v1/admin/libraries", nil, fixture.reader, nil), http.StatusForbidden)
 	requireProblem(t, fixture.request(http.MethodPatch, "/api/v1/books/101", strings.NewReader(`{"title":"No"}`),
 		fixture.admin, map[string]string{"Sec-Fetch-Site": "cross-site", "Content-Type": "application/json"}), http.StatusForbidden)

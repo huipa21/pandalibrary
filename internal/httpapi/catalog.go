@@ -34,6 +34,7 @@ func CatalogMount(service *catalog.Service, authentication *auth.Service, logger
 			secured.Get("/api/v1/libraries", handler.withViewer(handler.listLibraries))
 			secured.Get("/api/v1/libraries/{id}", handler.withViewer(handler.getLibrary))
 			secured.Get("/api/v1/books", handler.withViewer(handler.listBooks))
+			secured.Get("/api/v1/books/count", handler.withViewer(handler.countBooks))
 			secured.Get("/api/v1/books/{id}", handler.withViewer(handler.getBook))
 			secured.Get("/api/v1/books/{id}/files/{fileID}", handler.withViewer(handler.serveBookFile))
 			secured.Head("/api/v1/books/{id}/files/{fileID}", handler.withViewer(handler.serveBookFile))
@@ -144,6 +145,15 @@ func (h *catalogHTTP) listBooks(w http.ResponseWriter, r *http.Request, viewer c
 		return
 	}
 	h.writeJSON(w, http.StatusOK, result)
+}
+
+func (h *catalogHTTP) countBooks(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	count, err := h.service.CountBooks(r.Context(), viewer)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]int64{"count": count})
 }
 
 func (h *catalogHTTP) getBook(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
