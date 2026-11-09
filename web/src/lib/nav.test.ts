@@ -15,9 +15,14 @@ describe('navigationFor', () => {
 
 	it('keeps every existing destination reachable from the sidebar', () => {
 		const hrefs = [...homeNavigation, ...navigationFor('admin')].map((entry) => entry.href);
-		for (const href of ['/libraries', '/authors', '/series', '/tags', '/read', '/search', '/notes', '/stats', '/admin']) {
+		for (const href of ['/libraries', '/authors', '/series', '/tags', '/read', '/notes', '/stats', '/admin']) {
 			expect(hrefs).toContain(href);
 		}
+	});
+
+	it('leaves search to the header search box', () => {
+		const entries = [...homeNavigation, ...navigationFor('admin')];
+		expect(entries.some((entry) => entry.id === 'search' || entry.href === '/search')).toBe(false);
 	});
 });
 

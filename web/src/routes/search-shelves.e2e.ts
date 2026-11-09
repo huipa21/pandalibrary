@@ -63,9 +63,10 @@ const shelf = (id: number, name: string, kind: 'private' | 'shared', count = 1) 
 	updated_at: '2026-11-03T00:00:00Z'
 });
 
-test('searches from the app shell with opaque cursors, empty, and stale-cursor states', async ({ page }) => {
+test('searches only from the header, with a clear icon, opaque cursors, empty, and stale-cursor states', async ({ page }) => {
 	await authenticate(page);
 	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	const queries: URLSearchParams[] = [];
 	await page.route('**/api/v1/search?*', async (route) => {
 		const params = new URL(route.request().url()).searchParams;
@@ -76,14 +77,25 @@ test('searches from the app shell with opaque cursors, empty, and stale-cursor s
 		if (q === 'dune') return route.fulfill({ json: { items: [result(102, 'Dune Messiah')], next_cursor: null } });
 		if (q === 'stale' && cursor === null) return route.fulfill({ json: { items: [result(101, 'Dune')], next_cursor: 'stale-cursor' } });
 		if (q === 'stale') return problem(route, 400);
+		if (q === 'invalid') return problem(route, 400);
 		return route.fulfill({ json: { items: [], next_cursor: null } });
 	});
 
 	await page.goto('/');
-	const shellSearch = page.getByRole('searchbox', { name: 'Search books' });
-	await shellSearch.fill('dune');
-	await shellSearch.press('Enter');
+	const header = page.getByRole('banner');
+	const search = header.getByRole('searchbox', { name: 'Search books' });
+	const submit = header.getByRole('button', { name: 'Search', exact: true });
+	const clear = header.getByRole('button', { name: 'Clear search', exact: true });
+	await search.fill('dune');
+	await search.press('Enter');
 	await expect(page).toHaveURL(/\/search\?q=dune$/);
+	await expect(page.getByRole('searchbox')).toHaveCount(1);
+	await expect(search).toHaveValue('dune');
+	await expect(clear).toBeVisible();
+	await expect(clear).toHaveAttribute('title', 'Clear search');
+	await expect(submit).toHaveCount(0);
+	await expect(page.getByRole('main').getByRole('button', { name: /^(Search|Clear search)$/ })).toHaveCount(0);
+	await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator('a[href="/search"]')).toHaveCount(0);
 	await expect(page.getByRole('link', { name: 'Dune', exact: true }).first()).toHaveAttribute('href', '/books/101');
 	await expect(page.getByRole('img', { name: 'Cover of Dune' })).toBeVisible();
 	await expect(page.getByText('Relevance 1.25')).toBeVisible();
@@ -95,14 +107,15 @@ test('searches from the app shell with opaque cursors, empty, and stale-cursor s
 	expect(queries[1].get('cursor')).toBe('opaque/+cursor=');
 	expect(queries[1].get('q')).toBe('dune');
 
-	const pageSearch = page.getByRole('searchbox', { name: 'Search books' });
-	await pageSearch.fill('nothing');
-	await pageSearch.press('Enter');
-	await expect(page.getByText('No books match “nothing”.')).toBeVisible();
-	expect(queries.at(-1)?.has('cursor')).toBe(false);
+	// Submitting the active query again does not repeat the request.
+	await search.press('Enter');
+	await expect(page).toHaveURL(/\/search\?q=dune$/);
+	expect(queries).toHaveLength(2);
 
-	await pageSearch.fill('stale');
-	await pageSearch.press('Enter');
+	await search.fill('stale');
+	await expect(submit).toBeVisible();
+	await search.press('Enter');
+	await expect(page).toHaveURL(/\/search\?q=stale$/);
 	await page.getByRole('button', { name: 'Load more results' }).click();
 	await expect(page.getByRole('alert')).toContainText('Start the search again');
 	const before = queries.length;
@@ -111,10 +124,37 @@ test('searches from the app shell with opaque cursors, empty, and stale-cursor s
 	expect(queries.at(-1)?.get('q')).toBe('stale');
 	expect(queries.at(-1)?.has('cursor')).toBe(false);
 
-	await page.getByRole('button', { name: 'Clear search' }).click();
+	await search.fill('invalid');
+	await search.press('Enter');
+	await expect(page.getByRole('alert')).toContainText('Start the search again');
+	await page.getByRole('button', { name: 'Start the search again' }).click();
 	await expect(page).toHaveURL(/\/search$/);
-	await expect(page.getByText('Enter a word or phrase to search the books you can access.')).toBeVisible();
-	await expect(pageSearch).toBeFocused();
+	await expect(search).toHaveValue('');
+	await expect(search).toBeFocused();
+
+	await search.fill('nothing');
+	await expect(submit).toBeVisible();
+	await expect(clear).toHaveCount(0);
+	await search.press('Enter');
+	await expect(page.getByText('No books match “nothing”.')).toBeVisible();
+	expect(queries.at(-1)?.has('cursor')).toBe(false);
+	await expect(clear).toBeVisible();
+
+	await clear.click();
+	await expect(page).toHaveURL(/\/search$/);
+	await expect(page.getByText('Enter a word or phrase in the search box at the top to search the books you can access.')).toBeVisible();
+	await expect(search).toHaveValue('');
+	await expect(search).toBeFocused();
+	await expect(submit).toBeVisible();
+
+	await search.fill('dune');
+	await search.press('Enter');
+	await expect(clear).toBeVisible();
+	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'All Books' }).click();
+	await expect(page).toHaveURL(/\/books$/);
+	await expect(search).toHaveValue('');
+	await expect(submit).toBeVisible();
+	await expect(clear).toHaveCount(0);
 });
 
 test('creates, browses, edits membership, and deletes a private shelf', async ({ page }) => {

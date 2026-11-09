@@ -119,7 +119,7 @@
 				{#if viewer}<span class="sr-only sm:hidden">{m['common.app_name']()}</span>{/if}
 			</a>
 			<div class="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
-				{#if viewer && pathname !== '/search'}
+				{#if viewer}
 					<div class="shell-search min-w-0">
 						<SearchBox />
 					</div>

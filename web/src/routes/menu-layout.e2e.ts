@@ -133,6 +133,8 @@ test('menu destinations keep accessible titles without repeated visible introduc
 			await expect(sidebar.getByRole('menuitem', { name: 'Manage shelves' }))
 				.toHaveAttribute('aria-current', 'page');
 			await page.keyboard.press('Escape');
+		} else if (destination.path === '/search') {
+			await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator('a[href="/search"]')).toHaveCount(0);
 		} else {
 			await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator(`a[href="${destination.path}"]`))
 				.toHaveAttribute('aria-current', 'page');
