@@ -1,4 +1,19 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+
+// getComputedStyle cannot inspect ::-webkit-search-cancel-button, so compare pixels against a forced native icon.
+async function expectNativeSearchCancelHidden(page: Page, search: Locator) {
+	await search.focus();
+	await search.hover();
+	const shot = () => search.screenshot({ animations: 'disabled', caret: 'hide' });
+	const suppressed = await shot();
+	const forced = await page.addStyleTag({
+		content: 'input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: searchfield-cancel-button !important; appearance: auto !important; display: block !important; }'
+	});
+	const native = await shot();
+	await forced.evaluate((style) => (style as HTMLStyleElement).remove());
+	expect(suppressed.equals(native), 'native search cancel icon should be hidden').toBe(false);
+	expect((await shot()).equals(suppressed)).toBe(true);
+}
 
 async function authenticate(page: Page, role = 'user', locale = 'en') {
 	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
@@ -94,6 +109,7 @@ test('searches only from the header, with a clear icon, opaque cursors, empty, a
 	await expect(clear).toBeVisible();
 	await expect(clear).toHaveAttribute('title', 'Clear search');
 	await expect(submit).toHaveCount(0);
+	await expectNativeSearchCancelHidden(page, search);
 	await expect(page.getByRole('main').getByRole('button', { name: /^(Search|Clear search)$/ })).toHaveCount(0);
 	await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator('a[href="/search"]')).toHaveCount(0);
 	await expect(page.getByRole('link', { name: 'Dune', exact: true }).first()).toHaveAttribute('href', '/books/101');
