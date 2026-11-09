@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -216,5 +218,159 @@ func TestExportUsesReadOnlyDatabaseAccess(t *testing.T) {
 	}
 	if _, err := fixture.service.Export(context.Background(), Viewer{UserID: 2}, []int64{101}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestExportStylesAndPageAnnotations(t *testing.T) {
+	fixture := newExportFixture(t)
+	ctx := context.Background()
+	for _, statement := range []string{
+		`UPDATE highlights SET style = 'underline' WHERE id = '0190f5c2-7a00-7000-8000-000000000001'`,
+		`UPDATE highlights SET style = 'strikeout' WHERE id = '0190f5c2-7a00-7000-8000-000000000002'`,
+		`INSERT INTO page_annotations (id, user_id, book_id, kind, locator, position, data, created_at, updated_at, deleted_at, rev) VALUES
+				('0190f5c2-7a00-7000-8000-000000000031', 2, 101, 'text', '{"page":2}', 0.1, '{"text":"Inserted 中文\nsecond line <script>"}', 1, 1, NULL, 1),
+				('0190f5c2-7a00-7000-8000-000000000032', 2, 101, 'ink', '{"page":3}', 0.2, '{}', 1, 1, NULL, 1),
+				('0190f5c2-7a00-7000-8000-000000000033', 2, 101, 'image', '{"page":4}', 0.3, '{}', 1, 1, NULL, 1),
+				('0190f5c2-7a00-7000-8000-000000000034', 2, 101, 'text', '{"page":1}', 0, '{"text":"Deleted insert"}', 1, 1, 2, 1),
+				('0190f5c2-7a00-7000-8000-000000000035', 3, 101, 'text', '{"page":1}', 0, '{"text":"Another user insert"}', 1, 1, NULL, 1),
+				('0190f5c2-7a00-7000-8000-000000000036', 2, 103, 'text', '{"page":1}', 0, '{"text":"Private insert"}', 1, 1, NULL, 1)`,
+	} {
+		if _, err := fixture.db.Writer.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{101})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(result.Body)
+	for _, want := range []string{
+		"**Underline**\n\n> First highlight",
+		"**Strikeout**\n\n> Later\n> quoted",
+		"## Page annotations\n\nNote on page 2:\n\n> Inserted 中文\n> second line <script>\n\n",
+		"Drawing on page 3\n\nImage on page 4",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q in export:\n%s", want, body)
+		}
+	}
+	for _, forbidden := range []string{"Deleted insert", "Another user insert", "Private insert", "^hl-\n"} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("unexpected %q in export", forbidden)
+		}
+	}
+	if count := strings.Count(body, "## Page annotations"); count != 1 {
+		t.Errorf("page annotations section count = %d, want 1:\n%s", count, body)
+	}
+	if count := strings.Count(body, "Inserted 中文"); count != 1 {
+		t.Errorf("page annotation repeated %d times", count)
+	}
+	if strings.Index(body, "## Page annotations") < strings.LastIndex(body, "^hl-") {
+		t.Errorf("page annotations interleaved with highlights:\n%s", body)
+	}
+	archive, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{101, 104})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zipped, err := zip.NewReader(bytes.NewReader(archive.Body), int64(len(archive.Body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := zipped.File[0].Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer entry.Close()
+	content, err := io.ReadAll(entry)
+	if err != nil || !bytes.Equal(content, result.Body) {
+		t.Fatalf("ZIP annotation content differs: %v", err)
+	}
+}
+
+func TestExportPageAnnotationByteBudget(t *testing.T) {
+	fixture := newExportFixture(t)
+	ctx := context.Background()
+	// Book 104 has no other annotations, so this measures the exact shared byte boundary.
+	const locator = `{"page":1}`
+	const dataOverhead = len(`{"text":""}`)
+	body := strings.Repeat("x", maxAnnotationBytes-len(locator)-dataOverhead)
+	data, err := json.Marshal(map[string]string{"text": body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fixture.db.Writer.ExecContext(ctx, `
+			INSERT INTO page_annotations (id,user_id,book_id,kind,locator,position,data,created_at,updated_at,rev)
+			VALUES ('0190f5c2-7a00-7000-8000-000000000041',2,104,'text',?,0,?,1,1,1)`, locator, string(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{104})
+	if err != nil {
+		t.Fatalf("exact byte budget failed: %v", err)
+	}
+	if !strings.Contains(string(exported.Body), "## Page annotations\n\nNote on page 1:\n\n> "+body) {
+		t.Fatal("page annotations missing from export of a book without highlights")
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `UPDATE page_annotations SET data=json_set(data,'$.text',json_extract(data,'$.text') || 'x')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{104}); err != ErrTooLarge {
+		t.Fatalf("one byte over page budget = %v", err)
+	}
+}
+
+func TestExportCombinedAnnotationRowBudget(t *testing.T) {
+	fixture := newExportFixture(t)
+	ctx := context.Background()
+	_, err := fixture.db.Writer.ExecContext(ctx, `
+			WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < ?)
+			INSERT INTO page_annotations (id,user_id,book_id,kind,locator,position,data,created_at,updated_at,rev)
+			SELECT printf('0190f5c2-7a00-7000-8000-%012d',i),2,104,'text','{"page":1}',0,'{"text":"x"}',1,1,1 FROM n`, maxAnnotationRows-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO notes (id,user_id,book_id,body_md,created_at,updated_at,rev) VALUES
+			('0190f5c2-7a00-7000-8000-999999999991',2,104,'Note',1,1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{104}); err != nil {
+		t.Fatalf("exact combined row budget failed: %v", err)
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO highlights (id,user_id,book_id,locator,text,created_at,updated_at,rev) VALUES
+			('0190f5c2-7a00-7000-8000-999999999992',2,104,'{}','Highlight',1,1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{104}); err != ErrTooLarge {
+		t.Fatalf("combined budget + 1 = %v", err)
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `DELETE FROM notes WHERE book_id=104; DELETE FROM highlights WHERE book_id=104`); err != nil {
+		t.Fatal(err)
+	}
+	for i := maxAnnotationRows; i <= maxAnnotationRows+1; i++ {
+		if _, err := fixture.db.Writer.ExecContext(ctx, `
+				INSERT INTO page_annotations (id,user_id,book_id,kind,locator,position,data,created_at,updated_at,rev)
+				VALUES (?,2,104,'text','{"page":1}',0,'{"text":"x"}',1,1,1)`,
+			fmt.Sprintf("0190f5c2-7a00-7000-8000-%012d", i)); err != nil {
+			t.Fatal(err)
+		}
+		_, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{104})
+		if i == maxAnnotationRows && err != nil || i > maxAnnotationRows && err != ErrTooLarge {
+			t.Fatalf("page-only row budget at %d = %v", i, err)
+		}
+	}
+}
+
+func TestExportPageGeneratedByteBudget(t *testing.T) {
+	var content bytes.Buffer
+	pages := []pageAnnotation{{page: 1, kind: "text", text: "Multiline\n中文\n"}, {page: 2, kind: "ink"}}
+	if err := writeDocument(&content, book{id: 1, title: "Test"}, nil, nil, pages, "2026-11-09"); err != nil {
+		t.Fatal(err)
+	}
+	for _, delta := range []int{0, -1} {
+		writer := &limitedWriter{writer: io.Discard, limit: content.Len() + delta}
+		err := writeDocument(writer, book{id: 1, title: "Test"}, nil, nil, pages, "2026-11-09")
+		if delta == 0 && err != nil || delta < 0 && err != ErrTooLarge {
+			t.Fatalf("generated byte boundary %d = %v", delta, err)
+		}
 	}
 }

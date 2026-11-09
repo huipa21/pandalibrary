@@ -92,6 +92,7 @@ export class PdfViewerEngine implements Reader {
 	private readonly annotations = new Map<string, ReaderAnnotation>();
 	private readonly enhancers = new Map<PageEnhancer, Map<number, Enhancement>>();
 	private readonly textReady = new Set<number>();
+	private readonly paintReady = new Set<number>();
 	private readonly pageImages = new Map<number, Promise<boolean>>();
 	private selectionCapture: ((selection: Selection) => void) | null = null;
 	private resizeObserver: ResizeObserver | null = null;
@@ -102,7 +103,7 @@ export class PdfViewerEngine implements Reader {
 
 	constructor(container: HTMLElement, private readonly events: ReaderEvents) {
 		this.container = container;
-		this.layers = new PageLayers(() => this.renderedBoxes(), (page) => this.textReady.has(page) ? this.pageBox(page) : null);
+		this.layers = new PageLayers(() => this.renderedBoxes(), (page) => this.paintReady.has(page) ? this.pageBox(page) : null);
 		this.pageLayers = {
 			register: (painter) => {
 				const remove = this.layers.register(painter);
@@ -378,6 +379,7 @@ export class PdfViewerEngine implements Reader {
 		const pages = page === undefined ? [...this.textReady] : this.textReady.has(page) ? [page] : [];
 		for (const target of pages) {
 			this.abortEnhancements(target);
+			this.textReady.add(target);
 			for (const enhancer of this.enhancers.keys()) this.enhance(enhancer, target);
 		}
 	}
@@ -412,6 +414,7 @@ export class PdfViewerEngine implements Reader {
 		this.subscribers.clear();
 		this.pageImages.clear();
 		this.textReady.clear();
+		this.paintReady.clear();
 		try {
 			this.viewer?.cleanup();
 			this.viewer?.setDocument(null as unknown as PDFDocumentProxy);
@@ -465,7 +468,7 @@ export class PdfViewerEngine implements Reader {
 	}
 
 	private *renderedBoxes(): Iterable<PageBox> {
-		for (const page of this.textReady) {
+		for (const page of this.paintReady) {
 			const box = this.pageBox(page);
 			if (box) yield box;
 		}
@@ -617,10 +620,9 @@ export class PdfViewerEngine implements Reader {
 		if (!view) return;
 		view.div.classList.add('reader-pdf-page');
 		view.div.dataset.page = String(page);
-		if (this.textReady.has(page)) {
-			const box = this.pageBox(page);
-			if (box) this.layers.paintPage(box);
-		}
+		this.paintReady.add(page);
+		const box = this.pageBox(page);
+		if (box) this.layers.paintPage(box);
 	}
 
 	private textRendered(page: number): void {
@@ -629,6 +631,7 @@ export class PdfViewerEngine implements Reader {
 		view.textLayer?.div.classList.add('reader-pdf-text');
 		this.abortEnhancements(page);
 		this.textReady.add(page);
+		this.paintReady.add(page);
 		const box = this.pageBox(page);
 		if (box) this.layers.paintPage(box);
 		for (const enhancer of this.enhancers.keys()) this.enhance(enhancer, page);

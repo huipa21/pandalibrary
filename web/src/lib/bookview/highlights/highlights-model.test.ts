@@ -75,6 +75,17 @@ describe('buildMarks', () => {
 });
 
 describe('filterMarks', () => {
+	it('normalizes missing styles and combines style filters with existing filters', () => {
+		const marks = buildMarks([
+			highlight('legacy'),
+			highlight('underlined', { style: 'underline', color: 'green' }),
+			highlight('struck', { style: 'strikeout' })
+		], []);
+		expect(marks[0].style).toBe('highlight');
+		expect(filterMarks(marks, { query: '', colors: new Set(), styles: new Set(['highlight']), notesOnly: false }).map((row) => row.id)).toEqual(['legacy']);
+		expect(filterMarks(marks, { query: 'underlined', colors: new Set(['green']), styles: new Set(['underline', 'strikeout']), notesOnly: false }).map((row) => row.id)).toEqual(['underlined']);
+		expect(filterMarks(marks, { query: '', colors: new Set(), styles: new Set(['strikeout']), notesOnly: true })).toEqual([]);
+	});
 	const marks = [
 		mark('a', { text: 'Le café était fermé', color: 'yellow' }),
 		mark('b', { text: 'Nothing special', color: 'blue' }, [note('n', 'b', 'A **Résumé** idea')]),

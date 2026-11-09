@@ -60,8 +60,14 @@ const notes = [
 	note('n4', 'h4', 'Compare with *Proust*'),
 	note('book', null, 'Book-level review that belongs to Details')
 ];
+const textInsert = {
+	id: 'text', book_id: BOOK_ID, book_file_id: 51, kind: 'text',
+	locator: { type: 'pdf', page: 2, rect: { x: 0.1, y: 0.1, width: 0.2, height: 0.1 } },
+	position: 0.5, data: { text: 'Inserted 中文', color: '#112233', size: 0.02 },
+	created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z', deleted_at: null, rev: 1
+};
 
-async function mockApi(page: Page, state: { highlights: unknown[]; notes: unknown[] } = { highlights, notes }) {
+async function mockApi(page: Page, state: { highlights: unknown[]; notes: unknown[]; page_annotations?: unknown[] } = { highlights, notes }) {
 	const exports: string[] = [];
 	await page.route('**/api/v1/**', (route) =>
 		route.fulfill({ status: 404, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Not Found', status: 404 }) })
@@ -76,7 +82,7 @@ async function mockApi(page: Page, state: { highlights: unknown[]; notes: unknow
 	await page.route('**/api/v1/shelves**', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route(`**/api/v1/books/${BOOK_ID}`, (route) => route.fulfill({ json: { book } }));
 	await page.route(`**/api/v1/me/books/${BOOK_ID}`, (route) => route.fulfill({ json: {
-		user_book: null, progress: null, bookmarks: [], highlights: state.highlights, notes: state.notes
+		user_book: null, progress: null, bookmarks: [], highlights: state.highlights, notes: state.notes, page_annotations: state.page_annotations ?? []
 	} }));
 	await page.route('**/api/v1/me/notes/export?*', (route) => {
 		exports.push(route.request().url());
@@ -102,6 +108,33 @@ test.beforeEach(async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 900 });
 });
 
+test('style badges and filters distinguish legacy, underline and strikeout marks and show inserted text', async ({ page }) => {
+	await mockApi(page, {
+		highlights: [highlights[0], { ...highlights[1], style: 'underline' }, { ...highlights[2], style: 'strikeout' }],
+		notes: [],
+		page_annotations: [textInsert]
+	});
+	await open(page);
+	await expect(items(page).nth(1).getByText('Underline', { exact: true })).toBeVisible();
+	await expect(items(page).nth(2).getByText('Strikeout', { exact: true })).toBeVisible();
+	await expect(page.getByRole('region', { name: 'Inserted text' })).toContainText('Inserted 中文');
+	await page.getByRole('button', { name: 'Filters', exact: true }).click();
+	await page.getByRole('checkbox', { name: 'Underline', exact: true }).check();
+	await expect(items(page)).toHaveCount(1);
+	await expect(items(page).first()).toContainText('The clocks were striking thirteen');
+	await page.getByRole('checkbox', { name: 'Underline', exact: true }).uncheck();
+	await page.getByRole('checkbox', { name: 'Highlight', exact: true }).check();
+	await expect(items(page)).toHaveCount(1);
+	await expect(items(page).first()).toContainText('It was a bright cold day');
+});
+
+test('inserted text remains visible and exportable without any highlights', async ({ page }) => {
+	const { exports } = await mockApi(page, { highlights: [], notes: [], page_annotations: [textInsert] });
+	await page.goto(`/books/${BOOK_ID}/highlights`);
+	await expect(page.getByRole('region', { name: 'Inserted text' })).toContainText('Inserted 中文');
+	await page.getByRole('button', { name: 'Export', exact: true }).click();
+	await expect.poll(() => exports.length).toBe(1);
+});
 test('groups highlights by chapter with counts, notes and a summary', async ({ page }) => {
 	await mockApi(page);
 	await open(page);

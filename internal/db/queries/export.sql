@@ -38,7 +38,7 @@ AND b.id IN (SELECT value FROM json_each(CAST(sqlc.arg(BookIDsJSON) AS TEXT)))
 ORDER BY b.id;
 
 -- name: ExportHighlights :many
-SELECT h.book_id, h.id, h.position, h.text
+SELECT h.book_id, h.id, h.position, h.text, h.style
 FROM highlights h
 JOIN books b ON b.id = h.book_id
 WHERE h.user_id = sqlc.arg(UserID)
@@ -52,6 +52,23 @@ AND NOT EXISTS (
 )
 AND h.book_id IN (SELECT value FROM json_each(CAST(sqlc.arg(BookIDsJSON) AS TEXT)))
 ORDER BY h.book_id, h.position, h.id
+LIMIT 10001;
+
+-- name: ExportPageAnnotations :many
+SELECT p.book_id, p.id, p.kind, p.locator, p.data
+FROM page_annotations p
+JOIN books b ON b.id = p.book_id
+WHERE p.user_id = sqlc.arg(UserID)
+AND p.deleted_at IS NULL
+AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(UserID)
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(UserID)
+)
+AND p.book_id IN (SELECT value FROM json_each(CAST(sqlc.arg(BookIDsJSON) AS TEXT)))
+ORDER BY p.book_id, p.position, p.id
 LIMIT 10001;
 
 -- name: ExportNotes :many
@@ -113,4 +130,20 @@ SELECT
             SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(UserID)
         )
         AND n.book_id IN (SELECT value FROM json_each(CAST(sqlc.arg(BookIDsJSON) AS TEXT)))
+    ), 0)
+    +
+    COALESCE((
+        SELECT SUM(length(CAST(p.data AS BLOB)) + length(CAST(p.locator AS BLOB)))
+        FROM page_annotations p
+        JOIN books b ON b.id = p.book_id
+        WHERE p.user_id = sqlc.arg(UserID)
+        AND p.deleted_at IS NULL
+        AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
+            SELECT 1 FROM library_access la
+            WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(UserID)
+        ))
+        AND NOT EXISTS (
+            SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(UserID)
+        )
+        AND p.book_id IN (SELECT value FROM json_each(CAST(sqlc.arg(BookIDsJSON) AS TEXT)))
     ), 0);

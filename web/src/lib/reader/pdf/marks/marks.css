@@ -1,0 +1,128 @@
+/* PV8 marks (painted by text-mark-painter.ts) and the floating selection/mark/comment UI. */
+.reader-pdf .reader-pdf-highlight {
+	pointer-events: auto;
+	cursor: pointer;
+}
+.reader-pdf[data-tool='insert'] .reader-pdf-highlight,
+.reader-pdf[data-tool='insert'] .pv-mark-comment {
+	pointer-events: none;
+}
+.reader-pdf .reader-pdf-highlight[data-style='underline']::after,
+.reader-pdf .reader-pdf-highlight[data-style='strikeout']::after {
+	height: 2px;
+}
+.reader-pdf .reader-pdf-highlight[data-style='underline']::after { top: 90%; bottom: auto; }
+.reader-pdf .reader-pdf-highlight[data-style='strikeout']::after { top: calc(50% - 1px); }
+.reader-pdf[data-theme='dark'] .reader-pdf-highlight[data-style='highlight'] {
+	mix-blend-mode: normal;
+	opacity: 0.4;
+}
+.reader-pdf .pv-mark-comment {
+	position: absolute;
+	width: 16px;
+	height: 16px;
+	margin: -8px 0 0 -4px;
+	padding: 0;
+	border: 1px solid rgb(0 0 0 / 25%);
+	border-radius: 8px 8px 8px 2px;
+	background: var(--pv-mark);
+	box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+	pointer-events: auto;
+	cursor: pointer;
+}
+
+.pv8-floating {
+	position: fixed;
+	z-index: 90;
+	box-sizing: border-box;
+	max-width: calc(100vw - 16px);
+	border-radius: 12px;
+	background: white;
+	color: #1f2937;
+	box-shadow: 0 10px 24px rgb(0 0 0 / 15%), 0 0 0 1px rgb(0 0 0 / 10%);
+	font: 14px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.pv8-floating:focus { outline: none; }
+.pv8-hidden { visibility: hidden; }
+.pv8-toolbar { display: flex; align-items: center; gap: 2px; padding: 4px; }
+.pv8-split { display: inline-flex; }
+.pv8-split .pv8-split-main { width: 40px; position: relative; border-radius: 8px 0 0 8px; }
+.pv8-split .pv8-split-caret { width: 20px; border-radius: 0 8px 8px 0; }
+.pv8-colour-dot {
+	position: absolute;
+	right: 4px;
+	bottom: 5px;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	box-shadow: 0 0 0 1px rgb(0 0 0 / 25%);
+}
+.pv8-palette-popover {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	padding: 6px;
+	border-radius: 12px;
+	background: inherit;
+	box-shadow: inherit;
+}
+.pv8-palette { display: flex; gap: 6px; }
+.pv8-swatch {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: var(--pv-swatch);
+	color: #111827;
+	box-shadow: inset 0 0 0 1px rgb(0 0 0 / 20%);
+	cursor: pointer;
+}
+.pv8-swatch:focus-visible { outline: 2px solid #10b981; outline-offset: 2px; }
+.pv8-mark-toolbar { display: grid; gap: 4px; padding: 8px; }
+.pv8-row { display: flex; align-items: center; gap: 2px; }
+.pv8-styles, .pv8-actions { display: flex; gap: 2px; }
+.pv8-styles [aria-checked='true'] { background: rgb(16 185 129 / 15%); color: #047857; }
+.pv8-divider { width: 1px; height: 20px; margin: 0 4px; background: rgb(0 0 0 / 15%); }
+.pv8-comment { width: min(40rem, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; padding: 12px; }
+.pv8-comment-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.pv8-text-button {
+	min-height: 32px;
+	padding: 0 12px;
+	border: 1px solid rgb(0 0 0 / 15%);
+	border-radius: 8px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+.pv8-text-button:focus-visible { outline: 2px solid #10b981; outline-offset: 2px; }
+.pv8-text-button:disabled { opacity: 0.5; cursor: default; }
+.pv8-primary { border-color: #047857; background: #047857; color: white; }
+.pv8-toast {
+	position: fixed;
+	z-index: 95;
+	left: 50%;
+	bottom: 16px;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 12px;
+	transform: translateX(-50%);
+	border-radius: 10px;
+	background: #1f2937;
+	color: white;
+	box-shadow: 0 10px 24px rgb(0 0 0 / 25%);
+	font: 14px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.pv8-toast button { border: 0; background: none; color: #6ee7b7; font: inherit; font-weight: 600; cursor: pointer; }
+.pv8-toast button:focus-visible { outline: 2px solid #6ee7b7; outline-offset: 2px; }
+
+:root[data-theme='dark'] .pv8-floating { background: #22262a; color: #f5f6f7; box-shadow: 0 10px 24px rgb(0 0 0 / 35%), 0 0 0 1px rgb(255 255 255 / 12%); }
+:root[data-theme='dark'] .pv8-divider { background: rgb(255 255 255 / 15%); }
+:root[data-theme='dark'] .pv8-styles [aria-checked='true'] { color: #a7f3d0; }
+:root[data-theme='dark'] .pv8-text-button { border-color: rgb(255 255 255 / 20%); }
+:root[data-theme='dark'] .pv8-primary { border-color: #059669; background: #059669; }

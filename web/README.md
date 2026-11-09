@@ -28,15 +28,18 @@ localized status/retry UI, and a 5,000-page account-scoped IndexedDB LRU cache.
 Results are device-local and cleared by the existing sign-out cache registry.
 No PDF pages are sent to an OCR service.
 
-**Live reader integration:** `PdfReader.setPageEnhancer()` is the page hook. Once a
+**Live reader integration:** the engine's `addPageEnhancer()` is the page hook. Once a
 page's canvas and text layer are drawn, the engine passes the enhancer the page,
 character count, image-operator detection and an unrotated overlay that follows the
-view rotation. Unloading, re-layout or replacing the enhancer aborts the run and
-removes the overlay. [OcrLayer](src/lib/reader/pdf/ocr/OcrLayer.svelte) is mounted by
-`PdfReaderView`. It lazily loads the enhancer, uses the pdf.js fingerprint and book
-language, re-registers when the OCR switch changes, publishes the toolbar status chip,
-and disposes workers on unmount. When PV2 replaces the engine, it must keep the same
-hook contract.
+view rotation. Unloading, re-layout or removing the enhancer aborts the run and
+removes the overlay. PV8's [ocr-wiring](src/lib/reader/pdf/marks/ocr-wiring.ts), driven by
+[MarksLayer](src/lib/reader/pdf/marks/MarksLayer.svelte) inside `PdfReaderView`, lazily
+loads and registers the enhancer once (pdf.js fingerprint, book language), runs it only
+in the Select tool, calls `rerunEnhancers()` when the OCR switch flips or Select is
+re-entered (switching off removes the OCR layers), publishes the toolbar status chip,
+and disposes workers on unmount. The recognized `.pv-ocr-text` layer is a `.textLayer`,
+so the selection toolbar and text marks work on it unchanged.
+The older `OcrLayer.svelte` component is no longer mounted.
 
 The [Vite asset plugin](scripts/ocr-assets.ts) emits same-origin, content-hashed
 worker/model/core files, excluded from service-worker install precaching and cached

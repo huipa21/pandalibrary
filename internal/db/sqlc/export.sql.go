@@ -135,6 +135,22 @@ SELECT
         )
         AND n.book_id IN (SELECT value FROM json_each(CAST(?3 AS TEXT)))
     ), 0)
+    +
+    COALESCE((
+        SELECT SUM(length(CAST(p.data AS BLOB)) + length(CAST(p.locator AS BLOB)))
+        FROM page_annotations p
+        JOIN books b ON b.id = p.book_id
+        WHERE p.user_id = ?1
+        AND p.deleted_at IS NULL
+        AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+            SELECT 1 FROM library_access la
+            WHERE la.library_id = b.library_id AND la.user_id = ?1
+        ))
+        AND NOT EXISTS (
+            SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
+        )
+        AND p.book_id IN (SELECT value FROM json_each(CAST(?3 AS TEXT)))
+    ), 0)
 `
 
 type ExportContentBytesParams struct {
@@ -151,7 +167,7 @@ func (q *Queries) ExportContentBytes(ctx context.Context, arg ExportContentBytes
 }
 
 const exportHighlights = `-- name: ExportHighlights :many
-SELECT h.book_id, h.id, h.position, h.text
+SELECT h.book_id, h.id, h.position, h.text, h.style
 FROM highlights h
 JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?1
@@ -179,6 +195,7 @@ type ExportHighlightsRow struct {
 	ID       string
 	Position float64
 	Text     string
+	Style    string
 }
 
 func (q *Queries) ExportHighlights(ctx context.Context, arg ExportHighlightsParams) ([]ExportHighlightsRow, error) {
@@ -195,6 +212,7 @@ func (q *Queries) ExportHighlights(ctx context.Context, arg ExportHighlightsPara
 			&i.ID,
 			&i.Position,
 			&i.Text,
+			&i.Style,
 		); err != nil {
 			return nil, err
 		}
@@ -263,6 +281,67 @@ func (q *Queries) ExportNotes(ctx context.Context, arg ExportNotesParams) ([]Exp
 			&i.BodyMd,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const exportPageAnnotations = `-- name: ExportPageAnnotations :many
+SELECT p.book_id, p.id, p.kind, p.locator, p.data
+FROM page_annotations p
+JOIN books b ON b.id = p.book_id
+WHERE p.user_id = ?1
+AND p.deleted_at IS NULL
+AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
+)
+AND p.book_id IN (SELECT value FROM json_each(CAST(?3 AS TEXT)))
+ORDER BY p.book_id, p.position, p.id
+LIMIT 10001
+`
+
+type ExportPageAnnotationsParams struct {
+	Userid      int64
+	Isadmin     int64
+	Bookidsjson string
+}
+
+type ExportPageAnnotationsRow struct {
+	BookID  int64
+	ID      string
+	Kind    string
+	Locator string
+	Data    string
+}
+
+func (q *Queries) ExportPageAnnotations(ctx context.Context, arg ExportPageAnnotationsParams) ([]ExportPageAnnotationsRow, error) {
+	rows, err := q.db.QueryContext(ctx, exportPageAnnotations, arg.Userid, arg.Isadmin, arg.Bookidsjson)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ExportPageAnnotationsRow{}
+	for rows.Next() {
+		var i ExportPageAnnotationsRow
+		if err := rows.Scan(
+			&i.BookID,
+			&i.ID,
+			&i.Kind,
+			&i.Locator,
+			&i.Data,
 		); err != nil {
 			return nil, err
 		}

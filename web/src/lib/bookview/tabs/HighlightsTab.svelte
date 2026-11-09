@@ -6,7 +6,7 @@
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { requestNotesExport, saveBlob } from '#lib/notes/export.js';
 	import { getBookState } from '#lib/reader/api.js';
-	import type { BookState, Highlight, Note } from '#lib/reader/types.js';
+	import type { BookState, Highlight, HighlightStyle, Note, PageAnnotation } from '#lib/reader/types.js';
 	import { currentAccount, offlineAvailable } from '#lib/sync/client.js';
 	import { readerState } from '#lib/sync/state.js';
 	import { getBookContext } from '../book-context.svelte.js';
@@ -19,6 +19,7 @@
 		chapterKey,
 		colorCounts,
 		filterMarks,
+		foldText,
 		groupByChapter,
 		markStats,
 		parseMarkSort,
@@ -32,9 +33,11 @@
 
 	let highlights = $state<Highlight[]>([]);
 	let notes = $state<Note[]>([]);
+	let pageAnnotations = $state<PageAnnotation[]>([]);
 	let status = $state<'loading' | 'ready' | 'error'>('loading');
 	let notesOnly = $state(false);
 	let colors = $state<ReadonlySet<string>>(new Set());
+	let styles = $state<ReadonlySet<HighlightStyle>>(new Set());
 	let compact = $state(false);
 	let compactLoaded = $state(false);
 	let online = $state(true);
@@ -58,10 +61,13 @@
 	const stats = $derived(markStats(marks, now, files));
 	const notesCount = $derived(marks.filter((mark) => mark.notes.length > 0).length);
 	const colorOptions = $derived(colorCounts(marks));
-	const visible = $derived(sortMarks(filterMarks(marks, { query, colors, notesOnly }), sort));
+	const visible = $derived(sortMarks(filterMarks(marks, { query, colors, styles, notesOnly }), sort));
 	const groups = $derived(groupByChapter(visible, untitled));
-	const filtered = $derived(query !== '' || colors.size > 0 || notesOnly);
+	const filtered = $derived(query !== '' || colors.size > 0 || styles.size > 0 || notesOnly);
 	const offline = $derived(context.offline || !online);
+	const insertedText = $derived(pageAnnotations.filter((row) =>
+		!row.deleted_at && row.kind === 'text' && foldText(row.data.text).includes(foldText(query))
+	));
 
 	async function fetchState(id: number): Promise<BookState> {
 		if (!offlineAvailable()) return getBookState(id);
@@ -86,6 +92,7 @@
 			if (version !== requestVersion) return;
 			highlights = state.highlights;
 			notes = state.notes;
+			pageAnnotations = state.page_annotations ?? [];
 			now = new Date();
 			status = 'ready';
 		} catch (cause) {
@@ -164,6 +171,7 @@
 
 	async function clearFilters() {
 		colors = new Set();
+		styles = new Set();
 		notesOnly = false;
 		await updateUrl({ q: null });
 	}
@@ -211,7 +219,7 @@
 				<p>{m['bv9.error']()}</p>
 				<button type="button" class="underline underline-offset-4 focus-visible:outline-2" onclick={() => load()}>{m['bv9.retry']()}</button>
 			</div>
-		{:else if marks.length === 0}
+		{:else if marks.length === 0 && !pageAnnotations.some((row) => !row.deleted_at && row.kind === 'text')}
 			<p class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600" role="status">{m['bv9.empty']()}</p>
 		{:else}
 			<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
@@ -236,6 +244,13 @@
 						{colorOptions}
 						{colors}
 						onToggleColor={toggleColor}
+						{styles}
+						onToggleStyle={(style) => {
+							const next = new Set(styles);
+							if (next.has(style)) next.delete(style);
+							else next.add(style);
+							styles = next;
+						}}
 						bind:compact
 						{offline}
 						{exporting}
@@ -250,7 +265,7 @@
 					{#if filtered}
 						<p class="text-sm text-slate-600" role="status">{m['bv9.showing']({ shown: visible.length, total: marks.length })}</p>
 					{/if}
-					{#if visible.length === 0}
+					{#if visible.length === 0 && marks.length > 0}
 						<div class="space-y-3 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
 							<p>{m['bv9.no_match']()}</p>
 							<button
@@ -261,13 +276,26 @@
 								{m['bv9.clear_filters']()}
 							</button>
 						</div>
-					{:else}
+					{:else if visible.length > 0}
 						<div class="card px-4 py-5 sm:px-6">
 							<HighlightList {groups} {chapterIds} {bookId} {files} {query} {compact} {locale} />
 						</div>
 					{/if}
 				</div>
 			</div>
+		{/if}
+		{#if status === 'ready' && insertedText.length > 0}
+			<section class="card space-y-3 p-4" aria-label={m['pv10.text']()}>
+				<h2 class="font-semibold">{m['pv10.text']()}</h2>
+				{#each insertedText as row (row.id)}
+					{#if row.kind === 'text'}
+						<div class="border-t border-slate-200 pt-3" data-insert-id={row.id}>
+							<p class="text-sm text-slate-500">{m['pv10.page']({ page: row.locator.page })}</p>
+							<p class="mt-1 break-words whitespace-pre-line">{row.data.text}</p>
+						</div>
+					{/if}
+				{/each}
+			</section>
 		{/if}
 	</section>
 {/if}

@@ -4,6 +4,8 @@
 	import Icon from '../Icon.svelte';
 	import { colorTone, MARK_SORTS, type ColorCount, type MarkSort } from './highlights-model.js';
 	import { colorName } from './labels.js';
+	import type { HighlightStyle } from '#lib/reader/types.js';
+	import { styleLabel } from '#lib/reader/pdf/panel/labels.js';
 
 	let {
 		query,
@@ -15,6 +17,8 @@
 		colorOptions,
 		colors,
 		onToggleColor,
+		styles,
+		onToggleStyle,
 		compact = $bindable(),
 		offline,
 		exporting,
@@ -29,6 +33,8 @@
 		colorOptions: ColorCount[];
 		colors: ReadonlySet<string>;
 		onToggleColor: (color: string) => void;
+		styles: ReadonlySet<HighlightStyle>;
+		onToggleStyle: (style: HighlightStyle) => void;
 		compact: boolean;
 		offline: boolean;
 		exporting: boolean;
@@ -36,6 +42,8 @@
 	} = $props();
 
 	const SEARCH_DELAY_MS = 200;
+	const styleOptions: HighlightStyle[] = ['highlight', 'underline', 'strikeout'];
+	const filterCount = $derived(colors.size + styles.size);
 	let draft = $state('');
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let filtersOpen = $state(false);
@@ -136,10 +144,10 @@
 		<button
 			bind:this={filtersButton}
 			type="button"
-			class="{iconButton} {colors.size > 0 ? pressedClass : ''}"
+			class="{iconButton} {filterCount > 0 ? pressedClass : ''}"
 			aria-expanded={filtersOpen}
 			aria-controls="highlights-filters"
-			aria-label={colors.size > 0 ? m['bv9.filters_active']({ count: colors.size }) : m['bv9.filters']()}
+			aria-label={filterCount > 0 ? m['bv9.filters_active']({ count: filterCount }) : m['bv9.filters']()}
 			title={m['bv9.filters']()}
 			onclick={() => (filtersOpen = !filtersOpen)}
 		>
@@ -152,6 +160,15 @@
 				class="absolute right-0 z-20 mt-2 w-56 rounded-lg border border-slate-200 bg-white p-3 shadow-lg"
 			>
 				<fieldset class="space-y-1">
+					<legend class="mb-1 text-xs font-semibold tracking-wider text-slate-500 uppercase">{m['pv10.styles']()}</legend>
+					{#each styleOptions as style (style)}
+						<label class="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm">
+							<input type="checkbox" checked={styles.has(style)} onchange={() => onToggleStyle(style)} />
+							{styleLabel(style)}
+						</label>
+					{/each}
+				</fieldset>
+				<fieldset class="mt-3 space-y-1">
 					<legend class="mb-1 text-xs font-semibold tracking-wider text-slate-500 uppercase">{m['bv9.filters_colors']()}</legend>
 					{#each colorOptions as option (option.color)}
 						<label class="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-slate-50">

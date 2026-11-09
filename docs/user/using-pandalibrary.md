@@ -92,9 +92,15 @@ choose to leave without saving. A coloured status dot indicates offline,
 pending or failed sync, or a settings-save warning; open it for details and a
 retry action when synchronization is available.
 
-PDF annotation and bookmark creation is temporarily unavailable while the
-new PDF tools are being assembled. Insert and Annotations currently expose
-their toggle state only. Other formats keep their existing controls.
+**Annotations** opens a side panel grouped by page. Search marks, comments,
+bookmarks and inserted items, or filter by type. Open an entry to jump to its
+position; edit comments, bookmark labels and inserted text there, or delete an
+item and choose **Undo** within eight seconds. Entries from another file are
+listed separately and cannot be changed from the current file. Book-level
+Markdown notes can be added, edited and deleted at the bottom of the panel.
+Escape closes the panel and returns focus to its toolbar button. On phones the
+panel fills the available width. Changes are saved on this device while offline
+and sync when connected.
 
 Scanned PDF pages (pages that are images with little or no text) are recognized
 in your browser so you can select and copy their text. Recognition supports
@@ -103,6 +109,28 @@ progress and offers a retry if recognition fails. Page images are never uploaded
 Results are saved on this device, so reopening the book does not run recognition
 again. Signing out clears them. Turn recognition off in the layout menu; this
 device remembers the choice.
+
+### Inserting items in PDFs
+
+Choose **Insert** (`I`), click a point on the page, then choose **Text**,
+**Draw** or **Image**.
+
+- **Text:** type a note, choose its size and colour, then click Done, click
+  outside the editor, or press Ctrl+Enter or Escape to save. Empty notes are
+  discarded.
+- **Draw:** draw with a mouse, pen or touch on that page. Choose a colour and
+  line width; Undo removes the last stroke and Done saves the drawing.
+  Escape offers to discard an unfinished drawing.
+- **Image:** choose a PNG, JPEG or WebP file. Attaching a new image needs a
+  connection; images already cached on the device remain available offline.
+
+In Select or Insert mode, click an item to select it. Drag the selection frame
+to move it; images have corner handles that preserve their aspect ratio.
+Double-click text to edit it. Arrow keys move a selected item by 0.5% of the
+page (5% with Shift). Delete, Backspace or the Delete button removes an item;
+Undo restores it for six seconds. Hand mode does not select or drag items.
+Inserts are private, sync like other annotations, and never modify the shared
+PDF file.
 
 ## Offline reading
 
@@ -124,6 +152,11 @@ no longer available.
 The **Notes** page collects every note and highlight you have made, with
 search. Notes are written in Markdown. Export notes as a Markdown file (one
 book) or a ZIP (several books); the files work well in Obsidian.
+The book's **Highlights** tab labels underline and strikeout marks and can
+filter by style; older highlights retain the normal highlight style. It also
+shows inserted text. Exports label underline and strikeout marks and include
+inserted text, drawings and images with their page numbers (images are listed,
+not embedded). Oversized exports fail rather than silently dropping items.
 
 ## Shelves
 

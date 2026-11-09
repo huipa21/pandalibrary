@@ -64,6 +64,71 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('reader controller PDF extensions', () => {
+	it('composes the panel draft guard with the active tool guard', async () => {
+		const controller = createReaderController(params);
+		const cancel = vi.fn();
+		controller.setDraftGuard(() => false);
+		const guard = vi.fn(() => true);
+		const unregister = controller.registerDraftGuard(guard);
+		controller.beforeNavigate({ cancel });
+		expect(cancel).toHaveBeenCalledTimes(1);
+		expect(guard).not.toHaveBeenCalled();
+		controller.setDraftGuard(() => true);
+		guard.mockReturnValue(false);
+		controller.beforeNavigate({ cancel });
+		expect(cancel).toHaveBeenCalledTimes(2);
+		unregister();
+		controller.beforeNavigate({ cancel });
+		expect(cancel).toHaveBeenCalledTimes(2);
+		controller.dispose();
+	});
+
+	it('restores deleted marks with comments, bookmarks, notes and inserts through the outbox writer', async () => {
+		let events: ReaderEvents;
+		vi.mocked(createReader).mockImplementation(async (_format, _surface, next) => {
+			events = next;
+			return {
+				open: vi.fn(), applySettings: vi.fn(), addAnnotation: vi.fn(), removeAnnotation: vi.fn(),
+				destroy: vi.fn(async () => {}), previous: vi.fn(), next: vi.fn(),
+				goTo: vi.fn(async () => events.relocate({ fraction: 0, locator: { type: 'pdf', page: 1 } }))
+			};
+		});
+		const controller = createReaderController(params);
+		await controller.retry();
+		vi.stubGlobal('document', { hidden: true });
+		vi.stubGlobal('window', { confirm: () => true });
+		await controller.attach({} as HTMLElement);
+		await controller.addHighlight({ text: 'Mark', fraction: 0, locator: { type: 'pdf', page: 1 } }, 'green', 'strikeout');
+		const mark = controller.highlights[0];
+		await controller.saveNote({ id: 'comment', highlightId: mark.id, body: 'Comment', original: '', editing: false });
+		const attached = controller.notes[0];
+		expect(await controller.removeHighlight(mark)).toBe(true);
+		expect(controller.notes).toEqual([]);
+		expect(await controller.restoreDeletedAnnotation({ kind: 'mark', row: mark, notes: [attached] })).toBe(true);
+		expect(controller.highlights[0]).toMatchObject({ id: mark.id, style: 'strikeout', color: 'green' });
+		expect(controller.notes).toEqual([attached]);
+		await controller.addBookmark({ label: 'Bookmark' });
+		const bookmark = controller.bookmarks[0];
+		await controller.removeBookmark(bookmark);
+		expect(await controller.restoreDeletedAnnotation({ kind: 'bookmark', row: bookmark })).toBe(true);
+		expect(controller.bookmarks).toEqual([bookmark]);
+		await controller.deleteNote(attached);
+		expect(await controller.restoreDeletedAnnotation({ kind: 'note', row: attached })).toBe(true);
+		expect(controller.notes).toEqual([attached]);
+		await controller.addPageAnnotation(input);
+		const insert = controller.pageAnnotations[0];
+		await controller.removePageAnnotation(insert);
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.mocked(saveMutation).mockRejectedValueOnce(new Error('Restore failed'));
+		expect(await controller.restoreDeletedAnnotation({ kind: 'insert', row: insert })).toBe(false);
+		expect(controller.pageAnnotations).toEqual([]);
+		expect(controller.actionError).not.toBe('');
+		expect(await controller.restoreDeletedAnnotation({ kind: 'insert', row: insert })).toBe(true);
+		expect(controller.pageAnnotations).toEqual([insert]);
+		expect(await controller.restoreDeletedAnnotation({ kind: 'insert', row: { ...insert, book_file_id: 32 } })).toBe(false);
+		log.mockRestore();
+		controller.dispose();
+	});
 	it('optimistically adds page annotations and rolls back failed writes', async () => {
 		const controller = createReaderController(params);
 		await controller.retry();
@@ -101,6 +166,9 @@ describe('reader controller PDF extensions', () => {
 		log.mockRestore();
 		expect(await controller.removePageAnnotation(edited)).toBe(true);
 		expect(controller.pageAnnotations).toEqual([]);
+		expect(await controller.restorePageAnnotation(edited)).toBe(true);
+		expect(controller.pageAnnotations[0]).toMatchObject({ id: edited.id, created_at: edited.created_at, deleted_at: null });
+		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({ id: edited.id, op: 'upsert', entity: 'page_annotations' }));
 		controller.dispose();
 	});
 

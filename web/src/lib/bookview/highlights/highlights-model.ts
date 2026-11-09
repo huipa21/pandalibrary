@@ -1,5 +1,5 @@
 import type { BookFile } from '#lib/catalog/types.js';
-import type { Highlight, Note } from '#lib/reader/types.js';
+import type { Highlight, HighlightStyle, Note } from '#lib/reader/types.js';
 
 export type Mark = Highlight & { notes: Note[] };
 export type MarkSort = 'reading' | 'newest' | 'oldest';
@@ -11,6 +11,7 @@ export interface MarkFilter {
 	query: string;
 	colors: ReadonlySet<string>;
 	notesOnly: boolean;
+	styles?: ReadonlySet<HighlightStyle>;
 }
 
 export interface ChapterGroup {
@@ -61,6 +62,7 @@ export function buildMarks(highlights: readonly Highlight[], notes: readonly Not
 		.filter((highlight) => !highlight.deleted_at)
 		.map((highlight) => ({
 			...highlight,
+			style: highlight.style ?? 'highlight',
 			notes: (attached.get(highlight.id) ?? []).slice().sort((a, b) => a.created_at.localeCompare(b.created_at))
 		}));
 }
@@ -75,6 +77,7 @@ export function filterMarks(marks: readonly Mark[], filter: MarkFilter): Mark[] 
 	return marks.filter((mark) => {
 		if (filter.colors.size > 0 && !filter.colors.has(mark.color)) return false;
 		if (filter.notesOnly && mark.notes.length === 0) return false;
+		if (filter.styles?.size && !filter.styles.has(mark.style ?? 'highlight')) return false;
 		if (!query) return true;
 		return foldText(mark.text).includes(query) || mark.notes.some((note) => foldText(note.body_md).includes(query));
 	});

@@ -61,6 +61,9 @@
 	<div class="w-[3px] shrink-0 self-stretch rounded-full {tone.bar}" aria-hidden="true"></div>
 	<div class="min-w-0 flex-1 space-y-3">
 		<span class="sr-only">{m['bv9.highlight_color']({ color: colorName(mark.color) })}</span>
+		{#if mark.style === 'underline' || mark.style === 'strikeout'}
+			<span class="rounded border border-slate-300 px-2 py-0.5 text-xs">{mark.style === 'underline' ? m['pv10.underline']() : m['pv10.strikeout']()}</span>
+		{/if}
 		<p
 			bind:this={textElement}
 			class="font-serif text-[1.05rem] leading-7 break-words whitespace-pre-line text-slate-900 {clamped ? 'line-clamp-2' : ''}"

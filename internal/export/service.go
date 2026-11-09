@@ -70,6 +70,13 @@ type highlight struct {
 	id       string
 	position float64
 	text     string
+	style    string
+}
+
+type pageAnnotation struct {
+	page int
+	kind string
+	text string
 }
 
 type note struct {
@@ -166,6 +173,15 @@ func (s *Service) Export(ctx context.Context, viewer Viewer, bookIDs []int64) (r
 	if len(noteRows) > maxAnnotationRows {
 		return Result{}, ErrTooLarge
 	}
+	pageRows, err := queries.ExportPageAnnotations(ctx, sqlc.ExportPageAnnotationsParams{
+		Userid: viewer.UserID, Isadmin: isAdmin, Bookidsjson: string(bookIDsJSON),
+	})
+	if err != nil {
+		return Result{}, fmt.Errorf("query export page annotations: %w", err)
+	}
+	if len(highlightRows)+len(noteRows)+len(pageRows) > maxAnnotationRows {
+		return Result{}, ErrTooLarge
+	}
 	if err := tx.Commit(); err != nil {
 		return Result{}, fmt.Errorf("finish notes export snapshot: %w", err)
 	}
@@ -173,7 +189,28 @@ func (s *Service) Export(ctx context.Context, viewer Viewer, bookIDs []int64) (r
 	byBookHighlights := make(map[int64][]highlight, len(books))
 	for _, row := range highlightRows {
 		byBookHighlights[row.BookID] = append(byBookHighlights[row.BookID], highlight{
-			id: row.ID, position: row.Position, text: row.Text,
+			id: row.ID, position: row.Position, text: row.Text, style: row.Style,
+		})
+	}
+	byBookPages := make(map[int64][]pageAnnotation, len(books))
+	for _, row := range pageRows {
+		var locator struct {
+			Page int `json:"page"`
+		}
+		var data struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal([]byte(row.Locator), &locator); err != nil || locator.Page < 1 {
+			return Result{}, fmt.Errorf("invalid export page locator for %s", row.ID)
+		}
+		if err := json.Unmarshal([]byte(row.Data), &data); err != nil {
+			return Result{}, fmt.Errorf("decode export page annotation %s: %w", row.ID, err)
+		}
+		if row.Kind != "text" && row.Kind != "ink" && row.Kind != "image" {
+			return Result{}, fmt.Errorf("invalid export page annotation kind for %s", row.ID)
+		}
+		byBookPages[row.BookID] = append(byBookPages[row.BookID], pageAnnotation{
+			page: locator.Page, kind: row.Kind, text: data.Text,
 		})
 	}
 	byBookNotes := make(map[int64][]note, len(books))
@@ -204,7 +241,7 @@ func (s *Service) Export(ctx context.Context, viewer Viewer, bookIDs []int64) (r
 		var output bytes.Buffer
 		writer := &limitedWriter{writer: &output, limit: maxGeneratedBytes}
 		if err := writeDocument(writer, books[0], byBookNotes[books[0].id],
-			byBookHighlights[books[0].id], date); err != nil {
+			byBookHighlights[books[0].id], byBookPages[books[0].id], date); err != nil {
 			return Result{}, err
 		}
 		return Result{ContentType: "text/markdown; charset=utf-8", Filename: filename, Body: output.Bytes()}, nil
@@ -221,7 +258,7 @@ func (s *Service) Export(ctx context.Context, viewer Viewer, bookIDs []int64) (r
 		}
 		uncompressed.writer = entry
 		if err := writeDocument(uncompressed, item, byBookNotes[item.id],
-			byBookHighlights[item.id], date); err != nil {
+			byBookHighlights[item.id], byBookPages[item.id], date); err != nil {
 			_ = zipWriter.Close()
 			return Result{}, err
 		}
@@ -277,7 +314,7 @@ func (w *countingWriter) Write(data []byte) (int, error) {
 	return written, err
 }
 
-func writeDocument(writer io.Writer, item book, notes []note, highlights []highlight, date string) error {
+func writeDocument(writer io.Writer, item book, notes []note, highlights []highlight, pages []pageAnnotation, date string) error {
 	if _, err := io.WriteString(writer, "---\ntitle: "+yamlString(item.title)+"\nauthor:"); err != nil {
 		return err
 	}
@@ -347,6 +384,16 @@ func writeDocument(writer io.Writer, item book, notes []note, highlights []highl
 		}
 	}
 	for _, entry := range highlights {
+		// Explicit labels preserve arbitrary multiline text without introducing HTML or delimiters.
+		if entry.style == "underline" || entry.style == "strikeout" {
+			label := "Underline"
+			if entry.style == "strikeout" {
+				label = "Strikeout"
+			}
+			if _, err := fmt.Fprintf(writer, "**%s**\n\n", label); err != nil {
+				return err
+			}
+		}
 		if err := writeBlockquote(writer, entry.text, entry.id); err != nil {
 			return err
 		}
@@ -354,6 +401,34 @@ func writeDocument(writer io.Writer, item book, notes []note, highlights []highl
 			if err := writeMarkdownBody(writer, attached.body); err != nil {
 				return err
 			}
+		}
+	}
+	if len(pages) == 0 {
+		return nil
+	}
+	if _, err := io.WriteString(writer, "## Page annotations\n\n"); err != nil {
+		return err
+	}
+	for _, page := range pages {
+		label := "Note"
+		switch page.kind {
+		case "ink":
+			label = "Drawing"
+		case "image":
+			label = "Image"
+		}
+		if _, err := fmt.Fprintf(writer, "%s on page %d", label, page.page); err != nil {
+			return err
+		}
+		if page.kind == "text" {
+			if _, err := io.WriteString(writer, ":\n\n"); err != nil {
+				return err
+			}
+			if err := writeBlockquote(writer, page.text, ""); err != nil {
+				return err
+			}
+		} else if _, err := io.WriteString(writer, "\n\n"); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -390,7 +465,7 @@ func writeBlockquote(writer io.Writer, text, id string) error {
 	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
 	lines := strings.Split(text, "\n")
 	for index, line := range lines {
-		if index == len(lines)-1 {
+		if index == len(lines)-1 && id != "" {
 			line += " ^hl-" + id
 		}
 		if _, err := io.WriteString(writer, "> "+line+"\n"); err != nil {

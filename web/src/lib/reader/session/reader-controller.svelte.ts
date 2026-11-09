@@ -85,6 +85,14 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	});
 	let draftGuard = () => true;
 	function setDraftGuard(guard: () => boolean) { draftGuard = guard; }
+	const additionalDraftGuards = new Set<() => boolean>();
+	function registerDraftGuard(guard: () => boolean) {
+		additionalDraftGuards.add(guard);
+		return () => { additionalDraftGuards.delete(guard); };
+	}
+	function canLeaveDrafts() {
+		return draftGuard() && [...additionalDraftGuards].every((guard) => guard());
+	}
 	let saveView = async () => {};
 	function setViewSave(save: () => Promise<void>) { saveView = save; }
 
@@ -141,7 +149,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	function beforeNavigate(navigation: { cancel(): void }) {
-		if (!closing && !draftGuard()) {
+		if (!closing && !canLeaveDrafts()) {
 			navigation.cancel();
 			return;
 		}
@@ -331,7 +339,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 
 	async function closeReader() {
 		if (!book || closing) return;
-		if (!draftGuard()) return;
+		if (!canLeaveDrafts()) return;
 		closing = true;
 		sessionClock?.stop();
 		try {
@@ -425,12 +433,17 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
-	async function addHighlight(chosenSelection: ReaderSelection | null = selection, color: HighlightColor = 'yellow', style: HighlightStyle = 'highlight') {
-		if (!book || !file || !format || !reader || busy) return;
+	/** Creates a highlight and returns the new row, or null when nothing was saved. */
+	async function addHighlight(
+		chosenSelection: ReaderSelection | null = selection,
+		color: HighlightColor = 'yellow',
+		style: HighlightStyle = 'highlight'
+	): Promise<Highlight | null> {
+		if (!book || !file || !format || !reader || busy) return null;
 		const chosen = chosenSelection ?? (format === 'cbz' && location ? { ...location, text: '' } : null);
 		if (!chosen) {
 			actionError = m['reader.error.selection']();
-			return;
+			return null;
 		}
 		busy = true;
 		actionError = '';
@@ -448,10 +461,12 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			const annotation = annotationForReader(highlight, file.id, format);
 			if (annotation) await reader.addAnnotation(annotation);
 			selection = null;
+			return highlight;
 		} catch (error) {
 			if (error instanceof Error && error.message === 'Highlight exceeds the server limits.') {
 				actionError = m['reader.error.limit']();
 			} else reportActionError(error);
+			return null;
 		} finally {
 			busy = false;
 		}
@@ -487,8 +502,9 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
-	async function removeHighlight(highlight: Highlight) {
-		if (!reader || !file || !format || busy || !window.confirm(m['reader.annotations.delete_highlight_confirm']())) return;
+	async function removeHighlight(highlight: Highlight, options: { confirm?: boolean } = {}) {
+		if (!reader || !file || !format || busy) return;
+		if (options.confirm !== false && !window.confirm(m['reader.annotations.delete_highlight_confirm']())) return;
 		busy = true;
 		actionError = '';
 		try {
@@ -497,6 +513,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			notes = notes.filter((note) => note.highlight_id !== highlight.id);
 			const annotation = annotationForReader(highlight, file.id, format);
 			if (annotation) await reader.removeAnnotation(annotation);
+			return true;
 		} catch (error) {
 			reportActionError(error);
 		} finally {
@@ -548,6 +565,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		try {
 			await saveMutation(deleteAnnotation('notes', note.id));
 			notes = notes.filter((item) => item.id !== note.id);
+			return true;
 		} catch (error) {
 			reportActionError(error);
 		} finally {
@@ -555,12 +573,13 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
-	async function saveBookmark(bookmarkDraft: BookmarkDraft) {
-		if (!book || !file || !location || !bookmarkDraft || busy || !reader) return;
+	/** `at` bookmarks a specific position (for example a PDF selection) instead of the current location. */
+	async function saveBookmark(bookmarkDraft: BookmarkDraft, at: Relocation | null = null) {
+		if (!book || !file || !(at ?? location) || !bookmarkDraft || busy || !reader) return;
 		busy = true;
 		actionError = '';
 		const { id, label, editing } = bookmarkDraft;
-		const savedLocation = location;
+		const savedLocation = (at ?? location)!;
 		try {
 			const existing = bookmarks.find((bm) => bm.id === id);
 			if (editing && !existing) throw new Error('The bookmark is no longer available.');
@@ -596,6 +615,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			const result = await saveMutation(deleteBookmark(bookmark.id));
 			bookmarks = bookmarks.filter((item) => item.id !== bookmark.id);
 			savedMessage = result === 'queued' ? m['ux6.queued']() : m['ux6.deleted']();
+			return true;
 		} catch (error) {
 			reportActionError(error);
 		} finally {
@@ -616,6 +636,56 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
+	async function restoreDeletedAnnotation(
+		entry: { kind: 'mark'; row: Highlight; notes: Note[] } |
+			{ kind: 'bookmark'; row: Bookmark } |
+			{ kind: 'note'; row: Note } |
+			{ kind: 'insert'; row: PageAnnotation }
+	) {
+		if (!book || !file || !format || !reader || busy) return false;
+		if (entry.row.book_id !== book.id || (entry.kind !== 'note' && entry.row.book_file_id !== file.id)) {
+			reportActionError(new Error('Cannot restore an annotation from another file.'));
+			return false;
+		}
+		busy = true;
+		actionError = '';
+		try {
+			const { row } = entry;
+			const updated_at = Date.now();
+			if (entry.kind === 'mark') {
+				const h = entry.row;
+				await saveMutation({
+					entity: 'highlights', id: h.id, op: 'upsert', updated_at,
+					data: { book_id: h.book_id, book_file_id: h.book_file_id, locator: h.locator, position: h.position,
+						text: h.text, color: h.color, style: h.style ?? 'highlight', chapter: h.chapter }
+				});
+				highlights = [...highlights.filter((item) => item.id !== h.id), { ...h, deleted_at: null }];
+				const annotation = annotationForReader(h, file.id, format);
+				if (annotation) await reader.addAnnotation(annotation);
+				for (const note of entry.notes) {
+					await saveMutation(makeNote(book.id, note.body_md, h.id, note.id));
+					notes = [...notes.filter((item) => item.id !== note.id), { ...note, deleted_at: null }];
+				}
+			} else if (entry.kind === 'bookmark') {
+				await saveMutation(updateBookmarkLabel(entry.row, entry.row.label));
+				bookmarks = [...bookmarks.filter((item) => item.id !== row.id), { ...entry.row, deleted_at: null }];
+			} else if (entry.kind === 'note') {
+				await saveMutation(makeNote(book.id, entry.row.body_md, entry.row.highlight_id, row.id));
+				notes = [...notes.filter((item) => item.id !== row.id), { ...entry.row, deleted_at: null }];
+			} else {
+				await saveMutation(makePageAnnotation(book.id, file.id, entry.row, entry.row));
+				annotationVersion += 1;
+				pageAnnotations = [...pageAnnotations.filter((item) => item.id !== row.id), { ...entry.row, deleted_at: null }];
+			}
+			return true;
+		} catch (error) {
+			reportActionError(error);
+			return false;
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function writePageAnnotation(input: PageAnnotationInput, existing?: PageAnnotation) {
 		if (!book || !file || format !== 'pdf' || busy) return false;
 		annotationVersion += 1;
@@ -631,7 +701,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				...input, id: mutation.id, book_id: book.id, book_file_id: file.id,
 				created_at: existing?.created_at ?? now, updated_at: now, deleted_at: null, rev: existing?.rev ?? 0
 			};
-			pageAnnotations = existing ? pageAnnotations.map((item) => item.id === existing.id ? row : item) : [...pageAnnotations, row];
+			pageAnnotations = existing && pageAnnotations.some((item) => item.id === existing.id)
+				? pageAnnotations.map((item) => item.id === existing.id ? row : item) : [...pageAnnotations, row];
 			await saveMutation(mutation);
 			return true;
 		} catch (error) {
@@ -787,7 +858,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		get orderedHighlights() { return orderedHighlights; },
 		get bookNotes() { return bookNotes; },
 		get availableBookmarks() { return availableBookmarks; },
-		mount, dispose, beforeNavigate, setDraftGuard, setViewSave, attach, turnPage, goToFraction, goToHighlight, removeHighlight, removeBookmark, jumpToBookmark, retryWrites, applySettings, saveSettings, addHighlight, saveNote,
+		mount, dispose, beforeNavigate, setDraftGuard, registerDraftGuard, setViewSave, attach, turnPage, goToFraction, goToHighlight, removeHighlight, removeBookmark, jumpToBookmark, retryWrites, applySettings, saveSettings, addHighlight, saveNote,
 		addPageAnnotation: (input: PageAnnotationInput) => writePageAnnotation(input),
 		updatePageAnnotation: (row: PageAnnotation, patch: Partial<PageAnnotationInput>) => {
 			const input = { ...row, ...patch };
@@ -799,11 +870,21 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			return writePageAnnotation(input, row);
 		},
 		removePageAnnotation,
+		restoreDeletedAnnotation,
+		restorePageAnnotation: (row: PageAnnotation) => {
+			if (row.book_id !== book?.id || row.book_file_id !== file?.id ||
+				pageAnnotations.some((item) => item.id === row.id)) {
+				console.error('Rejected unavailable page annotation restoration');
+				actionError = m['reader.error.save']();
+				return Promise.resolve(false);
+			}
+			return writePageAnnotation(row, row);
+		},
 		close: closeReader,
 		retry: () => { const p = params(); return openBook(p.bookId, p.fileId, p.bookmarkId, p.highlightId); },
 		updateHighlight: changeHighlight,
 		deleteNote: removeNote,
-		addBookmark: (input: { label: string; id?: string }) => saveBookmark({ id: input.id ?? uuidv7(), label: input.label, original: '', editing: false }),
+		addBookmark: (input: { label: string; id?: string; at?: Relocation }) => saveBookmark({ id: input.id ?? uuidv7(), label: input.label, original: '', editing: false }, input.at ?? null),
 		updateBookmark: (bookmark: Bookmark, input: { label: string }) => saveBookmark({ id: bookmark.id, label: input.label, original: bookmark.label, editing: true }),
 		relocate
 	};
