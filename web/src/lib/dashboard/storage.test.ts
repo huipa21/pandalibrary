@@ -17,7 +17,7 @@ vi.mock('#lib/sync/client.js', () => ({
 const viewer: OfflineViewer = { id: 1, username: 'reader', display_name: '', role: 'user', locale: 'en' };
 const timestamp = '2026-11-04T00:00:00Z';
 const pull = (): PullResponse => ({
-	cursor: 1, user_books: [], reading_progress: [], highlights: [], notes: [], bookmarks: [], user_settings: []
+	cursor: 1, user_books: [], reading_progress: [], highlights: [], notes: [], bookmarks: [], page_annotations: [], user_settings: []
 });
 const mutation = (sections: string[]): SyncMutation => ({
 	entity: 'user_settings', key: DASHBOARD_SETTING, op: 'upsert', updated_at: Date.parse(timestamp),

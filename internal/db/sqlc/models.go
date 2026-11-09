@@ -8,6 +8,16 @@ import (
 	"database/sql"
 )
 
+type AnnotationAsset struct {
+	UserID    int64
+	Sha256    string
+	MediaType string
+	Size      int64
+	Width     int64
+	Height    int64
+	CreatedAt int64
+}
+
 type AppPassword struct {
 	ID         int64
 	UserID     int64
@@ -167,6 +177,7 @@ type Highlight struct {
 	UpdatedAt  int64
 	DeletedAt  sql.NullInt64
 	Rev        int64
+	Style      string
 }
 
 type HighlightsFt struct {
@@ -251,6 +262,23 @@ type NotesFt struct {
 	HighlightText string
 	UserID        string
 	BookID        string
+}
+
+type PageAnnotation struct {
+	Seq         int64
+	ID          string
+	UserID      int64
+	BookID      int64
+	BookFileID  sql.NullInt64
+	Kind        string
+	Locator     string
+	Position    float64
+	Data        string
+	AssetSha256 sql.NullString
+	CreatedAt   int64
+	UpdatedAt   int64
+	DeletedAt   sql.NullInt64
+	Rev         int64
 }
 
 type ReadingProgress struct {

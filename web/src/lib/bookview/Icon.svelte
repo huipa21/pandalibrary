@@ -3,7 +3,11 @@
 		| 'info' | 'play' | 'book-open' | 'external' | 'eye' | 'folder-plus'
 		| 'download' | 'x' | 'chevron-left' | 'chevron-right' | 'chevron-down'
 		| 'trash' | 'copy' | 'more' | 'star' | 'star-half' | 'pencil'
-		| 'search' | 'plus' | 'refresh' | 'file' | 'arrow-left';
+		| 'search' | 'plus' | 'refresh' | 'file' | 'arrow-left'
+		| 'zoom-in' | 'zoom-out' | 'zoom-auto' | 'fit-page' | 'fit-width'
+		| 'actual-size' | 'layout-single' | 'layout-continuous' | 'layout-split'
+		| 'layout-split-continuous' | 'rotate-ccw' | 'rotate-cw' | 'hand'
+		| 'text-cursor' | 'insert' | 'panel-right';
 </script>
 
 <script lang="ts">
@@ -13,7 +17,7 @@
 <svg
 	aria-hidden="true"
 	class={className}
-	viewBox="0 0 24 24"
+	viewBox={['zoom-in', 'zoom-out', 'zoom-auto', 'fit-page', 'fit-width', 'actual-size', 'layout-single', 'layout-continuous', 'layout-split', 'layout-split-continuous', 'rotate-ccw', 'rotate-cw', 'hand', 'text-cursor', 'insert', 'panel-right'].includes(name) ? '0 0 20 20' : '0 0 24 24'}
 	fill="none"
 	stroke="currentColor"
 	stroke-width="1.75"
@@ -65,5 +69,36 @@
 		<path d="M6 3h8l4 4v14H6zM14 3v5h4" />
 	{:else if name === 'arrow-left'}
 		<path d="M19 12H5m6-6-6 6 6 6" />
+	{:else if name === 'zoom-in' || name === 'zoom-out'}
+		<circle cx="8" cy="8" r="5" /><path d="m12 12 5 5M5.5 8h5" />
+		{#if name === 'zoom-in'}<path d="M8 5.5v5" />{/if}
+	{:else if name === 'zoom-auto'}
+		<circle cx="8" cy="8" r="5" /><path d="m12 12 5 5M5.5 10 8 5l2.5 5M6.5 8.5h3" />
+	{:else if name === 'fit-page'}
+		<path d="M6 2h8v16H6zM2 6V2h2m12 0h2v4M2 14v4h2m12 0h2v-4" />
+	{:else if name === 'fit-width'}
+		<path d="M6 2h8v4M6 14v4h8v-4M2 10h16M5 7l-3 3 3 3m10-6 3 3-3 3" />
+	{:else if name === 'actual-size'}
+		<path d="M3 2h14v16H3zM6 8l2-1v6m4-5 2-1v6" />
+	{:else if name === 'layout-single'}
+		<rect x="4" y="2" width="12" height="16" rx="1" />
+	{:else if name === 'layout-continuous'}
+		<path d="M4 1h12v4H4zM4 8h12v11H4z" />
+	{:else if name === 'layout-split'}
+		<rect x="2" y="3" width="16" height="14" rx="1" /><path d="M10 3v14" />
+	{:else if name === 'layout-split-continuous'}
+		<path d="M2 1h16v4H2zM2 8h16v11H2zM10 1v4m0 3v11" />
+	{:else if name === 'rotate-ccw'}
+		<path d="M3 3v5h5M3 8a7 7 0 1 1 0 5" />
+	{:else if name === 'rotate-cw'}
+		<path d="M17 3v5h-5m5 0a7 7 0 1 0 0 5" />
+	{:else if name === 'hand'}
+		<path d="M6 10V5a1.5 1.5 0 0 1 3 0v5-7a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v5-2a1.5 1.5 0 0 1 3 0v5c0 4-2 6-6 6H9c-2 0-3-1-4-3l-3-5c-1-2 1-3 2-2l2 2" />
+	{:else if name === 'text-cursor'}
+		<path d="M6 2h2l2 2 2-2h2M10 4v12m-4 2h2l2-2 2 2h2" />
+	{:else if name === 'insert'}
+		<circle cx="10" cy="10" r="8" /><path d="M10 6v8M6 10h8" />
+	{:else if name === 'panel-right'}
+		<rect x="2" y="3" width="16" height="14" rx="1" /><path d="M12 3v14m3-10h.01M15 10h.01M15 13h.01" />
 	{/if}
 </svg>

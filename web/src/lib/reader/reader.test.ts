@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import en from '../../../messages/en.json';
 import zh from '../../../messages/zh.json';
-import { annotationForReader, deleteAnnotation, makeHighlight, makeNote } from './annotations.js';
+import { annotationForReader, deleteAnnotation, HIGHLIGHT_COLORS, HIGHLIGHT_HEX, makeHighlight, makeNote } from './annotations.js';
 import { createReader, readerFormat } from './index.js';
 import { fraction, progressMutation, ProgressWriter, restorePosition } from './progress.js';
 import { DEFAULT_SETTINGS, loadReaderSettings, mergeBookSettings } from './settings.js';
@@ -160,6 +160,24 @@ describe('reader settings and annotations', () => {
 		expect(annotationForReader(highlight, 3, 'pdf')).toMatchObject({ id: 'one', color: 'blue' });
 		expect(annotationForReader(highlight, 4, 'pdf')).toBeNull();
 		expect(annotationForReader(highlight, 3, 'epub')).toBeNull();
+	});
+
+	it('defaults, preserves and passes through highlight styles and new colors', () => {
+		const selection: ReaderSelection = {
+			text: 'A passage', fraction: 0.5, locator: { type: 'pdf', page: 2 }
+		};
+		const existing: Highlight = {
+			id: 'one', book_id: 7, book_file_id: 3, locator: selection.locator,
+			position: 0.5, text: selection.text, color: 'orange', style: 'underline', chapter: null,
+			created_at: '', updated_at: '', deleted_at: null, rev: 1
+		};
+		expect(makeHighlight(7, 3, selection, 'yellow')).toMatchObject({ data: { style: 'highlight' } });
+		expect(makeHighlight(7, 3, selection, 'orange', existing)).toMatchObject({ data: { style: 'underline' } });
+		expect(makeHighlight(7, 3, selection, 'purple', existing, 'strikeout')).toMatchObject({ data: { style: 'strikeout' } });
+		expect(annotationForReader(existing, 3, 'pdf')).toMatchObject({ style: 'underline', color: 'orange' });
+		expect(annotationForReader({ ...existing, style: undefined }, 3, 'pdf')).toMatchObject({ style: 'highlight' });
+		expect(HIGHLIGHT_COLORS).toEqual(['yellow', 'green', 'blue', 'pink', 'orange', 'purple']);
+		expect(HIGHLIGHT_HEX).toMatchObject({ orange: '#fb923c', purple: '#a78bfa' });
 	});
 
 	it('defines the same reader translations in English and Chinese', () => {

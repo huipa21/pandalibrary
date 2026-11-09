@@ -1,40 +1,29 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { requestErrorKind } from '#lib/paging/errors.js';
 	import { translate } from '#lib/paging/translate.js';
-	import { createShelf, getSessionViewer, listShelves } from '#lib/shelves/api.js';
-	import { isAdministrator, shelfErrorKey, type ShelfFormValue } from '#lib/shelves/form.js';
-	import ShelfForm from '#lib/shelves/ShelfForm.svelte';
-	import type { SessionViewer, Shelf } from '#lib/shelves/types.js';
+	import { listShelves } from '#lib/shelves/api.js';
+	import { shelfErrorKey } from '#lib/shelves/form.js';
+	import type { Shelf } from '#lib/shelves/types.js';
 
 	const pager = new CursorPager<Shelf>();
-	let viewer = $state<SessionViewer | null>(null);
-	let notice = $state('');
 	let created = $state<Shelf | null>(null);
 
 	onMount(() => {
 		void pager.reset((cursor, signal) => listShelves({ cursor, signal }));
-		void getSessionViewer()
-			.then((user) => (viewer = user))
-			.catch((cause) => console.error('Could not identify the session for shelf permissions', cause));
-	});
-
-	onDestroy(() => pager.dispose());
-
-	async function create(value: ShelfFormValue): Promise<string | null> {
-		notice = '';
-		created = null;
-		try {
-			created = await createShelf(value);
-			notice = m['shelves.create.success']();
+		const refresh = (event: Event) => {
+			const detail = event instanceof CustomEvent ? event.detail as { createdShelf?: Shelf } | null : null;
+			created = detail?.createdShelf ?? null;
 			void pager.reload();
-			return null;
-		} catch (cause) {
-			return translate(shelfErrorKey(cause, 'save'));
-		}
-	}
+		};
+		window.addEventListener('pandalibrary-shelves-changed', refresh);
+		return () => {
+			window.removeEventListener('pandalibrary-shelves-changed', refresh);
+			pager.dispose();
+		};
+	});
 
 	function kindLabel(shelf: Shelf): string {
 		return shelf.kind === 'shared' ? m['shelves.kind.shared']() : m['shelves.kind.private']();
@@ -48,25 +37,12 @@
 <section class="space-y-10" aria-labelledby="shelves-heading">
 	<h1 id="shelves-heading" class="sr-only">{m['shelves.title']()}</h1>
 
-	<section class="space-y-4 card p-4 sm:p-6" aria-labelledby="create-shelf-heading">
-		<h2 id="create-shelf-heading" class="text-xl font-semibold">{m['shelves.create.heading']()}</h2>
-		<ShelfForm
-			idPrefix="create-shelf"
-			submitLabel={m['shelves.create.submit']()}
-			busyLabel={m['shelves.create.creating']()}
-			allowShared={isAdministrator(viewer)}
-			resetOnSuccess
-			onsave={create}
-		/>
-		{#if notice}
-			<p class="text-sm text-green-700" role="status">
-				{notice}
-				{#if created}
-					<a class="ml-1 font-medium underline underline-offset-4 focus-visible:outline-2" href={`/shelves/${created.id}`}>{created.name}</a>
-				{/if}
-			</p>
-		{/if}
-	</section>
+	{#if created}
+		<p class="text-sm text-green-700" role="status">
+			{m['shelves.create.success']()}
+			<a class="ml-1 font-medium underline underline-offset-4 focus-visible:outline-2" href={`/shelves/${created.id}`}>{created.name}</a>
+		</p>
+	{/if}
 
 	<section class="space-y-4" aria-labelledby="shelf-list-heading" aria-busy={pager.status === 'loading'}>
 		<h2 id="shelf-list-heading" class="text-xl font-semibold">{m['shelves.list_heading']()}</h2>
@@ -78,7 +54,10 @@
 		{:else if pager.status !== 'ready'}
 			<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 		{:else if pager.empty}
-			<p class="card p-6 text-slate-600">{m['shelves.empty']()}</p>
+			<div class="card space-y-2 p-6 text-slate-600">
+				<p>{m['shelves.empty']()}</p>
+				<p>{m['ux1.shelves.create_help']()}</p>
+			</div>
 		{:else}
 			<ul class="grid gap-3 sm:grid-cols-2">
 				{#each pager.items as shelf (shelf.id)}

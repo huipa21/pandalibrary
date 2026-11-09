@@ -169,11 +169,11 @@ WHERE user_id = sqlc.arg(user_id) AND book_id = sqlc.arg(book_id);
 
 -- name: ReadingUpsertHighlight :execrows
 INSERT INTO highlights (
-    id, user_id, book_id, book_file_id, locator, position, text, color, chapter,
+    id, user_id, book_id, book_file_id, locator, position, text, color, style, chapter,
     created_at, updated_at, deleted_at, rev
 )
 SELECT sqlc.arg(id), sqlc.arg(user_id), b.id, sqlc.narg(book_file_id), sqlc.arg(locator),
-       sqlc.arg(position), sqlc.arg(text), sqlc.arg(color), sqlc.narg(chapter),
+       sqlc.arg(position), sqlc.arg(text), sqlc.arg(color), sqlc.arg(style), sqlc.narg(chapter),
        sqlc.arg(created_at), sqlc.arg(updated_at), sqlc.narg(deleted_at), sqlc.arg(rev)
 FROM books b
 WHERE b.id = sqlc.arg(book_id)
@@ -187,7 +187,7 @@ AND NOT EXISTS (
 ON CONFLICT (id) DO UPDATE SET
     book_id = excluded.book_id, book_file_id = excluded.book_file_id,
     locator = excluded.locator, position = excluded.position, text = excluded.text,
-    color = excluded.color, chapter = excluded.chapter, updated_at = excluded.updated_at,
+    color = excluded.color, style = excluded.style, chapter = excluded.chapter, updated_at = excluded.updated_at,
     deleted_at = excluded.deleted_at, rev = excluded.rev
 WHERE highlights.user_id = excluded.user_id AND excluded.updated_at > highlights.updated_at;
 
@@ -498,6 +498,64 @@ WHERE bookmarks.user_id = excluded.user_id AND excluded.updated_at > bookmarks.u
 
 -- name: ReadingTombstoneBookmark :exec
 UPDATE bookmarks SET updated_at = sqlc.arg(updated_at), deleted_at = sqlc.arg(deleted_at), rev = sqlc.arg(rev)
+WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND deleted_at IS NULL;
+
+-- name: ReadingListPageAnnotations :many
+SELECT pa.* FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+WHERE pa.user_id = sqlc.arg(user_id) AND pa.book_id = sqlc.arg(book_id) AND pa.deleted_at IS NULL
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id))
+ORDER BY pa.position, pa.id;
+
+-- name: ReadingPullPageAnnotations :many
+SELECT pa.* FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+WHERE pa.user_id = sqlc.arg(user_id) AND pa.rev > sqlc.arg(cursor) AND pa.rev <= sqlc.arg(high_water)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id))
+ORDER BY pa.rev, pa.id;
+
+-- name: ReadingGetPageAnnotationOwner :one
+SELECT user_id FROM page_annotations WHERE id = sqlc.arg(id);
+
+-- name: ReadingGetOwnedPageAnnotation :one
+SELECT pa.* FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+WHERE pa.id = sqlc.arg(id) AND pa.user_id = sqlc.arg(user_id)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id));
+
+-- name: ReadingGetAnnotationAsset :one
+SELECT sha256 FROM annotation_assets WHERE user_id = sqlc.arg(user_id) AND sha256 = sqlc.arg(sha256);
+
+-- name: ReadingUpsertPageAnnotation :execrows
+INSERT INTO page_annotations (
+    id, user_id, book_id, book_file_id, kind, locator, position, data, asset_sha256,
+    created_at, updated_at, deleted_at, rev
+)
+SELECT sqlc.arg(id), sqlc.arg(user_id), b.id, sqlc.narg(book_file_id), sqlc.arg(kind),
+       sqlc.arg(locator), sqlc.arg(position), sqlc.arg(data), sqlc.narg(asset_sha256),
+       sqlc.arg(created_at), sqlc.arg(updated_at), NULL, sqlc.arg(rev)
+FROM books b
+WHERE b.id = sqlc.arg(book_id)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id))
+ON CONFLICT(id) DO UPDATE SET
+    book_file_id = excluded.book_file_id, locator = excluded.locator,
+    position = excluded.position, data = excluded.data, asset_sha256 = excluded.asset_sha256,
+    updated_at = excluded.updated_at, deleted_at = NULL, rev = excluded.rev
+WHERE page_annotations.user_id = excluded.user_id
+    AND page_annotations.book_id = excluded.book_id AND page_annotations.kind = excluded.kind
+    AND excluded.updated_at > page_annotations.updated_at;
+
+-- name: ReadingTombstonePageAnnotation :exec
+UPDATE page_annotations SET updated_at = sqlc.arg(updated_at), deleted_at = sqlc.arg(deleted_at), rev = sqlc.arg(rev)
 WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND deleted_at IS NULL;
 
 -- name: ReadingSyncHighWater :one

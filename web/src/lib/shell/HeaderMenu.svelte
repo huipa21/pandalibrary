@@ -17,7 +17,7 @@
 		panelClass?: string;
 		onopen?: () => void;
 		trigger: Snippet<[TriggerProps]>;
-		children: Snippet<[() => void]>;
+		children: Snippet<[() => Promise<void>]>;
 	}
 
 	let { menuId, popup, label, panelClass = '', onopen, trigger, children }: Props = $props();
@@ -126,7 +126,7 @@
 			onclick={onPanelClick}
 			onkeydown={onKeyDown}
 		>
-			{@render children(() => close(true))}
+			{@render children(() => setOpen(false, true))}
 		</div>
 	{/if}
 </div>

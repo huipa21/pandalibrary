@@ -11,6 +11,7 @@ import {
 	setActiveViewer
 } from './db.js';
 import { synchronize, withSessionLock, type SyncReport } from './engine.js';
+import { clearLocalCaches } from './local-caches.js';
 import type { OfflineViewer } from './types.js';
 
 export interface OfflineStatus {
@@ -147,6 +148,11 @@ export async function deactivateOffline(): Promise<void> {
 		console.error('Could not clear the remembered offline session', error);
 		available = false;
 		update({ available: false });
+	}
+	try {
+		await clearLocalCaches();
+	} catch (error) {
+		console.error('Could not clear local reader caches', error);
 	}
 	if (!locked) throw new OfflineStorageError('Could not lock the remembered offline session.');
 	viewer = null;

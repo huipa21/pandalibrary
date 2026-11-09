@@ -2,12 +2,27 @@
 	height: 100%;
 	overflow: auto;
 	background: #e2e8f0;
+	overflow-anchor: none;
+	scroll-behavior: auto;
+}
+
+.reader-pdf-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 16px;
+	width: max-content;
+	min-width: 100%;
+	justify-content: center;
+}
+
+.reader-pdf-row + .reader-pdf-row {
+	margin-top: 16px;
 }
 
 .reader-pdf-page {
 	position: relative;
 	width: max-content;
-	margin: 0 auto;
+	flex: none;
 	background: white;
 }
 
@@ -30,6 +45,21 @@
 	line-height: 1;
 	text-align: initial;
 	--text-scale-factor: var(--total-scale-factor);
+	--scale-round-x: 1px;
+	--scale-round-y: 1px;
+	transform-origin: 0 0;
+}
+
+.reader-pdf-text[data-main-rotation='90'] {
+	transform: rotate(90deg) translateY(-100%);
+}
+
+.reader-pdf-text[data-main-rotation='180'] {
+	transform: rotate(180deg) translate(-100%, -100%);
+}
+
+.reader-pdf-text[data-main-rotation='270'] {
+	transform: rotate(270deg) translateX(-100%);
 }
 
 .reader-pdf-text :is(span, br) {

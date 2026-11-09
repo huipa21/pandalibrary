@@ -176,7 +176,7 @@
 			{:else if shelves.length === 0}
 				<p class="px-2 py-2 text-sm text-slate-600">
 					{m['shelves.book.none']()}
-					<a class="ml-1 rounded underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-emerald-700" href="/shelves">{m['shelves.book.create_link']()}</a>
+					<a class="ml-1 rounded underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-emerald-700" href="/shelves">{m['ux1.shelves.more']()}</a>
 				</p>
 			{:else}
 				<ul class="max-h-64 overflow-y-auto">

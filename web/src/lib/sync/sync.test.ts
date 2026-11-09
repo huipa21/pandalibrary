@@ -10,9 +10,10 @@ import {
 	retryFailed, rows, saveDownload, setActiveViewer
 } from './db.js';
 import { parsePullResponse, parsePushResponse, synchronize, type SyncTransport } from './engine.js';
-import { cachedBook, loadBook, loadFile, downloadForOffline } from './library.js';
+import { cachedBook, loadBook, loadFile, loadReaderState, downloadForOffline } from './library.js';
 import { readerState } from './state.js';
 import type { OfflineViewer, PullResponse, SyncMutation } from './types.js';
+import type { PageAnnotation } from '#lib/reader/types.js';
 
 const viewer: OfflineViewer = { id: 1, username: 'reader', display_name: '', role: 'user', locale: 'en' };
 const timestamp = '2026-11-03T00:00:00.000Z';
@@ -26,9 +27,33 @@ const book: Book = {
 	cover_url: null, cover_source: null, authors: [], series: null, tags: [], identifiers: [],
 	files: [file], field_sources: [], created_at: timestamp, updated_at: timestamp
 };
+const pageAnnotation: PageAnnotation = {
+	id: '018f0f7e-7b00-7000-8000-000000000001', book_id: 21, book_file_id: 31, kind: 'text',
+	locator: { type: 'pdf', page: 1, rect: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 } },
+	position: 0.3, data: { text: 'Saved', color: '#123abc', size: 0.02 },
+	created_at: timestamp, updated_at: timestamp, deleted_at: null, rev: 2
+};
+
+async function setLegacyCursor(cursor: number, pulledAt: number): Promise<void> {
+	const database = await new Promise<IDBDatabase>((resolve, reject) => {
+		const request = indexedDB.open('pandalibrary-offline', 1);
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const tx = database.transaction('meta', 'readwrite');
+			tx.objectStore('meta').put({ key: 'cursor:1', value: { cursor, pulledAt } });
+			tx.oncomplete = () => resolve();
+			tx.onabort = () => reject(tx.error);
+		});
+	} finally {
+		database.close();
+	}
+}
 
 function pull(cursor = 0): PullResponse {
-	return { cursor, user_books: [], reading_progress: [], highlights: [], bookmarks: [], notes: [], user_settings: [] };
+	return { cursor, user_books: [], reading_progress: [], highlights: [], bookmarks: [], page_annotations: [], notes: [], user_settings: [] };
 }
 
 function progress(percentage = 0.5): SyncMutation {
@@ -132,6 +157,73 @@ describe('durable R1 synchronization', () => {
 		expect(() => parsePullResponse({ ...old, cursor: 1, bookmarks: [{ id: 'bad', rev: 2, updated_at: timestamp }] }, 0))
 			.toThrow('invalid bookmarks revision');
 		expect(() => parsePullResponse({ ...old, bookmarks: null }, 0)).toThrow('missing bookmarks');
+	});
+
+	it('stores, replays and tombstones page annotations in the offline reader', async () => {
+		const initial = pull(2);
+		initial.page_annotations.push(pageAnnotation);
+		await persistPull(1, 0, initial, true);
+		expect((await loadReaderState(1, 21, true)).state.page_annotations).toMatchObject([
+			{ id: pageAnnotation.id, data: { text: 'Saved' } }
+		]);
+		const edit: SyncMutation = {
+			entity: 'page_annotations', id: pageAnnotation.id, op: 'upsert', updated_at: Date.parse(timestamp) + 1000,
+			data: {
+				book_id: 21, book_file_id: 31, kind: 'text', locator: pageAnnotation.locator,
+				position: 0.3, data: { text: 'Offline', color: '#123abc', size: 0.02 }
+			}
+		};
+		await enqueue(1, edit);
+		expect((await loadReaderState(1, 21, true)).state.page_annotations).toMatchObject([{ data: { text: 'Offline' } }]);
+		await recordResults(1, await outbox(1), [{ index: 0, status: 'stale' }]);
+		expect((await readerState(1, 21)).state.page_annotations).toMatchObject([{ data: { text: 'Saved' } }]);
+		await enqueue(1, {
+			entity: 'page_annotations', id: pageAnnotation.id, op: 'delete', data: {}, updated_at: edit.updated_at + 1000
+		});
+		expect((await readerState(1, 21)).state.page_annotations).toEqual([]);
+		const tombstone = pull(3);
+		const deletedAt = new Date(Date.parse(timestamp) + 1500).toISOString();
+		tombstone.page_annotations.push({ ...pageAnnotation, updated_at: deletedAt, deleted_at: deletedAt, rev: 3 });
+		await persistPull(1, 2, tombstone, false);
+		await enqueue(1, edit);
+		expect((await readerState(1, 21)).state.page_annotations).toEqual([]);
+		await enqueue(1, { ...edit, updated_at: edit.updated_at + 3000 });
+		expect((await readerState(1, 21)).state.page_annotations).toMatchObject([{ data: { text: 'Offline' } }]);
+		expect(await rows(1)).toEqual(expect.arrayContaining([
+			expect.objectContaining({ entity: 'page_annotations', value: expect.objectContaining({ deleted_at: deletedAt }) })
+		]));
+	});
+
+	it('accepts old pulls without page annotations but rejects malformed new rows', () => {
+		const { page_annotations: _pages, ...old } = pull(0);
+		expect(parsePullResponse(old, 0).page_annotations).toEqual([]);
+		expect(() => parsePullResponse({ ...old, page_annotations: null }, 0)).toThrow('missing page_annotations');
+		expect(() => parsePullResponse({ ...old, cursor: 1, page_annotations: [pageAnnotation] }, 0))
+			.toThrow('invalid page_annotations revision');
+		expect(() => parsePullResponse({
+			...old, cursor: 2, page_annotations: [{ ...pageAnnotation, kind: 'invalid' }]
+		}, 0)).toThrow('invalid row');
+	});
+
+	it('performs one schema-upgrade full pull without discarding newly queued writes', async () => {
+		await persistPull(1, 0, pull(10), true, 9000);
+		await setLegacyCursor(10, 9000);
+		const response = pull(11);
+		response.page_annotations.push(pageAnnotation);
+		const client = transport();
+		vi.mocked(client.pull).mockImplementationOnce(async () => {
+			await enqueue(1, progress());
+			return response;
+		}).mockResolvedValueOnce(pull(12));
+		await synchronize(1, client, 10_000);
+		expect(client.pull).toHaveBeenNthCalledWith(1, 0);
+		expect(await cursorState(1)).toMatchObject({ cursor: 11, schema: 2 });
+		expect((await readerState(1, 21)).state.page_annotations).toMatchObject([{ id: pageAnnotation.id }]);
+		expect(await outbox(1)).toMatchObject([{ status: 'pending', mutation: progress() }]);
+		await synchronize(1, client, 11_000);
+		expect(client.pull).toHaveBeenNthCalledWith(2, 11);
+		expect(client.push).toHaveBeenCalledOnce();
+		expect((await readerState(1, 21)).state.page_annotations).toMatchObject([{ id: pageAnnotation.id }]);
 	});
 
 	it('reopens the outbox without changing UUIDs, natural keys, timestamps or tombstones', async () => {

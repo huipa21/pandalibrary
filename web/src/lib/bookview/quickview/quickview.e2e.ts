@@ -275,6 +275,24 @@ test('changes the reading status with one mutation and adds the book to a shelf'
 		{ name: 'Reading status: Want to read. Change' })).toBeVisible();
 });
 
+test('the empty shelf picker points to the shelf menu and management page', async ({ page }) => {
+	await mockApi(page, mockState());
+	await page.route((url) => url.pathname === '/api/v1/shelves', (route) =>
+		route.fulfill({ json: { items: [], next_cursor: null } })
+	);
+	await page.setViewportSize({ width: 1280, height: 900 });
+	const { drawer } = await openHarbor(page);
+	await drawer.getByRole('button', { name: 'Add to shelf' }).click();
+	const popover = drawer.getByRole('dialog', { name: 'Add to shelf' });
+	await expect(popover).toContainText('Create one from the shelves menu in the sidebar.');
+	const manage = popover.getByRole('link', { name: 'Manage shelves' });
+	await expect(manage).toHaveAttribute('href', '/shelves');
+	await manage.click();
+	await expect(page).toHaveURL('/shelves');
+	await expect(page.getByRole('main')).toContainText('choose New shelf from the shelves menu');
+	await expect(page.getByRole('button', { name: 'Shelf actions' })).toBeVisible();
+});
+
 test('shows not found and replaces the book without stale responses', async ({ page }) => {
 	await mockApi(page, mockState());
 	await page.setViewportSize({ width: 1280, height: 900 });

@@ -114,6 +114,7 @@
 			case 'reading_progress': return m['offline.outbox.progress']();
 			case 'highlights': return m['offline.outbox.highlight']();
 			case 'bookmarks': return m['offline.outbox.bookmark']();
+			case 'page_annotations': return m['pv3.outbox.page_annotation']();
 			case 'notes': return m['offline.outbox.note']();
 			case 'user_settings': return m['offline.outbox.setting']();
 			case 'reading_sessions': return m['offline.outbox.session']();

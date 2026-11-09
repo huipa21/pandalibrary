@@ -218,18 +218,21 @@ export function azw3Fixture(): Buffer {
 	return Buffer.concat([pdb, ...records]);
 }
 
-export function pdfFixture(): Buffer {
-	const first = 'BT /F1 24 Tf 72 700 Td (First PDF page text) Tj ET';
-	const second = 'BT /F1 24 Tf 72 700 Td (Second PDF page text) Tj ET';
+export function pdfFixture(pageCount = 2): Buffer {
+	const fontId = 3 + pageCount * 2;
 	const objects = [
 		'<< /Type /Catalog /Pages 2 0 R >>',
-		'<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>',
-		'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >>',
-		`<< /Length ${Buffer.byteLength(first)} >>\nstream\n${first}\nendstream`,
-		'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>',
-		`<< /Length ${Buffer.byteLength(second)} >>\nstream\n${second}\nendstream`,
-		'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'
+		`<< /Type /Pages /Kids [${Array.from({ length: pageCount }, (_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pageCount} >>`
 	];
+	for (let index = 0; index < pageCount; index++) {
+		const label = index === 0 ? 'First' : index === 1 ? 'Second' : `Page ${index + 1}`;
+		const text = `BT /F1 24 Tf 72 700 Td (${label} PDF page text) Tj ET`;
+		objects.push(
+			`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${4 + index * 2} 0 R >>`,
+			`<< /Length ${Buffer.byteLength(text)} >>\nstream\n${text}\nendstream`
+		);
+	}
+	objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
 	let output = '%PDF-1.7\n';
 	const offsets = [0];
 	for (const [index, object] of objects.entries()) {

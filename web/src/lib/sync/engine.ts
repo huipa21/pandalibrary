@@ -1,6 +1,8 @@
 import { api } from '#lib/api/client.js';
 import type { JsonValue } from '#lib/api/client.js';
 import type { Bookmark, Highlight, Note, Setting } from '#lib/reader/types.js';
+import { isHighlightStyle } from '#lib/reader/annotations.js';
+import { isPageAnnotation } from '#lib/reader/page-annotations.js';
 import {
 	activeViewer,
 	AccountChangedError,
@@ -13,6 +15,9 @@ import {
 import type {
 	MutationResult, OutboxEntry, ProgressRow, PullResponse, SyncMutation, UserBookRow
 } from './types.js';
+import { SYNC_SCHEMA } from './types.js';
+
+export { SYNC_SCHEMA } from './types.js';
 
 const MAX_MUTATIONS = 500;
 const MAX_BODY_BYTES = 1_900_000;
@@ -97,6 +102,7 @@ function validHighlight(value: unknown): value is Highlight {
 		nullableNumber(value.book_file_id) && isJson(value.locator) &&
 		typeof value.position === 'number' && Number.isFinite(value.position) &&
 		typeof value.text === 'string' && typeof value.color === 'string' && nullableString(value.chapter) &&
+		(value.style === undefined || isHighlightStyle(value.style)) &&
 		typeof value.created_at === 'string' && nullableString(value.deleted_at);
 }
 
@@ -127,6 +133,7 @@ function isPullResponse(value: Record<string, unknown>): value is Record<string,
 		Array.isArray(value.reading_progress) && value.reading_progress.every(validProgress) &&
 		Array.isArray(value.highlights) && value.highlights.every(validHighlight) &&
 		Array.isArray(value.bookmarks) && value.bookmarks.every(validBookmark) &&
+		Array.isArray(value.page_annotations) && value.page_annotations.every(isPageAnnotation) &&
 		Array.isArray(value.notes) && value.notes.every(validNote) &&
 		Array.isArray(value.user_settings) && value.user_settings.every(validSetting);
 }
@@ -156,9 +163,13 @@ export function parsePullResponse(value: unknown, requestedCursor: number): Pull
 		!Number.isSafeInteger(value.cursor) || value.cursor < requestedCursor) {
 		throw new SyncProtocolError('The server returned an invalid pull cursor.');
 	}
-	const normalized: Record<string, unknown> = { ...value, bookmarks: value.bookmarks === undefined ? [] : value.bookmarks };
+	const normalized: Record<string, unknown> = {
+		...value,
+		bookmarks: value.bookmarks === undefined ? [] : value.bookmarks,
+		page_annotations: value.page_annotations === undefined ? [] : value.page_annotations
+	};
 	const high = value.cursor;
-	const collections = ['user_books', 'reading_progress', 'highlights', 'bookmarks', 'notes', 'user_settings'] as const;
+	const collections = ['user_books', 'reading_progress', 'highlights', 'bookmarks', 'page_annotations', 'notes', 'user_settings'] as const;
 	for (const entity of collections) {
 		const rows = normalized[entity];
 		if (!Array.isArray(rows)) throw new SyncProtocolError(`The pull response is missing ${entity}.`);
@@ -177,7 +188,7 @@ export function parsePullResponse(value: unknown, requestedCursor: number): Pull
 			}
 			if (keys.has(String(key))) throw new SyncProtocolError(`The pull response contains duplicate ${entity} keys.`);
 			keys.add(String(key));
-			if ((entity === 'highlights' || entity === 'bookmarks' || entity === 'notes') &&
+			if ((entity === 'highlights' || entity === 'bookmarks' || entity === 'page_annotations' || entity === 'notes') &&
 				(typeof row.book_id !== 'number' || !Number.isSafeInteger(row.book_id) || row.book_id < 1)) {
 				throw new SyncProtocolError(`The pull response contains an invalid ${entity} book.`);
 			}
@@ -234,7 +245,8 @@ export async function synchronize(
 
 		await verifyAccount(account, client);
 		const previous = await cursorState(account);
-		const full = previous.cursor === 0 || (previous.pulledAt > 0 && now - previous.pulledAt >= FULL_RESYNC_MS);
+		const full = previous.cursor === 0 || (previous.schema ?? 1) < SYNC_SCHEMA ||
+			(previous.pulledAt > 0 && now - previous.pulledAt >= FULL_RESYNC_MS);
 		const requestedCursor = full ? 0 : previous.cursor;
 		const response = parsePullResponse(await client.pull(requestedCursor), requestedCursor);
 		await persistPull(account, previous.cursor, response, full, now);

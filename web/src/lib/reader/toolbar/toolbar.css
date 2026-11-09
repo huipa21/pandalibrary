@@ -1,0 +1,70 @@
+.pv4-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	flex: none;
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+.pv4-button:hover:not(:disabled), .pv4-item:hover:not(:disabled) { background: rgb(0 0 0 / 5%); }
+.pv4-button:focus-visible, .pv4-item:focus-visible, .pv4-page:focus-visible {
+	outline: 2px solid #10b981;
+	outline-offset: -2px;
+}
+.pv4-button:disabled, .pv4-item:disabled { opacity: .4; cursor: default; }
+.pv4-button > svg, .pv4-item > svg:not(.pv4-check) { width: 20px; height: 20px; flex: none; }
+.pv4-text-button > svg, .pv4-item > svg.size-3 { width: 12px; height: 12px; }
+.pv4-button[aria-pressed='true'] { background: rgb(16 185 129 / 15%); color: #047857; }
+.pv4-text-button { width: auto; min-width: 36px; padding: 0 6px; white-space: nowrap; }
+.pv4-panel {
+	position: fixed;
+	z-index: 100;
+	box-sizing: border-box;
+	width: min(288px, calc(100vw - 16px));
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding: 4px;
+	border-radius: 12px;
+	background: white;
+	color: #1f2937;
+	box-shadow: 0 10px 24px rgb(0 0 0 / 15%), 0 0 0 1px rgb(0 0 0 / 10%);
+	font: 14px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.pv4-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 36px;
+	padding: 6px 8px;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+}
+.pv4-item-label { flex: 1; }
+.pv4-check { width: 16px; height: 16px; flex: none; }
+.pv4-separator { height: 1px; margin: 4px; background: rgb(0 0 0 / 10%); }
+.pv4-hint { margin: 6px 8px; color: #64748b; font-size: 12px; }
+.pv4-steps { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.pv4-badge { position: absolute; top: 0; right: 0; min-width: 12px; padding: 0 2px; border-radius: 8px; background: #047857; color: white; font-size: 9px; line-height: 14px; }
+.pv4-page { box-sizing: content-box; min-width: 1ch; height: 28px; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-align: center; }
+.pv4-counter, .pv4-progress { white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+.pv4-counter { display: inline-flex; align-items: center; }
+.pv4-progress { color: #64748b; }
+:root[data-theme='dark'] .pv4-panel { background: #22262a; color: #f5f6f7; box-shadow: 0 10px 24px rgb(0 0 0 / 35%), 0 0 0 1px rgb(255 255 255 / 12%); }
+:root[data-theme='dark'] .pv4-button:hover:not(:disabled), :root[data-theme='dark'] .pv4-item:hover:not(:disabled) { background: rgb(255 255 255 / 8%); }
+:root[data-theme='dark'] .pv4-button[aria-pressed='true'] { color: #a7f3d0; }
+:root[data-theme='dark'] .pv4-separator { background: rgb(255 255 255 / 12%); }
+:root[data-theme='dark'] .pv4-progress, :root[data-theme='dark'] .pv4-hint { color: #a0a7af; }

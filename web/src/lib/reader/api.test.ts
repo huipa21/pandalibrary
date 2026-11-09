@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '#lib/api/client.js';
 import type { BookFile } from '#lib/catalog/types.js';
-import { downloadBookFile, pushMutation, SyncError, type Mutation } from './api.js';
+import { downloadBookFile, getBookState, pushMutation, SyncError, type Mutation } from './api.js';
 
 const hash = 'a'.repeat(64);
 const file: BookFile = {
@@ -23,6 +23,11 @@ const mutation: Mutation = {
 afterEach(() => vi.restoreAllMocks());
 
 describe('reader API', () => {
+	it('normalizes missing annotation collections from an older server', async () => {
+		vi.spyOn(api, 'request').mockResolvedValue({ user_book: null, progress: null, highlights: [], notes: [] });
+		await expect(getBookState(2)).resolves.toMatchObject({ bookmarks: [], page_annotations: [] });
+	});
+
 	it('downloads only the catalog-provided same-origin hash-versioned URL', async () => {
 		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('book'));
 		const blob = await downloadBookFile(2, file, 'https://library.test', fetcher);

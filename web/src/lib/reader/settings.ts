@@ -1,12 +1,16 @@
 import type { JsonValue } from '#lib/api/client.js';
-import type { ReaderFormat, ReaderSettings, Setting } from './types.js';
+import type { PdfZoom, ReaderFormat, ReaderSettings, Setting } from './types.js';
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
 	font: 'serif',
 	size: 100,
 	spacing: 1.5,
 	theme: 'light',
-	flow: 'paginated'
+	flow: 'paginated',
+	pdfLayout: 'single',
+	pdfZoom: 'page-width',
+	pdfRotation: 0,
+	pdfCoverAlone: false
 };
 
 type JsonObject = { [key: string]: JsonValue };
@@ -21,8 +25,17 @@ export function isReaderSettings(value: ReaderSettings): boolean {
 		Number.isFinite(value.size) && value.size >= 50 && value.size <= 200 &&
 		Number.isFinite(value.spacing) && value.spacing >= 1 && value.spacing <= 2.5 &&
 		['light', 'sepia', 'dark'].includes(value.theme) &&
-		['paginated', 'scrolled'].includes(value.flow)
+		['paginated', 'scrolled'].includes(value.flow) &&
+		(value.pdfLayout === undefined || ['single', 'single-continuous', 'split', 'split-continuous'].includes(value.pdfLayout)) &&
+		(value.pdfZoom === undefined || validPdfZoom(value.pdfZoom)) &&
+		(value.pdfRotation === undefined || [0, 90, 180, 270].includes(value.pdfRotation)) &&
+		(value.pdfCoverAlone === undefined || typeof value.pdfCoverAlone === 'boolean')
 	);
+}
+
+function validPdfZoom(value: JsonValue): value is PdfZoom {
+	return typeof value === 'number' ? Number.isFinite(value) && value >= 0.1 && value <= 5
+		: value === 'auto' || value === 'page-actual' || value === 'page-fit' || value === 'page-width';
 }
 
 function applyKnown(
@@ -53,6 +66,22 @@ function applyKnown(
 	}
 	if (value.flow !== undefined) {
 		if (value.flow === 'paginated' || value.flow === 'scrolled') result.flow = value.flow;
+		else invalid = true;
+	}
+	if (value.pdfLayout !== undefined) {
+		if (value.pdfLayout === 'single' || value.pdfLayout === 'single-continuous' || value.pdfLayout === 'split' || value.pdfLayout === 'split-continuous') result.pdfLayout = value.pdfLayout;
+		else invalid = true;
+	}
+	if (value.pdfZoom !== undefined) {
+		if (validPdfZoom(value.pdfZoom)) result.pdfZoom = value.pdfZoom;
+		else invalid = true;
+	}
+	if (value.pdfRotation !== undefined) {
+		if (value.pdfRotation === 0 || value.pdfRotation === 90 || value.pdfRotation === 180 || value.pdfRotation === 270) result.pdfRotation = value.pdfRotation;
+		else invalid = true;
+	}
+	if (value.pdfCoverAlone !== undefined) {
+		if (typeof value.pdfCoverAlone === 'boolean') result.pdfCoverAlone = value.pdfCoverAlone;
 		else invalid = true;
 	}
 	return { settings: result, invalid };

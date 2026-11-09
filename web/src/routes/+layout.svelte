@@ -7,6 +7,7 @@
 	import { ApiError, api } from '#lib/api/client.js';
 	import BuildVersion from '#lib/buildinfo/BuildVersion.svelte';
 	import AppShell from '#lib/shell/AppShell.svelte';
+	import { readerChrome } from '#lib/shell/reader-chrome.js';
 	import ShelfNavigation from '#lib/shelves/ShelfNavigation.svelte';
 	import { activateOffline, deactivateOffline, offlineStatus, rememberedViewer, syncNow } from '#lib/sync/client.js';
 	import { withSessionLock } from '#lib/sync/engine.js';
@@ -179,7 +180,7 @@
 
 <AppShell pathname={page.url.pathname} {viewer} onlogout={logout} onlocale={changeLocale}>
 	{#snippet shelves()}
-		<ShelfNavigation pathname={page.url.pathname} />
+		<ShelfNavigation pathname={page.url.pathname} role={viewer?.role ?? ''} />
 	{/snippet}
 	{#snippet footer()}
 		<BuildVersion />
@@ -190,7 +191,7 @@
 	{:else if checkingAuth && !publicRoute}
 		<p class="text-slate-600" role="status">{m['auth.loading']()}</p>
 	{:else}
-		{#if viewer && (!$offlineStatus.available || !$offlineStatus.online || $offlineStatus.issues || $offlineStatus.error || $offlineStatus.pending)}
+		{#if $readerChrome !== 'full' && viewer && (!$offlineStatus.available || !$offlineStatus.online || $offlineStatus.issues || $offlineStatus.error || $offlineStatus.pending)}
 			<div class="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
 				<p>
 					{#if !$offlineStatus.available}
@@ -212,8 +213,8 @@
 				{/if}
 			</div>
 		{/if}
-		{#if offlineNotice}<p class="mb-4 text-sm text-green-700" role="status">{offlineNotice}</p>{/if}
-		{#if languageNotice}<p class="mb-4 text-sm" role="status">{languageNotice}</p>{/if}
+		{#if $readerChrome !== 'full' && offlineNotice}<p class="mb-4 text-sm text-green-700" role="status">{offlineNotice}</p>{/if}
+		{#if $readerChrome !== 'full' && languageNotice}<p class="mb-4 text-sm" role="status">{languageNotice}</p>{/if}
 		{@render children()}
 	{/if}
 </AppShell>

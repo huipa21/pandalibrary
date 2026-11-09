@@ -163,6 +163,45 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 		t.Errorf("unauthenticated bookmarks = %d", response.Code)
 	}
 
+	t.Run("PDF annotations round-trip", func(t *testing.T) {
+		body := `{"mutations":[` +
+			`{"entity":"highlights","id":"018f0f7e-7b00-7000-8000-000000000004","op":"upsert",` +
+			`"data":{"book_id":101,"book_file_id":201,"locator":{"type":"pdf","page":1},"position":0.2,"text":"passage","color":"orange","style":"underline"},"updated_at":1000},` +
+			`{"entity":"page_annotations","id":"018f0f7e-7b00-7000-8000-000000000005","op":"upsert",` +
+			`"data":{"book_id":101,"book_file_id":201,"kind":"text","locator":{"type":"pdf","page":1,"rect":{"x":0,"y":0,"width":0.5,"height":0.5}},` +
+			`"position":0.2,"data":{"text":"Hello","color":"#000000","size":0.02}},"updated_at":1000}]}`
+		response := readingHTTPRequest(t, router, http.MethodPost, "/api/v1/sync/push", body, cookie, "https://books.example")
+		var pushed reading.PushResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &pushed); err != nil || response.Code != http.StatusOK ||
+			len(pushed.Results) != 2 || pushed.Results[0].Status != "applied" || pushed.Results[1].Status != "applied" {
+			t.Fatalf("annotation push = %d %s, %v", response.Code, response.Body.String(), err)
+		}
+		response = readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/books/101", "", cookie, "")
+		var state reading.BookState
+		if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil || response.Code != http.StatusOK ||
+			len(state.Highlights) != 1 || state.Highlights[0].Style != "underline" ||
+			len(state.PageAnnotations) != 1 || state.PageAnnotations[0].Kind != "text" {
+			t.Fatalf("annotation state = %d %s, %v", response.Code, response.Body.String(), err)
+		}
+		response = readingHTTPRequest(t, router, http.MethodGet, "/api/v1/sync/pull?cursor=0", "", cookie, "")
+		var pulled reading.PullResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &pulled); err != nil || response.Code != http.StatusOK ||
+			len(pulled.PageAnnotations) != 1 || len(pulled.Highlights) != 1 {
+			t.Fatalf("annotation pull = %d %s, %v", response.Code, response.Body.String(), err)
+		}
+		deleteBody := `{"mutations":[{"entity":"page_annotations","id":"018f0f7e-7b00-7000-8000-000000000005","op":"delete","data":{},"updated_at":1100}]}`
+		response = readingHTTPRequest(t, router, http.MethodPost, "/api/v1/sync/push", deleteBody, cookie, "https://books.example")
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"applied"`) {
+			t.Fatalf("annotation delete = %d %s", response.Code, response.Body.String())
+		}
+		response = readingHTTPRequest(t, router, http.MethodGet, fmt.Sprintf("/api/v1/sync/pull?cursor=%d", pulled.Cursor), "", cookie, "")
+		var incremental reading.PullResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &incremental); err != nil || response.Code != http.StatusOK ||
+			len(incremental.PageAnnotations) != 1 || incremental.PageAnnotations[0].DeletedAt == nil {
+			t.Fatalf("annotation tombstone = %d %s, %v", response.Code, response.Body.String(), err)
+		}
+	})
+
 	states := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/book-states?ids=101,102,999,101", "", cookie, "")
 	if states.Code != http.StatusOK ||
 		!strings.Contains(states.Body.String(), `"items":[{"book_id":101,"status":"abandoned","percentage":null,"book_file_id":null,"updated_at":"`) ||

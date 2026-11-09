@@ -4,6 +4,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import type { Locale } from '#lib/paraglide/runtime.js';
 	import { isImmersiveRoute } from '#lib/nav.js';
+	import { readerChrome } from './reader-chrome.js';
 	import SearchBox from '#lib/search/SearchBox.svelte';
 	import UploadButton from '#lib/bookheap/UploadButton.svelte';
 	import QuickViewHost from '#lib/bookview/quickview/QuickViewHost.svelte';
@@ -33,8 +34,9 @@
 	let toggle = $state<HTMLButtonElement | null>(null);
 	let drawer = $state<HTMLElement | null>(null);
 	const immersive = $derived(isImmersiveRoute(pathname));
+	const fullReader = $derived(immersive && $readerChrome === 'full');
 	/** True while the sidebar floats above the page as a modal drawer rather than a fixed column. */
-	const overlay = $derived(open && (immersive || !desktop));
+	const overlay = $derived(!fullReader && open && (immersive || !desktop));
 
 	onMount(() => {
 		const query = window.matchMedia('(min-width: 64rem)');
@@ -49,6 +51,7 @@
 
 	afterNavigate(() => {
 		open = false;
+		if (!isImmersiveRoute(pathname)) readerChrome.set('default');
 	});
 
 	async function openDrawer() {
@@ -64,7 +67,8 @@
 	}
 
 	function onkeydown(event: KeyboardEvent) {
-		if (!overlay) return;
+		// A modal keeps keyboard control even when all of its fields are temporarily disabled.
+		if (!overlay || document.querySelector('dialog[open]')) return;
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			closeDrawer();
@@ -89,8 +93,9 @@
 <div class="app-shell flex min-h-dvh flex-col">
 	<a
 		class="sr-only z-[60] rounded-md bg-emerald-700 px-3 py-2 text-white focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
-		href="#main-content"
+		href={fullReader ? '#reader-surface' : '#main-content'}
 	>{m['ux1.skip_to_content']()}</a>
+	{#if !fullReader}
 	<div class="shell-header-band shrink-0">
 		<header class="shell-header flex h-shell-header items-center gap-1 rounded-2xl border px-3 shadow-sm sm:gap-3 sm:px-4">
 			{#if viewer}
@@ -134,8 +139,10 @@
 		</header>
 	</div>
 
-	<div class="shell-body flex min-h-0 flex-1">
-		{#if viewer}
+	{/if}
+
+	<div class={[!fullReader && 'shell-body', 'flex min-h-0 flex-1']}>
+		{#if viewer && !fullReader}
 			{#if overlay}
 				<button
 					class="shell-backdrop fixed inset-x-0 bottom-0 z-30 cursor-default bg-black/60"
@@ -171,7 +178,9 @@
 		{/if}
 		<main id="main-content" tabindex="-1" class="min-w-0 flex-1 focus:outline-none">
 			<!-- Regular pages render cards straight on the shell background; immersive routes keep their own panel. -->
-			<div class={immersive
+			<div class={fullReader
+				? 'h-dvh overflow-hidden'
+				: immersive
 				? 'min-h-full rounded-2xl border border-zinc-200 bg-slate-50 px-4 py-6 text-slate-950 shadow-sm sm:px-6 sm:py-8 lg:px-8'
 				: 'app-panel min-h-full text-slate-950'}>
 				{@render children()}

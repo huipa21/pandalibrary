@@ -120,6 +120,22 @@ func (q *Queries) ReadingDeleteNoteFTS(ctx context.Context, id string) error {
 	return err
 }
 
+const readingGetAnnotationAsset = `-- name: ReadingGetAnnotationAsset :one
+SELECT sha256 FROM annotation_assets WHERE user_id = ?1 AND sha256 = ?2
+`
+
+type ReadingGetAnnotationAssetParams struct {
+	UserID int64
+	Sha256 string
+}
+
+func (q *Queries) ReadingGetAnnotationAsset(ctx context.Context, arg ReadingGetAnnotationAssetParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, readingGetAnnotationAsset, arg.UserID, arg.Sha256)
+	var sha256 string
+	err := row.Scan(&sha256)
+	return sha256, err
+}
+
 const readingGetBookmarkClock = `-- name: ReadingGetBookmarkClock :one
 SELECT updated_at FROM bookmarks WHERE id = ?1 AND user_id = ?2
 `
@@ -278,7 +294,7 @@ func (q *Queries) ReadingGetOwnedBookmark(ctx context.Context, arg ReadingGetOwn
 }
 
 const readingGetOwnedHighlight = `-- name: ReadingGetOwnedHighlight :one
-SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position, h.text, h.color, h.chapter, h.created_at, h.updated_at, h.deleted_at, h.rev FROM highlights h
+SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position, h.text, h.color, h.chapter, h.created_at, h.updated_at, h.deleted_at, h.rev, h.style FROM highlights h
 JOIN books b ON b.id = h.book_id
 WHERE h.id = ?1 AND h.user_id = ?2
 AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
@@ -311,6 +327,7 @@ func (q *Queries) ReadingGetOwnedHighlight(ctx context.Context, arg ReadingGetOw
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.Rev,
+		&i.Style,
 	)
 	return i, err
 }
@@ -347,6 +364,54 @@ func (q *Queries) ReadingGetOwnedNote(ctx context.Context, arg ReadingGetOwnedNo
 		&i.Rev,
 	)
 	return i, err
+}
+
+const readingGetOwnedPageAnnotation = `-- name: ReadingGetOwnedPageAnnotation :one
+SELECT pa.seq, pa.id, pa.user_id, pa.book_id, pa.book_file_id, pa.kind, pa.locator, pa.position, pa.data, pa.asset_sha256, pa.created_at, pa.updated_at, pa.deleted_at, pa.rev FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+WHERE pa.id = ?1 AND pa.user_id = ?2
+AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2)
+`
+
+type ReadingGetOwnedPageAnnotationParams struct {
+	ID      string
+	UserID  int64
+	IsAdmin int64
+}
+
+func (q *Queries) ReadingGetOwnedPageAnnotation(ctx context.Context, arg ReadingGetOwnedPageAnnotationParams) (PageAnnotation, error) {
+	row := q.db.QueryRowContext(ctx, readingGetOwnedPageAnnotation, arg.ID, arg.UserID, arg.IsAdmin)
+	var i PageAnnotation
+	err := row.Scan(
+		&i.Seq,
+		&i.ID,
+		&i.UserID,
+		&i.BookID,
+		&i.BookFileID,
+		&i.Kind,
+		&i.Locator,
+		&i.Position,
+		&i.Data,
+		&i.AssetSha256,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.Rev,
+	)
+	return i, err
+}
+
+const readingGetPageAnnotationOwner = `-- name: ReadingGetPageAnnotationOwner :one
+SELECT user_id FROM page_annotations WHERE id = ?1
+`
+
+func (q *Queries) ReadingGetPageAnnotationOwner(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, readingGetPageAnnotationOwner, id)
+	var user_id int64
+	err := row.Scan(&user_id)
+	return user_id, err
 }
 
 const readingGetProgress = `-- name: ReadingGetProgress :one
@@ -768,7 +833,7 @@ func (q *Queries) ReadingListBookmarksByBookID(ctx context.Context, arg ReadingL
 }
 
 const readingListHighlights = `-- name: ReadingListHighlights :many
-SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position, h.text, h.color, h.chapter, h.created_at, h.updated_at, h.deleted_at, h.rev FROM highlights h
+SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position, h.text, h.color, h.chapter, h.created_at, h.updated_at, h.deleted_at, h.rev, h.style FROM highlights h
 JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?1 AND h.book_id = ?2
 AND h.deleted_at IS NULL
@@ -813,6 +878,7 @@ func (q *Queries) ReadingListHighlights(ctx context.Context, arg ReadingListHigh
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.Rev,
+			&i.Style,
 		); err != nil {
 			return nil, err
 		}
@@ -865,6 +931,60 @@ func (q *Queries) ReadingListNotes(ctx context.Context, arg ReadingListNotesPara
 			&i.BookID,
 			&i.HighlightID,
 			&i.BodyMd,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Rev,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readingListPageAnnotations = `-- name: ReadingListPageAnnotations :many
+SELECT pa.seq, pa.id, pa.user_id, pa.book_id, pa.book_file_id, pa.kind, pa.locator, pa.position, pa.data, pa.asset_sha256, pa.created_at, pa.updated_at, pa.deleted_at, pa.rev FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+WHERE pa.user_id = ?1 AND pa.book_id = ?2 AND pa.deleted_at IS NULL
+AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1)
+ORDER BY pa.position, pa.id
+`
+
+type ReadingListPageAnnotationsParams struct {
+	UserID  int64
+	BookID  int64
+	IsAdmin int64
+}
+
+func (q *Queries) ReadingListPageAnnotations(ctx context.Context, arg ReadingListPageAnnotationsParams) ([]PageAnnotation, error) {
+	rows, err := q.db.QueryContext(ctx, readingListPageAnnotations, arg.UserID, arg.BookID, arg.IsAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PageAnnotation{}
+	for rows.Next() {
+		var i PageAnnotation
+		if err := rows.Scan(
+			&i.Seq,
+			&i.ID,
+			&i.UserID,
+			&i.BookID,
+			&i.BookFileID,
+			&i.Kind,
+			&i.Locator,
+			&i.Position,
+			&i.Data,
+			&i.AssetSha256,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -1148,7 +1268,7 @@ func (q *Queries) ReadingPullBookmarks(ctx context.Context, arg ReadingPullBookm
 }
 
 const readingPullHighlights = `-- name: ReadingPullHighlights :many
-SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position, h.text, h.color, h.chapter, h.created_at, h.updated_at, h.deleted_at, h.rev FROM highlights h JOIN books b ON b.id = h.book_id
+SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position, h.text, h.color, h.chapter, h.created_at, h.updated_at, h.deleted_at, h.rev, h.style FROM highlights h JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?1 AND h.rev > ?2 AND h.rev <= ?3
 AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1193,6 +1313,7 @@ func (q *Queries) ReadingPullHighlights(ctx context.Context, arg ReadingPullHigh
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.Rev,
+			&i.Style,
 		); err != nil {
 			return nil, err
 		}
@@ -1245,6 +1366,66 @@ func (q *Queries) ReadingPullNotes(ctx context.Context, arg ReadingPullNotesPara
 			&i.BookID,
 			&i.HighlightID,
 			&i.BodyMd,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.Rev,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readingPullPageAnnotations = `-- name: ReadingPullPageAnnotations :many
+SELECT pa.seq, pa.id, pa.user_id, pa.book_id, pa.book_file_id, pa.kind, pa.locator, pa.position, pa.data, pa.asset_sha256, pa.created_at, pa.updated_at, pa.deleted_at, pa.rev FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+WHERE pa.user_id = ?1 AND pa.rev > ?2 AND pa.rev <= ?3
+AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1)
+ORDER BY pa.rev, pa.id
+`
+
+type ReadingPullPageAnnotationsParams struct {
+	UserID    int64
+	Cursor    int64
+	HighWater int64
+	IsAdmin   int64
+}
+
+func (q *Queries) ReadingPullPageAnnotations(ctx context.Context, arg ReadingPullPageAnnotationsParams) ([]PageAnnotation, error) {
+	rows, err := q.db.QueryContext(ctx, readingPullPageAnnotations,
+		arg.UserID,
+		arg.Cursor,
+		arg.HighWater,
+		arg.IsAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PageAnnotation{}
+	for rows.Next() {
+		var i PageAnnotation
+		if err := rows.Scan(
+			&i.Seq,
+			&i.ID,
+			&i.UserID,
+			&i.BookID,
+			&i.BookFileID,
+			&i.Kind,
+			&i.Locator,
+			&i.Position,
+			&i.Data,
+			&i.AssetSha256,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
@@ -1779,6 +1960,30 @@ func (q *Queries) ReadingTombstoneNote(ctx context.Context, arg ReadingTombstone
 	return err
 }
 
+const readingTombstonePageAnnotation = `-- name: ReadingTombstonePageAnnotation :exec
+UPDATE page_annotations SET updated_at = ?1, deleted_at = ?2, rev = ?3
+WHERE id = ?4 AND user_id = ?5 AND deleted_at IS NULL
+`
+
+type ReadingTombstonePageAnnotationParams struct {
+	UpdatedAt int64
+	DeletedAt sql.NullInt64
+	Rev       int64
+	ID        string
+	UserID    int64
+}
+
+func (q *Queries) ReadingTombstonePageAnnotation(ctx context.Context, arg ReadingTombstonePageAnnotationParams) error {
+	_, err := q.db.ExecContext(ctx, readingTombstonePageAnnotation,
+		arg.UpdatedAt,
+		arg.DeletedAt,
+		arg.Rev,
+		arg.ID,
+		arg.UserID,
+	)
+	return err
+}
+
 const readingUpsertBookmark = `-- name: ReadingUpsertBookmark :execrows
 INSERT INTO bookmarks (id, user_id, book_id, book_file_id, locator, position, label, chapter, created_at, updated_at, deleted_at, rev)
 SELECT ?1, ?2, b.id, ?3, ?4,
@@ -1842,15 +2047,15 @@ func (q *Queries) ReadingUpsertBookmark(ctx context.Context, arg ReadingUpsertBo
 
 const readingUpsertHighlight = `-- name: ReadingUpsertHighlight :execrows
 INSERT INTO highlights (
-    id, user_id, book_id, book_file_id, locator, position, text, color, chapter,
+    id, user_id, book_id, book_file_id, locator, position, text, color, style, chapter,
     created_at, updated_at, deleted_at, rev
 )
 SELECT ?1, ?2, b.id, ?3, ?4,
-       ?5, ?6, ?7, ?8,
-       ?9, ?10, ?11, ?12
+       ?5, ?6, ?7, ?8, ?9,
+       ?10, ?11, ?12, ?13
 FROM books b
-WHERE b.id = ?13
-AND (CAST(?14 AS INTEGER) = 1 OR EXISTS (
+WHERE b.id = ?14
+AND (CAST(?15 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?2
 ))
@@ -1860,7 +2065,7 @@ AND NOT EXISTS (
 ON CONFLICT (id) DO UPDATE SET
     book_id = excluded.book_id, book_file_id = excluded.book_file_id,
     locator = excluded.locator, position = excluded.position, text = excluded.text,
-    color = excluded.color, chapter = excluded.chapter, updated_at = excluded.updated_at,
+    color = excluded.color, style = excluded.style, chapter = excluded.chapter, updated_at = excluded.updated_at,
     deleted_at = excluded.deleted_at, rev = excluded.rev
 WHERE highlights.user_id = excluded.user_id AND excluded.updated_at > highlights.updated_at
 `
@@ -1873,6 +2078,7 @@ type ReadingUpsertHighlightParams struct {
 	Position   float64
 	Text       string
 	Color      string
+	Style      string
 	Chapter    sql.NullString
 	CreatedAt  int64
 	UpdatedAt  int64
@@ -1891,6 +2097,7 @@ func (q *Queries) ReadingUpsertHighlight(ctx context.Context, arg ReadingUpsertH
 		arg.Position,
 		arg.Text,
 		arg.Color,
+		arg.Style,
 		arg.Chapter,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -1949,6 +2156,67 @@ func (q *Queries) ReadingUpsertNote(ctx context.Context, arg ReadingUpsertNotePa
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DeletedAt,
+		arg.Rev,
+		arg.BookID,
+		arg.IsAdmin,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const readingUpsertPageAnnotation = `-- name: ReadingUpsertPageAnnotation :execrows
+INSERT INTO page_annotations (
+    id, user_id, book_id, book_file_id, kind, locator, position, data, asset_sha256,
+    created_at, updated_at, deleted_at, rev
+)
+SELECT ?1, ?2, b.id, ?3, ?4,
+       ?5, ?6, ?7, ?8,
+       ?9, ?10, NULL, ?11
+FROM books b
+WHERE b.id = ?12
+AND (CAST(?13 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
+))
+AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2)
+ON CONFLICT(id) DO UPDATE SET
+    book_file_id = excluded.book_file_id, locator = excluded.locator,
+    position = excluded.position, data = excluded.data, asset_sha256 = excluded.asset_sha256,
+    updated_at = excluded.updated_at, deleted_at = NULL, rev = excluded.rev
+WHERE page_annotations.user_id = excluded.user_id
+    AND page_annotations.book_id = excluded.book_id AND page_annotations.kind = excluded.kind
+    AND excluded.updated_at > page_annotations.updated_at
+`
+
+type ReadingUpsertPageAnnotationParams struct {
+	ID          string
+	UserID      int64
+	BookFileID  sql.NullInt64
+	Kind        string
+	Locator     string
+	Position    float64
+	Data        string
+	AssetSha256 sql.NullString
+	CreatedAt   int64
+	UpdatedAt   int64
+	Rev         int64
+	BookID      int64
+	IsAdmin     int64
+}
+
+func (q *Queries) ReadingUpsertPageAnnotation(ctx context.Context, arg ReadingUpsertPageAnnotationParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, readingUpsertPageAnnotation,
+		arg.ID,
+		arg.UserID,
+		arg.BookFileID,
+		arg.Kind,
+		arg.Locator,
+		arg.Position,
+		arg.Data,
+		arg.AssetSha256,
+		arg.CreatedAt,
+		arg.UpdatedAt,
 		arg.Rev,
 		arg.BookID,
 		arg.IsAdmin,

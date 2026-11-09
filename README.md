@@ -221,6 +221,18 @@ from the tagged checkout; `GOOS` and `GOARCH` can select a target platform.
 Run `pnpm --dir web test:e2e` for the browser suite; CI builds the Go binary and points the
 same suite at its real server and embedded SPA.
 
+The [PDF engine](web/src/lib/reader/pdf.ts) exposes `viewState` and
+`subscribeView`, plus `setLayout`, `setZoom`, `zoomBy`, `rotate`, and
+`setCoverAlone`. Layouts are `single`, `single-continuous`, `split`, and
+`split-continuous`. Zoom accepts `auto`, `page-actual`, `page-fit`, `page-width`,
+or a scale from `0.1` to `5` (1 = 100%). PDF settings use `pdfLayout`,
+`pdfZoom`, `pdfRotation`, and `pdfCoverAlone` in the existing format/book
+settings. Consumers should unsubscribe on teardown and copy view changes
+back to saved settings when offering gesture-driven zoom. Continuous layouts
+keep page placeholders but render only nearby canvases. Highlight rectangles
+remain normalized in the page's original orientation; rotation is applied
+only when selecting or painting them.
+
 Run the release checks locally after building the web assets and binary (PowerShell):
 
 ```powershell

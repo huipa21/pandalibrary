@@ -43,6 +43,7 @@ type Highlight struct {
 	Position   float64         `json:"position"`
 	Text       string          `json:"text"`
 	Color      string          `json:"color"`
+	Style      string          `json:"style"`
 	Chapter    *string         `json:"chapter"`
 	CreatedAt  time.Time       `json:"created_at"`
 	UpdatedAt  time.Time       `json:"updated_at"`
@@ -85,13 +86,29 @@ type Bookmark struct {
 	Rev        int64           `json:"rev"`
 }
 
+// PageAnnotation is an inserted PDF annotation or a sync tombstone.
+type PageAnnotation struct {
+	ID         string          `json:"id"`
+	BookID     int64           `json:"book_id"`
+	BookFileID *int64          `json:"book_file_id"`
+	Kind       string          `json:"kind"`
+	Locator    json.RawMessage `json:"locator"`
+	Position   float64         `json:"position"`
+	Data       json.RawMessage `json:"data"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+	DeletedAt  *time.Time      `json:"deleted_at"`
+	Rev        int64           `json:"rev"`
+}
+
 // BookState contains only the authenticated user's live state for a visible book.
 type BookState struct {
-	UserBook   *UserBook   `json:"user_book"`
-	Progress   *Progress   `json:"progress"`
-	Highlights []Highlight `json:"highlights"`
-	Bookmarks  []Bookmark  `json:"bookmarks"`
-	Notes      []Note      `json:"notes"`
+	UserBook        *UserBook        `json:"user_book"`
+	Progress        *Progress        `json:"progress"`
+	Highlights      []Highlight      `json:"highlights"`
+	Bookmarks       []Bookmark       `json:"bookmarks"`
+	PageAnnotations []PageAnnotation `json:"page_annotations"`
+	Notes           []Note           `json:"notes"`
 }
 
 // Mutation is one offline outbox item. Data is validated according to Entity.
@@ -123,13 +140,14 @@ type PushResponse struct {
 
 // PullResponse is a consistent synchronization snapshot.
 type PullResponse struct {
-	Cursor     int64         `json:"cursor"`
-	UserBooks  []UserBookRow `json:"user_books"`
-	Progress   []ProgressRow `json:"reading_progress"`
-	Highlights []Highlight   `json:"highlights"`
-	Bookmarks  []Bookmark    `json:"bookmarks"`
-	Notes      []Note        `json:"notes"`
-	Settings   []Setting     `json:"user_settings"`
+	Cursor          int64            `json:"cursor"`
+	UserBooks       []UserBookRow    `json:"user_books"`
+	Progress        []ProgressRow    `json:"reading_progress"`
+	Highlights      []Highlight      `json:"highlights"`
+	Bookmarks       []Bookmark       `json:"bookmarks"`
+	PageAnnotations []PageAnnotation `json:"page_annotations"`
+	Notes           []Note           `json:"notes"`
+	Settings        []Setting        `json:"user_settings"`
 }
 
 // UserBookRow is a synced user_books row.

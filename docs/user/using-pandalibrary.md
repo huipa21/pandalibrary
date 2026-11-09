@@ -53,7 +53,7 @@ The back button returns to the list you came from. The **‹ ›** buttons, or t
 Choose **Read** or **Resume** on a book to open it in the browser. Your
 position is saved automatically and syncs across your devices.
 
-In the reader you can:
+In non-PDF readers you can:
 
 - change the font, size, spacing, theme and page flow (saved per format, with
   optional per-book settings);
@@ -61,6 +61,20 @@ In the reader you can:
 - add bookmarks at exact positions.
 
 Reading time is recorded as sessions for your stats; idle time is not counted.
+
+PDFs fill the screen below a compact toolbar, without the app header or
+sidebar. Progress shows two decimal places (for example, **10.05%**), while
+saved positions retain the exact page. Use the left and right arrow keys to
+turn pages. Existing highlights remain visible, and links to saved highlights
+or bookmarks still open at their saved positions.
+
+The borderless **X** saves progress and reading time before returning to the
+book's details. If saving fails, retry the unsaved changes or explicitly
+choose to leave without saving. A coloured status dot indicates offline,
+pending or failed sync; open it for details and a retry action.
+
+PDF annotation and bookmark creation is temporarily unavailable while the
+new PDF tools are being assembled. Other formats keep their existing controls.
 
 ## Offline reading
 
@@ -85,7 +99,8 @@ book) or a ZIP (several books); the files work well in Obsidian.
 
 ## Shelves
 
-Use the **+** button in the sidebar to create a shelf.
+Open the three-dot menu beside **Shelves** in the sidebar and choose **New shelf**
+to create a shelf, or **Manage shelves** to browse and manage existing shelves.
 
 - **Favorites** is created for you and cannot be renamed or deleted.
 - **Manual shelves** contain the books you add to them.

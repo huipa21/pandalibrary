@@ -190,7 +190,13 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 
 	const shelves = sidebar.getByRole('region', { name: 'Shelves' });
 	await expect(shelves.getByRole('link', { name: /Weekend reads/ })).toHaveAttribute('href', '/shelves/7');
-	await expect(shelves.getByRole('button', { name: 'New shelf' })).toBeVisible();
+	const shelfActions = shelves.getByRole('button', { name: 'Shelf actions' });
+	await expect(shelfActions).toBeVisible();
+	await shelfActions.click();
+	await expect(shelves.getByRole('menuitem', { name: 'New shelf' })).toBeVisible();
+	await expect(shelves.getByRole('menuitem', { name: 'Manage shelves' })).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(shelfActions).toBeFocused();
 	await expect(shelves.getByRole('link', { name: /Favorites/ })).toHaveCount(1);
 	await expect(page.locator('[data-slot="sidebar-footer"]')).toBeVisible();
 
@@ -237,7 +243,9 @@ test('administrators see the Admin entry with localized Chinese navigation', asy
 	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', /^书堆/, '书签', '笔记']);
 	await expect(sidebar.getByRole('link', { name: /^书堆/ })).toHaveAttribute('href', '/bookheap');
 	await expect(sidebar.getByRole('link', { name: '管理', exact: true })).toHaveAttribute('href', '/admin');
-	await expect(sidebar.getByRole('button', { name: '新建书架' })).toBeVisible();
+	await sidebar.getByRole('button', { name: '书架操作' }).click();
+	await expect(sidebar.getByRole('menuitem', { name: '新建书架' })).toBeVisible();
+	await expect(sidebar.getByRole('menuitem', { name: '管理书架' })).toBeVisible();
 	await expect(sidebar.getByRole('link', { name: '仪表盘' })).toHaveAttribute('aria-current', 'page');
 });
 
@@ -351,6 +359,7 @@ test('header controls keep their order and responsive visibility', async ({ page
 		header.getByRole('button', { name: 'Switch to dark mode' }),
 		header.getByRole('button', { name: 'Account menu' })
 	];
+	await Promise.all(orderedControls.map((control) => expect(control).toBeVisible()));
 	const positions = await Promise.all(orderedControls.map(async (control) => (await control.boundingBox())?.x));
 	expect(positions.every((position) => position !== undefined)).toBe(true);
 	expect(positions).toEqual([...positions].sort((a, b) => a! - b!));

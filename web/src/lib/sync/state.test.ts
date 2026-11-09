@@ -5,7 +5,7 @@ import type { OutboxEntry, SyncMutation } from './types.js';
 
 const now = Date.parse('2026-11-08T00:00:00Z');
 const iso = new Date(now).toISOString();
-const empty: BookState = { user_book: null, progress: null, highlights: [], bookmarks: [], notes: [] };
+const empty: BookState = { user_book: null, progress: null, highlights: [], bookmarks: [], page_annotations: [], notes: [] };
 const progress = {
 	book_file_id: 3, source: 'web', percentage: 1, locator: { cfi: 'end' },
 	device: 'Web', device_id: 'device', updated_at: iso, rev: 1

@@ -117,9 +117,12 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 	expect((await markdownDownload).suggestedFilename()).toContain('Fixture Book');
 
 	await page.goto('/shelves');
-	await page.getByRole('button', { name: 'Create shelf' }).click();
-	await page.getByLabel('Name').fill('Release Shelf');
-	await page.getByRole('button', { name: 'Create shelf' }).click();
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
+	const creator = page.getByRole('dialog', { name: 'Create shelf' });
+	await creator.getByLabel('Shelf name').fill('Release Shelf');
+	await creator.getByRole('button', { name: 'Create shelf' }).click();
 	await expect(page.getByRole('link', { name: 'Release Shelf' }).first()).toBeVisible();
 
 	await page.getByRole('button', { name: 'Account menu' }).click();

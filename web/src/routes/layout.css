@@ -326,6 +326,11 @@ body {
 	box-shadow: 0 16px 40px rgb(0 0 0 / 28%);
 }
 
+.header-menu-panel.shelf-actions-menu {
+	width: 12rem;
+	font-size: 0.875rem;
+}
+
 @media (max-width: 39.999rem) {
 	.shell-header .header-menu:not(:has(.shell-menu-row)) .header-menu-panel {
 		position: fixed;

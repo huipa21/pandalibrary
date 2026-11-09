@@ -1,16 +1,16 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { listShelves, getSystemShelf } from './api.js';
-	import ShelfCreateDialog from './ShelfCreateDialog.svelte';
+	import ShelfActionsMenu from './ShelfActionsMenu.svelte';
 	import type { Shelf } from './types.js';
 
 	/**
 	 * UX3: Live sidebar shelf navigation with Unshelved, Favorites, and custom shelves.
-	 * Renders the SHELVES slot with a plus button, system shelves, and custom shelf links.
+	 * Renders the SHELVES slot with its actions menu, system shelves, and custom shelf links.
 	 */
-	let { pathname }: { pathname: string } = $props();
+	let { pathname, role }: { pathname: string; role: string } = $props();
 
 	const pager = new CursorPager<Shelf>();
 	let unshelvedShelf = $state<Shelf | null>(null);
@@ -18,7 +18,6 @@
 	let customShelves = $state<Shelf[]>([]);
 	let loadingSystemShelves = $state(true);
 	let systemShelvesError = $state('');
-	let dialogOpen = $state(false);
 	let loadVersion = 0;
 
 	onMount(() => {
@@ -67,18 +66,7 @@
 <section class="shell-section" aria-labelledby="sidebar-shelves-heading" data-slot="sidebar-shelves">
 	<div class="flex items-center justify-between gap-2 pr-1">
 		<h2 id="sidebar-shelves-heading" class="shell-heading">{m['ux1.shelves.heading']()}</h2>
-		<button
-			class="shell-icon-button"
-			aria-label={m['ux1.shelves.create']()}
-			title={m['ux1.shelves.create']()}
-			onclick={() => {
-				dialogOpen = true;
-			}}
-		>
-			<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-				<path d="M10 4v12M4 10h12" />
-			</svg>
-		</button>
+		<ShelfActionsMenu {pathname} {role} />
 	</div>
 
 	{#if systemShelvesError}
@@ -127,16 +115,5 @@
 		{#if pager.empty && !unshelvedShelf && !favoritesShelf}
 			<p class="mt-1 px-3 text-sm text-zinc-400">{m['ux1.shelves.empty']()}</p>
 		{/if}
-
-		<!-- More shelves link -->
-		<a class="shell-link mt-0.5 text-zinc-400" href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined}>
-			{m['ux1.shelves.more']()}
-		</a>
 	{/if}
 </section>
-
-<!-- Create Dialog -->
-<ShelfCreateDialog open={dialogOpen} onclose={() => { dialogOpen = false; }} oncreated={() => {}} />
-
-<style>
-</style>

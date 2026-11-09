@@ -417,7 +417,12 @@ func TestCleanupExactBoundariesAndChildRetention(t *testing.T) {
 		exec(`INSERT INTO highlights (id, user_id, book_id, locator, created_at, updated_at, deleted_at, rev)
 			VALUES (?, 1, 1, '{}', 1, 1, ?, 42)`,
 			fmt.Sprintf("00000000-0000-7000-8000-%012d", offset+2), now.Add(-tombstoneRetention).UnixMilli()+offset)
+		exec(`INSERT INTO page_annotations (id, user_id, book_id, kind, locator, data, created_at, updated_at, deleted_at, rev)
+			VALUES (?, 1, 1, 'text', '{}', '{}', 1, 1, ?, 42)`,
+			fmt.Sprintf("00000000-0000-7000-8000-%012d", offset+2), now.Add(-tombstoneRetention).UnixMilli()+offset)
 	}
+	exec(`INSERT INTO page_annotations (id, user_id, book_id, kind, locator, data, created_at, updated_at, rev)
+		VALUES ('00000000-0000-7000-8000-000000000004', 1, 1, 'text', '{}', '{}', 1, 1, 42)`)
 	// A newer child tombstone must survive the old parent's retention cutoff.
 	exec(`INSERT INTO notes (id, user_id, book_id, highlight_id, created_at, updated_at, deleted_at, rev)
 		VALUES ('00000000-0000-7000-8000-000000000004', 1, 1,
@@ -426,12 +431,13 @@ func TestCleanupExactBoundariesAndChildRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	for query, want := range map[string]int{
-		`SELECT count(*) FROM sessions`:       1,
-		`SELECT count(*) FROM metadata_cache`: 1,
-		`SELECT count(*) FROM import_jobs`:    2,
-		`SELECT count(*) FROM highlights`:     3,
-		`SELECT count(*) FROM notes`:          1,
-		`SELECT value FROM sync_counter`:      42,
+		`SELECT count(*) FROM sessions`:         1,
+		`SELECT count(*) FROM metadata_cache`:   1,
+		`SELECT count(*) FROM import_jobs`:      2,
+		`SELECT count(*) FROM highlights`:       3,
+		`SELECT count(*) FROM page_annotations`: 3,
+		`SELECT count(*) FROM notes`:            1,
+		`SELECT value FROM sync_counter`:        42,
 	} {
 		var got int
 		if err := fixture.databases.Reader.QueryRowContext(ctx, query).Scan(&got); err != nil || got != want {
@@ -441,15 +447,18 @@ func TestCleanupExactBoundariesAndChildRetention(t *testing.T) {
 	if err := fixture.service.cleanupExpiredAt(ctx, now.Add(time.Millisecond)); err != nil {
 		t.Fatal(err)
 	}
-	var children, parents int
+	var children, parents, pageAnnotations int
 	if err := fixture.databases.Reader.QueryRow(`SELECT count(*) FROM notes`).Scan(&children); err != nil {
 		t.Fatal(err)
 	}
 	if err := fixture.databases.Reader.QueryRow(`SELECT count(*) FROM highlights`).Scan(&parents); err != nil {
 		t.Fatal(err)
 	}
-	if children != 0 || parents != 1 {
-		t.Fatalf("after child expiry: children=%d parents=%d", children, parents)
+	if err := fixture.databases.Reader.QueryRow(`SELECT count(*) FROM page_annotations`).Scan(&pageAnnotations); err != nil {
+		t.Fatal(err)
+	}
+	if children != 0 || parents != 1 || pageAnnotations != 2 {
+		t.Fatalf("after tombstone expiry: children=%d parents=%d page annotations=%d", children, parents, pageAnnotations)
 	}
 	rows, err := fixture.databases.Reader.Query(`PRAGMA foreign_key_check`)
 	if err != nil {

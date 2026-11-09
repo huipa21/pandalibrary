@@ -1,20 +1,28 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { listShelves } from '#lib/shelves/api.js';
+	import ShelfActionsMenu from '#lib/shelves/ShelfActionsMenu.svelte';
 	import type { Shelf } from '#lib/shelves/types.js';
 
 	/**
-	 * UX1 placeholder for the sidebar SHELVES slot: the first page of the existing shelf list plus
-	 * a create link to the shelves page. UX3 replaces this component with `ShelfNavigation`.
+	 * UX1 placeholder for the sidebar SHELVES slot: the first page of the existing shelf list.
+	 * UX3 replaces this component with `ShelfNavigation`.
 	 * Load states are deliberately not live regions so they never compete with page status/alerts.
 	 */
-	let { pathname }: { pathname: string } = $props();
+	let { pathname, role }: { pathname: string; role: string } = $props();
 	const pager = new CursorPager<Shelf>();
 
-	onMount(() => void pager.reset((cursor, signal) => listShelves({ cursor, signal })));
-	onDestroy(() => pager.dispose());
+	onMount(() => {
+		void pager.reset((cursor, signal) => listShelves({ cursor, signal }));
+		const refresh = () => void pager.reload();
+		window.addEventListener('pandalibrary-shelves-changed', refresh);
+		return () => {
+			window.removeEventListener('pandalibrary-shelves-changed', refresh);
+			pager.dispose();
+		};
+	});
 
 	const current = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 </script>
@@ -22,11 +30,7 @@
 <section class="shell-section" aria-labelledby="sidebar-shelves-heading" data-slot="sidebar-shelves">
 	<div class="flex items-center justify-between gap-2 pr-1">
 		<h2 id="sidebar-shelves-heading" class="shell-heading">{m['ux1.shelves.heading']()}</h2>
-		<a class="shell-icon-button" href="/shelves" aria-label={m['ux1.shelves.create']()} title={m['ux1.shelves.create']()}>
-			<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-				<path d="M10 4v12M4 10h12" />
-			</svg>
-		</a>
+		<ShelfActionsMenu {pathname} {role} />
 	</div>
 	{#if pager.status === 'error'}
 		<div class="mt-1 space-y-1 px-3 text-sm text-red-300">
@@ -51,8 +55,5 @@
 				{/each}
 			</ul>
 		{/if}
-		<a class="shell-link mt-0.5 text-[color:var(--shell-muted)]" href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined}>
-			{m['ux1.shelves.more']()}
-		</a>
 	{/if}
 </section>

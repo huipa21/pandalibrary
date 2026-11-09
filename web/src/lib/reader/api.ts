@@ -3,7 +3,7 @@ import type { BookFile } from '#lib/catalog/types.js';
 import type { BookState, Setting } from './types.js';
 
 export type Mutation = {
-	entity: 'user_books' | 'reading_progress' | 'highlights' | 'bookmarks' | 'notes' | 'user_settings' | 'reading_sessions';
+	entity: 'user_books' | 'reading_progress' | 'highlights' | 'bookmarks' | 'page_annotations' | 'notes' | 'user_settings' | 'reading_sessions';
 	op: 'upsert' | 'delete';
 	data: { [key: string]: JsonValue };
 	updated_at: number;
@@ -31,7 +31,7 @@ export class InvalidFileUrlError extends Error {
 
 export async function getBookState(bookId: number): Promise<BookState> {
 	const state = await api.request<BookState & { bookmarks?: BookState['bookmarks'] }>(`/me/books/${bookId}`);
-	return { ...state, bookmarks: state.bookmarks ?? [] };
+	return { ...state, bookmarks: state.bookmarks ?? [], page_annotations: state.page_annotations ?? [] };
 }
 
 export async function getSettings(): Promise<Setting[]> {

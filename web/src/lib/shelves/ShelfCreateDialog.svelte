@@ -1,17 +1,18 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 	import { createShelf, MAX_SHELF_NAME_BYTES, MAX_SHELF_DESCRIPTION_BYTES } from './api.js';
-	import { fieldErrorKey, validateShelfDraft } from './form.js';
+	import { fieldErrorKey, shelfErrorKey, validateShelfDraft } from './form.js';
 	import { translate } from '#lib/paging/translate.js';
-	import type { Shelf, ShelfInput, ShelfMode, RuleSet } from './types.js';
+	import { focusableWithin, nextTrappedFocus } from '#lib/shell/focus.js';
+	import type { ShelfInput, ShelfMode, RuleSet } from './types.js';
 
 	interface Props {
 		open: boolean;
+		allowShared: boolean;
 		onclose: () => void;
-		oncreated: (shelf: Shelf) => void;
 	}
 
-	let { open, onclose, oncreated }: Props = $props();
+	let { open, allowShared, onclose }: Props = $props();
 
 	let mode = $state<ShelfMode>('manual');
 	let kind = $state<'private' | 'shared'>('private');
@@ -64,16 +65,20 @@
 	}
 
 	async function handleSubmit() {
-		if (!validateForm()) return;
+		if (isSubmitting) return;
+		if (!validateForm()) {
+			if (errors.name) dialogElement?.querySelector<HTMLInputElement>('#shelf_name')?.focus();
+			return;
+		}
 
 		isSubmitting = true;
 		error = '';
 
 		try {
 			const input: ShelfInput = {
-				kind,
+				kind: allowShared ? kind : 'private',
 				name: name.trim(),
-				description: description.trim() || null,
+				description: description.trim() ? description : null,
 				mode,
 				rules: mode === 'automatic' ? rules : undefined
 			};
@@ -81,13 +86,10 @@
 			const shelf = await createShelf(input);
 			resetForm();
 			onclose();
-			oncreated(shelf);
-
-			// Dispatch event for other components to listen
-			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
+			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed', { detail: { createdShelf: shelf } }));
 		} catch (e) {
 			console.error('Failed to create shelf:', e);
-			error = m['ux3.shelves.error']();
+			error = translate(shelfErrorKey(e, 'save'));
 		} finally {
 			isSubmitting = false;
 		}
@@ -96,6 +98,15 @@
 	function cancel(event: Event) {
 		event.preventDefault();
 		if (!isSubmitting) onclose();
+	}
+
+	function onkeydown(event: KeyboardEvent) {
+		if (event.key !== 'Tab') return;
+		const target = nextTrappedFocus(focusableWithin(dialogElement), document.activeElement, event.shiftKey);
+		if (target) {
+			event.preventDefault();
+			target.focus();
+		}
 	}
 
 	function addCondition() {
@@ -126,6 +137,7 @@
 			class="fixed inset-0 m-auto max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 text-slate-950 shadow-lg"
 			aria-label={m['ux3.shelves.create_dialog_title']()}
 			oncancel={cancel}
+			{onkeydown}
 		>
 			<h2 class="text-lg font-semibold">{m['ux3.shelves.create_dialog_title']()}</h2>
 			<p class="mt-1 text-sm text-slate-600">{m['ux3.shelves.create_dialog_description']()}</p>
@@ -161,11 +173,13 @@
 						bind:value={name}
 						disabled={isSubmitting}
 						maxlength={MAX_SHELF_NAME_BYTES}
+						aria-invalid={errors.name ? 'true' : undefined}
+						aria-describedby={errors.name ? 'shelf-name-error' : undefined}
 						placeholder=""
 						class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:bg-slate-100"
 					/>
 					{#if errors.name}
-						<p class="mt-1 text-xs text-red-800">{errors.name}</p>
+						<p id="shelf-name-error" class="mt-1 text-xs text-red-800" role="alert">{errors.name}</p>
 					{/if}
 				</div>
 
@@ -192,10 +206,12 @@
 							<input type="radio" value="private" bind:group={kind} disabled={isSubmitting} class="cursor-pointer" />
 							<span class="text-sm">{m['ux3.shelves.kind_private']()}</span>
 						</label>
-						<label class="flex items-center gap-2">
-							<input type="radio" value="shared" bind:group={kind} disabled={isSubmitting} class="cursor-pointer" />
-							<span class="text-sm">{m['ux3.shelves.kind_shared']()}</span>
-						</label>
+						{#if allowShared}
+							<label class="flex items-center gap-2">
+								<input type="radio" value="shared" bind:group={kind} disabled={isSubmitting} class="cursor-pointer" />
+								<span class="text-sm">{m['ux3.shelves.kind_shared']()}</span>
+							</label>
+						{/if}
 					</div>
 				</fieldset>
 

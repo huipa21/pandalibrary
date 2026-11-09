@@ -127,6 +127,12 @@ test('menu destinations keep accessible titles without repeated visible introduc
 			await page.getByRole('button', { name: 'Account menu', exact: true }).click();
 			await expect(page.getByRole('menuitem', { name: 'Profile', exact: true }))
 				.toHaveAttribute('aria-current', 'page');
+		} else if (destination.path === '/shelves') {
+			const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+			await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
+			await expect(sidebar.getByRole('menuitem', { name: 'Manage shelves' }))
+				.toHaveAttribute('aria-current', 'page');
+			await page.keyboard.press('Escape');
 		} else {
 			await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator(`a[href="${destination.path}"]`))
 				.toHaveAttribute('aria-current', 'page');

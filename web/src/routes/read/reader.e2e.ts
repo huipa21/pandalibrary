@@ -272,16 +272,21 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	expect(externalScriptRequests).toBe(0);
 });
 
-test('opens PDF, restores its page and persists selectable highlights', async ({ page }) => {
+test('opens PDF, restores its page and paints persisted selectable highlights', async ({ page }) => {
 	const state = await setupReader(page, 'pdf', pdfFixture(), {
 		initialProgress: {
 			book_file_id: 31, source: 'web', locator: { type: 'pdf', page: 2 }, percentage: 1,
 			device: 'PandaLibrary Web', device_id: 'other', updated_at: '2026-11-03T00:00:00Z', rev: 1
 		}
 	});
+	state.highlights = [{
+		id: 'pdf-highlight', book_id: 21, book_file_id: 31,
+		locator: { type: 'pdf', page: 2, rects: [{ x: 0.1, y: 0.1, width: 0.3, height: 0.02 }] },
+		position: 1, text: 'Second PDF page text', color: 'yellow', chapter: null,
+		created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z', deleted_at: null, rev: 1
+	}];
 	await useProductionCsp(page);
 	await page.goto('/read/21/31');
-	await expect(page.getByRole('button', { name: 'Previous page' })).toBeEnabled();
 	await expect(page.locator('.reader-pdf-text')).toContainText('Second PDF page text');
 	await page.evaluate(() => {
 		const span = document.querySelector('.reader-pdf-text span');
@@ -293,13 +298,183 @@ test('opens PDF, restores its page and persists selectable highlights', async ({
 		selected?.addRange(range);
 		document.dispatchEvent(new Event('selectionchange'));
 	});
-	await expect(page.getByText('Second PDF page text', { exact: true }).last()).toBeVisible();
-	await page.getByRole('button', { name: 'Highlight selection' }).click();
-	await expect.poll(() => state.highlights.length).toBe(1);
+	await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('Second PDF page text');
 	await expect(page.locator('.reader-pdf-highlight')).toHaveCount(1);
 	await page.reload();
 	await expect(page.locator('.reader-pdf-text')).toContainText('Second PDF page text');
 	await expect(page.locator('.reader-pdf-highlight')).toHaveCount(1);
+});
+
+test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async ({ page }) => {
+	test.setTimeout(60_000);
+	const state = await setupReader(page, 'pdf', pdfFixture(200), {
+		initialProgress: {
+			book_file_id: 31, source: 'web', locator: { type: 'pdf', page: 21 }, percentage: 20 / 199,
+			device: 'PandaLibrary Web', device_id: 'other', updated_at: '2026-11-03T00:00:00Z', rev: 1
+		}
+	});
+	await page.goto('/read/21/31');
+	const surface = page.locator('.reader-pdf');
+	const progress = page.locator('.pv-frame-toolbar');
+	await expect(progress).toContainText('10.05%');
+	await expect(page.locator('.reader-pdf-text')).toContainText('Page 21 PDF page text');
+	// PV1 hides PDF settings until the new toolbar is assembled. Exercise persisted engine settings.
+	async function settings(patch: Record<string, unknown>) {
+		const previous = state.settings.find((setting) => setting.key === 'reader.book.21')?.value;
+		state.rev += 1;
+		state.settings = [
+			...state.settings.filter((setting) => setting.key !== 'reader.book.21'),
+			{ key: 'reader.book.21', value: { ...(previous as Record<string, unknown>), ...patch }, updated_at: new Date().toISOString(), rev: state.rev }
+		];
+		await page.reload();
+		await expect(page.locator('.reader-pdf-page[data-page="21"] .reader-pdf-text')).toContainText('Page 21 PDF page text');
+	}
+	const pageWidth = () => page.locator('.reader-pdf-page[data-page="21"]').evaluate((element) => element.getBoundingClientRect().width);
+
+	await settings({ pdfZoom: 'page-actual' });
+	await expect.poll(pageWidth).toBeCloseTo(612, 0);
+	await settings({ pdfZoom: 1.375 });
+	await expect.poll(pageWidth).toBeCloseTo(841.5, 0);
+	await settings({ pdfRotation: 90 });
+	await expect.poll(pageWidth).toBeCloseTo(1089, 0);
+	await settings({ pdfRotation: 180 });
+	await expect.poll(pageWidth).toBeCloseTo(841.5, 0);
+	await settings({ pdfRotation: 270 });
+	await expect.poll(pageWidth).toBeCloseTo(1089, 0);
+	await settings({ pdfRotation: 0, pdfZoom: 'page-fit' });
+	await expect.poll(async () => page.locator('.reader-pdf-page').evaluate((element) =>
+		element.getBoundingClientRect().height <= (element.closest('.reader-pdf')?.clientHeight ?? 0) + 1
+	)).toBe(true);
+	await settings({ pdfZoom: 'auto' });
+	await expect.poll(pageWidth).toBeGreaterThan(0);
+	await settings({ pdfZoom: 'page-width', pdfLayout: 'split' });
+	await expect(surface).toHaveAttribute('data-layout', 'split');
+	await expect(page.locator('.reader-pdf-page')).toHaveCount(2);
+	await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', '21');
+	await expect(page.locator('.reader-pdf-page').last()).toHaveAttribute('data-page', '22');
+	await page.locator('#reader-surface').focus();
+	await page.keyboard.press('ArrowRight');
+	await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', '23');
+	await page.keyboard.press('ArrowLeft');
+	await expect(progress).toContainText('10.05%');
+
+	for (const value of ['single-continuous', 'split-continuous']) {
+		await settings({ pdfLayout: value });
+		await expect(surface).toHaveAttribute('data-layout', value);
+		await expect(page.locator('.reader-pdf-page')).toHaveCount(200);
+		await expect(progress).toContainText('10.05%');
+		await expect.poll(() => page.locator('.reader-pdf-page canvas').count()).toBeLessThan(12);
+		await surface.evaluate((element) => {
+			const target = element.querySelector<HTMLElement>('.reader-pdf-page[data-page="41"]')?.parentElement;
+			if (!target) throw new Error('Missing scroll target');
+			element.scrollTop += target.getBoundingClientRect().top - element.getBoundingClientRect().top - element.clientTop;
+		});
+		await expect(progress).toContainText('20.10%');
+		await expect(page.locator('.reader-pdf-page[data-page="41"] .reader-pdf-text')).toContainText('Page 41 PDF page text');
+		await expect.poll(() => state.progress?.locator).toEqual({ type: 'pdf', page: 41 });
+		state.rev += 1;
+		state.progress = { ...state.progress, locator: { type: 'pdf', page: 21 }, percentage: 20 / 199, updated_at: new Date().toISOString(), rev: state.rev };
+		await page.reload();
+		await expect(progress).toContainText('10.05%');
+	}
+	await settings({ pdfLayout: 'single', pdfRotation: 90, pdfZoom: 1.375 });
+	await expect(page.locator('.reader-pdf-page')).toHaveCount(1);
+	await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value).toMatchObject({
+		futureOption: { keep: true }, pdfLayout: 'single', pdfZoom: 1.375, pdfRotation: 90
+	});
+	await page.reload();
+	await expect(progress).toContainText('10.05%');
+	await expect.poll(pageWidth).toBeCloseTo(1089, 0);
+	await expect.poll(() => state.progress?.locator).toEqual({ type: 'pdf', page: 21 });
+});
+
+test('PDF odd spreads and cover-alone navigation retain every page', async ({ page }) => {
+	const state = await setupReader(page, 'pdf', pdfFixture(5));
+	state.settings.push({ key: 'reader.book.21', value: { pdfLayout: 'split', pdfCoverAlone: true }, updated_at: new Date().toISOString(), rev: ++state.rev });
+	state.settings = state.settings.filter((setting) => setting.key !== 'reader.book.21' || setting.rev === state.rev);
+	await page.goto('/read/21/31');
+	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+	await expect(page.locator('.reader-pdf-page')).toHaveCount(1);
+	await page.locator('#reader-surface').focus();
+	for (const first of [2, 4]) {
+		await page.keyboard.press('ArrowRight');
+		await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', String(first));
+		await expect(page.locator('.reader-pdf-page')).toHaveCount(2);
+	}
+	await page.keyboard.press('ArrowLeft');
+	await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', '2');
+	state.settings = [{ key: 'reader.book.21', value: { pdfLayout: 'split', pdfCoverAlone: false }, updated_at: new Date().toISOString(), rev: ++state.rev }];
+	await page.reload();
+	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
+	await page.locator('#reader-surface').focus();
+	await page.keyboard.press('ArrowRight');
+	await page.keyboard.press('ArrowRight');
+	await expect(page.locator('.reader-pdf-page')).toHaveCount(1);
+	await expect(page.locator('.reader-pdf-page')).toHaveAttribute('data-page', '5');
+	await expect(page.locator('.pv-frame-toolbar')).toContainText('100.00%');
+});
+
+test('PDF free zoom preserves rotated text and highlight geometry', async ({ page }) => {
+	const state = await setupReader(page, 'pdf', pdfFixture(1));
+	state.settings = [{ key: 'reader.book.21', value: { pdfZoom: 'page-actual', pdfRotation: 90 }, updated_at: new Date().toISOString(), rev: ++state.rev }];
+	state.highlights = [{
+		id: 'rotated-highlight', book_id: 21, book_file_id: 31,
+		locator: { type: 'pdf', page: 1, rects: [{ x: 0.1, y: 0.1, width: 0.3, height: 0.02 }] },
+		position: 0, text: 'First PDF page text', color: 'blue', chapter: null,
+		created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z', deleted_at: null, rev: 1
+	}];
+	const errors: string[] = [];
+	page.on('pageerror', (error) => errors.push(error.message));
+	await useProductionCsp(page);
+	await page.goto('/read/21/31');
+	const surface = page.locator('#reader-surface');
+	const pdfPage = page.locator('.reader-pdf-page');
+	const width = () => pdfPage.evaluate((element) => element.getBoundingClientRect().width);
+	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+	await expect.poll(width).toBeCloseTo(792, 0);
+	const geometry = () => pdfPage.evaluate((element) => {
+		const page = element.getBoundingClientRect();
+		const mark = element.querySelector('.reader-pdf-highlight')?.getBoundingClientRect();
+		const text = element.querySelector('.reader-pdf-text span')?.getBoundingClientRect();
+		if (!mark || !text) throw new Error('Missing PDF layers');
+		return {
+			x: (mark.left - page.left) / page.width, y: (mark.top - page.top) / page.height,
+			width: mark.width / page.width, height: mark.height / page.height,
+			textInside: text.left >= page.left && text.top >= page.top && text.right <= page.right && text.bottom <= page.bottom,
+			textRotated: text.height > text.width
+		};
+	});
+	const original = await geometry();
+	expect(original.x).toBeCloseTo(0.88, 3);
+	expect(original.y).toBeCloseTo(0.1, 3);
+	expect(original.width).toBeCloseTo(0.02, 3);
+	expect(original.height).toBeCloseTo(0.3, 3);
+	expect(original.textInside).toBe(true);
+	expect(original.textRotated).toBe(true);
+	await surface.focus();
+	await page.keyboard.press('Control+=');
+	await expect.poll(width).toBeCloseTo(871.2, 0);
+	await page.keyboard.press('Control+-');
+	await expect.poll(width).toBeCloseTo(792, 0);
+	await surface.dispatchEvent('wheel', { deltaY: -100, ctrlKey: true });
+	await expect.poll(width).toBeCloseTo(871.2, 0);
+	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+	const zoomed = await geometry();
+	expect(zoomed.x).toBeCloseTo(original.x, 3);
+	expect(zoomed.y).toBeCloseTo(original.y, 3);
+	expect(zoomed.textInside).toBe(true);
+	await surface.evaluate((element) => {
+		for (let index = 0; index < 30; index++) element.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, cancelable: true }));
+	});
+	await expect.poll(width).toBeCloseTo(3960, 0);
+	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+	await surface.focus();
+	await page.keyboard.press('Control+0');
+	await page.setViewportSize({ width: 390, height: 844 });
+	await expect.poll(width).toBeLessThanOrEqual(390);
+	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+	await expect(page.locator('.pv-frame-toolbar')).toContainText('0.00%');
+	expect(errors).toEqual([]);
 });
 
 for (const { format, fixture, locator, target, start } of [
@@ -317,12 +492,12 @@ for (const { format, fixture, locator, target, start } of [
 			else await expect((await bookFrame(page, text)).getByText(text, { exact: true })).toBeVisible();
 		};
 		await page.goto('/read/21/31?highlight=missing-highlight');
-		await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+		if (format !== 'pdf') await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 		await visibleText(start);
 		// Background Sync can be unavailable in headless Chromium, which may surface the unrelated save banner.
 		await expect(page.getByRole('alert').filter({ hasNotText: 'A change could not be saved' })).toHaveCount(0);
 		await page.goto('/read/21/31?highlight=hl-target');
-		await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+		if (format !== 'pdf') await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 		await visibleText(target);
 	});
 }

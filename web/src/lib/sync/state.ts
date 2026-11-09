@@ -1,6 +1,8 @@
 import type { JsonValue } from '#lib/api/client.js';
 import { autoStatus, userBookFromState } from '#lib/bookview/user-book.js';
-import type { Bookmark, BookState, Highlight, Note, Progress, Setting } from '#lib/reader/types.js';
+import { isHighlightStyle } from '#lib/reader/annotations.js';
+import { validatePageAnnotationInput } from '#lib/reader/page-annotations.js';
+import type { Bookmark, BookState, Highlight, Note, PageAnnotation, Progress, Setting } from '#lib/reader/types.js';
 import { OfflineStorageError, outbox, rows } from './db.js';
 import type { OutboxEntry, StoredRow, SyncMutation, UserBookRow } from './types.js';
 
@@ -37,12 +39,24 @@ export function replayMutations(
 	bookId: number,
 	base: BookState,
 	baseSettings: Setting[],
-	entries: OutboxEntry[]
+	entries: OutboxEntry[],
+	pageTombstones: PageAnnotation[] = []
 ): { state: BookState; settings: Setting[] } {
 	let userBook = base.user_book;
 	let progress = base.progress;
 	const highlights = new Map(base.highlights.map((item) => [item.id, item]));
 	const bookmarks = new Map((base.bookmarks ?? []).map((item) => [item.id, item]));
+	const pageAnnotations = new Map((base.page_annotations ?? []).map((item) => [item.id, item]));
+	const knownPages = new Map(pageAnnotations);
+	const pageClocks = new Map<string, number>();
+	for (const item of [...pageAnnotations.values(), ...pageTombstones]) {
+		const clock = Date.parse(item.updated_at);
+		if (!Number.isFinite(clock)) throw new OfflineStorageError('Invalid page annotation timestamp.');
+		if (clock > (pageClocks.get(item.id) ?? -Infinity)) {
+			pageClocks.set(item.id, clock);
+			knownPages.set(item.id, item);
+		}
+	}
 	const notes = new Map(base.notes.map((item) => [item.id, item]));
 	const settings = new Map(baseSettings.map((item) => [item.key, item]));
 
@@ -92,6 +106,8 @@ export function replayMutations(
 				}
 			} else if (data.book_id === bookId) {
 				const previous = highlights.get(mutation.id);
+				const style = data.style === undefined ? (previous?.style ?? 'highlight') : data.style;
+				if (!isHighlightStyle(style)) throw new OfflineStorageError('Invalid queued highlight style.');
 				highlights.set(mutation.id, {
 					id: mutation.id,
 					book_id: bookId,
@@ -100,6 +116,7 @@ export function replayMutations(
 					position: number(data, 'position'),
 					text: text(data, 'text'),
 					color: text(data, 'color'),
+					style,
 					chapter: nullableText(data, 'chapter'),
 					created_at: previous?.created_at ?? updatedAt,
 					updated_at: updatedAt,
@@ -126,6 +143,34 @@ export function replayMutations(
 					rev: previous?.rev ?? 0
 				});
 			}
+		} else if (entity === 'page_annotations' && 'id' in mutation) {
+			const previous = pageAnnotations.get(mutation.id);
+			const known = knownPages.get(mutation.id);
+			const clock = pageClocks.get(mutation.id);
+			if (clock !== undefined && mutation.updated_at <= clock) continue;
+			if (op === 'delete') {
+				if (previous) {
+					pageAnnotations.delete(mutation.id);
+					pageClocks.set(mutation.id, mutation.updated_at);
+					knownPages.set(mutation.id, { ...previous, updated_at: updatedAt, deleted_at: updatedAt });
+				}
+			} else if (data.book_id === bookId) {
+				const input: unknown = {
+					kind: data.kind, locator: data.locator, position: data.position, data: data.data
+				};
+				if (!validatePageAnnotationInput(input) || (known && known.kind !== input.kind)) {
+					throw new OfflineStorageError('Invalid queued page annotation.');
+				}
+				const value: PageAnnotation = {
+					...input, id: mutation.id, book_id: bookId,
+					book_file_id: data.book_file_id === undefined ? null : nullableNumber(data, 'book_file_id'),
+					created_at: known?.created_at ?? updatedAt,
+					updated_at: updatedAt, deleted_at: null, rev: known?.rev ?? 0
+				};
+				pageAnnotations.set(mutation.id, value);
+				knownPages.set(mutation.id, value);
+				pageClocks.set(mutation.id, mutation.updated_at);
+			}
 		} else if (entity === 'notes' && 'id' in mutation) {
 			if (op === 'delete') {
 				notes.delete(mutation.id);
@@ -145,7 +190,13 @@ export function replayMutations(
 		}
 	}
 	return {
-		state: { user_book: userBook, progress, highlights: [...highlights.values()], bookmarks: [...bookmarks.values()], notes: [...notes.values()] },
+		state: {
+			user_book: userBook, progress, highlights: [...highlights.values()], bookmarks: [...bookmarks.values()],
+			page_annotations: [...pageAnnotations.values()].sort((a, b) =>
+				a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+			),
+			notes: [...notes.values()]
+		},
 		settings: [...settings.values()]
 	};
 }
@@ -155,6 +206,7 @@ function snapshot(bookId: number, saved: StoredRow[]): { state: BookState; setti
 	let progress: Progress | null = null;
 	const highlights: Highlight[] = [];
 	const bookmarks: Bookmark[] = [];
+	const pageAnnotations: PageAnnotation[] = [];
 	const notes: Note[] = [];
 	const settings: Setting[] = [];
 	for (const row of saved) {
@@ -171,6 +223,9 @@ function snapshot(bookId: number, saved: StoredRow[]): { state: BookState; setti
 			case 'bookmarks':
 				if (row.value.book_id === bookId && !row.value.deleted_at) bookmarks.push(row.value);
 				break;
+			case 'page_annotations':
+				if (row.value.book_id === bookId && !row.value.deleted_at) pageAnnotations.push(row.value);
+				break;
 			case 'notes':
 				if (row.value.book_id === bookId && !row.value.deleted_at) notes.push(row.value);
 				break;
@@ -179,7 +234,7 @@ function snapshot(bookId: number, saved: StoredRow[]): { state: BookState; setti
 				break;
 		}
 	}
-	return { state: { user_book: userBook, progress, highlights, bookmarks, notes }, settings };
+	return { state: { user_book: userBook, progress, highlights, bookmarks, page_annotations: pageAnnotations, notes }, settings };
 }
 
 export async function readerState(
@@ -189,5 +244,8 @@ export async function readerState(
 ): Promise<{ state: BookState; settings: Setting[] }> {
 	const [saved, queued] = await Promise.all([rows(account), outbox(account)]);
 	const base = online ?? snapshot(bookId, saved);
-	return replayMutations(bookId, base.state, base.settings, queued);
+	const tombstones = saved.flatMap((row) =>
+		row.entity === 'page_annotations' && row.value.book_id === bookId && row.value.deleted_at ? [row.value] : []
+	);
+	return replayMutations(bookId, base.state, base.settings, queued, tombstones);
 }

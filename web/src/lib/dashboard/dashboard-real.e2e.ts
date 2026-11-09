@@ -8,7 +8,9 @@ test('real server persists configured shelves and an empty layout across devices
 	await signInRealAdmin(page);
 	await expect(page.locator('[data-dashboard-section]')).toHaveCount(3);
 
-	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'New shelf' }).click();
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
 	const creator = page.getByRole('dialog', { name: 'Create shelf' });
 	await creator.getByLabel('Shelf name').fill('Real server shelf');
 	await creator.getByRole('button', { name: 'Create shelf', exact: true }).click();

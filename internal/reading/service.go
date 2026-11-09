@@ -126,7 +126,7 @@ func toProgressRow(row sqlc.ReadingProgress) ProgressRow {
 func toHighlight(row sqlc.Highlight) Highlight {
 	return Highlight{
 		ID: row.ID, BookID: row.BookID, BookFileID: nullableInt(row.BookFileID),
-		Locator: json.RawMessage(row.Locator), Position: row.Position, Text: row.Text, Color: row.Color,
+		Locator: json.RawMessage(row.Locator), Position: row.Position, Text: row.Text, Color: row.Color, Style: row.Style,
 		Chapter: nullableString(row.Chapter), CreatedAt: timestamp(row.CreatedAt),
 		UpdatedAt: timestamp(row.UpdatedAt), DeletedAt: nullableTime(row.DeletedAt), Rev: row.Rev,
 	}
@@ -187,6 +187,7 @@ func (s *Service) GetBookState(ctx context.Context, viewer Viewer, bookID int64)
 	}
 	state.Highlights = []Highlight{}
 	state.Bookmarks = []Bookmark{}
+	state.PageAnnotations = []PageAnnotation{}
 	state.Notes = []Note{}
 	err := readSnapshot(ctx, s.reader, func(tx *sql.Tx) error {
 		q := sqlc.New(tx)
@@ -231,6 +232,15 @@ func (s *Service) GetBookState(ctx context.Context, viewer Viewer, bookID int64)
 		}
 		for _, row := range bookmarks {
 			state.Bookmarks = append(state.Bookmarks, toBookmark(row))
+		}
+		pageAnnotations, err := q.ReadingListPageAnnotations(ctx, sqlc.ReadingListPageAnnotationsParams{
+			UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
+		})
+		if err != nil {
+			return fmt.Errorf("list page annotations: %w", err)
+		}
+		for _, row := range pageAnnotations {
+			state.PageAnnotations = append(state.PageAnnotations, toPageAnnotation(row))
 		}
 		notes, err := q.ReadingListNotes(ctx, sqlc.ReadingListNotesParams{
 			UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
@@ -337,6 +347,7 @@ type highlightData struct {
 	Position   float64         `json:"position"`
 	Text       string          `json:"text"`
 	Color      string          `json:"color"`
+	Style      *string         `json:"style"`
 	Chapter    *string         `json:"chapter"`
 	CreatedAt  *int64          `json:"created_at"`
 }
@@ -656,10 +667,18 @@ func (s *Service) applyMutation(
 		if err := decodeMutationData(mutation.Data, &data); err != nil {
 			return reject("highlight data is invalid")
 		}
+		style := "highlight"
+		if exists {
+			style = existing.Style
+		}
+		if data.Style != nil {
+			style = *data.Style
+		}
 		if data.BookID < 1 || !validOptionalJSON(data.Locator, maxLocatorBytes) ||
 			len(data.Locator) == 0 || !json.Valid(data.Locator) ||
 			math.IsNaN(data.Position) || math.IsInf(data.Position, 0) || data.Position < 0 || data.Position > 1 ||
 			len(data.Text) > maxHighlightText || len(data.Color) == 0 || len(data.Color) > 32 ||
+			(style != "highlight" && style != "underline" && style != "strikeout") ||
 			data.Chapter != nil && len(*data.Chapter) > 512 {
 			return reject("highlight fields are invalid")
 		}
@@ -700,7 +719,7 @@ func (s *Service) applyMutation(
 		rows, err := q.ReadingUpsertHighlight(ctx, sqlc.ReadingUpsertHighlightParams{
 			ID: id, UserID: viewer.UserID, BookID: data.BookID, IsAdmin: adminFlag(viewer),
 			BookFileID: nullableIntInput(data.BookFileID), Locator: string(data.Locator),
-			Position: data.Position, Text: data.Text, Color: data.Color,
+			Position: data.Position, Text: data.Text, Color: data.Color, Style: style,
 			Chapter: nullableStringInput(data.Chapter), CreatedAt: createdAt, UpdatedAt: updatedAt,
 			Rev: rev,
 		})
@@ -709,6 +728,9 @@ func (s *Service) applyMutation(
 		}
 		if rows != 1 {
 			return reject("book is unavailable")
+		}
+		if err := q.ReadingDeleteHighlightFTS(ctx, id); err != nil {
+			return "", "", fmt.Errorf("remove stale highlight search row: %w", err)
 		}
 		if err := q.ReadingIndexHighlightFTS(ctx, id); err != nil {
 			return "", "", fmt.Errorf("index highlight: %w", err)
@@ -899,6 +921,9 @@ func (s *Service) applyMutation(
 			return reject("book is unavailable")
 		}
 		return applied()
+
+	case "page_annotations":
+		return s.applyPageAnnotation(ctx, q, tx, viewer, mutation, updatedAt, now)
 
 	case "bookmarks":
 		id := mutationID(mutation)
@@ -1091,7 +1116,7 @@ func (s *Service) deleteHighlight(
 	rows, err := q.ReadingUpsertHighlight(ctx, sqlc.ReadingUpsertHighlightParams{
 		ID: highlight.ID, UserID: viewer.UserID, BookID: highlight.BookID, IsAdmin: adminFlag(viewer),
 		BookFileID: highlight.BookFileID, Locator: highlight.Locator, Position: highlight.Position,
-		Text: highlight.Text, Color: highlight.Color, Chapter: highlight.Chapter,
+		Text: highlight.Text, Color: highlight.Color, Style: highlight.Style, Chapter: highlight.Chapter,
 		CreatedAt: highlight.CreatedAt, UpdatedAt: updatedAt,
 		DeletedAt: sql.NullInt64{Int64: updatedAt, Valid: true}, Rev: rev,
 	})
@@ -1151,7 +1176,7 @@ func (s *Service) deleteBookmark(
 func (s *Service) Pull(ctx context.Context, viewer Viewer, cursor int64) (PullResponse, error) {
 	result := PullResponse{
 		UserBooks: []UserBookRow{}, Progress: []ProgressRow{}, Highlights: []Highlight{},
-		Bookmarks: []Bookmark{}, Notes: []Note{}, Settings: []Setting{},
+		Bookmarks: []Bookmark{}, PageAnnotations: []PageAnnotation{}, Notes: []Note{}, Settings: []Setting{},
 	}
 	if err := checkViewer(viewer); err != nil {
 		return result, err
@@ -1205,6 +1230,15 @@ func (s *Service) Pull(ctx context.Context, viewer Viewer, cursor int64) (PullRe
 		}
 		for _, row := range bookmarks {
 			result.Bookmarks = append(result.Bookmarks, toBookmark(row))
+		}
+		pageAnnotations, err := q.ReadingPullPageAnnotations(ctx, sqlc.ReadingPullPageAnnotationsParams{
+			UserID: viewer.UserID, Cursor: cursor, HighWater: highWater, IsAdmin: adminFlag(viewer),
+		})
+		if err != nil {
+			return fmt.Errorf("pull page annotations: %w", err)
+		}
+		for _, row := range pageAnnotations {
+			result.PageAnnotations = append(result.PageAnnotations, toPageAnnotation(row))
 		}
 		notes, err := q.ReadingPullNotes(ctx, sqlc.ReadingPullNotesParams{
 			UserID: viewer.UserID, Cursor: cursor, HighWater: highWater, IsAdmin: adminFlag(viewer),

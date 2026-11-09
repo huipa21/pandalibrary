@@ -124,14 +124,17 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	let deleted = false;
 	const patches: unknown[] = [];
 	let favorites = { ...shelf(7, 'Favorites', 'private'), description: 'Old notes' as string | null };
+	const listed = [shelf(7, 'Favorites', 'private'), shelf(8, 'Staff picks', 'shared')];
 	await page.route('**/api/v1/shelves?*', (route) =>
-		route.fulfill({ json: { items: [shelf(7, 'Favorites', 'private'), shelf(8, 'Staff picks', 'shared')], next_cursor: null } })
+		route.fulfill({ json: { items: listed, next_cursor: null } })
 	);
 	await page.route('**/api/v1/shelves', async (route) => {
 		const body = route.request().postDataJSON();
 		created.push(body);
 		if (body.name === 'Favorites') return problem(route, 409);
-		return route.fulfill({ status: 201, json: { shelf: shelf(9, body.name, 'private', 0) } });
+		const createdShelf = shelf(9, body.name, 'private', 0);
+		listed.push(createdShelf);
+		return route.fulfill({ status: 201, json: { shelf: createdShelf } });
 	});
 	await page.route('**/api/v1/shelves/7', async (route) => {
 		if (route.request().method() === 'DELETE') {
@@ -162,21 +165,27 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await page.goto('/shelves');
 	await expect(page.getByRole('main').getByRole('link', { name: 'Favorites' })).toBeVisible();
 	await expect(page.getByText('Shared', { exact: true })).toBeVisible();
-	await expect(page.getByRole('group', { name: 'Visibility' })).toHaveCount(0);
+	await expect(page.getByRole('main').getByRole('button', { name: 'Create shelf' })).toHaveCount(0);
 
-	await page.getByRole('button', { name: 'Create shelf' }).click();
-	await expect(page.getByText('Enter a shelf name.')).toBeVisible();
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
+	const creator = page.getByRole('dialog', { name: 'Create shelf' });
+	await expect(creator.getByLabel('Shared', { exact: true })).toHaveCount(0);
+	await creator.getByRole('button', { name: 'Create shelf' }).click();
+	await expect(creator.getByText('Enter a shelf name.')).toBeVisible();
 	expect(created).toHaveLength(0);
 
-	await page.getByLabel('Name').fill('Favorites');
-	await page.getByRole('button', { name: 'Create shelf' }).click();
-	await expect(page.getByRole('alert')).toContainText('A shelf with this name already exists.');
+	await creator.getByLabel('Shelf name').fill('Favorites');
+	await creator.getByRole('button', { name: 'Create shelf' }).click();
+	await expect(creator.getByRole('alert')).toContainText('A shelf with this name already exists.');
 
-	await page.getByLabel('Name').fill('  To read  ');
-	await page.getByRole('button', { name: 'Create shelf' }).click();
+	await creator.getByLabel('Shelf name').fill('  To read  ');
+	await creator.getByRole('button', { name: 'Create shelf' }).click();
 	await expect(page.getByRole('status').filter({ hasText: 'Shelf created.' })).toBeVisible();
-	expect(created.at(-1)).toEqual({ kind: 'private', name: 'To read', description: null });
-	await expect(page.getByLabel('Name')).toHaveValue('');
+	expect(created.at(-1)).toEqual({ kind: 'private', name: 'To read', description: null, mode: 'manual' });
+	await expect(creator).toHaveCount(0);
+	await expect(page.getByRole('main').getByRole('link', { name: 'To read', exact: true })).toHaveCount(2);
 
 	await page.goto('/shelves/8');
 	await expect(page.getByRole('heading', { name: 'Staff picks' })).toHaveClass('sr-only');
@@ -239,11 +248,15 @@ test('offers shared shelves to administrators and reports shelf permission failu
 	});
 
 	await page.goto('/shelves');
-	await page.getByLabel('名称').fill('Staff favourites');
-	await page.getByLabel('共享——所有用户可见').check();
-	await page.getByRole('button', { name: '创建书架' }).click();
+	const sidebar = page.getByRole('navigation', { name: '主导航' });
+	await sidebar.getByRole('button', { name: '书架操作' }).click();
+	await sidebar.getByRole('menuitem', { name: '新建书架' }).click();
+	const creator = page.getByRole('dialog', { name: '创建书架' });
+	await creator.getByLabel('书架名称').fill('Staff favourites');
+	await creator.getByLabel('共享', { exact: true }).check();
+	await creator.getByRole('button', { name: '创建书架' }).click();
 	await expect(page.getByText('书架已创建。')).toBeVisible();
-	expect(created).toEqual([{ kind: 'shared', name: 'Staff favourites', description: null }]);
+	expect(created).toEqual([{ kind: 'shared', name: 'Staff favourites', description: null, mode: 'manual' }]);
 
 	await page.goto('/books/21');
 	const picker = page.getByRole('dialog', { name: '添加到书架' });

@@ -8,6 +8,7 @@ export type CfiLocator = { type: 'cfi'; value: string };
 export type NormalizedRect = { x: number; y: number; width: number; height: number };
 export type PdfLocator = { type: 'pdf'; page: number; rects?: NormalizedRect[] };
 export type ReaderLocator = CfiLocator | PdfLocator;
+export type HighlightStyle = 'highlight' | 'underline' | 'strikeout';
 
 export interface Relocation {
 	fraction: number;
@@ -22,6 +23,21 @@ export interface ReaderAnnotation {
 	id: string;
 	locator: ReaderLocator;
 	color: string;
+	style?: HighlightStyle;
+}
+
+export type PdfLayout = 'single' | 'single-continuous' | 'split' | 'split-continuous';
+export type PdfZoom = 'auto' | 'page-actual' | 'page-fit' | 'page-width' | number;
+
+export interface PdfViewState {
+	page: number;
+	pageCount: number;
+	layout: PdfLayout;
+	zoom: PdfZoom;
+	scale: number;
+	rotation: 0 | 90 | 180 | 270;
+	coverAlone: boolean;
+	theme: ReaderSettings['theme'];
 }
 
 export interface ReaderSettings {
@@ -30,6 +46,10 @@ export interface ReaderSettings {
 	spacing: number;
 	theme: 'light' | 'sepia' | 'dark';
 	flow: 'paginated' | 'scrolled';
+	pdfLayout?: PdfLayout;
+	pdfZoom?: PdfZoom;
+	pdfRotation?: 0 | 90 | 180 | 270;
+	pdfCoverAlone?: boolean;
 }
 
 export interface ReaderEvents {
@@ -70,6 +90,7 @@ export interface Highlight {
 	position: number;
 	text: string;
 	color: string;
+	style?: HighlightStyle;
 	chapter: string | null;
 	created_at: string;
 	updated_at: string;
@@ -102,11 +123,42 @@ export interface Bookmark {
 	rev: number;
 }
 
+export type PageAnnotationLocator = { type: 'pdf'; page: number; rect: NormalizedRect };
+export type TextData = { text: string; color: string; size: number };
+export type InkData = { color: string; width: number; strokes: number[][] };
+export type ImageData = {
+	asset: string;
+	media_type: 'image/png' | 'image/jpeg' | 'image/webp';
+	width: number;
+	height: number;
+};
+
+export type PageAnnotationContent =
+	| { kind: 'text'; data: TextData }
+	| { kind: 'ink'; data: InkData }
+	| { kind: 'image'; data: ImageData };
+
+export type PageAnnotationInput = {
+	locator: PageAnnotationLocator;
+	position: number;
+} & PageAnnotationContent;
+
+export type PageAnnotation = PageAnnotationInput & {
+	id: string;
+	book_id: number;
+	book_file_id: number | null;
+	created_at: string;
+	updated_at: string;
+	deleted_at: string | null;
+	rev: number;
+};
+
 export interface BookState {
 	user_book: unknown;
 	progress: Progress | null;
 	highlights: Highlight[];
 	bookmarks: Bookmark[];
+	page_annotations?: PageAnnotation[];
 	notes: Note[];
 }
 

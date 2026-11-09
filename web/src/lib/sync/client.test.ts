@@ -114,9 +114,21 @@ it('keeps an explicit online retry path when Background Sync is absent', async (
 it('locks offline restoration on logout while retaining isolated queued writes', async () => {
 	const { client } = await setup();
 	await client.queueMutation(mutation);
+	for (const name of ['pandalibrary-ocr', 'pandalibrary-assets']) {
+		const database = await new Promise<IDBDatabase>((resolve, reject) => {
+			const request = indexedDB.open(name, 1);
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+		database.close();
+	}
 	await client.deactivateOffline();
 	expect(await client.rememberedViewer()).toBeNull();
 	expect(get(client.offlineStatus).account).toBeNull();
+	expect((await indexedDB.databases()).map((entry) => entry.name))
+		.not.toContain('pandalibrary-ocr');
+	expect((await indexedDB.databases()).map((entry) => entry.name))
+		.not.toContain('pandalibrary-assets');
 	const { setActiveViewer, outbox } = await import('./db.js');
 	await setActiveViewer(viewer);
 	expect(await outbox(1)).toMatchObject([{ mutation }]);

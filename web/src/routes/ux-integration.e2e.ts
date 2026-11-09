@@ -255,12 +255,18 @@ test('real sidebar shelves, automatic rule changes, favorites and bilingual resp
 	const book = existing ?? { id: imported!.bookID, title: imported!.title };
 	await page.goto('/books');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await sidebar.getByRole('button', { name: 'New shelf' }).click();
+	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
 	let creator = page.getByRole('dialog', { name: 'Create shelf' });
 	await creator.getByLabel('Shelf name').fill('Manual UX shelf');
 	await creator.getByRole('button', { name: 'Create shelf', exact: true }).click();
 	await expect(creator).toHaveCount(0);
-	await expect(sidebar.getByRole('button', { name: 'New shelf' })).toBeFocused();
+	await expect(sidebar.getByRole('button', { name: 'Shelf actions' })).toBeFocused();
+	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'Manage shelves' }).click();
+	await expect(page).toHaveURL('/shelves');
+	await expect(page.getByRole('main').getByRole('link', { name: 'Manual UX shelf', exact: true })).toBeVisible();
+	await expect(page.getByRole('main').getByRole('button', { name: 'Create shelf', exact: true })).toHaveCount(0);
 	await page.goto(`/books/${book.id}`);
 	await page.getByRole('button', { name: 'Add to shelf', exact: true }).click();
 	await page.getByRole('dialog', { name: 'Add to shelf' })
@@ -270,7 +276,8 @@ test('real sidebar shelves, automatic rule changes, favorites and bilingual resp
 	await sidebar.getByRole('link', { name: 'Manual UX shelf 1', exact: true }).click();
 	await page.getByRole('button', { name: 'Remove “UXPDF” from this shelf' }).click();
 	await expect(sidebar.getByRole('link', { name: 'Manual UX shelf 0', exact: true })).toBeVisible();
-	await sidebar.getByRole('button', { name: 'New shelf' }).click();
+	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
 	creator = page.getByRole('dialog', { name: 'Create shelf' });
 	await creator.getByLabel('Automatic', { exact: true }).check();
 	await creator.getByLabel('Shelf name').fill('Automatic UX shelf with a deliberately long bilingual name 自动书架');

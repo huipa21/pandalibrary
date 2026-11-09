@@ -57,7 +57,7 @@
 		{#if shelves}
 			{@render shelves()}
 		{:else}
-			<SidebarShelves {pathname} />
+			<SidebarShelves {pathname} {role} />
 		{/if}
 		<section class="shell-section" aria-labelledby="sidebar-browse-heading">
 			<h2 id="sidebar-browse-heading" class="shell-heading">{m['ux1.nav.browse_heading']()}</h2>

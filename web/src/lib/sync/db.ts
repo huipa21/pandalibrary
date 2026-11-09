@@ -12,6 +12,7 @@ import type {
 	StoredRow,
 	SyncMutation
 } from './types.js';
+import { SYNC_SCHEMA } from './types.js';
 
 const DATABASE = 'pandalibrary-offline';
 const VERSION = 1;
@@ -252,6 +253,9 @@ export async function persistPull(
 		for (const value of response.bookmarks) {
 			await result(store.put({ account, entity: 'bookmarks', key: value.id, value } satisfies StoredRow));
 		}
+		for (const value of response.page_annotations) {
+			await result(store.put({ account, entity: 'page_annotations', key: value.id, value } satisfies StoredRow));
+		}
 		for (const value of response.notes) {
 			await result(store.put({ account, entity: 'notes', key: value.id, value } satisfies StoredRow));
 		}
@@ -263,7 +267,10 @@ export async function persistPull(
 		for (const entry of entries) {
 			if (entry.status === 'applied') await result(queue.delete(entry.sequence));
 		}
-		await result(meta.put({ key: cursorKey(account), value: { cursor: response.cursor, pulledAt } }));
+		await result(meta.put({
+			key: cursorKey(account),
+			value: { cursor: response.cursor, pulledAt, schema: full ? SYNC_SCHEMA : (previous?.value.schema ?? 1) }
+		}));
 	});
 }
 
