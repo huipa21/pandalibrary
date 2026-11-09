@@ -73,3 +73,11 @@
 		</button>
 	{/if}
 </form>
+
+<style>
+	/* The clear button replaces Chromium/Safari's built-in cancel icon, which would otherwise duplicate it. */
+	input::-webkit-search-cancel-button {
+		-webkit-appearance: none;
+		appearance: none;
+	}
+</style>

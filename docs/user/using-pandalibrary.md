@@ -2,10 +2,11 @@
 
 ## Signing in and layout
 
-Sign in with the account your administrator gave you. The header holds search,
-language, theme (light or dark) and your account menu. The sidebar holds
+Sign in with the account your administrator gave you. The header holds the
+search box, language, theme (light or dark) and your account menu. Search is
+only in the header; the sidebar has no Search entry. The sidebar holds
 navigation and your shelves; on small screens it opens as a drawer from the
-menu button.
+menu button. Select the PandaLibrary logo to return to the dashboard.
 
 ## Dashboard
 
@@ -19,7 +20,8 @@ dashboard. The layout is saved to your account.
 ## Browsing books
 
 **All Books** and the library, author, series and tag pages list the books you
-can see. You can:
+can see. The **All Books** entry in the sidebar shows how many books you can
+see across all your libraries, like the counts next to your shelves. You can:
 
 - switch between grid and list view with the view button;
 - filter by author, series or tag and change the sort order;
@@ -192,9 +194,13 @@ Administrators can also create shared shelves that other readers can see.
 
 ## Search
 
-Search finds books by title, author or series. It works with Chinese and other
-languages that do not use spaces, and with short queries such as two-character
-titles.
+Search finds books by title, author or series. Type in the search box in the
+header and press Enter or the magnifier button. After a search, the button
+becomes **✕**; select it to clear the search. Changing the text brings the
+magnifier back so you can search again.
+
+Search works with Chinese and other languages that do not use spaces, and with
+short queries such as two-character titles.
 
 ## Stats
 
