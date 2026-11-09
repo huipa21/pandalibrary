@@ -168,14 +168,13 @@ test('administrators see Bookheap in HOME, an empty heap, and a scan that refres
 	await expect(page.getByRole('heading', { name: 'The Bookheap is empty' })).toBeVisible();
 	await expect(page.getByTestId('bh4-nav-count')).toHaveCount(0);
 
-	const toolbar = page.getByRole('toolbar', { name: 'Bookheap actions' });
-	await toolbar.getByRole('button', { name: 'Scan' }).click();
+	await page.getByRole('main').getByRole('search').getByRole('button', { name: 'Scan', exact: true }).click();
 	const summary = page.getByTestId('bh4-scan-summary');
 	await expect(page.getByTestId('bh4-scan-status')).toContainText('Scan complete');
 	await expect(summary).toContainText('Added: 3');
 	await expect(summary).toContainText('Duplicates: 1');
 	await expect(summary).toContainText('Invalid: 1');
-	await page.getByRole('button', { name: 'List', exact: true }).click();
+	await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
 
 	const rows = page.getByTestId('bh4-row');
 	await expect(rows).toHaveCount(3);
@@ -198,7 +197,7 @@ for (const view of ['grid', 'list'] as const) {
 		]);
 		await page.setViewportSize({ width: 1280, height: 900 });
 		await page.goto('/bookheap?status=ready');
-		await page.getByRole('button', { name: view === 'grid' ? 'Grid' : 'List', exact: true }).click();
+		if (view === 'list') await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
 
 		const main = page.getByRole('main');
 		await expect(main.getByLabel('Status')).toHaveValue('ready');
@@ -295,7 +294,7 @@ for (const view of ['grid', 'list'] as const) {
 			{ id: 3, title: 'Busy', file_name: 'busy.epub', status: 'importing' }
 		]);
 		await page.goto('/bookheap');
-		await page.getByRole('button', { name: view === 'grid' ? 'Grid' : 'List', exact: true }).click();
+		if (view === 'list') await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
 		const main = page.getByRole('main');
 		await main.getByRole('checkbox', { name: 'Select Gone', exact: true }).check();
 		await main.getByRole('checkbox', { name: 'Select Busy', exact: true }).check();
@@ -335,7 +334,7 @@ test('grid is the default, uses standard covers, and respects responsive sizing 
 	}));
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await page.goto('/bookheap');
-	await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('button', { name: 'Switch to list view', exact: true })).toBeVisible();
 	const tiles = page.locator('[data-heap-tile]');
 	await expect(tiles).toHaveCount(4);
 	const generated = tiles.filter({ hasText: 'Ready 2' }).locator('[data-generated-cover]');
@@ -374,7 +373,7 @@ test('keeps Bookheap filters and view controls usable on narrow screens', async 
 	const filters = page.getByRole('main').getByRole('search');
 	const search = filters.getByRole('searchbox', { name: 'Search', exact: true });
 	const status = filters.getByRole('combobox', { name: 'Status', exact: true });
-	const views = filters.getByRole('group', { name: 'Bookheap view' });
+	const views = filters.getByRole('button', { name: 'Switch to list view', exact: true });
 	for (const width of [320, 360, 390, 768]) {
 		await page.setViewportSize({ width, height: 844 });
 		const boxes = await Promise.all([search.boundingBox(), status.boundingBox(), views.boundingBox()]);
@@ -409,7 +408,7 @@ test('switching views preserves selection and persists across reload', async ({ 
 	await page.goto('/bookheap?status=ready');
 	await page.getByRole('checkbox', { name: 'Select Ready 2', exact: true }).check();
 	const queries = heap.listQueries.length;
-	await page.getByRole('button', { name: 'List', exact: true }).click();
+	await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
 	await expect(page.locator('[data-heap-tile]')).toHaveCount(0);
 	await expect(page.getByRole('checkbox', { name: 'Select Ready 2', exact: true })).toBeChecked();
 	await expect(page.getByTestId('bh4-selected-count')).toHaveText('Selected: 1');
@@ -419,12 +418,12 @@ test('switching views preserves selection and persists across reload', async ({ 
 	await expect(page).toHaveURL(/status=ready/);
 	expect(await page.evaluate(() => localStorage.getItem('pandalibrary.bookheap.view'))).toBe('list');
 	await page.reload();
-	await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('button', { name: 'Switch to grid view', exact: true })).toBeVisible();
 	await page.getByRole('checkbox', { name: 'Select Ready 2', exact: true }).check();
-	await page.getByRole('button', { name: 'Grid', exact: true }).click();
+	await page.getByRole('button', { name: 'Switch to grid view', exact: true }).click();
 	await expect(page.getByRole('checkbox', { name: 'Select Ready 2', exact: true })).toBeChecked();
 	await page.reload();
-	await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('button', { name: 'Switch to list view', exact: true })).toBeVisible();
 	await expect(page.locator('[data-heap-tile]')).toHaveCount(2);
 });
 
@@ -445,9 +444,9 @@ test('storage failures are reported without blocking view changes', async ({ pag
 	});
 	await page.goto('/bookheap');
 	await expect(page.getByRole('alert')).toContainText('Could not load your saved view');
-	await page.getByRole('button', { name: 'List', exact: true }).click();
+	await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
 	await expect(page.getByRole('alert')).toContainText('Could not save your view');
-	await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('button', { name: 'Switch to grid view', exact: true })).toBeVisible();
 	await expect(page.getByTestId('bh4-row')).toHaveCount(1);
 	await expect(page.locator('[data-heap-tile]')).toHaveCount(0);
 });
@@ -464,26 +463,16 @@ test('an unrecognized saved view uses grid and load errors remain retryable in e
 		return route.fallback();
 	});
 	await page.goto('/bookheap');
-	await expect(page.getByRole('button', { name: 'Grid', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('button', { name: 'Switch to list view', exact: true })).toBeVisible();
 	await expect(page.getByRole('alert')).toBeVisible();
-	await page.getByRole('button', { name: 'List', exact: true }).click();
+	await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
 	await expect(page.getByRole('alert')).toBeVisible();
 	unavailable = false;
 	await page.getByRole('alert').getByRole('button', { name: 'Try again', exact: true }).click();
 	await expect(page.getByTestId('bh4-row')).toHaveCount(1);
 	await expect(page.getByRole('alert')).toBeHidden();
-	await page.getByRole('button', { name: 'Grid', exact: true }).click();
+	await page.getByRole('button', { name: 'Switch to grid view', exact: true }).click();
 	await expect(page.locator('[data-heap-tile]')).toHaveCount(1);
-});
-
-test('the Upload toolbar button opens the shared upload dialog', async ({ page }) => {
-	await authenticate(page);
-	await mockBookheap(page, []);
-	await page.goto('/bookheap');
-	await page.getByRole('toolbar', { name: 'Bookheap actions' }).getByRole('button', { name: 'Upload' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Upload books' });
-	await expect(dialog).toBeVisible();
-	await expect(dialog.getByRole('button', { name: 'Select files' })).toBeFocused();
 });
 
 test('readers do not see Bookheap and are told the page is for administrators', async ({ page }) => {

@@ -55,7 +55,7 @@ async function imports(page: Page): Promise<ImportJobDTO[]> {
 }
 
 async function runScan(page: Page) {
-	await page.getByRole('toolbar', { name: 'Bookheap actions' }).getByRole('button', { name: 'Scan' }).click();
+	await page.getByRole('main').getByRole('search').getByRole('button', { name: 'Scan', exact: true }).click();
 	await expect(page.getByTestId('bh4-scan-status')).toContainText('Scan complete', { timeout: 60_000 });
 	return page.getByTestId('bh4-scan-summary');
 }

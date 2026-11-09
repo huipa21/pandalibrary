@@ -481,7 +481,7 @@ test('captures responsive rest, hover and edge-menu states and supports keyboard
 				expect(box.width, `Bookheap search at ${width}px`).toBeGreaterThanOrEqual(160);
 				await assertSeparate(search, filters.getByRole('combobox', { name: 'Status', exact: true }),
 					`Bookheap search and status at ${width}px`);
-				await assertSeparate(search, filters.getByRole('group', { name: 'Bookheap view' }),
+				await assertSeparate(search, filters.getByRole('button', { name: 'Switch to list view', exact: true }),
 					`Bookheap search and view controls at ${width}px`);
 			}
 			await attachScreenshot(page, info, `${surface.name}-${width}-rest`);

@@ -294,7 +294,7 @@ test('generates accessible, contrast-checked covers and badges in grid and list 
 	expect(new Set(colors.map((color) => color.board)).size).toBe(8);
 	for (const color of colors) expect(color.contrast).toBeGreaterThanOrEqual(4.5);
 
-	await page.getByRole('button', { name: 'List', exact: true }).click();
+	await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
 	await expect(card(page, 'Generated Book').locator('[data-generated-cover]')).toBeVisible();
 	await expect(card(page, 'Generated Book').getByRole('img', { name: 'Formats: EPUB, PDF' })).toBeVisible();
 	await expect(card(page, 'Generated Book').getByRole('heading', { name: 'Generated Book' })).toBeVisible();
@@ -492,7 +492,7 @@ test('keeps the format and status badges separate on narrow list covers', async 
 	await page.setViewportSize({ width: 390, height: 844 });
 	await mockApi(page, mockState());
 	await page.goto('/books');
-	await page.getByRole('group', { name: 'Book display' }).getByRole('button', { name: 'List' }).click();
+	await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
 	const generated = card(page, 'Generated Book');
 	const format = generated.getByRole('img', { name: 'Formats: EPUB, PDF' });
 	const status = generated.getByRole('button', { name: 'Reading status: Reading. Change' });

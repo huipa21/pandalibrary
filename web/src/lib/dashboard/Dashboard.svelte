@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
@@ -8,6 +8,7 @@
 	import type { Shelf } from '#lib/shelves/types.js';
 	import { offlineStatus } from '#lib/sync/client.js';
 	import { uniquePages } from './api.js';
+	import { dashboardConfigure } from './configure.svelte.js';
 	import DashboardRow from './DashboardRow.svelte';
 	import { sectionLabel, shelfLabel, type ShelfState } from './labels.js';
 	import {
@@ -27,7 +28,6 @@
 	let configOpen = $state(false);
 	let configDialog = $state<HTMLDialogElement | null>(null);
 	let configHeading = $state<HTMLHeadingElement | null>(null);
-	let gear = $state<HTMLButtonElement | null>(null);
 	let draft = $state<SectionId[]>([]);
 	let selectedBuiltin = $state('');
 	let selectedShelf = $state('');
@@ -49,6 +49,12 @@
 		});
 	});
 	const availableBuiltins = $derived(BUILT_IN_SECTIONS.filter((id) => !draft.includes(id)));
+
+	$effect(() => {
+		if (!dashboardConfigure.pending || loading || saving) return;
+		dashboardConfigure.pending = false;
+		untrack(() => void openConfiguration());
+	});
 
 	onMount(() => {
 		void refreshLayout();
@@ -157,7 +163,7 @@
 	}
 
 	async function openConfiguration() {
-		if (!layout?.valid || saving) return;
+		if (!layout?.valid || saving || configOpen) return;
 		configVersion += 1;
 		draft = [...layout.sections];
 		selectedBuiltin = '';
@@ -181,7 +187,7 @@
 		shelfBusy = false;
 		metadataVersion += 1;
 		shelfPager.dispose();
-		gear?.focus();
+		if (dashboardConfigure.trigger?.isConnected) dashboardConfigure.trigger.focus();
 		if (deferredRefresh) {
 			deferredRefresh = false;
 			void refreshLayout(false);
@@ -263,11 +269,6 @@
 
 <section class="space-y-6" aria-labelledby="dashboard-heading" data-dashboard>
 	<h1 id="dashboard-heading" class="sr-only">{m['ux1.dashboard.title']()}</h1>
-	<div class="flex justify-end">
-		<button bind:this={gear} class="grid size-10 place-items-center rounded-md border border-slate-300 text-slate-700 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50" aria-label={m['ux5.configure']()} title={m['ux5.configure']()} disabled={!layout?.valid || loading || saving} onclick={() => void openConfiguration()}>
-			<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" /><path d="m19.4 15 1.1 1.9-2 2-1.9-1.1a8.6 8.6 0 0 1-2 .8l-.5 2.2h-2.8l-.5-2.2a8.6 8.6 0 0 1-2-.8l-1.9 1.1-2-2L6 15a8.6 8.6 0 0 1-.8-2L3 12.5V9.7l2.2-.5a8.6 8.6 0 0 1 .8-2L4.9 5.3l2-2 1.9 1.1a8.6 8.6 0 0 1 2-.8l.5-2.1h2.8l.5 2.1a8.6 8.6 0 0 1 2 .8l1.9-1.1 2 2-1.1 1.9a8.6 8.6 0 0 1 .8 2l2.1.5v2.8l-2.1.5a8.6 8.6 0 0 1-.8 2Z" /></svg>
-		</button>
-	</div>
 
 	{#if notice}<p class="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900" role="status">{notice}</p>{/if}
 	{#if conflict}

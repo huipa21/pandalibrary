@@ -628,6 +628,7 @@ test('localizes controls and fits a narrow viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 360, height: 740 });
 	await page.goto('/');
 	await expect(page.getByRole('heading', { name: '仪表盘', level: 1 })).toHaveClass('sr-only');
+	await page.getByRole('button', { name: '打开导航菜单' }).click();
 	await page.getByRole('button', { name: '配置仪表盘' }).click();
 	await expect(page.getByRole('dialog', { name: '配置仪表盘' })).toBeVisible();
 	expect(await page.evaluate(() => document.documentElement.scrollWidth))

@@ -1,8 +1,10 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { goto } from '$app/navigation';
 	import * as m from '#lib/paraglide/messages.js';
 	import { homeNavigationFor, isActive, navigationFor, type NavigationItem } from '#lib/nav.js';
 	import BookheapCount from '#lib/bookheap/BookheapCount.svelte';
+	import { requestDashboardConfigure } from '#lib/dashboard/configure.svelte.js';
 	import SidebarShelves from './SidebarShelves.svelte';
 
 	interface Props {
@@ -17,13 +19,18 @@
 	}
 
 	let { role, pathname, shelves, footer, account }: Props = $props();
+
+	function configureDashboard(event: MouseEvent & { currentTarget: HTMLButtonElement }) {
+		requestDashboardConfigure(event.currentTarget);
+		if (pathname !== '/') void goto('/');
+	}
 </script>
 
 {#snippet links(items: readonly NavigationItem[])}
 	<ul class="mt-1 space-y-0.5">
 		{#each items as item (item.id)}
-			<li>
-				<a class="shell-link" href={item.href} aria-current={isActive(item, pathname) ? 'page' : undefined}>
+			<li class="relative">
+				<a class={item.id === 'dashboard' ? 'shell-link pr-9' : 'shell-link'} href={item.href} aria-current={isActive(item, pathname) ? 'page' : undefined}>
 					{#if item.id === 'bookheap'}
 						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
 						<BookheapCount />
@@ -31,6 +38,11 @@
 						{item.label()}
 					{/if}
 				</a>
+				{#if item.id === 'dashboard'}
+					<button type="button" class="shell-icon-button absolute top-1/2 right-1 -translate-y-1/2" aria-haspopup="dialog" aria-label={m['ux5.configure']()} title={m['ux5.configure']()} onclick={configureDashboard}>
+						<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4" fill="currentColor"><circle cx="10" cy="4" r="1.6" /><circle cx="10" cy="10" r="1.6" /><circle cx="10" cy="16" r="1.6" /></svg>
+					</button>
+				{/if}
 			</li>
 		{/each}
 	</ul>

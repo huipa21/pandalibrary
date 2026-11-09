@@ -6,13 +6,15 @@
 	import { translate } from '#lib/paging/translate.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
 	import { BoundedPoller } from '#lib/admin/poller.js';
-	import { focusRing, inputClass, primaryButton, secondaryButton, dangerButton, linkClass } from '#lib/admin/ui.js';
+	import { focusRing, inputClass, primaryButton, dangerButton, linkClass } from '#lib/admin/ui.js';
+	import ClearFiltersButton from '#lib/catalog/ClearFiltersButton.svelte';
+	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
 	import AssignDialog from './AssignDialog.svelte';
 	import DeleteDialog from './DeleteDialog.svelte';
 	import HeapItemRow from './HeapItemRow.svelte';
 	import HeapItemTile from './HeapItemTile.svelte';
 	import ScanControl from './ScanControl.svelte';
-	import UploadDialog from './UploadDialog.svelte';
+	import ScanStatus from './ScanStatus.svelte';
 	import { BOOKHEAP_CHANGED_EVENT, notifyBookheapChanged } from './events.js';
 	import { HeapList } from './heap-list.svelte.js';
 	import {
@@ -55,7 +57,6 @@
 
 	let searchText = $state(heapQueryFromSearch(page.url.searchParams).q);
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
-	let uploadOpen = $state(false);
 	let assignOpen = $state(false);
 	let deleteOpen = $state(false);
 	let dialogItems = $state<HeapItem[]>([]);
@@ -217,48 +218,35 @@
 </script>
 
 <div class="space-y-6 pb-20">
-	<div class="flex flex-wrap items-start gap-3" role="toolbar" aria-label={m['bh4.toolbar.label']()}>
-		<ScanControl controller={scan} />
-		<button type="button" class={`inline-flex items-center gap-2 ${secondaryButton}`} aria-haspopup="dialog" onclick={() => (uploadOpen = true)}>
-			<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M10 13V3m0 0L6 7m4-4l4 4M3 13v2a2 2 0 002 2h10a2 2 0 002-2v-2" />
-			</svg>
-			{m['bh4.toolbar.upload']()}
-		</button>
+	<div>
+		<form class="flex flex-wrap items-end gap-3" role="search" onsubmit={submitSearch}>
+			<label class="grid gap-1 text-sm font-medium">
+				<span>{m['bh4.filter.status']()}</span>
+				<select class={inputClass} value={query.status} onchange={(event) => changeStatus(event.currentTarget.value)}>
+					{#each statusOptions as option (option.value)}
+						<option value={option.value}>{option.label()}</option>
+					{/each}
+				</select>
+			</label>
+			<label class="grid min-w-40 flex-1 gap-1 text-sm font-medium sm:max-w-sm">
+				<span>{m['bh4.filter.search']()}</span>
+				<input
+					class={`${inputClass} w-full min-w-0`}
+					type="search"
+					maxlength={MAX_HEAP_QUERY_LENGTH}
+					placeholder={m['bh4.filter.search_placeholder']()}
+					bind:value={searchText}
+					oninput={onSearchInput}
+				/>
+			</label>
+			<ScanControl controller={scan} />
+			<ViewToggle {view} onchange={changeView} />
+			{#if filtered}
+				<ClearFiltersButton label={m['bh4.filter.clear']()} onclick={clearFilters} />
+			{/if}
+		</form>
+		<ScanStatus controller={scan} />
 	</div>
-
-	<form class="flex flex-wrap items-end gap-3" role="search" onsubmit={submitSearch}>
-		<label class="grid gap-1 text-sm font-medium">
-			<span>{m['bh4.filter.status']()}</span>
-			<select class={inputClass} value={query.status} onchange={(event) => changeStatus(event.currentTarget.value)}>
-				{#each statusOptions as option (option.value)}
-					<option value={option.value}>{option.label()}</option>
-				{/each}
-			</select>
-		</label>
-		<label class="grid min-w-40 flex-1 gap-1 text-sm font-medium sm:max-w-sm">
-			<span>{m['bh4.filter.search']()}</span>
-			<input
-				class={`${inputClass} w-full min-w-0`}
-				type="search"
-				maxlength={MAX_HEAP_QUERY_LENGTH}
-				placeholder={m['bh4.filter.search_placeholder']()}
-				bind:value={searchText}
-				oninput={onSearchInput}
-			/>
-		</label>
-		{#if filtered}
-			<button type="button" class={secondaryButton} onclick={clearFilters}>{m['bh4.filter.clear']()}</button>
-		{/if}
-		<div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1" role="group" aria-label={m['bc5.view.label']()}>
-			<button type="button" class={`rounded-md px-3 py-1.5 text-sm font-medium ${focusRing} ${view === 'grid' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`} aria-pressed={view === 'grid'} onclick={() => changeView('grid')}>
-				{m['bc5.view.grid']()}
-			</button>
-			<button type="button" class={`rounded-md px-3 py-1.5 text-sm font-medium ${focusRing} ${view === 'list' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`} aria-pressed={view === 'list'} onclick={() => changeView('list')}>
-				{m['bc5.view.list']()}
-			</button>
-		</div>
-	</form>
 
 	{#if viewError}<p class="text-sm text-red-800" role="alert">{viewError}</p>{/if}
 	{#if navigationError}<p class="text-sm text-red-800" role="alert">{navigationError}</p>{/if}
@@ -343,6 +331,5 @@
 	</div>
 {/if}
 
-<UploadDialog open={uploadOpen} onclose={() => (uploadOpen = false)} />
 <AssignDialog open={assignOpen} items={dialogItems} onclose={() => (assignOpen = false)} onassigned={assigned} />
 <DeleteDialog open={deleteOpen} items={dialogItems} onclose={() => (deleteOpen = false)} ondeleted={deleted} />

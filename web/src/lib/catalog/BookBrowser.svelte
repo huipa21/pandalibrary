@@ -8,6 +8,8 @@
 	import { allowsCatalogFilters, bookFiltersFromSearch, bookPageOptions, hasNextPage, selectedSort, setCatalogFilter } from './query.js';
 	import type { Book, BookFilters, BookSort, CatalogEntity, EntityKind } from './types.js';
 	import BookCard from './BookCard.svelte';
+	import ClearFiltersButton from './ClearFiltersButton.svelte';
+	import ViewToggle from './ViewToggle.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 
 	let { scope, showHeading = true }: { scope: BookFilters; showHeading?: boolean } = $props();
@@ -218,24 +220,13 @@
 					{/if}
 				</select>
 			</label>
-			<div class="flex gap-2" role="group" aria-label={m['catalog.books.view']()}>
-				<button
-					class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-					aria-pressed={mode === 'grid'}
-					onclick={() => (mode = 'grid')}
-				>{m['catalog.books.grid']()}</button>
-				<button
-					class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-					aria-pressed={mode === 'list'}
-					onclick={() => (mode = 'list')}
-				>{m['catalog.books.list']()}</button>
-			</div>
+			<ViewToggle view={mode} onchange={(next) => (mode = next)} />
 			{#if filterable}
-				<button
-					class="rounded-md px-3 py-2 text-sm text-slate-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+				<ClearFiltersButton
+					label={m['catalog.books.clear_filters']()}
 					onclick={clearFilters}
 					disabled={!selectedAuthor && !selectedSeries && !selectedTag && sort === 'title'}
-				>{m['catalog.books.clear_filters']()}</button>
+				/>
 			{/if}
 		</div>
 	</div>

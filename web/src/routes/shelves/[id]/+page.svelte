@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
+	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import Icon from '#lib/bookview/Icon.svelte';
 	import type { Book } from '#lib/catalog/types.js';
@@ -263,18 +264,7 @@
 		<section class="space-y-5" aria-labelledby="shelf-books-heading" aria-busy={books.status === 'loading'}>
 			<div class="flex flex-wrap items-end justify-between gap-4">
 				<h2 id="shelf-books-heading" class="text-xl font-semibold">{m['shelves.books.heading']()}</h2>
-				<div class="flex gap-2" role="group" aria-label={m['catalog.books.view']()}>
-					<button
-						class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-						aria-pressed={mode === 'grid'}
-						onclick={() => (mode = 'grid')}
-					>{m['catalog.books.grid']()}</button>
-					<button
-						class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-						aria-pressed={mode === 'list'}
-						onclick={() => (mode = 'list')}
-					>{m['catalog.books.list']()}</button>
-				</div>
+				<ViewToggle view={mode} onchange={(next) => (mode = next)} />
 			</div>
 			{#if books.status === 'error'}
 				<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">
