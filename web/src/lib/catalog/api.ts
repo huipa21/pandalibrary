@@ -62,6 +62,15 @@ export async function listBooks(
 	return api.request(buildBooksPath(filters, sort, options));
 }
 
+/** Counts every book visible to the viewer across all libraries (the unfiltered All Books list). */
+export async function countBooks(signal?: AbortSignal): Promise<number> {
+	const response = await api.request<{ count: number }>(
+		'/books/count',
+		signal === undefined ? {} : { signal }
+	);
+	return response.count;
+}
+
 export async function getBook(id: number): Promise<Book> {
 	const response = await api.request<{ book: Book }>(`/books/${id}`);
 	return response.book;

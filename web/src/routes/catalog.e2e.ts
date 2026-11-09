@@ -175,3 +175,45 @@ test('All Books uses the standard tile grid', async ({ page }) => {
 	await expect(grid).toHaveCSS('grid-template-columns', /^\d+(?:\.\d+)?px \d+(?:\.\d+)?px$/);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 });
+
+test('All Books sidebar entry shows the visible book count and refreshes on change events', async ({ page }) => {
+	await authenticate(page);
+	let response: { status: number; count: number } = { status: 200, count: 12 };
+	let requests = 0;
+	await page.route('**/api/v1/books/count', (route) => {
+		requests += 1;
+		if (response.status !== 200) {
+			return route.fulfill({
+				status: response.status,
+				contentType: 'application/problem+json',
+				body: JSON.stringify({ title: 'Failed', status: response.status })
+			});
+		}
+		return route.fulfill({ json: { count: response.count } });
+	});
+	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/libraries');
+	const link = page.getByRole('link', { name: 'All Books' });
+	const badge = link.getByTestId('all-books-count');
+	const number = badge.locator('[aria-hidden="true"]');
+	await expect(number).toHaveText('12');
+	await expect(badge).toHaveAttribute('title', '12 books');
+	await expect(link).toHaveAccessibleName('All Books 12 books');
+
+	response = { status: 200, count: 0 };
+	await page.evaluate(() => window.dispatchEvent(new Event('pandalibrary-books-changed')));
+	await expect(number).toHaveText('0');
+
+	response = { status: 200, count: 13 };
+	await page.evaluate(() => window.dispatchEvent(new Event('pandalibrary-bookheap-changed')));
+	await expect(number).toHaveText('13');
+	await expect(badge).toHaveAttribute('title', '13 books');
+
+	response = { status: 500, count: 0 };
+	const before = requests;
+	await page.evaluate(() => window.dispatchEvent(new Event('pandalibrary-books-changed')));
+	await expect.poll(() => requests).toBeGreaterThan(before);
+	await expect(badge).toHaveCount(0);
+});

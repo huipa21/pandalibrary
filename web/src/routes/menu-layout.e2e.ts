@@ -54,6 +54,7 @@ async function mockApi(page: Page, state: MockState) {
 		if (path === '/libraries/1') return route.fulfill({ json: { library: {
 			id: 1, name: 'Fiction', slug: 'fiction', created_at: timestamp, updated_at: timestamp
 		} } });
+		if (path === '/books/count') return route.fulfill({ json: { count: 0 } });
 		if (['/libraries', '/books', '/authors', '/series', '/tags'].includes(path) ||
 			path.startsWith('/dashboard/sections/')) {
 			return route.fulfill({ json: { items: [], next_cursor: null } });

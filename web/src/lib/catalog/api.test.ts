@@ -3,10 +3,25 @@ import zh from '../../../messages/zh.json';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '#lib/api/client.js';
 import type { Shelf } from '#lib/shelves/types.js';
-import { buildBooksPath, buildPagePath, DEFAULT_PAGE_SIZE, getBookShelves, MAX_PAGE_SIZE } from './api';
+import { buildBooksPath, buildPagePath, countBooks, DEFAULT_PAGE_SIZE, getBookShelves, MAX_PAGE_SIZE } from './api';
 import { allowsCatalogFilters, bookFiltersFromSearch, hasNextPage, selectedSort, setCatalogFilter } from './query';
 
 afterEach(() => vi.restoreAllMocks());
+
+describe('countBooks', () => {
+	it('requests the visible book count and returns the number', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ count: 12 });
+		const controller = new AbortController();
+
+		await expect(countBooks()).resolves.toBe(12);
+		await expect(countBooks(controller.signal)).resolves.toBe(12);
+
+		expect(request.mock.calls).toEqual([
+			['/books/count', {}],
+			['/books/count', { signal: controller.signal }]
+		]);
+	});
+});
 
 describe('getBookShelves', () => {
 	const shelf: Shelf = {

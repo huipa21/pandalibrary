@@ -7,6 +7,7 @@
 	import PagerFooter from '#lib/admin/PagerFooter.svelte';
 	import { hideBook, listHiddenBooks, unhideBook } from '#lib/admin/api.js';
 	import { adminErrorKey } from '#lib/admin/form.js';
+	import { notifyBooksChanged } from '#lib/catalog/events.js';
 	import { formatTimestamp } from '#lib/admin/jobs.js';
 	import type { HiddenEntry, User } from '#lib/admin/types.js';
 	import { panelClass, smallDangerButton, smallSecondaryButton } from '#lib/admin/ui.js';
@@ -47,6 +48,7 @@
 		error = '';
 		try {
 			await hideBook(user, bookID);
+			notifyBooksChanged();
 			if (userID !== user) return null;
 			notice = m['admin.hidden.hidden']({ book: bookID, user });
 			void hidden.reload();
@@ -66,6 +68,7 @@
 		unhiding = entry.book_id;
 		try {
 			await unhideBook(user, entry.book_id);
+			notifyBooksChanged();
 			if (userID !== user) return;
 			notice = m['admin.hidden.unhidden']({ book: entry.book_id, user });
 			void hidden.reload();

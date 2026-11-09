@@ -4,6 +4,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { homeNavigationFor, isActive, navigationFor, type NavigationItem } from '#lib/nav.js';
 	import BookheapCount from '#lib/bookheap/BookheapCount.svelte';
+	import AllBooksCount from '#lib/catalog/AllBooksCount.svelte';
 	import { requestDashboardConfigure } from '#lib/dashboard/configure.svelte.js';
 	import SidebarShelves from './SidebarShelves.svelte';
 
@@ -34,6 +35,9 @@
 					{#if item.id === 'bookheap'}
 						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
 						<BookheapCount />
+					{:else if item.id === 'books'}
+						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
+						<AllBooksCount {pathname} />
 					{:else}
 						{item.label()}
 					{/if}
