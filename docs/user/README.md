@@ -1,0 +1,36 @@
+# PandaLibrary user guide
+
+PandaLibrary is a self-hosted ebook library. You run one server, then read and
+organize your books from a web browser, an OPDS reading app, or KOReader.
+
+Supported formats: EPUB, PDF, MOBI, AZW3, FB2, FBZ and CBZ. Which formats the
+browser reader can open depends on your browser.
+
+## Guides
+
+| Guide | For | Covers |
+|---|---|---|
+| [Using PandaLibrary](./using-pandalibrary.md) | Everyone | Dashboard, browsing, book pages, the reader, offline reading, bookmarks, notes, shelves, search, stats, settings |
+| [Reading apps and devices](./devices.md) | Everyone | OPDS apps and KOReader progress sync |
+| [Administration](./administration.md) | Administrators | Adding books, the Bookheap, accounts, libraries and access, metadata providers, maintenance |
+
+Installation, configuration, backups and upgrades are in the
+[project README](../../README.md).
+
+## What each part does
+
+| Part | Where | What it does |
+|---|---|---|
+| Dashboard | Sidebar → **Dashboard** | Your home page: reading feeds and the shelves you choose to show |
+| All Books | Sidebar → **All Books** | Every book you can see, in a grid or list, with filters and sorting |
+| Libraries, Authors, Series, Tags | Sidebar → **Browse** | Browse the catalog by collection |
+| Book page | Open any book | Details, reading status, rating, reviews, shelves, files, activity and highlights |
+| Reader | **Read** on a book | Read in the browser and add highlights, notes and bookmarks |
+| Bookmarks | Sidebar → **Bookmarks** | Saved reading positions across all books |
+| Notes | Sidebar → **Notes** | All your notes and highlights, searchable and exportable |
+| Shelves | Sidebar → shelf list | Favorites, your own manual shelves and automatic (rule-based) shelves |
+| Search | Header search, or Sidebar → **Search** | Find books by title, author or series |
+| Stats | Sidebar → **Stats** | Daily reading time, finished books and reading streaks |
+| Settings | Account menu → **Profile** | Profile, language, app passwords for devices, and offline storage |
+| Bookheap | Sidebar → **Bookheap** (admins) | Staging area for books that are not in a library yet |
+| Admin | Sidebar → **Admin** (admins) | Accounts, libraries and access, hidden books, imports, metadata providers, maintenance |

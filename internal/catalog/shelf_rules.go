@@ -43,7 +43,7 @@ type RuleSet struct {
 }
 
 // RuleCondition compares one book field. Value is a JSON string or positive integer
-// depending on Field; see docs/architecture/ux2-shelves.md for semantics.
+// depending on Field; see docs/dev/architecture/ux2-shelves.md (local developer notes).
 type RuleCondition struct {
 	Field string          `json:"field"`
 	Op    string          `json:"op"`

@@ -56,7 +56,7 @@ logs. To create or reset an account from a host binary instead, use the interact
 ```
 
 Administrators can also manage accounts through the session-authenticated
-[`/api/v1/admin/users` API](docs/prompts/UX7-admin-users-api.md#ux8-api-hand-off).
+`/api/v1/admin/users` API.
 The **Admin -> User accounts** panel supports paged accounts, create/edit,
 disable/re-enable, deletion, password reset and credential revocation. Grants
 and hide lists select accounts by username/display name rather than guessed IDs.
@@ -110,48 +110,20 @@ Never start an older binary against a database already upgraded by a newer relea
 pre-migration backup is also retained in `/data/backups/`; restoring that backup with the
 previous release is the rollback path.
 
+In a container the default Bookheap folder (`PANDA_BOOKHEAP_DIR`) is inside the `/data`
+volume, owned by UID/GID `65532:65532`. When mounting a separate folder, make it writable
+by that user and keep it outside the drop folder and `files/`, `covers/`, `tmp/`,
+`backups/`.
+
 ## Using the library
 
-- **Import:** Administrators can upload books in the Admin → Imports page. Files copied
-  into `PANDA_DROP_DIR` are also imported after they remain stable for three seconds.
-  Subdirectories named for a library slug route imports to that library; root-level drops
-  require a configured default library. Import history and failures are visible in Admin.
-- **Bookheap (admins):** The header **Upload** button sends one or more books to the
-  Bookheap, a staging folder (`PANDA_BOOKHEAP_DIR`, default `<data-dir>/bookheap`) for
-  books that are not in a library yet. Files can also be copied into that folder directly
-  (subfolders are fine) and indexed with **Scan** on the Bookheap page. The page shows each
-  file's title, format and status (Ready, Duplicate, Invalid, Queued/Importing, Failed);
-  select items across pages, then **Assign…** them to a library and optional manual
-  shelves, or **Delete…** them. Assigned books import like any other upload (source
-  "Bookheap" in Admin → Imports) and their files leave the heap; duplicates and failures
-  stay with a reason, and failed items can be assigned again. Readers never see the heap.
-  In a container the default heap is inside the `/data` volume, owned by UID/GID
-  `65532:65532`; when mounting a separate folder, make it writable by that user and keep
-  it outside the drop folder and `files/`, `covers/`, `tmp/`, `backups/`.
-- **Read and offline:** Open a book from the catalog to use the browser reader. Install
-  the PWA from a supported browser and explicitly download books for offline reading.
-  Progress changes are queued offline and synced after reconnect; storage can be managed
-  from the offline page/settings.
-- **Dashboard and bookmarks:** The signed-in home page has configurable reading
-  feeds and shelf sections, including an intentionally empty layout. The sidebar
-  contains All Books, Bookmarks, Notes, live shelf counts and the build version.
-  The header and sidebar float as rounded panels; page content sits in cards
-  directly on the background and scrolls beneath an opaque header band. On
-  smaller screens, the sidebar opens as a floating navigation drawer.
-  Its plus button creates manual or rule-based automatic shelves. Reader bookmarks
-  save exact PDF/CFI positions; Bookmarks opens, renames and deletes them across
-  books. Changes survive offline reload and synchronize after reconnect, isolated
-  by account. A bookmark whose original file is unavailable is not opened at a
-  guessed position.
-- **OPDS:** Create an `opds` app password in Settings and configure an OPDS client with
-  the catalog URL `https://books.example.org/opds` and the PandaLibrary username plus
-  that app password. OPDS uses HTTP Basic authentication; use HTTPS.
-- **KOReader:** Create a `kosync` app password and configure KOReader's Progress Sync
-  plugin with the custom server `https://books.example.org/kosync`, your username, and the
-  app password **without its display hyphens**. Do not use the web-login password or an
-  OPDS app password.
-- **Notes and shelves:** Notes, highlights, reading progress, and shelves are available
-  from the web application. Notes can be exported as Markdown or ZIP from Notes.
+See the [user guide](docs/user/README.md) for what each part of PandaLibrary does:
+
+- [Using PandaLibrary](docs/user/using-pandalibrary.md): dashboard, browsing, book pages,
+  the reader, offline reading, bookmarks, notes, shelves, search and stats.
+- [Reading apps and devices](docs/user/devices.md): OPDS apps and KOReader progress sync.
+- [Administration](docs/user/administration.md): adding books, the Bookheap, accounts,
+  libraries and access, metadata providers and maintenance.
 
 ## Upgrades and health
 
@@ -273,5 +245,6 @@ Docker-format metadata to preserve the healthcheck).
 
 SQL migrations are under [internal/db/migrations](internal/db/migrations/). Useful
 operator commands are `pandalibrary migrate status`, `pandalibrary migrate up`, and
-`pandalibrary migrate down-to <version>` (development only). See
-[docs](docs/README.md) for architecture, decisions, plans, and implementation status.
+`pandalibrary migrate down-to <version>` (development only). Internal developer notes
+(architecture, decisions, plans and task history) are kept locally in `docs/dev/`, which
+is Git-ignored and not published.
