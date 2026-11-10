@@ -15,7 +15,6 @@ export interface PdfViewState {
 	zoom: PdfZoom;
 	scale: number;
 	layout: PdfLayout;
-	coverAlone: boolean;
 	rotation: PdfRotation;
 }
 
@@ -44,6 +43,7 @@ export interface PageLayerPainter {
 	name: string;
 	z: number;
 	paint(context: PageLayerContext): void;
+	dispose?(): void;
 }
 
 export interface PageEnhancerContext {

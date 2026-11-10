@@ -2,10 +2,10 @@
 	import { onDestroy, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import Icon from '../Icon.svelte';
-	import { colorTone, MARK_SORTS, type ColorCount, type MarkSort } from './highlights-model.js';
+	import { colorTone, MARK_SORTS, sortColorOptions, type ColorCount, type MarkSort } from './highlights-model.js';
 	import { colorName } from './labels.js';
 	import type { HighlightStyle } from '#lib/reader/types.js';
-	import { styleLabel } from '#lib/reader/pdf/panel/labels.js';
+	import { styleLabel } from '#lib/reader/pdf/sidebar/annotations/labels.js';
 
 	let {
 		query,
@@ -44,6 +44,7 @@
 	const SEARCH_DELAY_MS = 200;
 	const styleOptions: HighlightStyle[] = ['highlight', 'underline', 'strikeout'];
 	const filterCount = $derived(colors.size + styles.size);
+	const sortedColors = $derived(sortColorOptions(colorOptions));
 	let draft = $state('');
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let filtersOpen = $state(false);
@@ -170,10 +171,10 @@
 				</fieldset>
 				<fieldset class="mt-3 space-y-1">
 					<legend class="mb-1 text-xs font-semibold tracking-wider text-slate-500 uppercase">{m['bv9.filters_colors']()}</legend>
-					{#each colorOptions as option (option.color)}
+					{#each sortedColors as option (option.color)}
 						<label class="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-sm hover:bg-slate-50">
 							<input type="checkbox" class="size-4 {focusRing}" checked={colors.has(option.color)} onchange={() => onToggleColor(option.color)} />
-							<span class="size-3 rounded-full {colorTone(option.color).bar}" aria-hidden="true"></span>
+							<span class="size-3 rounded-full {colorTone(option.color).bar}" style:background-color={colorTone(option.color).hex} aria-hidden="true"></span>
 							<span>{m['bv9.color_option']({ color: colorName(option.color), count: option.count })}</span>
 						</label>
 					{/each}

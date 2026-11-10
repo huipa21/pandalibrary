@@ -72,7 +72,7 @@ export function excerpt(content: string, max = EXCERPT_CHARS): string {
 
 /** Highlight position as a percentage with one decimal, or null when not meaningful. */
 export function positionPercent(result: Pick<AnnotationResult, 'kind' | 'position'>): number | null {
-	if (result.kind !== 'highlight' || !Number.isFinite(result.position)) return null;
+	if ((result.kind !== 'highlight' && result.kind !== 'text') || !Number.isFinite(result.position)) return null;
 	if (result.position < 0 || result.position > 1) return null;
 	return Math.round(result.position * 1000) / 10;
 }

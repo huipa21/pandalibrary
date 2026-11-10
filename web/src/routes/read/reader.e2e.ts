@@ -1,6 +1,9 @@
 import { expect, test, type Frame, type Page, type Route } from '@playwright/test';
 import { azw3Fixture, cbzFixture, epubFixture, fb2Fixture, fbzFixture, mobiFixture, pdfFixture } from '../../lib/reader/fixtures';
 import { pdfPageBox, pdfPageText } from '../../lib/real-pdf.js';
+import axe from 'axe-core';
+import { BACKGROUNDS } from '../../lib/reader/appearance.js';
+import { resolve } from 'node:path';
 
 type TestMutation = {
 	entity: string;
@@ -226,19 +229,18 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	await expect(page.locator('.reader-note-preview img, .reader-note-preview script')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Save note' }).click();
 	await expect.poll(() => state.notes.length).toBe(1);
-	await page.getByRole('button', { name: 'Add book note' }).click();
-	await page.getByRole('textbox', { name: 'Note in Markdown' }).fill('Book-level note');
-	await page.getByRole('button', { name: 'Save note' }).click();
-	await expect.poll(() => state.notes.length).toBe(2);
+	await expect(page.getByRole('button', { name: 'Add book note' })).toHaveCount(0);
 	await highlight.getByLabel('Highlight color').selectOption('blue');
 	await expect.poll(() => state.highlights[0]?.color).toBe('blue');
 
 	await page.getByText('Reader settings', { exact: true }).click();
-	await page.getByRole('combobox', { name: 'Font', exact: true }).selectOption('sans-serif');
-	await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('dark');
+	await page.getByRole('button', { name: 'Format', exact: true }).click();
+	await page.getByRole('radio', { name: 'Sans', exact: true }).click();
+	await page.getByRole('radio', { name: 'Night', exact: true }).click();
+	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Save settings' }).click();
 	await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value).toMatchObject({
-		font: 'sans-serif', theme: 'dark', futureOption: { keep: true }
+		font: 'sans-serif', theme: 'dark', background: 'night', futureOption: { keep: true }
 	});
 
 	await page.getByRole('button', { name: 'Next page' }).click();
@@ -256,7 +258,7 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	frame = await bookFrame(page, 'Second section');
 	await expect(frame.getByText('Second section')).toBeVisible();
 	await expect(page.locator('.reader-markdown strong')).toHaveText('Keep this');
-	await expect(page.getByText('Book-level note')).toBeVisible();
+	await expect(page.getByText('Book-level note')).toHaveCount(0);
 	await expect(page.locator('.reader-markdown img, .reader-markdown script')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Go to highlight' }).click();
 	await expect.poll(() => page.evaluate(() => (window as Window & { __readerDraws?: number }).__readerDraws ?? 0)).toBeGreaterThan(0);
@@ -265,7 +267,7 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	await page.getByRole('button', { name: 'Save note' }).click();
 	await expect.poll(() => state.notes.find((note) => note.highlight_id !== null)?.body_md).toBe('Edited note');
 	await highlight.getByRole('button', { name: 'Delete', exact: true }).last().click();
-	await expect.poll(() => state.notes.length).toBe(1);
+	await expect.poll(() => state.notes.length).toBe(0);
 	await expect(highlight.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(1);
 	await highlight.getByRole('button', { name: 'Delete', exact: true }).click();
 	await expect.poll(() => state.highlights.length).toBe(0);
@@ -394,24 +396,24 @@ test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async (
 	await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 21 });
 });
 
-test('PDF odd spreads and cover-alone navigation retain every page', async ({ page }) => {
+test('PDF ignores retired cover-alone settings and odd spreads retain every page', async ({ page }) => {
 	const state = await setupReader(page, 'pdf', pdfFixture(5));
 	state.settings.push({ key: 'reader.book.21', value: { pdfLayout: 'split', pdfCoverAlone: true }, updated_at: new Date().toISOString(), rev: ++state.rev });
 	state.settings = state.settings.filter((setting) => setting.key !== 'reader.book.21' || setting.rev === state.rev);
 	await page.goto('/read/21/31');
-	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
-	await expect(page.locator('.reader-pdf-page')).toHaveCount(1);
+	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
+	await expect(page.locator('.reader-pdf-page')).toHaveCount(2);
 	await page.locator('#reader-surface').focus();
-	for (const first of [2, 4]) {
+	for (const first of [3, 5]) {
 		await page.keyboard.press('ArrowRight');
 		await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', String(first));
-		await expect(page.locator('.reader-pdf-page')).toHaveCount(2);
+		await expect(page.locator('.reader-pdf-page')).toHaveCount(first === 5 ? 1 : 2);
 	}
 	await page.keyboard.press('ArrowLeft');
-	await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', '2');
-	await expect(page.locator('.reader-pdf-text').first()).toContainText('Second PDF page text');
+	await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', '3');
+	await expect(page.locator('.reader-pdf-text').first()).toContainText('Page 3 PDF page text');
 	await page.keyboard.press('Home');
-	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
 	await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 1 });
 	state.settings = [{ key: 'reader.book.21', value: { pdfLayout: 'split', pdfCoverAlone: false }, updated_at: new Date().toISOString(), rev: ++state.rev }];
 	await page.reload();
@@ -422,6 +424,110 @@ test('PDF odd spreads and cover-alone navigation retain every page', async ({ pa
 	await expect(page.locator('.reader-pdf-page')).toHaveCount(1);
 	await expect(page.locator('.reader-pdf-page')).toHaveAttribute('data-page', '5');
 	await expect(page.locator('.pv-frame-toolbar')).toContainText('100.00%');
+});
+
+test('RP9 PDF Format applies all backgrounds, persists, and folds into mobile overflow', async ({ page }, testInfo) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	const state = await setupReader(page, 'pdf', pdfFixture(2));
+	state.settings[1].value = { theme: 'dark', pdfCoverAlone: true, futureOption: { keep: true } };
+	await page.goto('/read/21/31');
+	const surface = page.locator('#reader-surface');
+	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
+	await expect(surface).toHaveAttribute('data-background', 'night');
+	await expect(surface).toHaveAttribute('data-tone', 'dark');
+	const format = page.getByRole('button', { name: 'Format', exact: true });
+	const display = page.getByRole('button', { name: 'Page display', exact: true });
+	const displayBox = await display.boundingBox();
+	const formatBox = await format.boundingBox();
+	expect(formatBox!.x).toBeGreaterThanOrEqual(displayBox!.x + displayBox!.width);
+	await display.click();
+	await expect(page.getByRole('menuitemradio')).toHaveCount(4);
+	await expect(page.getByRole('menuitemcheckbox')).toHaveCount(1);
+	await page.keyboard.press('Escape');
+	const labels = ['White', 'Cream', 'Sepia', 'Eye-care green', 'Wood', 'Gray', 'Sky', 'Blush', 'Night', 'Black'];
+	for (const [index, preset] of BACKGROUNDS.entries()) {
+		await format.click();
+		const dialog = page.getByRole('dialog', { name: 'Format', exact: true });
+		await expect(dialog.getByRole('radiogroup')).toHaveCount(1);
+		await dialog.getByRole('radio', { name: labels[index], exact: true }).click();
+		await expect(surface).toHaveAttribute('data-background', preset.id);
+		await expect(surface).toHaveAttribute('data-tone', preset.tone);
+		await expect(page.locator('.reader-pdf-page canvas').first()).toHaveCSS('filter',
+			preset.tone === 'dark' ? 'invert(1) hue-rotate(180deg)' : 'none');
+		await expect(page.locator('.reader-pdf-page canvas').first()).toHaveCSS('mix-blend-mode',
+			preset.tone === 'dark' ? 'screen' : 'multiply');
+		await expect(surface).toHaveCSS('background-color',
+			preset.tone === 'dark' ? 'rgb(24, 24, 27)' : 'rgb(226, 232, 240)');
+		await page.keyboard.press('Escape');
+		const screenshot = resolve('..', 'docs', 'dev', 'plans', 'assets', 'rp9', `pdf-${preset.id}.png`);
+		await surface.screenshot({ path: screenshot, animations: 'disabled' });
+		await testInfo.attach(`PDF ${preset.id}`, { path: screenshot, contentType: 'image/png' });
+	}
+	await format.click();
+	await page.getByRole('radio', { name: 'Eye-care green', exact: true }).click();
+	await page.addScriptTag({ content: axe.source });
+	const violations = await page.evaluate(async () => {
+		const result = await (window as Window & { axe: typeof axe }).axe.run('[role="dialog"][aria-label="Format"]');
+		return result.violations.map(({ id, nodes }) => ({ id, nodes: nodes.map(({ html, failureSummary }) => ({ html, failureSummary })) }));
+	});
+	expect(violations).toEqual([]);
+	await page.keyboard.press('Escape');
+	for (const key of ['reader.book.21', 'reader.pdf']) {
+		await expect.poll(() => state.settings.find((setting) => setting.key === key)?.value)
+			.toMatchObject({ background: 'green', theme: 'light' });
+	}
+	await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value)
+		.toMatchObject({ pdfCoverAlone: true, futureOption: { keep: true } });
+	await page.reload();
+	await expect(surface).toHaveAttribute('data-background', 'green');
+	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
+	await page.setViewportSize({ width: 375, height: 812 });
+	await expect(format).not.toBeVisible();
+	await page.getByRole('button', { name: 'More view options' }).click();
+	await page.getByRole('menuitem', { name: 'Format', exact: true }).click();
+	await page.getByRole('radio', { name: 'Night', exact: true }).click();
+	await expect(surface).toHaveAttribute('data-background', 'night');
+	await page.keyboard.press('Escape');
+	await page.keyboard.press('Escape');
+});
+
+test('RP9 EPUB Format changes live typography and background and saves both scopes', async ({ page }) => {
+	const state = await setupReader(page, 'epub', epubFixture());
+	await page.goto('/read/21/31');
+	let frame = await bookFrame(page, 'First section');
+	const initialSize = await frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize));
+	await page.getByText('Reader settings', { exact: true }).click();
+	await page.getByRole('button', { name: 'Format', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Format', exact: true });
+	await dialog.getByRole('radio', { name: 'System', exact: true }).click();
+	await dialog.getByRole('button', { name: 'Increase font size', exact: true }).click();
+	await dialog.getByRole('button', { name: 'Increase spacing', exact: true }).click();
+	await dialog.getByRole('radio', { name: 'Wood', exact: true }).click();
+	await expect.poll(() => frame.locator('body').evaluate((body) => ({
+		font: getComputedStyle(body).fontFamily,
+		color: getComputedStyle(body).color,
+		background: getComputedStyle(body).backgroundColor,
+		spacing: Math.round(10 * parseFloat(getComputedStyle(body.querySelector('p')!).lineHeight) / parseFloat(getComputedStyle(body.querySelector('p')!).fontSize)) / 10
+	}))).toMatchObject({ font: 'system-ui', color: 'rgb(62, 44, 28)', background: 'rgb(220, 194, 155)', spacing: 1.6 });
+	await expect.poll(() => frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize)))
+		.toBeCloseTo(initialSize * 1.1, 2);
+	await expect(page.locator('section[aria-label="Book content"] > [role="region"]')).toHaveCSS('background-image', /repeating-linear-gradient/);
+	await dialog.getByRole('radio', { name: 'Night', exact: true }).click();
+	await expect(frame.locator('html')).toHaveCSS('color-scheme', 'dark');
+	await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(28, 28, 30)');
+	await expect(page.locator('section[aria-label="Book content"] > [role="region"]')).toHaveCSS('background-image', 'none');
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+	await page.getByRole('button', { name: 'Save as format default', exact: true }).click();
+	for (const key of ['reader.book.21', 'reader.epub']) {
+		await expect.poll(() => state.settings.find((setting) => setting.key === key)?.value)
+			.toMatchObject({ font: 'system', size: 110, spacing: 1.6, background: 'night', theme: 'dark' });
+	}
+	await page.reload();
+	frame = await bookFrame(page, 'First section');
+	await expect(frame.locator('body')).toHaveCSS('font-family', 'system-ui');
+	await expect(frame.locator('html')).toHaveCSS('color-scheme', 'dark');
 });
 
 test('PDF free zoom preserves rotated text and highlight geometry', async ({ page }) => {
@@ -454,6 +560,7 @@ test('PDF free zoom preserves rotated text and highlight geometry', async ({ pag
 			textRotated: text.height > text.width
 		};
 	});
+	await expect(pdfPage.locator('.reader-pdf-highlight')).toBeVisible();
 	const original = await geometry();
 	expect(original.x).toBeCloseTo(0.88, 3);
 	expect(original.y).toBeCloseTo(0.1, 3);
@@ -471,10 +578,12 @@ test('PDF free zoom preserves rotated text and highlight geometry', async ({ pag
 	await surface.dispatchEvent('wheel', { deltaY: -100, ctrlKey: true });
 	await widthNear(1056 * Math.exp(0.2));
 	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
-	const zoomed = await geometry();
-	expect(zoomed.x).toBeCloseTo(original.x, 3);
-	expect(zoomed.y).toBeCloseTo(original.y, 3);
-	expect(zoomed.textInside).toBe(true);
+	await expect(async () => {
+		const zoomed = await geometry();
+		expect(zoomed.x).toBeCloseTo(original.x, 3);
+		expect(zoomed.y).toBeCloseTo(original.y, 3);
+		expect(zoomed.textInside).toBe(true);
+	}).toPass({ timeout: 5_000 });
 	await surface.evaluate((element) => {
 		for (let index = 0; index < 30; index++) element.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, ctrlKey: true, cancelable: true }));
 	});

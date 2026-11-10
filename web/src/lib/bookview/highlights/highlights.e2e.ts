@@ -128,6 +128,39 @@ test('style badges and filters distinguish legacy, underline and strikeout marks
 	await expect(items(page).first()).toContainText('It was a bright cold day');
 });
 
+test('hex colours use their swatches, preset labels and palette-ordered filters', async ({ page }) => {
+	await mockApi(page, {
+		highlights: [
+			highlights[0],
+			{ ...highlights[1], color: '#FACC15' },
+			{ ...highlights[2], color: '#f87171' },
+			{ ...highlights[3], color: '#abcdef' },
+			{ ...highlights[4], color: '#123456' }
+		],
+		notes: []
+	});
+	await open(page);
+	const custom = list(page).locator('[data-highlight-id="h4"] div[aria-hidden="true"]').first();
+	await expect(custom).toHaveCSS('background-color', 'rgb(171, 205, 239)');
+	await page.getByRole('button', { name: 'Filters', exact: true }).click();
+	const colors = page.locator('fieldset').filter({ has: page.getByText('Colour', { exact: true }) });
+	await expect(colors.locator('label')).toHaveText(['Yellow (2)', 'Red (1)', '#123456 (1)', '#abcdef (1)']);
+	await colors.getByRole('checkbox', { name: 'Yellow (2)' }).check();
+	await expect(items(page)).toHaveCount(2);
+	await colors.getByRole('checkbox', { name: '#abcdef (1)' }).check();
+	await expect(items(page)).toHaveCount(3);
+	await expect(items(page).last()).toContainText('Memory is a strange garden');
+});
+
+test('invalid stored colours use the yellow display fallback without changing their filter label', async ({ page }) => {
+	await mockApi(page, { highlights: [{ ...highlights[0], color: 'teal' }], notes: [] });
+	await open(page);
+	const swatch = list(page).locator('[data-highlight-id="h1"] div[aria-hidden="true"]').first();
+	await expect(swatch).toHaveCSS('background-color', 'rgb(250, 204, 21)');
+	await page.getByRole('button', { name: 'Filters', exact: true }).click();
+	await expect(page.getByRole('checkbox', { name: 'teal (1)' })).toBeVisible();
+});
+
 test('inserted text remains visible and exportable without any highlights', async ({ page }) => {
 	const { exports } = await mockApi(page, { highlights: [], notes: [], page_annotations: [textInsert] });
 	await page.goto(`/books/${BOOK_ID}/highlights`);

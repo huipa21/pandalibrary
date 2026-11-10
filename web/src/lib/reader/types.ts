@@ -1,4 +1,5 @@
 import type { JsonValue } from '#lib/api/client.js';
+import type { BackgroundId } from './appearance.js';
 
 export const FORMATS = ['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz', 'pdf'] as const;
 export type ReaderFormat = (typeof FORMATS)[number];
@@ -34,11 +35,11 @@ export interface ReaderSettings {
 	size: number;
 	spacing: number;
 	theme: 'light' | 'sepia' | 'dark';
+	background?: BackgroundId;
 	flow: 'paginated' | 'scrolled';
 	pdfLayout?: PdfLayout;
 	pdfZoom?: PdfZoom;
 	pdfRotation?: 0 | 90 | 180 | 270;
-	pdfCoverAlone?: boolean;
 }
 
 export interface ReaderEvents {

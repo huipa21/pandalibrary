@@ -18,6 +18,7 @@
 		"test:e2e": "playwright test"
 	},
 	"devDependencies": {
+		"@axe-core/playwright": "4.14.0",
 		"@inlang/paraglide-js": "2.29.3",
 		"@playwright/test": "1.64.1",
 		"@sveltejs/adapter-static": "4.0.1",
@@ -25,6 +26,7 @@
 		"@sveltejs/vite-plugin-svelte": "7.3.1",
 		"@tailwindcss/vite": "4.3.3",
 		"@types/node": "26.6.6",
+		"axe-core": "4.14.0",
 		"fake-indexeddb": "6.2.4",
 		"svelte": "5.57.3",
 		"svelte-check": "4.7.7",
@@ -46,6 +48,7 @@
 		"@tesseract.js-data/eng": "1.0.0",
 		"clsx": "2.1.1",
 		"dompurify": "3.4.17",
+		"entities": "6.0.1",
 		"foliate-js": "1.0.1",
 		"marked": "18.1.2",
 		"pdfjs-dist": "6.5.438",

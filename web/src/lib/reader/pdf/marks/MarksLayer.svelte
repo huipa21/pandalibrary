@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { v7 as uuidv7 } from 'uuid';
 	import * as m from '#lib/paraglide/messages.js';
-	import { HIGHLIGHT_COLORS, type HighlightColor } from '../../annotations.js';
+	import type { MarkColor } from '../../annotations.js';
 	import type { Highlight, HighlightStyle, ReaderSelection } from '../../types.js';
 	import { getPdfReaderContext } from '../context.js';
 	import { toFraction } from '../progress.js';
@@ -12,12 +12,12 @@
 	import { capturePdfSelection, type PdfSelection, type PdfSelectionPart } from './selection.js';
 	import { changedPages, textMarkPainter, textMarks } from './text-mark-painter.js';
 	import { wireOcr, type OcrWiring } from './ocr-wiring.js';
+	import { markColors } from './mark-colors.svelte.js';
 	import SelectionToolbar from './SelectionToolbar.svelte';
 	import MarkToolbar from './MarkToolbar.svelte';
 	import CommentPopover from './CommentPopover.svelte';
 	import './marks.css';
 
-	const COLOR_KEY = 'pandalibrary.pdf-mark-color';
 	const ctx = getPdfReaderContext();
 	const { engine, controller } = ctx;
 
@@ -62,6 +62,10 @@
 
 	$effect(() => {
 		if (markTarget && !markRow) markTarget = null;
+	});
+
+	$effect(() => {
+		if (markColors.storageError) ctx.announce(m['pv5.preference_error']());
 	});
 
 	const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -132,7 +136,7 @@
 	}
 
 	/** One row per page part, sequentially; earlier rows are removed again when a later one fails. */
-	async function createMarks(chosen: PdfSelection, color: HighlightColor, style: HighlightStyle): Promise<Highlight[] | null> {
+	async function createMarks(chosen: PdfSelection, color: MarkColor, style: HighlightStyle): Promise<Highlight[] | null> {
 		const created: Highlight[] = [];
 		for (const part of chosen.parts) {
 			await idle();
@@ -185,16 +189,7 @@
 		ctx.announce(copied ? m['pv8.copied']() : m['pv8.copy_failed']());
 	}
 
-	function pickColor(color: HighlightColor) {
-		ctx.markColor.set(color);
-		try {
-			localStorage.setItem(COLOR_KEY, color);
-		} catch {
-			// Storage can be unavailable (private mode); the colour still applies for this session.
-		}
-	}
-
-	function mark(style: HighlightStyle, color = ctx.markColor.current) {
+	function mark(style: HighlightStyle, color = markColors.get(style)) {
 		const chosen = selection;
 		if (!chosen) return;
 		void run(async () => {
@@ -209,7 +204,7 @@
 		const chosen = selection;
 		if (!chosen) return;
 		void run(async () => {
-			const created = await createMarks(chosen, ctx.markColor.current, 'highlight');
+			const created = await createMarks(chosen, markColors.get('highlight'), 'highlight');
 			if (!created) return;
 			clearSelection();
 			comment = {
@@ -292,23 +287,19 @@
 		});
 	}
 
-	function changeMark(row: Highlight, patch: { color?: HighlightColor; style?: HighlightStyle }) {
+	function changeMark(row: Highlight, patch: { color?: MarkColor; style?: HighlightStyle }) {
 		void run(async () => {
 			await idle();
-			await controller.updateHighlight(row, patch);
+			if (await controller.updateHighlight(row, patch) && patch.color !== undefined) {
+				markColors.set(row.style ?? 'highlight', patch.color);
+			}
 		});
 	}
 
 	onMount(() => {
-		try {
-			const stored = localStorage.getItem(COLOR_KEY);
-			if (stored && (HIGHLIGHT_COLORS as readonly string[]).includes(stored)) ctx.markColor.set(stored as HighlightColor);
-		} catch {
-			// Ignore unavailable storage.
-		}
 		const viewport = engine.viewport;
 		bounds = clientRect(viewport);
-		const unregister = engine.pageLayers.register(textMarkPainter(() => marks, () => m['pv8.open_comment']()));
+		const unregister = engine.pageLayers.register(textMarkPainter(() => marks, () => m['pv8.open_comment'](), () => engine.viewport));
 		engine.setSelectionCapture(scheduleCapture);
 		const unsubscribe = engine.subscribe(refresh);
 		wiring = wireOcr(ctx, (status) => { ocrStatus = status; });
@@ -382,13 +373,17 @@
 		anchor={selection.anchor}
 		{bounds}
 		hidden={!intersects(selection.anchor, bounds)}
-		color={ctx.markColor.current}
+		highlightColor={markColors.get('highlight')}
+		lineColor={markColors.get('underline')}
 		disabled={busy}
 		oncopy={() => { if (selection) void copyText(selection.text); }}
 		onmark={(style) => mark(style)}
 		oncomment={commentOnSelection}
 		onbookmark={bookmarkSelection}
-		onpick={(color) => { pickColor(color); mark('highlight', color); }}
+		onpick={(style, color) => {
+			markColors.set(style, color);
+			if (style === 'highlight') mark(style, color);
+		}}
 		onescape={clearSelection}
 	/>
 {/if}

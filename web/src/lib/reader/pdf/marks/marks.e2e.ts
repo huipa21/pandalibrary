@@ -1,10 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
+import axe from 'axe-core';
 import { pdfFixture, scannedPdfFixture } from '../../fixtures';
+
+declare global {
+	interface Window {
+		axe?: typeof axe;
+	}
+}
 
 const id = (n: number) => `0190f5c2-7a00-7000-8000-${String(n).padStart(12, '0')}`;
 
 // Keep mocked API traffic independent of service-worker caching.
-test.use({ serviceWorkers: 'block' });
+test.use({ serviceWorkers: 'block', bypassCSP: true });
 const base = {
 	book_id: 21, book_file_id: 31, position: 0,
 	created_at: '2026-11-01T10:00:00Z', updated_at: '2026-11-01T10:00:00Z', deleted_at: null, rev: 1
@@ -55,8 +62,18 @@ async function setup(page: Page, options: Options = {}) {
 			return route.fulfill({ json: { cursor: 1, user_books: [], reading_progress: [], highlights: [], notes: [], bookmarks: [], page_annotations: [], user_settings: [] } });
 		}
 		if (path === '/api/v1/sync/push') {
-			const { mutations } = route.request().postDataJSON();
+			const { mutations }: { mutations: Push[] } = route.request().postDataJSON();
 			state.pushes.push(...mutations);
+			for (const mutation of mutations) {
+				if (mutation.entity !== 'highlights') continue;
+				const previous = state.highlights.find((row): row is Record<string, unknown> =>
+					typeof row === 'object' && row !== null && 'id' in row && row.id === mutation.id);
+				state.highlights = state.highlights.filter((row) =>
+					typeof row !== 'object' || row === null || !('id' in row) || row.id !== mutation.id);
+				if (mutation.op === 'upsert') {
+					state.highlights.push({ ...base, ...previous, ...mutation.data, id: mutation.id });
+				}
+			}
 			return route.fulfill({ json: { results: mutations.map((_: unknown, index: number) => ({ index, status: 'applied' })) } });
 		}
 		return route.fulfill({ json: { items: [], next_cursor: null } });
@@ -107,7 +124,7 @@ test('the toolbar appears next to a mouse selection and stays inside a 360 px vi
 	expect(bar.x).toBeGreaterThanOrEqual(0);
 	expect(bar.x + bar.width).toBeLessThanOrEqual(360);
 	expect(Math.min(Math.abs(bar.y + bar.height - box.y), Math.abs(bar.y - box.y - box.height))).toBeLessThan(24);
-	for (const name of ['Copy', 'Highlight', 'Highlight colors', 'Underline', 'Strikeout', 'Comment', 'Bookmark']) {
+	for (const name of ['Copy', 'Highlight', 'Highlight colors', 'Underline', 'Strikeout', 'Line colors', 'Comment', 'Bookmark']) {
 		await expect(toolbar.getByRole('button', { name, exact: true })).toBeVisible();
 	}
 	await page.screenshot({ path: test.info().outputPath('selection-toolbar-360.png') });
@@ -146,13 +163,13 @@ test('every colour and style pushes one mark and paints the matching element', a
 		expect(pushed.data).toMatchObject({ color: colour.toLowerCase(), style: 'highlight', text: 'First PDF page text', locator: { type: 'pdf', page: 1 } });
 		await expect(page.locator(`.reader-pdf-highlight[data-annotation-id="${pushed.id}"]`)).toHaveAttribute('data-style', 'highlight');
 	}
-	expect(await page.evaluate(() => localStorage.getItem('pandalibrary.pdf-mark-color'))).toBe('purple');
+	expect(await page.evaluate(() => localStorage.getItem('pandalibrary.mark-color.highlight'))).toBe('purple');
 	for (const [name, style] of [['Underline', 'underline'], ['Strikeout', 'strikeout'], ['Highlight', 'highlight']] as const) {
 		await selectText(page, 'First PDF page text');
 		await selectionToolbar(page).getByRole('button', { name, exact: true }).click();
 		await expect.poll(() => highlightPushes(state).at(-1)?.data.style).toBe(style);
 		const pushed = highlightPushes(state).at(-1)!;
-		expect(pushed.data.color).toBe('purple');
+		expect(pushed.data.color).toBe(style === 'highlight' ? 'purple' : '#000000');
 		await expect(page.locator(`.reader-pdf-highlight[data-annotation-id="${pushed.id}"]`)).toHaveAttribute('data-style', style);
 		await expect(selectionToolbar(page)).toHaveCount(0);
 	}
@@ -160,8 +177,212 @@ test('every colour and style pushes one mark and paints the matching element', a
 	await page.reload();
 	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
 	await selectText(page, 'First PDF page text');
-	await expect(selectionToolbar(page).locator('.pv8-colour-dot')).toHaveCSS('background-color', 'rgb(167, 139, 250)');
+	await expect(selectionToolbar(page).locator('.pv8-split .pv8-colour-dot')).toHaveCSS('background-color', 'rgb(167, 139, 250)');
 });
+
+test('new highlights are yellow and both line styles are black by default', async ({ page }) => {
+	const state = await setup(page);
+	for (const [label, style, color] of [
+		['Underline', 'underline', '#000000'],
+		['Strikeout', 'strikeout', '#000000'],
+		['Highlight', 'highlight', 'yellow']
+	] as const) {
+		await selectText(page, 'First PDF page text');
+		await selectionToolbar(page).getByRole('button', { name: label, exact: true }).click();
+		await expect.poll(() => highlightPushes(state).at(-1)?.data).toMatchObject({ style, color });
+		const pushed = highlightPushes(state).at(-1)!;
+		const mark = page.locator(`.reader-pdf-highlight[data-annotation-id="${pushed.id}"]`);
+		await expect(mark).toHaveAttribute('data-style', style);
+		await expect(mark).toHaveCSS('opacity', style === 'highlight' ? '0.35' : '1');
+		await expect(mark).toHaveCSS('mix-blend-mode', style === 'highlight' ? 'multiply' : 'normal');
+	}
+});
+
+test('preset and custom colours persist separately and a hex mark syncs and renders after reload', async ({ page }) => {
+	const state = await setup(page);
+	await selectText(page, 'First PDF page text');
+	await selectionToolbar(page).getByRole('button', { name: 'Highlight colors', exact: true }).click();
+	await page.getByRole('radio', { name: 'Red', exact: true }).click();
+	await expect.poll(() => highlightPushes(state).length).toBe(1);
+	expect(highlightPushes(state)[0].data.color).toBe('#f87171');
+
+	await selectText(page, 'First PDF page text');
+	await selectionToolbar(page).getByRole('button', { name: 'Line colors', exact: true }).click();
+	await page.getByRole('radio', { name: 'Cyan', exact: true }).click();
+	expect(highlightPushes(state)).toHaveLength(1);
+	await expect(selectionToolbar(page)).toBeVisible();
+	await expect.poll(() => page.evaluate(() => localStorage.getItem('pandalibrary.mark-color.line'))).toBe('#22d3ee');
+
+	await selectionToolbar(page).getByRole('button', { name: 'Line colors', exact: true }).click();
+	const palette = page.getByRole('radiogroup', { name: 'Line colors' });
+	const picker = palette.locator('input[type="color"]');
+	await picker.evaluate((input) => input.addEventListener('click', (event) => {
+		event.preventDefault();
+		input.setAttribute('data-picker-opened', 'true');
+	}));
+	await palette.getByRole('radio', { name: 'Custom…', exact: true }).click();
+	await expect(picker).toHaveAttribute('data-picker-opened', 'true');
+	await picker.evaluate((element) => {
+		if (!(element instanceof HTMLInputElement)) throw new Error('Missing color picker');
+		element.value = '#123456';
+		element.dispatchEvent(new Event('change', { bubbles: true }));
+	});
+	expect(highlightPushes(state)).toHaveLength(1);
+	await expect.poll(() => page.evaluate(() => localStorage.getItem('pandalibrary.mark-color.custom'))).toBe('#123456');
+	await selectionToolbar(page).getByRole('button', { name: 'Underline', exact: true }).click();
+	await expect.poll(() => highlightPushes(state).length).toBe(2);
+	const line = highlightPushes(state)[1];
+	expect(line.data).toMatchObject({ color: '#123456', style: 'underline' });
+
+	await page.reload();
+	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
+	const paintedHighlight = page.locator(`.reader-pdf-highlight[data-annotation-id="${highlightPushes(state)[0].id}"]`);
+	await expect.poll(() => paintedHighlight.evaluate((element) => getComputedStyle(element).getPropertyValue('--pv-mark').trim())).toBe('#f87171');
+	const painted = page.locator(`.reader-pdf-highlight[data-annotation-id="${line.id}"]`);
+	await expect(painted).toHaveAttribute('data-style', 'underline');
+	await expect.poll(() => painted.evaluate((element) => getComputedStyle(element).getPropertyValue('--pv-mark').trim())).toBe('#123456');
+	await selectText(page, 'First PDF page text');
+	const toolbar = selectionToolbar(page);
+	await expect(toolbar.locator('.pv8-split .pv8-colour-dot')).toHaveCSS('background-color', 'rgb(248, 113, 113)');
+	await expect(toolbar.locator('.pv8-line-caret .pv8-colour-dot')).toHaveCSS('background-color', 'rgb(18, 52, 86)');
+	await toolbar.getByRole('button', { name: 'Line colors', exact: true }).click();
+	await expect(page.getByRole('radio', { name: 'Custom…', exact: true })).toHaveAttribute('aria-checked', 'true');
+});
+
+test('mark palettes use a 2D keyboard grid, including the custom slot', async ({ page }) => {
+	const state = await setup(page);
+	await selectText(page, 'First PDF page text');
+	await selectionToolbar(page).getByRole('button', { name: 'Highlight colors', exact: true }).click();
+	const palette = page.getByRole('radiogroup', { name: 'Highlight colors' });
+	await expect(palette.getByRole('radio')).toHaveCount(17);
+	const boxes = await palette.getByRole('radio').evaluateAll((buttons) =>
+		buttons.map((button) => {
+			const { x, y, width, height } = button.getBoundingClientRect();
+			return { x, y, width, height };
+		})
+	);
+	expect(boxes.every((box) => box.width === 24 && box.height === 24)).toBe(true);
+	expect(boxes[1].x - boxes[0].x).toBe(28);
+	expect(boxes.slice(0, 8).every((box) => box.y === boxes[0].y)).toBe(true);
+	expect(boxes.slice(8, 16).every((box) => box.y === boxes[0].y + 28)).toBe(true);
+	expect(boxes[16].y).toBe(boxes[0].y + 56);
+	const yellow = palette.getByRole('radio', { name: 'Yellow', exact: true });
+	const lime = palette.getByRole('radio', { name: 'Lime', exact: true });
+	const custom = palette.getByRole('radio', { name: 'Custom…', exact: true });
+	await expect(custom.locator('.pv8-custom-inner')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+	await expect(yellow).toBeFocused();
+	await page.keyboard.press('ArrowDown');
+	await expect(lime).toBeFocused();
+	await page.keyboard.press('ArrowDown');
+	await expect(custom).toBeFocused();
+	await page.keyboard.press('ArrowUp');
+	await expect(lime).toBeFocused();
+	await page.keyboard.press('ArrowRight');
+	await expect(palette.getByRole('radio', { name: 'Teal', exact: true })).toBeFocused();
+	await page.keyboard.press('Home');
+	await expect(yellow).toBeFocused();
+	await page.keyboard.press('End');
+	await expect(custom).toBeFocused();
+	await page.keyboard.press('Escape');
+	await expect(selectionToolbar(page).getByRole('button', { name: 'Highlight colors', exact: true })).toBeFocused();
+	await selectionToolbar(page).getByRole('button', { name: 'Line colors', exact: true }).click();
+	const linePalette = page.getByRole('radiogroup', { name: 'Line colors' });
+	await page.keyboard.press('Home');
+	await page.keyboard.press('ArrowDown');
+	await expect(linePalette.getByRole('radio', { name: 'Lime', exact: true })).toBeFocused();
+	await page.keyboard.press('Space');
+	await expect(linePalette).toHaveCount(0);
+	expect(highlightPushes(state)).toHaveLength(0);
+	await selectionToolbar(page).getByRole('button', { name: 'Underline', exact: true }).click();
+	await expect.poll(() => highlightPushes(state).at(-1)?.data).toMatchObject({ style: 'underline', color: '#a3e635' });
+});
+
+test('the selection palette stays inside a short reader viewport', async ({ page }) => {
+	await page.setViewportSize({ width: 360, height: 240 });
+	await setup(page, { settings: { pdfZoom: 'page-width' } });
+	await selectText(page, 'First PDF page text');
+	await selectionToolbar(page).getByRole('button', { name: 'Line colors', exact: true }).click();
+	const popover = selectionToolbar(page).locator('.pv8-palette-popover');
+	const viewport = page.locator('.reader-pdf');
+	await expect.poll(async () => {
+		const [paletteBox, viewportBox] = await Promise.all([popover.boundingBox(), viewport.boundingBox()]);
+		return !!paletteBox && !!viewportBox &&
+			paletteBox.y >= viewportBox.y && paletteBox.y + paletteBox.height <= viewportBox.y + viewportBox.height;
+	}).toBe(true);
+	await expect(popover.getByRole('radio', { name: 'Custom…', exact: true })).toBeInViewport();
+});
+
+test('dark tone repaints line ink and highlight blend without changing stored colours', async ({ page }) => {
+	const line = { ...seededMark, id: id(2), color: '#000000', style: 'underline' };
+	const state = await setup(page, { highlights: [seededMark, line] });
+	const viewport = page.locator('.reader-pdf');
+	const mark = page.locator(`.reader-pdf-highlight[data-annotation-id="${line.id}"]`);
+	const highlight = page.locator(`.reader-pdf-highlight[data-annotation-id="${seededMark.id}"]`);
+	const ink = () => mark.evaluate((element) => getComputedStyle(element, '::after').backgroundColor);
+	await expect(mark).toBeVisible();
+	await expect.poll(ink).toBe('rgb(0, 0, 0)');
+	await viewport.evaluate((element) => element.setAttribute('data-tone', 'dark'));
+	await expect.poll(ink).toBe('rgb(229, 231, 235)');
+	await expect(highlight).toHaveCSS('mix-blend-mode', 'screen');
+	await expect(highlight).toHaveCSS('opacity', '0.35');
+	await expect(mark).toHaveAttribute('data-mark-color', '#000000');
+	await viewport.evaluate((element) => element.setAttribute('data-tone', 'light'));
+	await expect(viewport).toHaveAttribute('data-tone', 'light');
+	await expect(mark).toHaveAttribute('data-mark-color', '#000000');
+	await expect.poll(ink).toBe('rgb(0, 0, 0)');
+	await expect(highlight).toHaveCSS('mix-blend-mode', 'multiply');
+	await viewport.evaluate((element) => {
+		element.removeAttribute('data-tone');
+		element.setAttribute('data-theme', 'dark');
+	});
+	await expect.poll(ink).toBe('rgb(229, 231, 235)');
+	await expect(highlight).toHaveCSS('mix-blend-mode', 'screen');
+	await viewport.evaluate((element) => element.setAttribute('data-theme', 'light'));
+	await expect.poll(ink).toBe('rgb(0, 0, 0)');
+	expect(state.pushes.filter((row) => row.entity === 'highlights')).toHaveLength(0);
+});
+
+test('recolouring an existing mark remembers its style family without changing its colour on style switches', async ({ page }) => {
+	const state = await setup(page, { highlights: [seededMark] });
+	await page.locator('.reader-pdf-highlight').first().click();
+	const toolbar = markToolbar(page);
+	await toolbar.getByRole('radio', { name: 'Blue', exact: true }).click();
+	await expect.poll(() => page.evaluate(() => localStorage.getItem('pandalibrary.mark-color.highlight'))).toBe('blue');
+	await toolbar.getByRole('radio', { name: 'Underline', exact: true }).click();
+	await expect.poll(() => highlightPushes(state).at(-1)?.data).toMatchObject({ color: 'blue', style: 'underline' });
+	await toolbar.getByRole('radio', { name: 'Red', exact: true }).click();
+	await expect.poll(() => page.evaluate(() => localStorage.getItem('pandalibrary.mark-color.line'))).toBe('#f87171');
+	await toolbar.getByRole('radio', { name: 'Highlight', exact: true }).click();
+	await expect.poll(() => highlightPushes(state).at(-1)?.data).toMatchObject({ color: '#f87171', style: 'highlight' });
+	expect(await page.evaluate(() => localStorage.getItem('pandalibrary.mark-color.highlight'))).toBe('blue');
+});
+
+for (const theme of ['light', 'dark']) {
+	test(`mark palettes pass axe in the ${theme} theme`, async ({ page }) => {
+		await page.addInitScript((value) => localStorage.setItem('pandalibrary.theme', value), theme);
+		await setup(page, { highlights: [seededMark], settings: { theme } });
+		await page.addScriptTag({ content: axe.source });
+		const violations = async (selector: string) => page.evaluate(async (target) => {
+			const element = document.querySelector(target);
+			if (!element || !window.axe) throw new Error('Missing palette or axe');
+			const results = await window.axe.run(element);
+			return results.violations.map(({ id, impact, nodes }) => ({
+				id, impact, nodes: nodes.map(({ html, failureSummary }) => ({ html, failureSummary }))
+			}));
+		}, selector);
+		await selectText(page, 'First PDF page text');
+		await selectionToolbar(page).getByRole('button', { name: 'Highlight colors', exact: true }).click();
+		expect(await violations('[data-testid="pv8-selection-toolbar"]')).toEqual([]);
+		await page.keyboard.press('Escape');
+		await selectionToolbar(page).getByRole('button', { name: 'Line colors', exact: true }).click();
+		expect(await violations('[data-testid="pv8-selection-toolbar"]')).toEqual([]);
+		await page.keyboard.press('Escape');
+		await page.keyboard.press('Escape');
+		await page.locator('.reader-pdf-highlight').first().click();
+		await expect(markToolbar(page)).toBeVisible();
+		expect(await violations('[data-testid="pv8-mark-toolbar"]')).toEqual([]);
+	});
+}
 
 test('comment saves a note with a marker, and cancelling an empty comment removes the mark', async ({ page }) => {
 	const state = await setup(page);

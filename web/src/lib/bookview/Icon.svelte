@@ -7,9 +7,10 @@
 		| 'zoom-in' | 'zoom-out' | 'zoom-auto' | 'fit-page' | 'fit-width'
 		| 'actual-size' | 'layout-single' | 'layout-continuous' | 'layout-split'
 		| 'layout-split-continuous' | 'rotate-ccw' | 'rotate-cw' | 'hand'
-		| 'text-cursor' | 'insert' | 'panel-right'
+		| 'text-cursor' | 'insert'
 		| 'highlighter' | 'underline' | 'strikethrough' | 'message' | 'bookmark-plus'
-		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move';
+		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move'
+		| 'list-tree' | 'bookmark' | 'chevrons-left';
 </script>
 
 <script lang="ts">
@@ -19,7 +20,7 @@
 <svg
 	aria-hidden="true"
 	class={className}
-	viewBox={['zoom-in', 'zoom-out', 'zoom-auto', 'fit-page', 'fit-width', 'actual-size', 'layout-single', 'layout-continuous', 'layout-split', 'layout-split-continuous', 'rotate-ccw', 'rotate-cw', 'hand', 'text-cursor', 'insert', 'panel-right', 'highlighter', 'underline', 'strikethrough', 'message', 'bookmark-plus', 'type', 'pen', 'image', 'undo', 'check', 'move'].includes(name) ? '0 0 20 20' : '0 0 24 24'}
+	viewBox={['zoom-in', 'zoom-out', 'zoom-auto', 'fit-page', 'fit-width', 'actual-size', 'layout-single', 'layout-continuous', 'layout-split', 'layout-split-continuous', 'rotate-ccw', 'rotate-cw', 'hand', 'text-cursor', 'insert', 'highlighter', 'underline', 'strikethrough', 'message', 'bookmark-plus', 'type', 'pen', 'image', 'undo', 'check', 'move'].includes(name) ? '0 0 20 20' : '0 0 24 24'}
 	fill="none"
 	stroke="currentColor"
 	stroke-width="1.75"
@@ -100,8 +101,6 @@
 		<path d="M6 2h2l2 2 2-2h2M10 4v12m-4 2h2l2-2 2 2h2" />
 	{:else if name === 'insert'}
 		<circle cx="10" cy="10" r="8" /><path d="M10 6v8M6 10h8" />
-	{:else if name === 'panel-right'}
-		<rect x="2" y="3" width="16" height="14" rx="1" /><path d="M12 3v14m3-10h.01M15 10h.01M15 13h.01" />
 	{:else if name === 'highlighter'}
 		<path d="m6 11 8-8 3 3-8 8-3-3Zm0 0-2 4 2 2 3-3M2 18h8" />
 	{:else if name === 'underline'}
@@ -124,5 +123,11 @@
 		<path d="m3 10 5 5L17 5" />
 	{:else if name === 'move'}
 		<path d="M10 2v16M2 10h16M7 5l3-3 3 3m-6 10 3 3 3-3M5 7l-3 3 3 3m10-6 3 3-3 3" />
+	{:else if name === 'list-tree'}
+		<path d="M3 5h4m-2 0v12a2 2 0 0 0 2 2h1M5 12h3M11 5h10M11 12h10M11 19h10" />
+	{:else if name === 'bookmark'}
+		<path d="M6 3h12v18l-6-4-6 4z" />
+	{:else if name === 'chevrons-left'}
+		<path d="m11 17-5-5 5-5m7 10-5-5 5-5" />
 	{/if}
 </svg>

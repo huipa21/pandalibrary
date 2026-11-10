@@ -7,7 +7,7 @@ import { getBook } from '#lib/catalog/api.js';
 import type { Book, BookFile } from '#lib/catalog/types.js';
 import { createReader, readerFormat } from '#lib/reader/index.js';
 import { deviceId, downloadBookFile, getBookState, getSettings, SyncError } from '#lib/reader/api.js';
-import { annotationForReader, deleteAnnotation, highlightColor, makeHighlight, makeNote, type HighlightColor } from '#lib/reader/annotations.js';
+import { annotationForReader, deleteAnnotation, highlightColor, isMarkColor, makeHighlight, makeNote, type MarkColor } from '#lib/reader/annotations.js';
 import { bookmarkForPosition, deleteBookmark, makeBookmark, updateBookmarkLabel } from '#lib/reader/bookmarks.js';
 import { fraction, progressMutation, restorePosition } from '#lib/reader/progress.js';
 import { ReadingSessions, SessionWriter } from '#lib/reader/sessions.js';
@@ -39,7 +39,7 @@ export interface BookmarkDraft {
 	editing: boolean;
 }
 
-export function createReaderController(params: () => { bookId: string; fileId: string; bookmarkId: string | null; highlightId: string | null }) {
+export function createReaderController(params: () => { bookId: string; fileId: string; bookmarkId: string | null; highlightId: string | null; annotationId?: string | null }) {
 
 	let book = $state<Book | null>(null);
 	let file = $state<BookFile | null>(null);
@@ -60,6 +60,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let bookmarks = $state<Bookmark[]>([]);
 	let notes = $state<Note[]>([]);
 	let pageAnnotations = $state<PageAnnotation[]>([]);
+	let otherPageAnnotations = $state<PageAnnotation[]>([]);
 	let location = $state<Relocation | null>(null);
 	let selection = $state<ReaderSelection | null>(null);
 	let reader: Reader | null = null;
@@ -82,8 +83,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	const availableBookmarks = $derived(bookmarks.filter((bm) => bookmarkForPosition(bm, file?.id ?? -1, format ?? 'epub')));
 
 	$effect(() => {
-		const { bookId, fileId, bookmarkId, highlightId } = params();
-		untrack(() => { void openBook(bookId, fileId, bookmarkId, highlightId); });
+		const { bookId, fileId, bookmarkId, highlightId, annotationId } = params();
+		untrack(() => { void openBook(bookId, fileId, bookmarkId, highlightId, annotationId); });
 	});
 	let draftGuard = () => true;
 	function setDraftGuard(guard: () => boolean) { draftGuard = guard; }
@@ -150,6 +151,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			const { state } = await cachedReaderState(currentAccount(), book.id);
 			if (mounted && version === requestVersion && revision === annotationVersion && !busy) {
 				pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
+				otherPageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id !== fileId);
 			}
 		} catch (error) {
 			if (version === requestVersion) reportActionError(error);
@@ -207,7 +209,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		await flushReaderWrites(progressWriter, retiredProgressWriters, sessionWriter);
 	}
 
-	async function openBook(rawBookId: string, rawFileId: string, bookmarkId: string | null, highlightId: string | null = null) {
+	async function openBook(rawBookId: string, rawFileId: string, bookmarkId: string | null, highlightId: string | null = null, annotationId: string | null = null) {
 		const version = ++requestVersion;
 		loaded = null;
 		ready = false;
@@ -235,6 +237,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		bookmarks = [];
 		notes = [];
 		pageAnnotations = [];
+		otherPageAnnotations = [];
 		opening = true;
 		loadError = '';
 		actionError = '';
@@ -300,8 +303,9 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			bookmarks = state.bookmarks.filter((bookmark) => !bookmark.deleted_at);
 			notes = state.notes.filter((note) => !note.deleted_at);
 			pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
+			otherPageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id !== fileId);
 			progressWriter = new DurableProgressWriter(reportPendingError);
-			loaded = { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId };
+			loaded = { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId, annotationId };
 		} catch (cause) {
 			if (version !== requestVersion) return;
 			console.error('Could not open book', cause);
@@ -449,7 +453,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	/** Creates a highlight and returns the new row, or null when nothing was saved. */
 	async function addHighlight(
 		chosenSelection: ReaderSelection | null = selection,
-		color: HighlightColor = 'yellow',
+		color: MarkColor = 'yellow',
 		style: HighlightStyle = 'highlight'
 	): Promise<Highlight | null> {
 		if (!book || !file || !format || !reader || busy) return null;
@@ -467,7 +471,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			const now = new Date(mutation.updated_at).toISOString();
 			const highlight: Highlight = {
 				id: mutation.id, book_id: book.id, book_file_id: file.id, locator: chosen.locator,
-				position: chosen.fraction, text: chosen.text, color, style, chapter: null,
+				position: chosen.fraction, text: chosen.text, color: highlightColor(color), style, chapter: null,
 				created_at: now, updated_at: now, deleted_at: null, rev: 0
 			};
 			highlights = [...highlights, highlight];
@@ -486,12 +490,13 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	async function changeHighlight(highlight: Highlight, patch: { color?: string; style?: HighlightStyle }) {
-		if (!reader || !file || !format || busy) return;
-		const nextColor = highlightColor(patch.color ?? highlight.color);
-		const style = patch.style ?? highlight.style ?? 'highlight';
+		if (!reader || !file || !format || busy) return false;
 		busy = true;
 		actionError = '';
 		try {
+			if (patch.color !== undefined && !isMarkColor(patch.color)) throw new Error('Invalid highlight color.');
+			const nextColor = patch.color === undefined ? highlight.color : highlightColor(patch.color);
+			const style = patch.style ?? highlight.style ?? 'highlight';
 			await saveMutation({
 				entity: 'highlights', id: highlight.id, op: 'upsert', updated_at: Date.now(),
 				data: {
@@ -508,8 +513,10 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				const next = annotationForReader(updated, file.id, format);
 				if (next) await reader.addAnnotation(next);
 			}
+			return true;
 		} catch (error) {
 			reportActionError(error);
+			return false;
 		} finally {
 			busy = false;
 		}
@@ -620,8 +627,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
-	async function removeBookmark(bookmark: Bookmark) {
-		if (busy || !window.confirm(m['ux6.delete_confirm']())) return;
+	async function removeBookmark(bookmark: Bookmark, options: { confirm?: boolean } = {}) {
+		if (busy || (options.confirm !== false && !window.confirm(m['ux6.delete_confirm']()))) return;
 		busy = true;
 		actionError = '';
 		try {
@@ -643,6 +650,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 		try {
 			await reader.goTo(bookmark.locator);
+			return true;
 		} catch (error) {
 			console.error('Could not jump to the saved bookmark', error);
 			actionError = m['ux6.jump_failed']();
@@ -759,11 +767,11 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let loaded: {
 		version: number; bookId: number; fileId: number; selectedFormat: ReaderFormat;
 		blob: Blob; state: Awaited<ReturnType<typeof getBookState>>;
-		bookmarkId: string | null; highlightId: string | null;
+		bookmarkId: string | null; highlightId: string | null; annotationId: string | null;
 	} | null = null;
 	async function attach(surface: HTMLElement): Promise<Reader> {
 		if (!loaded) throw new Error('The reader has not loaded.');
-		const { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId } = loaded;
+		const { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId, annotationId } = loaded;
 		opening = true;
 		try {
 			const currentReader = await createReader(selectedFormat, surface, {
@@ -811,14 +819,29 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				}
 			}
 			if (highlightId) {
-				// Unknown IDs and highlights from another file or format are ignored silently.
 				const requested = highlights.find((item) => item.id === highlightId);
 				const annotation = requested ? annotationForReader(requested, fileId, selectedFormat) : null;
-				if (annotation) {
+				if (!annotation) {
+					actionError = m['ux6.unavailable']();
+				} else {
 					try {
 						await currentReader.goTo(annotation.locator);
 					} catch (error) {
 						console.error('Could not open the highlight', error);
+						actionError = m['ux6.jump_failed']();
+					}
+				}
+			}
+			if (annotationId) {
+				const requested = pageAnnotations.find((item) => item.id === annotationId);
+				if (!requested || selectedFormat !== 'pdf') {
+					actionError = m['ux6.unavailable']();
+				} else {
+					try {
+						await currentReader.goTo({ type: 'pdf', page: requested.locator.page, rects: [requested.locator.rect] });
+					} catch (error) {
+						console.error('Could not open the page annotation', error);
+						actionError = m['ux6.jump_failed']();
 					}
 				}
 			}
@@ -865,6 +888,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		get highlights() { return highlights; },
 		get notes() { return notes; },
 		get pageAnnotations() { return pageAnnotations; },
+		get otherPageAnnotations() { return otherPageAnnotations; },
 		get bookmarks() { return bookmarks; },
 		get location() { return location; },
 		get selection() { return selection; },
@@ -894,7 +918,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			return writePageAnnotation(row, row);
 		},
 		close: closeReader,
-		retry: () => { const p = params(); return openBook(p.bookId, p.fileId, p.bookmarkId, p.highlightId); },
+		retry: () => { const p = params(); return openBook(p.bookId, p.fileId, p.bookmarkId, p.highlightId, p.annotationId); },
 		updateHighlight: changeHighlight,
 		deleteNote: removeNote,
 		addBookmark: (input: { label: string; id?: string; at?: Relocation }) => saveBookmark({ id: input.id ?? uuidv7(), label: input.label, original: '', editing: false }, input.at ?? null),

@@ -180,7 +180,7 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 	await expect(sidebar).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeHidden();
 	const home = sidebar.getByRole('region', { name: 'Home' }).getByRole('link');
-	await expect(home).toHaveText(['Dashboard', 'All Books', 'Bookmarks', 'Notes']);
+	await expect(home).toHaveText(['Dashboard', 'All Books', 'Bookmarks', 'Annotations']);
 	await expect(sidebar.getByRole('link', { name: 'All Books' })).toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0);
@@ -241,7 +241,7 @@ test('administrators see the Admin entry with localized Chinese navigation', asy
 	await authenticate(page, 'admin', 'zh');
 	await page.goto('/');
 	const sidebar = page.getByRole('navigation', { name: '主导航' });
-	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', /^书堆/, '书签', '笔记']);
+	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', /^书堆/, '书签', '批注']);
 	await expect(sidebar.getByRole('link', { name: /^书堆/ })).toHaveAttribute('href', '/bookheap');
 	await expect(sidebar.getByRole('link', { name: '管理', exact: true })).toHaveAttribute('href', '/admin');
 	await sidebar.getByRole('button', { name: '书架操作' }).click();

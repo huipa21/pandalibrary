@@ -30,6 +30,8 @@ function deferred<T>() {
 const result = (id: string, bookId: number, kind = 'highlight', position = 0.5): AnnotationResult => ({
 	id,
 	book_id: bookId,
+	book_title: `Book ${bookId}`,
+	cover_url: null,
 	kind,
 	content: `content ${id}`,
 	position,
@@ -65,9 +67,11 @@ describe('annotation search helpers', () => {
 		expect(excerpt('😀😀😀😀', 2)).toBe('😀😀…');
 	});
 
-	it('shows positions only for highlights with a valid fraction', () => {
+	it('shows positions only for reader annotations with a valid fraction', () => {
 		expect(positionPercent({ kind: 'highlight', position: 0.4567 })).toBe(45.7);
 		expect(positionPercent({ kind: 'note', position: 0 })).toBeNull();
+		expect(positionPercent({ kind: 'text', position: 0.5 })).toBe(50);
+		expect(positionPercent({ kind: 'review', position: 0 })).toBeNull();
 		expect(positionPercent({ kind: 'highlight', position: 3 })).toBeNull();
 	});
 

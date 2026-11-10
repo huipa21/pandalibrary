@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import Icon from '#lib/bookview/Icon.svelte';
-	import { highlightColor, type HighlightColor } from '../../annotations.js';
+	import { highlightColor, type MarkColor } from '../../annotations.js';
 	import type { Highlight, HighlightStyle } from '../../types.js';
 	import ColorPalette from './ColorPalette.svelte';
 	import { roving } from './roving.js';
@@ -19,7 +19,7 @@
 		bounds: RectLike;
 		hasNote: boolean;
 		disabled?: boolean;
-		oncolor: (color: HighlightColor) => void;
+		oncolor: (color: MarkColor) => void;
 		onstyle: (style: HighlightStyle) => void;
 		oncomment: () => void;
 		oncopy: () => void;
@@ -67,7 +67,7 @@
 	data-annotation-id={mark.id}
 	{onkeydown}
 >
-	<ColorPalette value={highlightColor(mark.color)} label={m['reader.annotations.color']()} onpick={oncolor} />
+	<ColorPalette value={highlightColor(mark.color)} label={m['reader.annotations.color']()} {disabled} onpick={oncolor} />
 	<div class="pv8-row">
 		<div class="pv8-styles" role="radiogroup" tabindex="-1" aria-label={m['pv8.style']()} onkeydown={onstylekey}>
 			{#each styles as style (style.value)}

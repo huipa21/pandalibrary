@@ -1,4 +1,5 @@
 import * as m from '#lib/paraglide/messages.js';
+import { isMarkColor, MARK_PRESETS, resolveMarkColor } from '#lib/reader/annotations.js';
 import { UNKNOWN_FORMAT } from './highlights-model.js';
 
 const COLOR_NAMES: Record<string, () => string> = {
@@ -13,6 +14,11 @@ const COLOR_NAMES: Record<string, () => string> = {
 
 export function colorName(color: string): string {
 	const key = color.toLowerCase();
+	if (isMarkColor(key)) {
+		const hex = resolveMarkColor(key);
+		const preset = MARK_PRESETS.find((entry) => resolveMarkColor(entry.value) === hex);
+		return preset ? m[preset.name]() : hex;
+	}
 	return Object.hasOwn(COLOR_NAMES, key) ? COLOR_NAMES[key]() : color;
 }
 

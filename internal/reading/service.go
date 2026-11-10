@@ -1342,22 +1342,102 @@ func (s *Service) SearchAnnotations(
 				})
 			}
 		}
+		// Reviews and inserted text have no FTS index. Literal substring matching
+		// also handles CJK phrases without depending on token boundaries.
+		rows, err := tx.QueryContext(ctx, `
+			SELECT a.id, a.book_id, a.kind, a.content, a.position, a.created_at
+			FROM (
+				SELECT CAST(id AS TEXT) AS id, book_id, user_id, 'review' AS kind,
+					body AS content, 0.0 AS position, created_at
+				FROM book_reviews
+				UNION ALL
+				SELECT id, book_id, user_id, 'text', json_extract(data, '$.text'), position, created_at
+				FROM page_annotations WHERE kind = 'text' AND deleted_at IS NULL
+			) a JOIN books b ON b.id = a.book_id
+			WHERE a.user_id = ? AND a.content LIKE ? ESCAPE '\'
+			AND (? = 1 OR EXISTS (
+				SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
+			))
+			AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?)
+			ORDER BY a.created_at DESC, a.kind, a.id LIMIT 100`,
+			viewer.UserID, "%"+escapeLike(query)+"%", adminFlag(viewer), viewer.UserID, viewer.UserID)
+		if err != nil {
+			return fmt.Errorf("search reviews and inserted text: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var item AnnotationResult
+			var createdAt int64
+			if err := rows.Scan(&item.ID, &item.BookID, &item.Kind, &item.Content, &item.Position, &createdAt); err != nil {
+				return fmt.Errorf("scan review or inserted text: %w", err)
+			}
+			item.CreatedAt = timestamp(createdAt)
+			results = append(results, item)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("read reviews and inserted text: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close annotation search rows: %w", err)
+		}
+		sort.Slice(results, func(i, j int) bool {
+			if results[i].CreatedAt.Equal(results[j].CreatedAt) {
+				if results[i].Kind == results[j].Kind {
+					return results[i].ID < results[j].ID
+				}
+				return results[i].Kind < results[j].Kind
+			}
+			return results[i].CreatedAt.After(results[j].CreatedAt)
+		})
+		if len(results) > 100 {
+			results = results[:100]
+		}
+		for i := range results {
+			item := &results[i]
+			var cover sql.NullString
+			if err := tx.QueryRowContext(ctx, `SELECT title, cover_sha256 FROM books WHERE id = ?`,
+				item.BookID).Scan(&item.BookTitle, &cover); err != nil {
+				return fmt.Errorf("read annotation book: %w", err)
+			}
+			if cover.Valid {
+				url := fmt.Sprintf("/api/v1/books/%d/cover", item.BookID)
+				item.CoverURL = &url
+			}
+			var fileID sql.NullInt64
+			var highlightID sql.NullString
+			switch item.Kind {
+			case "note":
+				if err := tx.QueryRowContext(ctx, `SELECT h.book_file_id, n.highlight_id, COALESCE(h.text, '')
+					FROM notes n LEFT JOIN highlights h ON h.id = n.highlight_id AND h.deleted_at IS NULL
+					AND h.user_id = n.user_id AND h.book_id = n.book_id
+					WHERE n.id = ? AND n.user_id = ?`, item.ID, viewer.UserID).
+					Scan(&fileID, &highlightID, &item.Anchor); err != nil {
+					return fmt.Errorf("read comment destination: %w", err)
+				}
+			case "highlight":
+				if err := tx.QueryRowContext(ctx, `SELECT book_file_id, id, style FROM highlights WHERE id = ? AND user_id = ?`,
+					item.ID, viewer.UserID).Scan(&fileID, &highlightID, &item.Kind); err != nil {
+					return fmt.Errorf("read highlight destination: %w", err)
+				}
+			case "text":
+				var locator string
+				if err := tx.QueryRowContext(ctx, `SELECT book_file_id, locator FROM page_annotations WHERE id = ? AND user_id = ?`,
+					item.ID, viewer.UserID).Scan(&fileID, &locator); err != nil {
+					return fmt.Errorf("read inserted text destination: %w", err)
+				}
+				item.Locator = json.RawMessage(locator)
+			}
+			if fileID.Valid {
+				item.BookFileID = &fileID.Int64
+			}
+			if highlightID.Valid {
+				item.HighlightID = &highlightID.String
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
-	}
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].CreatedAt.Equal(results[j].CreatedAt) {
-			if results[i].Kind == results[j].Kind {
-				return results[i].ID < results[j].ID
-			}
-			return results[i].Kind < results[j].Kind
-		}
-		return results[i].CreatedAt.After(results[j].CreatedAt)
-	})
-	if len(results) > 100 {
-		results = results[:100]
 	}
 	return results, nil
 }

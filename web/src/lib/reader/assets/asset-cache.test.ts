@@ -2,7 +2,7 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountChangedError, setActiveViewer } from '#lib/sync/db.js';
 import { clearLocalCaches } from '#lib/sync/local-caches.js';
-import { annotationAssetUrl, ASSET_CACHE_BUDGET, clearAssetCache, revokeAssetUrls } from './asset-cache.js';
+import { annotationAssetUrl, ASSET_CACHE_BUDGET, clearAssetCache, releaseAnnotationAssetUrl, revokeAssetUrls } from './asset-cache.js';
 import { OfflineError } from './errors.js';
 
 const viewer = { id: 1, username: 'a', display_name: '', role: 'user', locale: 'en' as const };
@@ -72,6 +72,16 @@ describe('account-scoped annotation image cache', () => {
 		revokeAssetUrls();
 		expect(URL.revokeObjectURL).toHaveBeenCalledWith(first);
 		expect(URL.revokeObjectURL).toHaveBeenCalledWith(second);
+	});
+
+	it('releases individual object URLs without retaining them for later account cleanup', async () => {
+		const released = await annotationAssetUrl(hash);
+		const retained = await annotationAssetUrl(hash);
+		releaseAnnotationAssetUrl(released);
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith(released);
+		revokeAssetUrls();
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith(retained);
+		expect(vi.mocked(URL.revokeObjectURL).mock.calls.filter(([url]) => url === released)).toHaveLength(1);
 	});
 
 	it('rejects an offline miss without sending a request', async () => {

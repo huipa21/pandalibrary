@@ -158,7 +158,7 @@ describe('origin label', () => {
 		expect(originLabel('/search?q=x')).toBe('Search');
 		expect(originLabel('/bookheap')).toBe('Bookheap');
 		expect(originLabel('/bookmarks')).toBe('Bookmarks');
-		expect(originLabel('/notes')).toBe('Notes');
+		expect(originLabel('/notes')).toBe('Annotations');
 		expect(originLabel('/shelves/system/favorites')).toBe('Shelf');
 		expect(originLabel('/authors/3')).toBe('Author');
 		expect(originLabel('/series/3')).toBe('Series');

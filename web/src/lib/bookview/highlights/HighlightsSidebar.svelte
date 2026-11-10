@@ -108,7 +108,7 @@
 								aria-label={m['bv9.color_chip_label']({ color: colorName(item.color), count: item.count })}
 								onclick={() => onToggleColor(item.color)}
 							>
-								<span class="size-2.5 rounded-full {tone.bar}" aria-hidden="true"></span>
+								<span class="size-2.5 rounded-full {tone.bar}" style:background-color={tone.hex} aria-hidden="true"></span>
 								{colorName(item.color)}
 								<span class="tabular-nums opacity-80">{item.count}</span>
 							</button>
@@ -154,7 +154,7 @@
 								<span class="truncate text-slate-700">{group.chapter}</span>
 								<span class="flex h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
 									{#each colorCounts(group.marks) as part (part.color)}
-										<span class={colorTone(part.color).bar} style:width={percent(part.count, group.marks.length)}></span>
+										<span class={colorTone(part.color).bar} style:background-color={colorTone(part.color).hex} style:width={percent(part.count, group.marks.length)}></span>
 									{/each}
 								</span>
 								<span class="text-xs text-slate-500 tabular-nums" aria-hidden="true">{group.marks.length}</span>

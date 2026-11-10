@@ -1,11 +1,24 @@
-/** R1 `GET /api/v1/search/annotations` item. `position` is a 0–1 book fraction for highlights and 0 for notes. */
-export interface AnnotationResult {
+import type { InkData, PageAnnotationLocator } from '#lib/reader/types.js';
+
+export interface AnnotationEntry {
 	id: string;
 	book_id: number;
-	kind: 'highlight' | 'note' | (string & {});
+	book_title: string;
+	cover_url: string | null;
+	kind: string;
 	content: string;
-	position: number;
 	created_at: string;
+	book_file_id?: number;
+	highlight_id?: string;
+	anchor?: string;
+	locator?: PageAnnotationLocator;
+	data?: InkData;
+}
+
+/** `GET /api/v1/search/annotations` item. Position is a book fraction for reader annotations. */
+export interface AnnotationResult extends AnnotationEntry {
+	kind: 'highlight' | 'note' | 'review' | 'text' | (string & {});
+	position: number;
 }
 
 export interface AnnotationSearchResponse {

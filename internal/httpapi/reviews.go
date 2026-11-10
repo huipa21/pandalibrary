@@ -16,11 +16,30 @@ func ReviewMount(service *catalog.Service, authentication *auth.Service, logger 
 		router.Group(func(secured chi.Router) {
 			secured.Use(SessionMiddleware(authentication, logger))
 			secured.Get("/api/v1/books/{id}/reviews", h.withViewer(h.listReviews))
+			secured.Get("/api/v1/me/notes", h.withViewer(h.listPersonalActivity))
 			secured.With(cookieProtection).Put("/api/v1/books/{id}/reviews/me", h.withViewer(h.saveMyReview))
 			secured.With(cookieProtection).Delete("/api/v1/books/{id}/reviews/me", h.withViewer(h.deleteMyReview))
 			secured.With(cookieProtection).Delete("/api/v1/books/{id}/reviews/{reviewId}", h.withViewer(h.deleteReview))
 		})
 	}
+}
+
+func (h *catalogHTTP) listPersonalActivity(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	values, ok := h.query(w, r, "limit", "cursor")
+	if !ok {
+		return
+	}
+	options, ok := h.pageOptions(w, values)
+	if !ok {
+		return
+	}
+	result, err := h.service.ListPersonalActivity(r.Context(), viewer, options)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	h.writeJSON(w, http.StatusOK, result)
 }
 
 func (h *catalogHTTP) listReviews(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {

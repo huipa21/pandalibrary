@@ -58,7 +58,7 @@
 			<time datetime={mark.created_at}><span class="block">{dayLabel}</span><span class="block">{yearLabel}</span></time>
 		{/if}
 	</div>
-	<div class="w-[3px] shrink-0 self-stretch rounded-full {tone.bar}" aria-hidden="true"></div>
+	<div class="w-[3px] shrink-0 self-stretch rounded-full {tone.bar}" style:background-color={tone.hex} aria-hidden="true"></div>
 	<div class="min-w-0 flex-1 space-y-3">
 		<span class="sr-only">{m['bv9.highlight_color']({ color: colorName(mark.color) })}</span>
 		{#if mark.style === 'underline' || mark.style === 'strikeout'}

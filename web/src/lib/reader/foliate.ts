@@ -1,5 +1,6 @@
 import type { FoliateBook, FoliateResolved, View } from 'foliate-js/view.js';
-import { HIGHLIGHT_HEX, highlightColor } from './annotations.js';
+import { resolveMarkColor } from './annotations.js';
+import { backgroundFor } from './appearance.js';
 import { fraction } from './progress.js';
 import { captureBookBlobs, isolateBookSections } from './safe-content.js';
 import {
@@ -34,6 +35,17 @@ interface FoliateLoad {
 interface DrawAnnotation {
 	annotation: { value: string; color: string };
 	draw: (shape: typeof import('foliate-js/overlayer.js').Overlayer.highlight, options: { color: string }) => void;
+}
+
+export function foliateStyles(settings: ReaderSettings): string {
+	const background = backgroundFor(settings);
+	const fonts = { serif: 'serif', 'sans-serif': 'sans-serif', system: 'system-ui' };
+	return `
+		html { color-scheme: ${background.tone}; }
+		html, body { background: ${background.page} !important; color: ${background.text} !important; }
+		body { font-family: ${fonts[settings.font]} !important; font-size: ${settings.size}% !important; }
+		p, li, blockquote, dd { line-height: ${settings.spacing} !important; }
+	`;
 }
 
 export class FoliateReader implements Reader {
@@ -103,7 +115,7 @@ export class FoliateReader implements Reader {
 		});
 		view.addEventListener('draw-annotation', (event) => {
 			const { draw, annotation } = (event as CustomEvent<DrawAnnotation>).detail;
-			draw(Overlayer.highlight, { color: HIGHLIGHT_HEX[highlightColor(annotation.color)] });
+			draw(Overlayer.highlight, { color: resolveMarkColor(annotation.color) });
 		});
 		this.container.replaceChildren(view);
 		await view.open(book);
@@ -150,23 +162,15 @@ export class FoliateReader implements Reader {
 
 	async applySettings(settings: ReaderSettings): Promise<void> {
 		const view = this.requireView();
+		const background = backgroundFor(settings);
+		this.container.style.backgroundColor = background.page;
+		this.container.style.backgroundImage = background.grain ?? 'none';
 		view.renderer.setAttribute('flow', settings.flow);
 		if (view.isFixedLayout) {
 			view.renderer.setAttribute('zoom', settings.size === 100 ? 'fit-page' : String(settings.size / 100));
 			return;
 		}
-		const themes = {
-			light: { background: '#ffffff', foreground: '#172033' },
-			sepia: { background: '#f5ecd9', foreground: '#433422' },
-			dark: { background: '#171b22', foreground: '#e5e7eb' }
-		};
-		const theme = themes[settings.theme];
-		const fonts = { serif: 'serif', 'sans-serif': 'sans-serif', system: 'system-ui' };
-		view.renderer.setStyles?.(`
-			html, body { background: ${theme.background} !important; color: ${theme.foreground} !important; }
-			body { font-family: ${fonts[settings.font]} !important; font-size: ${settings.size}% !important; }
-			p, li, blockquote, dd { line-height: ${settings.spacing} !important; }
-		`);
+		view.renderer.setStyles?.(foliateStyles(settings));
 	}
 
 	async addAnnotation(annotation: ReaderAnnotation): Promise<void> {
@@ -250,7 +254,7 @@ export class FoliateReader implements Reader {
 			return view.resolveNavigation(annotation.locator.value)?.index === index;
 		});
 		doc.documentElement.style.outline = match
-			? `4px solid ${HIGHLIGHT_HEX[highlightColor(match.color)]}`
+			? `4px solid ${resolveMarkColor(match.color)}`
 			: '';
 		doc.documentElement.style.outlineOffset = '-4px';
 	}

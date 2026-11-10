@@ -29,18 +29,6 @@
 	transition: filter 120ms;
 }
 
-.reader-pdf[data-theme='dark'] {
-	background: #0f172a;
-}
-
-.reader-pdf[data-theme='dark'] .page canvas {
-	filter: invert(1) hue-rotate(180deg);
-}
-
-.reader-pdf[data-theme='sepia'] .page canvas {
-	filter: sepia(0.25);
-}
-
 .reader-pdf .textLayer ::selection {
 	background: rgb(37 99 235 / 35%);
 }

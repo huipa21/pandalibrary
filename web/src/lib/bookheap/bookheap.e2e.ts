@@ -161,7 +161,7 @@ test('administrators see Bookheap in HOME, an empty heap, and a scan that refres
 
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	const home = sidebar.getByRole('region', { name: 'Home' }).getByRole('link');
-	await expect(home).toHaveText(['Dashboard', 'All Books', /^Bookheap/, 'Bookmarks', 'Notes']);
+	await expect(home).toHaveText(['Dashboard', 'All Books', /^Bookheap/, 'Bookmarks', 'Annotations']);
 	await expect(sidebar.getByRole('link', { name: /^Bookheap/ })).toHaveAttribute('aria-current', 'page');
 	await expect(page).toHaveTitle(/^Bookheap ·/);
 	await expect(page.getByRole('heading', { level: 1, name: 'Bookheap' })).toBeVisible();
@@ -486,7 +486,7 @@ test('readers do not see Bookheap and are told the page is for administrators', 
 	await page.goto('/bookheap');
 	await expect(page.getByRole('alert')).toContainText(/administrator/i);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await expect(sidebar.getByRole('region', { name: 'Home' }).getByRole('link')).toHaveText(['Dashboard', 'All Books', 'Bookmarks', 'Notes']);
+	await expect(sidebar.getByRole('region', { name: 'Home' }).getByRole('link')).toHaveText(['Dashboard', 'All Books', 'Bookmarks', 'Annotations']);
 	await expect(page.getByTestId('bh4-row')).toHaveCount(0);
 	expect(requests).toEqual([]);
 });

@@ -112,7 +112,7 @@ async function setZoom(page: Page, label: string) {
 
 async function verifySyncedView(
 	browser: Browser, source: Page, book: Book,
-	expected: { layout?: string; zoom?: string; freeZoom?: number; rotation?: number; coverAlone?: boolean }
+	expected: { layout?: string; zoom?: string; freeZoom?: number; rotation?: number; background?: string }
 ) {
 	const context = await browser.newContext({
 		baseURL: new URL(source.url()).origin, storageState: await source.context().storageState(),
@@ -122,17 +122,16 @@ async function verifySyncedView(
 		const page = await context.newPage();
 		await page.goto(`/read/${book.id}/${book.files[0].id}`);
 		await openedPdf(page);
-		if (expected.layout || expected.coverAlone !== undefined) {
+		if (expected.layout) {
 			await page.getByRole('button', { name: 'Page display', exact: true }).click();
 			if (expected.layout) {
 				await expect(page.getByRole('menuitemradio', { name: expected.layout, exact: true }))
 					.toHaveAttribute('aria-checked', 'true');
 			}
-			if (expected.coverAlone !== undefined) {
-				await expect(page.getByRole('menuitemcheckbox', { name: 'Show cover alone', exact: true }))
-					.toHaveAttribute('aria-checked', String(expected.coverAlone));
-			}
 			await page.keyboard.press('Escape');
+		}
+		if (expected.background) {
+			await expect(page.locator('#reader-surface')).toHaveAttribute('data-background', expected.background);
 		}
 		if (expected.zoom) {
 			await page.getByRole('button', { name: 'Zoom', exact: true }).click();
@@ -210,6 +209,7 @@ test('real PDF frame, link, saved offset, KOReader and synchronized view setting
 	await expect(link).toBeVisible();
 	await link.click();
 	await expect(pdfPageBox(page)).toHaveValue('2');
+	await expect(pdfPageText(page, 2)).toContainText('Second PDF page text');
 	await jumpToPdfPage(page, 3);
 	await expect(pdfPageText(page, 3)).toContainText('Page 3 PDF page text');
 	await jumpToPdfPage(page, 2);
@@ -260,12 +260,13 @@ test('real PDF frame, link, saved offset, KOReader and synchronized view setting
 		await verifySyncedView(browser, page, book, { layout: label });
 	}
 	await setLayout(page, 'Split');
-	await page.getByRole('button', { name: 'Page display', exact: true }).click();
-	await page.getByRole('menuitemcheckbox', { name: 'Show cover alone', exact: true }).click();
-	await expect.poll(() => setting(page.request, `reader.book.${book.id}`)).toMatchObject({ pdfCoverAlone: true });
+	await page.getByRole('button', { name: 'Format', exact: true }).click();
+	await page.getByRole('radio', { name: 'Eye-care green', exact: true }).click();
+	await page.keyboard.press('Escape');
+	await expect.poll(() => setting(page.request, `reader.book.${book.id}`)).toMatchObject({ background: 'green', theme: 'light' });
 	await page.reload();
 	await openedPdf(page);
-	await verifySyncedView(browser, page, book, { layout: 'Split', coverAlone: true });
+	await verifySyncedView(browser, page, book, { layout: 'Split', background: 'green' });
 	await setLayout(page, 'Single page continuous');
 	for (const [label, value] of [
 		['Automatic', 'auto'], ['Actual size', 'page-actual'],
@@ -367,7 +368,9 @@ async function exerciseSelectionActions(page: Page, book: Book, text: string) {
 		styles: ['highlight', 'highlight', 'highlight', 'strikeout', 'underline'],
 		notes: [`PV11 comment: ${text}`], bookmarks: 1
 	});
-	expect((await state(page.request, book.id)).highlights.every((row) => row.color === 'blue')).toBe(true);
+	expect((await state(page.request, book.id)).highlights.map((row) => `${row.style}:${row.color}`).sort()).toEqual([
+		'highlight:blue', 'highlight:blue', 'highlight:blue', 'strikeout:#000000', 'underline:#000000'
+	]);
 }
 
 test('selection actions, comments, bookmarks, Highlights and export work on true and OCR text', async ({ page }) => {
@@ -632,13 +635,14 @@ test('mobile OCR status preserves reader controls and its accessible failure mes
 			expect(retryBox.width).toBeGreaterThanOrEqual(36);
 			expect(retryBox.height).toBeGreaterThanOrEqual(36);
 			for (const name of [
-				'Reader sync status', 'Select tool', 'Insert text, drawing or image', 'Annotations', 'Close reader',
+				'Reader sync status', 'Select tool', 'Insert text, drawing or image', 'Close reader',
 				...(width < 640 ? ['More view options'] : ['Zoom', 'Page display', 'Rotate'])
 			]) {
 				const control = reader.getByRole('button', { name, exact: true });
 				await expect(control).toBeInViewport({ ratio: 1 });
 				await control.click({ trial: true });
 			}
+			await expect(reader.getByRole('tab', { name: 'Annotations', exact: true })).toBeInViewport({ ratio: 1 });
 		}
 	} finally {
 		await mobile.close();
@@ -1194,7 +1198,7 @@ test('captures PDF visual, keyboard, reduced-motion and touch QA', async ({ page
 			await shot(`${prefix}-image-frame`);
 			await openAnnotationsPanel(page);
 			await shot(`${prefix}-annotations-panel`);
-			await page.getByRole('button', { name: 'Annotations', exact: true }).click();
+			await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 			await context.setOffline(true);
 			const sync = page.getByRole('button', { name: 'Reader sync status', exact: true });
 			await expect(sync).toBeVisible();
@@ -1222,9 +1226,10 @@ test('captures PDF visual, keyboard, reduced-motion and touch QA', async ({ page
 			await page.getByRole('menuitemcheckbox', { name: 'Recognize text in scanned pages' }).click();
 			const ocr = page.locator('[role="status"]').filter({ hasText: /Loading OCR model|Recognizing text/ });
 			await expect(ocr).toBeVisible({ timeout: 30_000 });
-			for (const name of ['Insert text, drawing or image', 'Annotations', 'Close reader']) {
+			for (const name of ['Insert text, drawing or image', 'Close reader']) {
 				await expect(page.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
 			}
+			await expect(page.getByRole('tab', { name: 'Annotations', exact: true })).toBeInViewport({ ratio: 1 });
 			const spinner = ocr.locator('.animate-spin');
 			await expect(spinner).toHaveCSS('animation-name', 'none');
 			await shot(`${prefix}-ocr-chip`);
@@ -1251,9 +1256,10 @@ test('captures PDF visual, keyboard, reduced-motion and touch QA', async ({ page
 	await expect(surface).toHaveAttribute('data-tool', 'insert');
 	await page.keyboard.press('Escape');
 	await expect(surface).toHaveAttribute('data-tool', 'select');
-	for (const name of ['Zoom', 'Page display', 'Rotate', 'Select tool', 'Insert text, drawing or image', 'Annotations', 'Close reader']) {
+	for (const name of ['Zoom', 'Page display', 'Rotate', 'Select tool', 'Insert text, drawing or image', 'Close reader']) {
 		await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
 	}
+	await expect(page.getByRole('tab', { name: 'Annotations', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Zoom', exact: true }).focus();
 	await page.keyboard.press('Enter');
 	await expect(page.getByRole('menu')).toBeVisible();

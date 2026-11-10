@@ -79,7 +79,6 @@ export class PdfViewerEngine implements Reader {
 	private settings: ReaderSettings | null = null;
 	private zoom: PdfZoom = 'auto';
 	private layout: PdfLayout = 'single-continuous';
-	private coverAlone = false;
 	private position = { page: 1, offset: 0 };
 	/** The page last navigated to; a spread reports its first page, but a layout change returns here. */
 	private intended: number | null = null;
@@ -110,13 +109,13 @@ export class PdfViewerEngine implements Reader {
 				return () => {
 					remove();
 					if (painter.name === 'highlight' && !this.layers.has('highlight') && !this.disposed) {
-						this.layers.register(highlightPainter(() => this.annotations.values()));
+						this.layers.register(highlightPainter(() => this.annotations.values(), () => this.viewport));
 					}
 				};
 			},
 			repaint: (page) => this.layers.repaint(page)
 		};
-		this.layers.register(highlightPainter(() => this.annotations.values()));
+		this.layers.register(highlightPainter(() => this.annotations.values(), () => this.viewport));
 	}
 
 	/** The scroll container (the reader surface itself when it is absolutely positioned). */
@@ -143,7 +142,6 @@ export class PdfViewerEngine implements Reader {
 			zoom: this.zoom,
 			scale: this.viewer?.currentScale ?? 1,
 			layout: this.layout,
-			coverAlone: this.coverAlone,
 			rotation: normalizeRotation(this.viewer?.pagesRotation ?? this.settings?.pdfRotation ?? 0)
 		};
 	}
@@ -184,7 +182,7 @@ export class PdfViewerEngine implements Reader {
 		await initialized;
 		if (this.disposed) return;
 		this.decoratePages();
-		this.applyView(this.settings ? readPdfViewState(this.settings) : { layout: this.layout, coverAlone: this.coverAlone, zoom: this.zoom, rotation: 0 });
+		this.applyView(this.settings ? readPdfViewState(this.settings) : { layout: this.layout, zoom: this.zoom, rotation: 0 });
 	}
 
 	private mount(module: ViewerModule): void {
@@ -280,7 +278,7 @@ export class PdfViewerEngine implements Reader {
 		this.suppressScroll = true;
 		viewer.currentPageNumber = page;
 		if (isContinuous(this.layout)) this.scrollToPage(page, off);
-		this.position = { page: spreadStart(page, this.layout, this.coverAlone), offset: isContinuous(this.layout) ? off : 0 };
+		this.position = { page: spreadStart(page, this.layout), offset: isContinuous(this.layout) ? off : 0 };
 		if (isContinuous(this.layout)) this.position = this.measure() ?? this.position;
 		this.intended = page;
 		this.suppressScroll = false;
@@ -291,27 +289,25 @@ export class PdfViewerEngine implements Reader {
 		this.requireViewer();
 		const { page, offset } = this.position;
 		if (offset > 0.01) return this.goToPage(page);
-		if (page > 1) return this.goToPage(spreadStart(page - 1, this.layout, this.coverAlone));
+		if (page > 1) return this.goToPage(spreadStart(page - 1, this.layout));
 	}
 
 	async next(): Promise<void> {
 		this.requireViewer();
 		const pages = this.requireDocument().numPages;
-		const start = spreadStart(this.position.page, this.layout, this.coverAlone);
-		const size = this.layout.startsWith('split') && !(this.coverAlone && start === 1) ? 2 : 1;
+		const start = spreadStart(this.position.page, this.layout);
+		const size = this.layout.startsWith('split') ? 2 : 1;
 		if (start + size <= pages) return this.goToPage(start + size);
 	}
 
 	async applySettings(settings: ReaderSettings): Promise<void> {
 		if (!isReaderSettings(settings)) throw new Error('Invalid PDF reader settings.');
 		this.settings = { ...settings };
-		this.viewport.dataset.theme = settings.theme;
 		if (this.viewer && this.document) this.applyView(readPdfViewState(settings));
 		else {
 			const view = readPdfViewState(settings);
 			this.zoom = view.zoom;
 			this.layout = view.layout;
-			this.coverAlone = view.coverAlone;
 			this.notify();
 		}
 	}
@@ -335,14 +331,14 @@ export class PdfViewerEngine implements Reader {
 		this.setZoom(scale, anchor);
 	}
 
-	setLayout(layout: PdfLayout, coverAlone = this.coverAlone): void {
-		this.applyView({ layout, coverAlone, zoom: this.zoom, rotation: this.state.rotation });
+	setLayout(layout: PdfLayout): void {
+		this.applyView({ layout, zoom: this.zoom, rotation: this.state.rotation });
 	}
 
 	rotate(delta: 90 | -90): void {
 		const viewer = this.requireViewer();
 		const rotation = normalizeRotation(viewer.pagesRotation + delta);
-		this.applyView({ layout: this.layout, coverAlone: this.coverAlone, zoom: this.zoom, rotation });
+		this.applyView({ layout: this.layout, zoom: this.zoom, rotation });
 	}
 
 	pageElement(page: number): HTMLElement | null {
@@ -485,16 +481,16 @@ export class PdfViewerEngine implements Reader {
 		}
 	}
 
-	private applyView(view: { layout: PdfLayout; coverAlone: boolean; zoom: PdfZoom; rotation: PdfRotation }): void {
+	private applyView(view: { layout: PdfLayout; zoom: PdfZoom; rotation: PdfRotation }): void {
 		const viewer = this.viewer;
 		if (!viewer) return;
 		const before = this.measure() ?? this.position;
-		const target = this.intended !== null && spreadStart(this.intended, this.layout, this.coverAlone) === before.page ? this.intended : before.page;
-		const { scrollMode, spreadMode } = layoutModes(view.layout, view.coverAlone);
+		const target = this.intended !== null && spreadStart(this.intended, this.layout) === before.page ? this.intended : before.page;
+		const { scrollMode, spreadMode } = layoutModes(view.layout);
 		const zoom = typeof view.zoom === 'number' ? clampScale(view.zoom) : view.zoom;
 		const changed = viewer.scrollMode !== scrollMode || viewer.spreadMode !== spreadMode ||
 			normalizeRotation(viewer.pagesRotation) !== view.rotation || viewer.currentScaleValue !== presetValue(zoom);
-		({ layout: this.layout, coverAlone: this.coverAlone } = layoutFromModes(scrollMode, spreadMode));
+		({ layout: this.layout } = layoutFromModes(scrollMode, spreadMode));
 		this.viewport.dataset.layout = this.layout;
 		this.zoom = zoom;
 		if (!changed) {
@@ -547,11 +543,11 @@ export class PdfViewerEngine implements Reader {
 		const pages = this.document?.numPages ?? 0;
 		if (!viewer || !pages) return null;
 		if (!isContinuous(this.layout)) {
-			return { page: spreadStart(viewer.currentPageNumber, this.layout, this.coverAlone), offset: 0 };
+			return { page: spreadStart(viewer.currentPageNumber, this.layout), offset: 0 };
 		}
 		const scroller = this.viewport;
 		if (scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1) {
-			return { page: spreadStart(pages, this.layout, this.coverAlone), offset: 0 };
+			return { page: spreadStart(pages, this.layout), offset: 0 };
 		}
 		const top = scroller.getBoundingClientRect().top + scroller.clientTop;
 		let low = 1;
@@ -562,7 +558,7 @@ export class PdfViewerEngine implements Reader {
 			if (rect && rect.bottom > top + 0.5) high = middle;
 			else low = middle + 1;
 		}
-		const page = spreadStart(low, this.layout, this.coverAlone);
+		const page = spreadStart(low, this.layout);
 		const rect = this.pageElement(page)?.getBoundingClientRect();
 		const offset = rect && rect.height ? Math.min(0.9999, Math.max(0, (top - rect.top) / rect.height)) : 0;
 		return { page, offset: Math.round(offset * 10_000) / 10_000 };

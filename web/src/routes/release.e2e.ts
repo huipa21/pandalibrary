@@ -107,10 +107,11 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 	}, imported.book_id)).toMatchObject({ highlights: 1, notes: 1, progress: true });
 
 	await page.goto('/notes');
-	const notesSearch = page.getByRole('searchbox', { name: 'Search notes and highlights' });
+	const notesSearch = page.getByRole('searchbox', { name: 'Search annotations', exact: true });
 	await notesSearch.fill('Release validation note');
 	await notesSearch.press('Enter');
 	await expect(page.getByText('Release validation note', { exact: true })).toBeVisible();
+	await page.getByText('Export notes', { exact: true }).click();
 	await page.getByRole('checkbox', { name: /Book \d+ \(matches: 1\)/ }).check();
 	const markdownDownload = page.waitForEvent('download');
 	await page.getByRole('button', { name: 'Download Markdown' }).click();

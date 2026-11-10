@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { pdfFixture, epubFixture } from '../lib/reader/fixtures.js';
 import { realAdmin, signInRealAdmin } from '../lib/real-auth.js';
-import { bookmarkPdfSelection, jumpToPdfPage, openAnnotationsPanel, openedPdf, pdfPageBox, pdfPageText, renamePdfBookmark } from '../lib/real-pdf.js';
+import { bookmarkPdfSelection, jumpToPdfPage, openBookmarksPanel, openedPdf, pdfPageBox, pdfPageText, renamePdfBookmark } from '../lib/real-pdf.js';
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
 
@@ -179,8 +179,8 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 	await pdfItem.getByRole('link', { name: 'Open bookmark' }).click();
 	await openedPdf(page, 1, 'First PDF page text');
 	await jumpToPdfPage(page, 2);
-	const panel = await openAnnotationsPanel(page);
-	await renamePdfBookmark(panel.locator('[data-panel-entry]').filter({ hasText: 'PDF saved page' }).first(), 'PDF renamed');
+	const panel = await openBookmarksPanel(page);
+	await renamePdfBookmark(panel.locator('[data-bookmark-id]').filter({ hasText: 'PDF saved page' }).first(), 'PDF renamed');
 	// Renaming must not move the saved position to page two.
 	await page.goto('/bookmarks');
 	await page.getByRole('listitem').filter({ hasText: 'PDF renamed' }).getByRole('link', { name: 'Open bookmark' }).click();
@@ -217,7 +217,7 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 	}), offlineBookmark)).toBe(true);
 	await page.reload();
 	await openedPdf(page);
-	await expect((await openAnnotationsPanel(page)).getByText('Offline page two', { exact: true })).toBeVisible();
+	await expect((await openBookmarksPanel(page)).getByText('Offline page two', { exact: true })).toBeVisible();
 	await page.goto('/bookmarks');
 	await expect(page.getByText('Offline page two', { exact: true })).toBeVisible();
 	await context.setOffline(false);

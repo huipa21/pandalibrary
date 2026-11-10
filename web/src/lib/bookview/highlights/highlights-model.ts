@@ -1,4 +1,5 @@
 import type { BookFile } from '#lib/catalog/types.js';
+import { HIGHLIGHT_HEX, isMarkColor, MARK_PRESETS, resolveMarkColor } from '#lib/reader/annotations.js';
 import type { Highlight, HighlightStyle, Note } from '#lib/reader/types.js';
 
 export type Mark = Highlight & { notes: Note[] };
@@ -75,7 +76,7 @@ export function foldText(text: string): string {
 export function filterMarks(marks: readonly Mark[], filter: MarkFilter): Mark[] {
 	const query = foldText(filter.query.trim());
 	return marks.filter((mark) => {
-		if (filter.colors.size > 0 && !filter.colors.has(mark.color)) return false;
+		if (filter.colors.size > 0 && !filter.colors.has(colorKey(mark.color))) return false;
 		if (filter.notesOnly && mark.notes.length === 0) return false;
 		if (filter.styles?.size && !filter.styles.has(mark.style ?? 'highlight')) return false;
 		if (!query) return true;
@@ -115,17 +116,35 @@ export function groupByChapter(marks: readonly Mark[], untitled = DEFAULT_UNTITL
 	return [...groups.values()];
 }
 
-const COLOR_ORDER = ['yellow', 'orange', 'red', 'pink', 'purple', 'blue', 'green'];
+export function colorKey(color: string): string {
+	if (!isMarkColor(color)) return color;
+	const hex = resolveMarkColor(color);
+	return MARK_PRESETS.find((preset) => resolveMarkColor(preset.value) === hex)?.value ?? hex;
+}
 
 function colorRank(color: string): number {
-	const index = COLOR_ORDER.indexOf(color);
-	return index < 0 ? COLOR_ORDER.length : index;
+	const key = colorKey(color);
+	const index = MARK_PRESETS.findIndex((preset) => preset.value === key);
+	if (index >= 0) return index;
+	if (key.toLowerCase() === 'red') return 2;
+	return MARK_PRESETS.length + (isMarkColor(key) ? 0 : 1);
+}
+
+export function sortColorOptions(options: readonly ColorCount[]): ColorCount[] {
+	return options.slice().sort((a, b) =>
+		colorRank(a.color) - colorRank(b.color) ||
+		a.color.toLowerCase().localeCompare(b.color.toLowerCase()) ||
+		a.color.localeCompare(b.color)
+	);
 }
 
 /** Counts per colour, most frequent first, ties in palette order. */
 export function colorCounts(marks: readonly Mark[]): ColorCount[] {
 	const counts = new Map<string, number>();
-	for (const mark of marks) counts.set(mark.color, (counts.get(mark.color) ?? 0) + 1);
+	for (const mark of marks) {
+		const color = colorKey(mark.color);
+		counts.set(color, (counts.get(color) ?? 0) + 1);
+	}
 	return [...counts]
 		.map(([color, count]) => ({ color, count }))
 		.sort((a, b) => b.count - a.count || colorRank(a.color) - colorRank(b.color) || a.color.localeCompare(b.color));
@@ -203,19 +222,21 @@ export interface ColorTone {
 }
 
 const TONES: Record<string, ColorTone> = {
-	yellow: { bar: 'bg-yellow-400', soft: 'bg-yellow-50', text: 'text-yellow-900', hex: '#facc15' },
-	blue: { bar: 'bg-sky-500', soft: 'bg-sky-50', text: 'text-sky-900', hex: '#0ea5e9' },
+	yellow: { bar: 'bg-yellow-400', soft: 'bg-yellow-50', text: 'text-yellow-900', hex: HIGHLIGHT_HEX.yellow },
+	blue: { bar: 'bg-sky-500', soft: 'bg-sky-50', text: 'text-sky-900', hex: HIGHLIGHT_HEX.blue },
 	red: { bar: 'bg-red-500', soft: 'bg-red-50', text: 'text-red-900', hex: '#ef4444' },
-	orange: { bar: 'bg-orange-400', soft: 'bg-orange-50', text: 'text-orange-900', hex: '#fb923c' },
-	green: { bar: 'bg-emerald-500', soft: 'bg-emerald-50', text: 'text-emerald-900', hex: '#10b981' },
-	purple: { bar: 'bg-violet-500', soft: 'bg-violet-50', text: 'text-violet-900', hex: '#8b5cf6' },
+	orange: { bar: 'bg-orange-400', soft: 'bg-orange-50', text: 'text-orange-900', hex: HIGHLIGHT_HEX.orange },
+	green: { bar: 'bg-emerald-500', soft: 'bg-emerald-50', text: 'text-emerald-900', hex: HIGHLIGHT_HEX.green },
+	purple: { bar: 'bg-violet-500', soft: 'bg-violet-50', text: 'text-violet-900', hex: HIGHLIGHT_HEX.purple },
 	// The reader also stores pink highlights.
-	pink: { bar: 'bg-pink-400', soft: 'bg-pink-50', text: 'text-pink-900', hex: '#f472b6' }
+	pink: { bar: 'bg-pink-400', soft: 'bg-pink-50', text: 'text-pink-900', hex: HIGHLIGHT_HEX.pink }
 };
 const SLATE: ColorTone = { bar: 'bg-slate-400', soft: 'bg-slate-100', text: 'text-slate-800', hex: '#94a3b8' };
 
 export function colorTone(color: string): ColorTone {
-	return Object.hasOwn(TONES, color.toLowerCase()) ? TONES[color.toLowerCase()] : SLATE;
+	if (color.startsWith('#') && isMarkColor(color)) return { ...SLATE, bar: '', hex: resolveMarkColor(color) };
+	const tone = Object.hasOwn(TONES, color.toLowerCase()) ? TONES[color.toLowerCase()] : SLATE;
+	return { ...tone, hex: resolveMarkColor(color) };
 }
 
 export interface TextSegment {

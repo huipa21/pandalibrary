@@ -64,6 +64,52 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('reader controller PDF extensions', () => {
+	it.each(['text', 'ink', 'image'] as const)('opens a linked %s annotation at its rectangle instead of saved progress', async (kind) => {
+		const row = {
+			...input, id: 'target', book_id: 21, book_file_id: 31,
+			created_at: '', updated_at: '', deleted_at: null, rev: 1
+		};
+		const locator = { ...input.locator, page: 5 };
+		const annotation = kind === 'text' ? { ...row, locator }
+			: kind === 'ink' ? { ...row, kind, locator, data: { color: '#000000', width: 0.01, strokes: [[0.1, 0.2, 0.3, 0.4]] } }
+			: { ...row, kind, locator, data: { asset: 'a'.repeat(64), media_type: 'image/png' as const, width: 100, height: 100 } };
+		vi.mocked(getBookState).mockResolvedValue({ ...empty, page_annotations: [annotation] });
+		let events: ReaderEvents;
+		const goTo = vi.fn(async () => events.relocate({ fraction: 0.8, locator: { type: 'pdf', page: 5 } }));
+		vi.mocked(createReader).mockImplementation(async (_format, _surface, next) => {
+			events = next;
+			return { open: vi.fn(), applySettings: vi.fn(), addAnnotation: vi.fn(), removeAnnotation: vi.fn(),
+				destroy: vi.fn(async () => {}), previous: vi.fn(), next: vi.fn(), goTo };
+		});
+		const controller = createReaderController(() => ({ ...params(), annotationId: 'target' }));
+		await controller.retry();
+		vi.stubGlobal('document', { hidden: true });
+		await controller.attach({} as HTMLElement);
+		expect(goTo).toHaveBeenLastCalledWith({ type: 'pdf', page: 5, rects: [locator.rect] });
+		expect(controller.actionError).toBe('');
+		controller.dispose();
+	});
+
+	it('reports a linked annotation from a different file as unavailable', async () => {
+		vi.mocked(getBookState).mockResolvedValue({ ...empty, page_annotations: [{
+			...input, id: 'target', book_id: 21, book_file_id: 32,
+			created_at: '', updated_at: '', deleted_at: null, rev: 1
+		}] });
+		let events: ReaderEvents;
+		vi.mocked(createReader).mockImplementation(async (_format, _surface, next) => {
+			events = next;
+			return { open: vi.fn(), applySettings: vi.fn(), addAnnotation: vi.fn(), removeAnnotation: vi.fn(),
+				destroy: vi.fn(async () => {}), previous: vi.fn(), next: vi.fn(),
+				goTo: vi.fn(async () => events.relocate({ fraction: 0, locator: { type: 'pdf', page: 1 } })) };
+		});
+		const controller = createReaderController(() => ({ ...params(), annotationId: 'target' }));
+		await controller.retry();
+		vi.stubGlobal('document', { hidden: true });
+		await controller.attach({} as HTMLElement);
+		expect(controller.actionError).not.toBe('');
+		controller.dispose();
+	});
+
 	it('composes the panel draft guard with the active tool guard', async () => {
 		const controller = createReaderController(params);
 		const cancel = vi.fn();
@@ -96,7 +142,8 @@ describe('reader controller PDF extensions', () => {
 		const controller = createReaderController(params);
 		await controller.retry();
 		vi.stubGlobal('document', { hidden: true });
-		vi.stubGlobal('window', { confirm: () => true });
+		const confirm = vi.fn(() => true);
+		vi.stubGlobal('window', { confirm });
 		await controller.attach({} as HTMLElement);
 		await controller.addHighlight({ text: 'Mark', fraction: 0, locator: { type: 'pdf', page: 1 } }, 'green', 'strikeout');
 		const mark = controller.highlights[0];
@@ -109,9 +156,21 @@ describe('reader controller PDF extensions', () => {
 		expect(controller.notes).toEqual([attached]);
 		await controller.addBookmark({ label: 'Bookmark' });
 		const bookmark = controller.bookmarks[0];
+		expect(await controller.jumpToBookmark(bookmark)).toBe(true);
 		await controller.removeBookmark(bookmark);
 		expect(await controller.restoreDeletedAnnotation({ kind: 'bookmark', row: bookmark })).toBe(true);
 		expect(controller.bookmarks).toEqual([bookmark]);
+		confirm.mockClear();
+		confirm.mockReturnValue(false);
+		expect(await controller.removeBookmark(bookmark)).toBeUndefined();
+		expect(controller.bookmarks).toEqual([bookmark]);
+		expect(confirm).toHaveBeenCalledTimes(1);
+		confirm.mockClear();
+		expect(await controller.removeBookmark(bookmark, { confirm: false })).toBe(true);
+		expect(confirm).not.toHaveBeenCalled();
+		expect(controller.bookmarks).toEqual([]);
+		expect(await controller.restoreDeletedAnnotation({ kind: 'bookmark', row: bookmark })).toBe(true);
+		confirm.mockReturnValue(true);
 		await controller.deleteNote(attached);
 		expect(await controller.restoreDeletedAnnotation({ kind: 'note', row: attached })).toBe(true);
 		expect(controller.notes).toEqual([attached]);
@@ -187,16 +246,24 @@ describe('reader controller PDF extensions', () => {
 		controller.dispose();
 	});
 
-	it('loads only live page annotations for the current file', async () => {
+	it('separates live current-file and other-file page annotations when opening files', async () => {
 		const row = { ...input, id: '019a501b-2c3d-7e4f-8a5b-6c7d8e9f0011', book_id: 21, book_file_id: 31, created_at: '', updated_at: '', deleted_at: null, rev: 1 };
-		vi.mocked(getBookState).mockResolvedValue({ ...empty, page_annotations: [row, { ...row, id: 'other', book_file_id: 32 }, { ...row, id: 'deleted', deleted_at: 'today' }] });
-		const controller = createReaderController(params);
+		const other = { ...row, id: 'other', book_file_id: 32 };
+		vi.mocked(getBook).mockResolvedValue({ ...book, files: [...book.files, { ...book.files[0], id: 32 }] });
+		vi.mocked(getBookState).mockResolvedValue({ ...empty, page_annotations: [row, other, { ...row, id: 'deleted', deleted_at: 'today' }] });
+		let fileId = '31';
+		const controller = createReaderController(() => ({ ...params(), fileId }));
 		await controller.retry();
 		expect(controller.pageAnnotations).toEqual([row]);
+		expect(controller.otherPageAnnotations).toEqual([other]);
+		fileId = '32';
+		await controller.retry();
+		expect(controller.pageAnnotations).toEqual([other]);
+		expect(controller.otherPageAnnotations).toEqual([row]);
 		controller.dispose();
 	});
 
-	it('refreshes current-file annotations after sync without replacing an in-flight local edit', async () => {
+	it('refreshes both files after sync without replacing an in-flight local edit', async () => {
 		const controller = createReaderController(params);
 		await controller.retry();
 		vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
@@ -207,7 +274,10 @@ describe('reader controller PDF extensions', () => {
 		vi.mocked(saveMutation).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
 		const saving = controller.addPageAnnotation(input);
 		const row = controller.pageAnnotations[0];
-		vi.mocked(readerState).mockResolvedValue({ state: { ...empty, page_annotations: [row] }, settings: [] });
+		const other = { ...row, id: 'other', book_file_id: 32 };
+		vi.mocked(readerState).mockResolvedValue({
+			state: { ...empty, page_annotations: [row, other, { ...other, id: 'deleted', deleted_at: 'today' }] }, settings: []
+		});
 		offlineStatus.update((status) => ({ ...status, syncing: true }));
 		offlineStatus.update((status) => ({ ...status, syncing: false }));
 		expect(readerState).not.toHaveBeenCalled();
@@ -216,6 +286,7 @@ describe('reader controller PDF extensions', () => {
 		await saving;
 		await expect.poll(() => vi.mocked(readerState).mock.calls.length).toBe(1);
 		expect(controller.pageAnnotations).toEqual([row]);
+		await expect.poll(() => controller.otherPageAnnotations).toEqual([other]);
 		release();
 		controller.dispose();
 	});
@@ -292,6 +363,29 @@ describe('reader controller PDF extensions', () => {
 		await controller.updateHighlight(controller.highlights[0], { style: 'strikeout' });
 		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ color: 'green', style: 'strikeout' }) }));
 		expect(controller.highlights[0].style).toBe('strikeout');
+		await controller.updateHighlight(controller.highlights[0], { color: '#A1B2C3' });
+		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ color: '#a1b2c3', style: 'strikeout' }) }));
+		expect(controller.highlights[0].color).toBe('#a1b2c3');
+		await controller.updateHighlight(controller.highlights[0], { style: 'highlight' });
+		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ color: '#a1b2c3', style: 'highlight' }) }));
+		const calls = vi.mocked(saveMutation).mock.calls.length;
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		expect(await controller.updateHighlight(controller.highlights[0], { color: 'invalid' })).toBe(false);
+		expect(vi.mocked(saveMutation)).toHaveBeenCalledTimes(calls);
+		expect(controller.actionError).not.toBe('');
+		log.mockRestore();
+		const unknown = { ...controller.highlights[0], color: 'other-stored-color' };
+		expect(await controller.updateHighlight(unknown, { style: 'underline' })).toBe(true);
+		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({
+			data: expect.objectContaining({ color: 'other-stored-color', style: 'underline' })
+		}));
+		const added = await controller.addHighlight(
+			{ text: 'Hex', fraction: 0, locator: { type: 'pdf', page: 1 } }, '#ABCDEF'
+		);
+		expect(added?.color).toBe('#abcdef');
+		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({
+			data: expect.objectContaining({ color: '#abcdef' })
+		}));
 		controller.dispose();
 	});
 });

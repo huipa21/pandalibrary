@@ -176,12 +176,18 @@ type ProgressRow struct {
 
 // AnnotationResult is one live result from the viewer's annotation search.
 type AnnotationResult struct {
-	ID        string    `json:"id"`
-	BookID    int64     `json:"book_id"`
-	Kind      string    `json:"kind"`
-	Content   string    `json:"content"`
-	Position  float64   `json:"position"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string          `json:"id"`
+	BookID      int64           `json:"book_id"`
+	Kind        string          `json:"kind"`
+	Content     string          `json:"content"`
+	Position    float64         `json:"position"`
+	CreatedAt   time.Time       `json:"created_at"`
+	BookTitle   string          `json:"book_title"`
+	CoverURL    *string         `json:"cover_url"`
+	BookFileID  *int64          `json:"book_file_id,omitempty"`
+	HighlightID *string         `json:"highlight_id,omitempty"`
+	Locator     json.RawMessage `json:"locator,omitempty"`
+	Anchor      string          `json:"anchor,omitempty"`
 }
 
 // BookmarkItem is a bookmark with minimal book information for display.

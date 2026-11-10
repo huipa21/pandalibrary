@@ -44,8 +44,9 @@ Opening a book shows four tabs:
 Reading statuses: Unread, Want to read, Reading, Re-reading, On hold, Read,
 Skimmed and Abandoned.
 
-**Reviews are public; notes are private.** Anyone who can see a book can read
-its reviews. Notes and highlights are only visible to you.
+**Reviews are public; notes and comments are private.** Anyone who can see a
+book can read its reviews. Your passage comments, book notes and highlights
+are only visible to you.
 
 The back button returns to the list you came from. The **‹ ›** buttons, or the
 `[` and `]` keys, move to the previous or next book in that list.
@@ -57,23 +58,32 @@ position is saved automatically and syncs across your devices.
 
 In non-PDF readers you can:
 
-- change the font, size, spacing, theme and page flow (saved per format, with
-  optional per-book settings);
+- open **Reader settings → Format** to change font, size, spacing and
+  background live; page flow stays in Reader settings. Use **Save settings**
+  for this book or **Save as format default** for other books of that format;
 - select text to highlight it and attach a note;
 - add bookmarks at exact positions.
 
 Reading time is recorded as sessions for your stats; idle time is not counted.
 
 PDFs fill the screen below a compact toolbar, without the app header or
-sidebar. Progress shows two decimal places (for example, **10.05%**), while
+library sidebar. Progress shows two decimal places (for example, **10.05%**), while
 saved positions retain the page and your scroll position within it. Type a page
-number in the counter to jump there. Use Zoom, Page display and Rotate to
+number in the counter to jump there. Use Zoom, Page display, Format and Rotate to
 adjust the view; below 640 px these menus are inside **More view options**.
 New books start in continuous mode with Automatic zoom unless you have saved
 a different PDF default.
 
-View changes save automatically after one second. Layout, cover display, zoom
-presets and page theme also become defaults for other PDFs; rotation and free
+**Page display** contains four layouts and the scanned-text recognition switch.
+Split layouts pair pages 1–2, 3–4, and so on; there is no separate-cover option.
+**Format**, immediately to its right, offers ten page backgrounds: White,
+Cream, Sepia, Eye-care green, Wood, Gray, Sky, Blush, Night and Black. PDF font
+controls are unavailable because PDF text cannot reflow. Night and Black
+invert the page, including images, while light backgrounds tint the paper
+without changing the ink. Old Dark settings open as Night.
+
+View changes save automatically after one second. Layout, background and zoom
+presets also become defaults for other PDFs; rotation and free
 numeric zoom apply only to the current book. Ctrl/Command plus the mouse wheel,
 trackpad pinch and two-finger touch pinch zoom around the pointer or midpoint.
 One-finger touch scrolling stays native.
@@ -90,12 +100,18 @@ or bookmarks still open at their saved positions.
 
 In **Select** mode, select text to open the floating actions: Copy, Highlight,
 Underline, Strikeout, Comment and Bookmark. The arrow beside Highlight opens
-the colour palette; the main Highlight button uses your last colour. Selecting
-text across pages creates a separate mark on each page. Click a mark to change
-its colour or style, add or edit its comment, copy its text, or delete it.
-Comment editors show a live Markdown preview.
+the colour palette and applies the chosen colour; the main Highlight button
+uses your last highlight colour. The arrow after Underline and Strikeout
+chooses their shared line colour without creating a mark. Both palettes offer
+16 presets and a custom colour picker. Highlights start yellow, and lines start
+black; each family remembers its last colour on this device. Selecting text
+across pages creates a separate mark on each page. Click a mark to change its
+colour or style, add or edit its comment, copy its text, or delete it. On a
+dark reader background, very dark lines are displayed lighter for visibility
+without changing their saved colour. Comment editors show a live Markdown
+preview.
 Bookmarks made from selected text use that text as their initial label; you can
-rename them in the Annotations panel.
+rename them in the reader's **Bookmarks** tab.
 
 The borderless **X** saves progress and reading time before returning to the
 book's details. If saving fails, retry the unsaved changes or explicitly
@@ -103,15 +119,29 @@ choose to leave without saving. A coloured status dot indicates offline,
 pending or failed sync, or a settings-save warning; open it for details and a
 retry action when synchronization is available.
 
-**Annotations** opens a side panel grouped by page. Search marks, comments,
-bookmarks and inserted items, or filter by type. Open an entry to jump to its
-position; edit comments, bookmark labels and inserted text there, or delete an
-item and choose **Undo** within eight seconds. Entries from another file are
-listed separately and cannot be changed from the current file. Book-level
-Markdown notes can be added, edited and deleted at the bottom of the panel.
-Escape closes the panel and returns focus to its toolbar button. On phones the
-panel fills the available width. Changes are saved on this device while offline
-and sync when connected.
+The reader's left rail has four tabs. Select an active tab again, or use
+**Collapse sidebar**, to close the panel. Its open state and selected tab are
+remembered on this device. On wide screens the panel sits beside the page; on
+narrow screens it overlays the page and closes with Escape when focus is in
+the sidebar, or with a page click.
+
+- **Contents** shows the PDF's table of contents. Select a section to jump
+  there; the current section is marked.
+- **Pages** shows page thumbnails. Select one to jump to that page; the
+  current page or spread is outlined.
+- **Annotations** lists highlights, underlines, strikeouts and inserted text,
+  drawings and images together. Search the list, select an entry to jump to it,
+  or expand it to see its full content and comments. The Delete button asks
+  for confirmation; a deleted item can be restored with **Undo** for eight
+  seconds. Entries from other files are listed separately and are read-only.
+  Add or edit a comment by expanding a mark. Standalone book notes are no
+  longer created in the reader; existing private book notes remain on the
+  **Annotations** page.
+- **Bookmarks** lists saved positions and lets you jump, rename or delete them.
+  **Bookmark this page** adds a page-level bookmark; select it again to remove
+  that bookmark. Selection bookmarks remain separate.
+
+Changes are saved on this device while offline and sync when connected.
 
 Scanned PDF pages (pages that are images with little or no text) are recognized
 in your browser so you can select and copy their text. Recognition supports
@@ -168,11 +198,28 @@ The **Bookmarks** page lists your saved positions across all books. Open,
 rename or delete them there. A bookmark is not opened if its original file is
 no longer available.
 
-## Notes and highlights
+## Annotations, reviews and comments
 
-The **Notes** page collects every note and highlight you have made, with
-search. Notes are written in Markdown. Export notes as a Markdown file (one
-book) or a ZIP (several books); the files work well in Obsidian.
+The **Annotations** page lists your reviews, passage comments, private book notes,
+highlights (including underline and strikeout), inserted text, drawings and images
+in newest-first order, with a small cover for each book. Reviews are also
+available on the book's **Details** tab. Comments stay attached to their
+passages; older book notes remain private and are shown as private notes.
+
+Use **Search annotations** to search your own reviews, comments, private notes,
+highlights and inserted text, including short Chinese keywords such as “扣子”.
+The magnifier searches; the X clears the search and restores the full feed.
+Drawings have previews but no searchable text; images also appear in the full feed.
+The full list and search results use the same cover, title, preview and colored
+category tags. Passage notes are labeled **Comment**, matching the reader toolbar.
+Click anywhere on an entry to open its destination: reviews open the book's
+review section; comments and marks jump to their passage; inserted text,
+drawings and images jump to their position in the reader.
+Existing standalone private book notes open book details.
+If the annotations API is unavailable after updating the frontend, restart or update the
+backend too.
+There is no export panel on the Annotations page. Use the book's **Highlights**
+tab to export that book's annotations.
 The book's **Highlights** tab labels underline and strikeout marks and can
 filter by style; older highlights retain the normal highlight style. It also
 shows inserted text. Exports label underline and strikeout marks and include

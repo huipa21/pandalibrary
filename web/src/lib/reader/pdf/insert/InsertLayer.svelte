@@ -152,7 +152,7 @@
 		ready = true;
 		return () => {
 			clearTimeout(undoTimer); surface.removeEventListener('click', click); surface.removeEventListener('keydown', key);
-			unregister(); painter.dispose(); contexts.clear();
+			unregister(); contexts.clear();
 		};
 	});
 	$effect(() => {

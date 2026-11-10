@@ -1,12 +1,13 @@
-import { HIGHLIGHT_HEX, highlightColor, isHighlightStyle, type HighlightColor } from '../../annotations.js';
+import { isHighlightStyle, resolveMarkColor, type MarkColor } from '../../annotations.js';
 import { isPdfLocator, type Highlight, type HighlightStyle, type Note } from '../../types.js';
 import type { NormalizedRect, PageLayerPainter } from '../types.js';
+import { observeMarkTone, paintMarkColor } from './mark-paint.js';
 
 export interface TextMark {
 	id: string;
 	page: number;
 	rects: NormalizedRect[];
-	color: HighlightColor;
+	color: MarkColor;
 	style: HighlightStyle;
 	createdAt: string;
 	hasNote: boolean;
@@ -25,7 +26,7 @@ export function textMarks(highlights: readonly Highlight[], notes: readonly Note
 				id: row.id,
 				page: locator.page,
 				rects: locator.rects,
-				color: highlightColor(row.color),
+				color: row.color,
 				style: isHighlightStyle(row.style) ? row.style : 'highlight',
 				createdAt: row.created_at,
 				hasNote: commented.has(row.id)
@@ -61,11 +62,15 @@ export function changedPages(previous: ReadonlyMap<string, string>, marks: reado
 }
 
 /** Replaces the engine's default `highlight` painter: fills, underlines, strikeouts and comment markers. */
-export function textMarkPainter(marks: () => readonly TextMark[], commentLabel: () => string): PageLayerPainter {
+export function textMarkPainter(
+	marks: () => readonly TextMark[], commentLabel: () => string, viewport?: () => HTMLElement
+): PageLayerPainter {
+	const toneObserver = observeMarkTone(viewport);
 	return {
 		name: 'highlight',
 		z: 3,
 		paint({ page, layer, toCss }) {
+			const tone = toneObserver.watch(layer);
 			const label = commentLabel();
 			const painted = document.createDocumentFragment();
 			for (const mark of marks()) {
@@ -76,7 +81,8 @@ export function textMarkPainter(marks: () => readonly TextMark[], commentLabel: 
 					element.dataset.annotationId = mark.id;
 					element.dataset.style = mark.style;
 					const { left, top, width, height } = toCss(rect);
-					element.setAttribute('style', `left:${left};top:${top};width:${width};height:${height};--pv-mark:${HIGHLIGHT_HEX[mark.color]}`);
+					element.setAttribute('style', `left:${left};top:${top};width:${width};height:${height}`);
+					paintMarkColor(element, mark.color, mark.style, tone);
 					painted.append(element);
 				}
 				const last = mark.rects.at(-1);
@@ -90,11 +96,12 @@ export function textMarkPainter(marks: () => readonly TextMark[], commentLabel: 
 					marker.title = label;
 					marker.style.left = `${(last.x + last.width) * 100}%`;
 					marker.style.top = `${last.y * 100}%`;
-					marker.style.setProperty('--pv-mark', HIGHLIGHT_HEX[mark.color]);
+					marker.style.setProperty('--pv-mark', resolveMarkColor(mark.color));
 					painted.append(marker);
 				}
 			}
 			layer.append(painted);
-		}
+		},
+		dispose: toneObserver.dispose
 	};
 }

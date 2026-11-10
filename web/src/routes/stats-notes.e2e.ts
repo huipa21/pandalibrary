@@ -145,12 +145,16 @@ test('stats recover from connection failures and expired sessions', async ({ pag
 	await expect(page.getByRole('region', { name: 'Reading time and sessions for each day' }).getByRole('row')).toHaveCount(8);
 });
 
-const annotation = (id: string, bookId: number, kind: 'highlight' | 'note', content: string, position = 0) => ({
-	id, book_id: bookId, kind, content, position, created_at: '2026-11-03T08:00:00Z'
+const annotation = (id: string, bookId: number, kind: 'highlight' | 'note' | 'review' | 'text', content: string, position = 0) => ({
+	id, book_id: bookId, book_title: `Book ${bookId}`, cover_url: null, kind, content, position,
+	book_file_id: kind === 'review' ? undefined : 31,
+	highlight_id: kind === 'highlight' || kind === 'note' ? id : undefined,
+	created_at: '2026-11-03T08:00:00Z'
 });
 
-test('searches annotations and downloads single-book Markdown and multi-book ZIP exports', async ({ page }) => {
+test('searches annotations with unified entries and no export panel', async ({ page }) => {
 	await authenticate(page);
+	await page.route('**/api/v1/me/notes?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	const searches: URLSearchParams[] = [];
 	await page.route('**/api/v1/search/annotations?*', (route) => {
 		const params = new URL(route.request().url()).searchParams;
@@ -165,90 +169,41 @@ test('searches annotations and downloads single-book Markdown and multi-book ZIP
 		if (params.get('q') === 'zz') return route.fulfill({ json: { items: [] } });
 		return problem(route, 400);
 	});
-	const exports: URLSearchParams[] = [];
-	await page.route('**/api/v1/me/notes/export?*', (route) => {
-		const params = new URL(route.request().url()).searchParams;
-		exports.push(params);
-		const ids = params.get('book_ids');
-		if (ids === '101') {
-			return route.fulfill({
-				status: 200,
-				headers: {
-					'content-type': 'text/markdown; charset=utf-8',
-					'cache-control': 'no-store',
-					'content-disposition': "attachment; filename*=utf-8''%E6%B2%99%E4%B8%98%20-%20Frank%20Herbert.md"
-				},
-				body: '# 沙丘\n'
-			});
-		}
-		if (ids === '101,104') {
-			return route.fulfill({
-				status: 200,
-				headers: {
-					'content-type': 'application/zip',
-					'cache-control': 'no-store',
-					'content-disposition': 'attachment; filename="PandaLibrary notes 2026-11-04.zip"'
-				},
-				body: Buffer.from([80, 75, 5, 6, ...new Array(18).fill(0)])
-			});
-		}
-		return problem(route, 404);
-	});
-
 	await page.goto('/notes');
-	await expect(page.getByText('Enter a word or phrase to search your notes and highlights.')).toBeVisible();
+	await expect(page.getByText('You have no annotations yet.')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Annotations', exact: true })).toBeVisible();
 	expect(searches).toHaveLength(0);
 
-	const box = page.getByRole('searchbox', { name: 'Search notes and highlights' });
+	const box = page.getByRole('searchbox', { name: 'Search annotations', exact: true });
 	await box.fill('  spice ');
 	await box.press('Enter');
 	await expect(page).toHaveURL(/\/notes\?q=spice$/);
 	await expect(page.getByText('Matches: 3.')).toBeVisible();
-	const results = page.getByRole('list', { name: 'Matching notes and highlights, newest first' }).getByRole('listitem');
+	const results = page.getByRole('list', { name: 'Matching annotations, newest first' }).getByRole('listitem');
 	await expect(results).toHaveCount(3);
 	await expect(results.nth(0)).toContainText('The spice must flow.');
-	await expect(results.nth(0)).toContainText('At 42.5% of the book');
-	await expect(results.nth(1)).toContainText('<img src=x onerror="window.__xss=1"> **spice** notes');
-	await expect(results.nth(1).locator('img')).toHaveCount(0);
+	await expect(results.nth(0)).toContainText('Book 101');
+	await expect(results.nth(1)).toContainText('Comment');
+	await expect(results.nth(1).locator('strong')).toHaveText('spice');
+	await expect(results.nth(1).locator('.reader-markdown img')).toHaveCount(0);
 	expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
-	await expect(results.nth(1).getByRole('link', { name: 'Open book 104' })).toHaveAttribute('href', '/books/104');
+	await expect(results.nth(1).getByRole('link')).toHaveAttribute('href', '/read/104/31?highlight=n-1');
+	await expect(results.nth(0).getByText('Highlight', { exact: true })).toHaveClass(/bg-amber-100/);
+	await expect(results.nth(1).getByText('Comment', { exact: true })).toHaveClass(/bg-emerald-100/);
 	expect(searches).toHaveLength(1);
 
-	await page.getByRole('search', { name: 'Notes search' }).getByRole('button', { name: 'Search', exact: true }).click();
+	await page.getByRole('search', { name: 'Annotations search' }).getByRole('button', { name: 'Search', exact: true }).click();
 	expect(searches).toHaveLength(1);
 
-	const markdownButton = page.getByRole('button', { name: 'Download Markdown' });
-	await expect(markdownButton).toBeDisabled();
-	await expect(page.getByText('No books selected.')).toBeVisible();
-	await page.getByRole('checkbox', { name: 'Book 101 (matches: 2)' }).check();
-	await expect(page.getByText('Books selected: 1 of up to 100.')).toBeVisible();
-	const markdown = page.waitForEvent('download');
-	await markdownButton.click();
-	const markdownDownload = await markdown;
-	expect(markdownDownload.suggestedFilename()).toBe('沙丘 - Frank Herbert.md');
-	await expect(page.getByText('Downloaded “沙丘 - Frank Herbert.md”.')).toBeVisible();
-
-	await page.getByRole('checkbox', { name: 'Book 104 (matches: 1)' }).press('Space');
-	const zip = page.waitForEvent('download');
-	await page.getByRole('button', { name: 'Download ZIP (2 books)' }).click();
-	expect((await zip).suggestedFilename()).toBe('PandaLibrary notes 2026-11-04.zip');
-	expect(exports.map((params) => params.getAll('book_ids'))).toEqual([['101'], ['101,104']]);
-	expect(exports.every((params) => [...params.keys()].length === 1)).toBe(true);
-
-	await page.getByRole('button', { name: 'Clear selection' }).click();
-	await expect(page.getByRole('button', { name: 'Download Markdown' })).toBeDisabled();
-	await page.getByRole('button', { name: 'Select all books' }).click();
-	await expect(page.getByText('Books selected: 2 of up to 100.')).toBeVisible();
-
-	await page.getByRole('checkbox', { name: 'Book 101 (matches: 2)' }).uncheck();
-	await page.getByRole('button', { name: 'Download Markdown' }).click();
-	await expect(page.getByRole('alert')).toContainText('A selected book is no longer available.');
+	await expect(page.getByText('Export notes', { exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: /Download/ })).toHaveCount(0);
+	await expect(page.getByRole('checkbox')).toHaveCount(0);
 
 	await box.fill('zz');
 	await box.press('Enter');
 	await expect(page.getByText('Searches of one or two characters match those characters anywhere.')).toBeVisible();
-	await expect(page.getByText('None of your notes or highlights match “zz”.')).toBeVisible();
-	await expect(page.getByRole('heading', { name: 'Export notes' })).toHaveCount(0);
+	await expect(page.getByText('None of your annotations match “zz”.')).toBeVisible();
+	await expect(page.getByText('Export notes', { exact: true })).toHaveCount(0);
 
 	await box.fill('x'.repeat(201));
 	await box.press('Enter');
@@ -258,6 +213,7 @@ test('searches annotations and downloads single-book Markdown and multi-book ZIP
 
 test('notes search reports expired sessions and connection failures with recovery', async ({ page }) => {
 	await authenticate(page);
+	await page.route('**/api/v1/me/notes?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	let calls = 0;
 	await page.route('**/api/v1/search/annotations?*', (route) => {
 		calls += 1;
@@ -269,8 +225,111 @@ test('notes search reports expired sessions and connection failures with recover
 	await page.goto('/notes?q=dune');
 	await expect(page.getByRole('alert')).toContainText('Your session has ended');
 	await expect(page.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
-	await page.getByRole('searchbox', { name: 'Search notes and highlights' }).press('Enter');
-	await expect(page.getByRole('alert')).toContainText('Notes search could not be reached');
+	await page.getByRole('searchbox', { name: 'Search annotations', exact: true }).press('Enter');
+	await expect(page.getByRole('alert')).toContainText('Annotations search could not be reached');
 	await page.getByRole('button', { name: 'Try again' }).click();
 	await expect(page.getByText('Recovered')).toBeVisible();
+});
+
+test('shows reviews and comments newest first with book covers and pagination', async ({ page }) => {
+	await authenticate(page);
+	await page.route('**/api/v1/books/21/cover*', (route) => route.fulfill({
+		status: 200,
+		contentType: 'image/svg+xml',
+		body: '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="150"><rect width="100" height="150" fill="#3b6d59"/></svg>'
+	}));
+	const requests: string[] = [];
+	await page.route('**/api/v1/me/notes?*', (route) => {
+		const params = new URL(route.request().url()).searchParams;
+		requests.push(params.get('cursor') ?? 'first');
+		if (!params.has('cursor')) {
+			return route.fulfill({ json: {
+				items: [
+					{ id: '18', kind: 'review', book_id: 21, book_title: 'Dune', cover_url: '/api/v1/books/21/cover', content: 'My review', created_at: '2026-11-10T12:00:00Z', updated_at: '2026-11-10T12:00:00Z' },
+					{ id: '00000000-0000-7000-8000-000000000001', kind: 'comment', book_id: 22, book_title: 'A Wizard of Earthsea', cover_url: null, content: 'A **passage** comment <img src=x onerror="window.__xss=1">', anchor: 'The quoted passage', created_at: '2026-11-09T12:00:00Z', updated_at: '2026-11-09T12:00:00Z' }
+				],
+				next_cursor: 'older'
+			} });
+		}
+		return route.fulfill({ json: {
+			items: [{ id: '00000000-0000-7000-8000-000000000002', kind: 'book_note', book_id: 23, book_title: 'The Left Hand of Darkness', cover_url: null, content: 'A private legacy note', created_at: '2026-11-08T12:00:00Z', updated_at: '2026-11-08T12:00:00Z' }],
+			next_cursor: null
+		} });
+	});
+
+	await page.goto('/notes');
+	const list = page.getByRole('list', { name: 'Your annotations, newest first' });
+	await expect(list.getByRole('listitem')).toHaveCount(2);
+	await expect(list.getByRole('listitem').nth(0)).toContainText('Dune');
+	await expect(list.getByRole('listitem').nth(0)).toContainText('My review');
+	await expect(list.getByRole('listitem').nth(0).locator('img')).toHaveAttribute('src', '/api/v1/books/21/cover');
+	await expect(list.getByRole('listitem').nth(1)).toContainText('The quoted passage');
+	await expect(list.getByRole('listitem').nth(1).locator('.reader-markdown strong')).toHaveText('passage');
+	await expect(list.getByRole('listitem').nth(1).locator('.reader-markdown img')).toHaveCount(0);
+	await page.getByRole('button', { name: 'Show more' }).click();
+	await expect(list.getByRole('listitem')).toHaveCount(3);
+	await expect(list.getByRole('listitem').nth(2)).toContainText('A private legacy note');
+	expect(requests).toEqual(['first', 'older']);
+});
+
+test('Notes shows inserted text and drawing previews and searches reviews using icon controls', async ({ page }) => {
+	await authenticate(page);
+	const base = { book_id: 21, book_file_id: 31, book_title: 'Book 21', cover_url: null, created_at: '2026-11-10T12:00:00Z', updated_at: '2026-11-10T12:00:00Z' };
+	const locator = { type: 'pdf', page: 5, rect: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 } };
+	await page.route('**/api/v1/me/notes?*', (route) => route.fulfill({ json: { items: [
+		{ ...base, id: 'review', kind: 'review', content: '这是一个扣子的大纲' },
+		{ ...base, id: 'text', kind: 'text', content: '扣子已经关闭了', locator },
+		{ ...base, id: 'ink', kind: 'ink', content: '', locator, data: { color: '#000000', width: 0.01, strokes: [[0.1, 0.2, 0.3, 0.4]] } }
+	], next_cursor: null } }));
+	await page.route('**/api/v1/search/annotations?*', (route) => {
+		expect(new URL(route.request().url()).searchParams.get('q')).toBe('扣子');
+		return route.fulfill({ json: { items: [
+			annotation('review', 21, 'review', '这是一个扣子的大纲'),
+			{ ...annotation('text', 21, 'text', '扣子已经关闭了', 0.5), locator, created_at: base.created_at },
+			annotation('comment', 21, 'note', 'AI实战使用扣子')
+		] } });
+	});
+	await page.goto('/notes');
+	const feed = page.getByRole('list', { name: 'Your annotations, newest first' });
+	await expect(feed.getByRole('listitem')).toHaveCount(3);
+	await expect(feed.getByRole('img', { name: 'Drawing' })).toBeVisible();
+	await expect(feed.getByRole('img', { name: 'Drawing' }).locator('path')).toHaveAttribute('d', 'M0.1 0.2 L0.3 0.4');
+	await expect(feed.getByText('Page 5')).toHaveCount(2);
+	await expect(feed.getByRole('listitem').nth(0).getByRole('link')).toHaveAttribute('href', '/books/21#book-reviews-heading');
+	await expect(feed.getByRole('listitem').nth(1).getByRole('link')).toHaveAttribute('href', '/read/21/31?annotation=text');
+	await expect(feed.getByRole('listitem').nth(2).getByRole('link')).toHaveAttribute('href', '/read/21/31?annotation=ink');
+	const feedText = await feed.getByRole('listitem').nth(1).innerHTML();
+	const form = page.getByRole('search', { name: 'Annotations search' });
+	const submit = form.getByRole('button', { name: 'Search', exact: true });
+	const clear = form.getByRole('button', { name: 'Clear search' });
+	await expect(submit).toHaveClass(/shell-search-submit/);
+	await expect(submit).toHaveText('');
+	await expect(clear).toHaveText('');
+	await form.getByRole('searchbox').fill('扣子');
+	await submit.click();
+	const matches = page.getByRole('list', { name: 'Matching annotations, newest first' });
+	await expect(matches.getByRole('listitem')).toHaveCount(3);
+	await expect(matches).toContainText('Review');
+	await expect(matches).toContainText('Inserted text');
+	await expect(matches).toContainText('Comment');
+	await expect(matches.getByRole('listitem').nth(0).getByRole('link')).toHaveAttribute('href', '/books/21#book-reviews-heading');
+	await expect(matches.getByRole('listitem').nth(1).getByRole('link')).toHaveAttribute('href', '/read/21/31?annotation=text');
+	expect(await matches.getByRole('listitem').nth(1).innerHTML()).toBe(feedText);
+	await expect(feed).toHaveCount(0);
+	await clear.click();
+	await expect(feed.getByRole('img', { name: 'Drawing' })).toBeVisible();
+	await expect(form.getByRole('searchbox')).toBeFocused();
+});
+
+test('Notes explains an unavailable backend and retries the feed', async ({ page }) => {
+	await authenticate(page);
+	let calls = 0;
+	await page.route('**/api/v1/me/notes?*', (route) => {
+		if (++calls === 1) return problem(route, 404);
+		return route.fulfill({ json: { items: [], next_cursor: null } });
+	});
+	await page.goto('/notes');
+	await expect(page.getByRole('alert')).toContainText('Restart or update the backend');
+	await page.getByRole('button', { name: 'Try again' }).click();
+	await expect(page.getByText('You have no annotations yet.')).toBeVisible();
 });

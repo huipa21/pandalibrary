@@ -1,4 +1,5 @@
 import type { JsonValue } from '#lib/api/client.js';
+import { isBackgroundId } from './appearance.js';
 import type { PdfZoom, ReaderFormat, ReaderSettings, Setting } from './types.js';
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
@@ -9,8 +10,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
 	flow: 'paginated',
 	pdfLayout: 'single',
 	pdfZoom: 'page-width',
-	pdfRotation: 0,
-	pdfCoverAlone: false
+	pdfRotation: 0
 };
 
 type JsonObject = { [key: string]: JsonValue };
@@ -25,11 +25,11 @@ export function isReaderSettings(value: ReaderSettings): boolean {
 		Number.isFinite(value.size) && value.size >= 50 && value.size <= 200 &&
 		Number.isFinite(value.spacing) && value.spacing >= 1 && value.spacing <= 2.5 &&
 		['light', 'sepia', 'dark'].includes(value.theme) &&
+		(value.background === undefined || isBackgroundId(value.background)) &&
 		['paginated', 'scrolled'].includes(value.flow) &&
 		(value.pdfLayout === undefined || ['single', 'single-continuous', 'split', 'split-continuous'].includes(value.pdfLayout)) &&
 		(value.pdfZoom === undefined || validPdfZoom(value.pdfZoom)) &&
-		(value.pdfRotation === undefined || [0, 90, 180, 270].includes(value.pdfRotation)) &&
-		(value.pdfCoverAlone === undefined || typeof value.pdfCoverAlone === 'boolean')
+		(value.pdfRotation === undefined || [0, 90, 180, 270].includes(value.pdfRotation))
 	);
 }
 
@@ -64,6 +64,10 @@ function applyKnown(
 			result.theme = value.theme;
 		} else invalid = true;
 	}
+	if (value.background !== undefined) {
+		if (isBackgroundId(value.background)) result.background = value.background;
+		else invalid = true;
+	}
 	if (value.flow !== undefined) {
 		if (value.flow === 'paginated' || value.flow === 'scrolled') result.flow = value.flow;
 		else invalid = true;
@@ -78,10 +82,6 @@ function applyKnown(
 	}
 	if (value.pdfRotation !== undefined) {
 		if (value.pdfRotation === 0 || value.pdfRotation === 90 || value.pdfRotation === 180 || value.pdfRotation === 270) result.pdfRotation = value.pdfRotation;
-		else invalid = true;
-	}
-	if (value.pdfCoverAlone !== undefined) {
-		if (typeof value.pdfCoverAlone === 'boolean') result.pdfCoverAlone = value.pdfCoverAlone;
 		else invalid = true;
 	}
 	return { settings: result, invalid };

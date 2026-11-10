@@ -5,22 +5,20 @@ export const SCROLL_VERTICAL = 0;
 export const SCROLL_PAGE = 3;
 export const SPREAD_NONE = 0;
 export const SPREAD_ODD = 1;
-export const SPREAD_EVEN = 2;
 
-export function layoutModes(layout: PdfLayout, coverAlone = false): { scrollMode: number; spreadMode: number } {
+export function layoutModes(layout: PdfLayout): { scrollMode: number; spreadMode: number } {
 	const split = layout === 'split' || layout === 'split-continuous';
 	return {
 		scrollMode: layout.endsWith('continuous') ? SCROLL_VERTICAL : SCROLL_PAGE,
-		spreadMode: !split ? SPREAD_NONE : coverAlone ? SPREAD_EVEN : SPREAD_ODD
+		spreadMode: split ? SPREAD_ODD : SPREAD_NONE
 	};
 }
 
-export function layoutFromModes(scrollMode: number, spreadMode: number): { layout: PdfLayout; coverAlone: boolean } {
+export function layoutFromModes(scrollMode: number, spreadMode: number): { layout: PdfLayout } {
 	const continuous = scrollMode !== SCROLL_PAGE;
-	const split = spreadMode === SPREAD_ODD || spreadMode === SPREAD_EVEN;
+	const split = spreadMode === SPREAD_ODD;
 	return {
-		layout: split ? (continuous ? 'split-continuous' : 'split') : (continuous ? 'single-continuous' : 'single'),
-		coverAlone: spreadMode === SPREAD_EVEN
+		layout: split ? (continuous ? 'split-continuous' : 'split') : (continuous ? 'single-continuous' : 'single')
 	};
 }
 
@@ -29,8 +27,7 @@ export function isContinuous(layout: PdfLayout): boolean {
 }
 
 /** First page of the spread that contains `page`. */
-export function spreadStart(page: number, layout: PdfLayout, coverAlone: boolean): number {
+export function spreadStart(page: number, layout: PdfLayout): number {
 	if (layout === 'single' || layout === 'single-continuous') return page;
-	if (coverAlone) return page === 1 ? 1 : page - (page % 2 === 1 ? 1 : 0);
 	return page - (page % 2 === 0 ? 1 : 0);
 }

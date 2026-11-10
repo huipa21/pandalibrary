@@ -74,9 +74,11 @@ test('toolbar drives the engine and view changes autosave to the book', async ({
 	const zoom = (await state.lastSaved())?.pdfZoom as number;
 	await expect(page.getByRole('button', { name: 'Zoom', exact: true })).toHaveText(`${Math.round(zoom * 100)}%`);
 
-	await page.getByRole('button', { name: 'Page display', exact: true }).click();
-	await page.getByRole('menuitemradio', { name: 'Dark' }).click();
-	await expect.poll(state.lastSaved).toMatchObject({ theme: 'dark', pdfZoom: zoom, pdfLayout: 'split', pdfRotation: 90 });
+	await page.getByRole('button', { name: 'Format', exact: true }).click();
+	await page.getByRole('dialog', { name: 'Format' }).getByRole('radio', { name: 'Night', exact: true }).click();
+	await expect.poll(state.lastSaved).toMatchObject({
+		background: 'night', theme: 'dark', pdfZoom: zoom, pdfLayout: 'split', pdfRotation: 90
+	});
 });
 
 test('saved view settings restore and Hand/Insert tools follow shortcuts', async ({ page }) => {

@@ -32,9 +32,6 @@
 	:global(:root[data-theme='dark']) .pv-frame-surface {
 		background: var(--color-zinc-900);
 	}
-	.pv-frame :global(.reader-pdf) {
-		background: transparent;
-	}
 	.pv-frame :global(.reader-pdf-page) {
 		box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
 	}

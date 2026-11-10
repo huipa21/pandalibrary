@@ -25,9 +25,9 @@ Installation, configuration, backups and upgrades are in the
 | All Books | Sidebar → **All Books** | Every book you can see, in a grid or list, with filters and sorting |
 | Libraries, Authors, Series, Tags | Sidebar → **Browse** | Browse the catalog by collection |
 | Book page | Open any book | Details, reading status, rating, reviews, shelves, files, activity and highlights |
-| Reader | **Read** on a book | Read in the browser and add highlights, notes and bookmarks |
+| Reader | **Read** on a book | Read in the browser and add highlights, passage comments and bookmarks |
 | Bookmarks | Sidebar → **Bookmarks** | Saved reading positions across all books |
-| Notes | Sidebar → **Notes** | All your notes and highlights, searchable and exportable |
+| Annotations | Sidebar → **Annotations** | Reviews, comments, highlights, inserted text and drawings in date order; consistent search results and direct navigation |
 | Shelves | Sidebar → shelf list | Favorites, your own manual shelves and automatic (rule-based) shelves |
 | Search | Header search, or Sidebar → **Search** | Find books by title, author or series |
 | Stats | Sidebar → **Stats** | Daily reading time, finished books and reading streaks |

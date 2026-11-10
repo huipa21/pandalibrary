@@ -59,10 +59,11 @@
 .pv4-hint { margin: 6px 8px; color: #64748b; font-size: 12px; }
 .pv4-steps { display: flex; align-items: center; justify-content: center; gap: 12px; }
 .pv4-badge { position: absolute; top: 0; right: 0; min-width: 12px; padding: 0 2px; border-radius: 8px; background: #047857; color: white; font-size: 9px; line-height: 14px; }
-.pv4-page { box-sizing: content-box; min-width: 1ch; height: 28px; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-align: center; }
-.pv4-counter, .pv4-progress { white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+.pv4-page { box-sizing: content-box; flex: none; width: 5ch; height: 28px; padding: 0 2px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-variant-numeric: tabular-nums; text-align: right; }
+.pv4-counter, .pv4-progress { flex: none; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
 .pv4-counter { display: inline-flex; align-items: center; }
-.pv4-progress { color: #64748b; }
+.pv4-total { flex: none; min-width: 5ch; text-align: left; }
+.pv4-progress { display: inline-block; width: 7ch; color: #64748b; text-align: right; }
 :root[data-theme='dark'] .pv4-panel { background: #22262a; color: #f5f6f7; box-shadow: 0 10px 24px rgb(0 0 0 / 35%), 0 0 0 1px rgb(255 255 255 / 12%); }
 :root[data-theme='dark'] .pv4-button:hover:not(:disabled), :root[data-theme='dark'] .pv4-item:hover:not(:disabled) { background: rgb(255 255 255 / 8%); }
 :root[data-theme='dark'] .pv4-button[aria-pressed='true'] { color: #a7f3d0; }

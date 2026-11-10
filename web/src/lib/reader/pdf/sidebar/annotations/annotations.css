@@ -1,0 +1,167 @@
+.rp7-tab {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+}
+.rp7-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px;
+	border-bottom: 1px solid var(--shell-border);
+}
+.rp7-header input {
+	min-width: 0;
+	flex: 1;
+	padding: 6px 8px;
+	border: 1px solid var(--shell-border);
+	border-radius: 4px;
+	background: var(--shell-surface);
+	color: var(--shell-text);
+	font-size: 13px;
+}
+.rp7-count { flex: none; font-size: 12px; white-space: nowrap; }
+.rp7-content { flex: 1; min-height: 0; overflow-y: auto; }
+.rp7-list { padding: 0; margin: 0; list-style: none; }
+.rp7-entry {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 28px;
+	grid-template-rows: 1fr 1fr;
+	box-sizing: border-box;
+	height: 56px;
+	border-bottom: 1px solid var(--shell-border);
+}
+.rp7-entry-body {
+	display: grid;
+	grid-column: 1;
+	grid-row: 1 / 3;
+	grid-template-columns: 16px max-content minmax(0, 1fr) max-content;
+	grid-template-rows: 1fr 1fr;
+	align-items: center;
+	column-gap: 6px;
+	min-width: 0;
+	padding: 0 0 0 8px;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+.rp7-entry-body:disabled { cursor: default; }
+.rp7-swatch { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; }
+.rp7-fill { box-sizing: border-box; border: 1px solid rgb(0 0 0 / 25%); border-radius: 3px; }
+.rp7-line { border-radius: 2px; background: #fff; }
+.rp7-stamp, .rp7-excerpt, .rp7-comment, .rp7-page { overflow: hidden; font-size: 12px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.rp7-stamp { font-variant-numeric: tabular-nums; }
+.rp7-excerpt { grid-column: 3 / 5; }
+.rp7-comment { grid-column: 1 / 4; grid-row: 2; min-width: 0; opacity: 0.75; font-style: italic; }
+.rp7-page { grid-column: 4; grid-row: 2; }
+.rp7-delete-button, .rp7-expand, .rp7-icon-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+}
+.rp7-entry > .rp7-delete-button { grid-column: 2; grid-row: 1; }
+.rp7-expand { grid-column: 2; grid-row: 2; }
+.rp7-action-spacer { grid-column: 2; grid-row: 1; }
+.rp7-delete-button:hover, .rp7-expand:hover, .rp7-icon-button:hover, .rp7-entry-body:not(:disabled):hover { background: rgb(127 127 127 / 12%); }
+.rp7-tab button:focus-visible, .rp7-dialog button:focus-visible, .rp7-tab input:focus-visible {
+	outline: 2px solid #059669;
+	outline-offset: -2px;
+}
+.rp7-delete-button:disabled, .rp7-footer-button:disabled { opacity: 0.5; cursor: default; }
+.rp7-entry > .rp7-delete-confirm {
+	position: absolute;
+	top: 0;
+	right: 0;
+	z-index: 1;
+	width: auto;
+	padding: 0 5px;
+	background: #b91c1c;
+	color: #fff;
+	font-size: 12px;
+	white-space: nowrap;
+}
+.rp7-entry-flash, .rp7-note-flash { animation: rp7-flash 1s ease-out; }
+@keyframes rp7-flash {
+	from { box-shadow: inset 0 0 0 3px #10b981; }
+	to { box-shadow: inset 0 0 0 3px transparent; }
+}
+.rp7-page-flash { animation: rp7-page-flash 1s ease-out; }
+@keyframes rp7-page-flash {
+	from { opacity: 1; }
+	to { opacity: 0.3; }
+}
+.rp7-empty, .rp7-error { padding: 12px; font-size: 13px; }
+.rp7-error { border-bottom: 1px solid var(--shell-border); }
+.rp7-other { padding-top: 12px; }
+.rp7-other summary { padding: 0 8px 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.rp7-book-notes { padding: 16px 8px; }
+.rp7-book-notes h3, .rp7-dialog-comments h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+.rp7-undo { display: flex; justify-content: space-between; gap: 8px; padding: 8px; border-top: 1px solid var(--shell-border); font-size: 13px; }
+.rp7-link { text-decoration: underline; cursor: pointer; }
+.rp7-dialog {
+	box-sizing: border-box;
+	width: min(560px, 92vw);
+	max-width: none;
+	max-height: 80vh;
+	padding: 0;
+	border: 1px solid var(--shell-border);
+	border-radius: 8px;
+	background: var(--shell-surface);
+	color: var(--shell-text);
+	box-shadow: 0 16px 48px rgb(0 0 0 / 30%);
+}
+.rp7-dialog[open] { display: flex; flex-direction: column; }
+.rp7-dialog::backdrop { background: rgb(15 23 42 / 65%); }
+.rp7-dialog-header, .rp7-dialog-footer {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 16px;
+}
+.rp7-dialog-header { justify-content: space-between; border-bottom: 1px solid var(--shell-border); }
+.rp7-dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.rp7-dialog-body { min-height: 0; overflow-y: auto; padding: 16px; }
+.rp7-dialog-error { margin-bottom: 16px; font-size: 13px; }
+.rp7-dialog-footer { justify-content: flex-end; border-top: 1px solid var(--shell-border); }
+.rp7-footer-button, .rp7-delete-text {
+	width: auto;
+	min-width: 28px;
+	padding: 0 10px;
+	border: 1px solid var(--shell-border);
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+}
+.rp7-footer-button { height: 32px; cursor: pointer; }
+.rp7-delete-text { height: 32px; }
+.rp7-delete-text.rp7-delete-confirm { background: #b91c1c; color: #fff; }
+.rp7-metadata { display: grid; gap: 4px; margin: 0 0 16px; font-size: 13px; }
+.rp7-metadata > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.rp7-metadata dt { min-width: 60px; font-weight: 600; }
+.rp7-metadata dd { display: flex; align-items: center; gap: 6px; margin: 0; }
+.rp7-color-chip { width: 14px; height: 14px; border: 1px solid #64748b; border-radius: 3px; }
+.rp7-quote, .rp7-full-text { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
+.rp7-quote { padding-left: 12px; border-left: 3px solid #10b981; }
+.rp7-ink-preview, .rp7-image-preview { display: block; max-width: 100%; max-height: 45vh; margin: auto; }
+.rp7-ink-preview { width: min(100%, 400px); min-height: 80px; background: #fff; }
+.rp7-dialog-comments { margin-top: 20px; }
+.rp7-dialog .reader-note-editor, .rp7-dialog .reader-note-preview,
+.rp7-tab .reader-note-editor, .rp7-tab .reader-note-preview { background: var(--shell-surface); color: var(--shell-text); border-color: var(--shell-border); }
+@media (prefers-reduced-motion: reduce) {
+	.rp7-entry-flash, .rp7-note-flash { animation: none; box-shadow: inset 0 0 0 3px #10b981; }
+	.rp7-page-flash { animation: none; }
+}

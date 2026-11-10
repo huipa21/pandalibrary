@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { pdfFixture } from '../reader/fixtures';
+import { openAnnotationsPanel } from '../real-pdf.js';
 
 type Mutation = {
 	entity: string; key?: string; id?: string; op: string;
@@ -154,7 +155,7 @@ test('book details use synced state and the cached cover while offline', async (
 	await expect(page.getByText('Reading details are read-only while offline.')).toBeVisible();
 });
 
-test('offline progress and notes survive reload and reconnect pushes then pulls without Background Sync', async ({ page, context }) => {
+test('offline progress survives reload and reconnect without a standalone book note writer', async ({ page, context }) => {
 	const state = await setup(page);
 	await download(page);
 	await page.goto('/read/21/31');
@@ -167,20 +168,16 @@ test('offline progress and notes survive reload and reconnect pushes then pulls 
 	await pageBox.fill('2');
 	await pageBox.press('Enter');
 	await expect(page.locator('.reader-pdf-page[data-page="2"] .reader-pdf-text')).toContainText('Second PDF page text');
-	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
-	const bookNotes = page.getByRole('complementary', { name: 'Annotations', exact: true }).getByRole('region', { name: 'Book notes' });
-	await bookNotes.getByRole('button', { name: 'Add book note' }).click();
-	await bookNotes.getByRole('textbox', { name: 'Note in Markdown' }).fill('Written offline');
-	await bookNotes.getByRole('button', { name: 'Save note' }).click();
-	await expect.poll(async () => (await databaseRows(page, 'outbox')).filter((row) => row.status === 'pending').length).toBeGreaterThanOrEqual(2);
-	const queued = await databaseRows(page, 'outbox');
-	expect(queued.some((row) => JSON.stringify(row.mutation).includes('Written offline'))).toBe(true);
+	const annotationsPanel = await openAnnotationsPanel(page);
+	await expect(annotationsPanel.getByRole('region', { name: 'Book notes' })).toHaveCount(0);
+	await expect(annotationsPanel.getByRole('button', { name: 'Add book note' })).toHaveCount(0);
+	await expect.poll(async () => (await databaseRows(page, 'outbox')).filter((row) => row.status === 'pending').length).toBeGreaterThanOrEqual(1);
 
 	await page.reload();
 	await expect(page.locator('.reader-pdf-page[data-page="2"] .reader-pdf-text')).toContainText('Second PDF page text');
 	await expect(pageBox).toHaveValue('2');
-	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
-	await expect(bookNotes.getByText('Written offline', { exact: true })).toBeVisible();
+	await openAnnotationsPanel(page);
+	await expect(page.getByRole('region', { name: 'Book notes' })).toHaveCount(0);
 	const countBefore = state.mutations.length;
 	state.calls.length = 0;
 	state.online = true;
@@ -191,7 +188,6 @@ test('offline progress and notes survive reload and reconnect pushes then pulls 
 	expect(state.calls.indexOf('push')).toBeLessThan(state.calls.indexOf('pull'));
 	const saved = await databaseRows(page, 'rows');
 	expect(saved.some((row) => row.entity === 'reading_progress' && JSON.stringify(row.value).includes('"percentage":1'))).toBe(true);
-	expect(saved.some((row) => row.entity === 'notes' && JSON.stringify(row.value).includes('Written offline'))).toBe(true);
 });
 
 for (const status of [403, 404]) {

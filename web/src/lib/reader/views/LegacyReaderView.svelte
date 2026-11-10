@@ -6,6 +6,8 @@
 	import { bookmarkForPosition } from '#lib/reader/bookmarks.js';
 	import { renderMarkdown } from '#lib/reader/markdown.js';
 	import NoteEditor from '#lib/reader/NoteEditor.svelte';
+	import FormatMenu from '#lib/reader/toolbar/FormatMenu.svelte';
+	import { backgroundFor, withBackground } from '#lib/reader/appearance.js';
 	import type { Bookmark, Note } from '#lib/reader/types.js';
 	import type { ReaderController, NoteDraft, BookmarkDraft } from '#lib/reader/session/reader-controller.svelte.js';
 	let { controller }: { controller: ReaderController } = $props();
@@ -107,19 +109,14 @@
 				<p class="text-sm text-slate-600">{m['reader.settings.scope']()}</p>
 				{#if controller.settingsWarning}<p role="alert" class="text-sm text-amber-800">{controller.settingsWarning}</p>{/if}
 				<div class="grid gap-4 sm:grid-cols-2">
+					<FormatMenu typography={true}
+						font={controller.settings.font} size={controller.settings.size} spacing={controller.settings.spacing}
+						background={backgroundFor(controller.settings).id}
+						onfont={(font) => controller.applySettings({ font })}
+						onsize={(size) => controller.applySettings({ size })}
+						onspacing={(spacing) => controller.applySettings({ spacing })}
+						onbackground={(id) => controller.applySettings(withBackground(controller.settings, id))} />
 					{#if controller.format !== 'pdf' && controller.format !== 'cbz'}
-						<label class="space-y-1 text-sm font-medium">
-							<span>{m['reader.settings.font']()}</span>
-							<select class="block w-full rounded-md border border-slate-300 p-2 focus-visible:outline-2" bind:value={controller.settings.font} onchange={() => controller.applySettings()} disabled={!controller.ready}>
-								<option value="serif">{m['reader.settings.serif']()}</option>
-								<option value="sans-serif">{m['reader.settings.sans']()}</option>
-								<option value="system">{m['reader.settings.system']()}</option>
-							</select>
-						</label>
-						<label class="space-y-1 text-sm font-medium">
-							<span>{m['reader.settings.spacing']()}: {controller.settings.spacing}</span>
-							<input class="block w-full accent-slate-900 focus-visible:outline-2" type="range" min="1" max="2.5" step="0.1" bind:value={controller.settings.spacing} oninput={() => controller.applySettings()} disabled={!controller.ready} />
-						</label>
 						<label class="space-y-1 text-sm font-medium">
 							<span>{m['reader.settings.flow']()}</span>
 							<select class="block w-full rounded-md border border-slate-300 p-2 focus-visible:outline-2" bind:value={controller.settings.flow} onchange={() => controller.applySettings()} disabled={!controller.ready}>
@@ -128,22 +125,9 @@
 							</select>
 						</label>
 					{/if}
-					<label class="space-y-1 text-sm font-medium">
-						<span>{m['reader.settings.size']()}: {controller.settings.size}%</span>
-						<input class="block w-full accent-slate-900 focus-visible:outline-2" type="range" min="50" max="200" step="5" bind:value={controller.settings.size} oninput={() => controller.applySettings()} disabled={!controller.ready} />
-					</label>
-					{#if controller.format !== 'cbz'}
-						<label class="space-y-1 text-sm font-medium">
-							<span>{m['reader.settings.theme']()}</span>
-							<select class="block w-full rounded-md border border-slate-300 p-2 focus-visible:outline-2" bind:value={controller.settings.theme} onchange={() => controller.applySettings()} disabled={!controller.ready}>
-								<option value="light">{m['reader.settings.light']()}</option>
-								<option value="sepia">{m['reader.settings.sepia']()}</option>
-								<option value="dark">{m['reader.settings.dark']()}</option>
-							</select>
-						</label>
-					{/if}
 				</div>
 				<button class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={!controller.ready || controller.busy || !controller.canSaveSettings} onclick={() => controller.saveSettings()}>{m['reader.settings.save']()}</button>
+				<button class="rounded-md border border-slate-300 px-4 py-2 font-medium focus-visible:outline-2" disabled={!controller.ready || controller.busy} onclick={() => controller.saveSettings({}, 'format')}>{m['rp9.save_format']()}</button>
 			</div>
 		</details>
 
@@ -166,7 +150,6 @@
 				<button class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={!controller.ready || controller.busy || (!controller.selection && controller.format !== 'cbz')} onclick={() => controller.addHighlight(controller.selection, selectedColor)}>
 					{controller.format === 'cbz' && !controller.selection ? m['reader.annotations.add_page']() : m['reader.annotations.add_highlight']()}
 				</button>
-				<button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus-visible:outline-2" disabled={!controller.ready || controller.busy} onclick={() => openNote(null)}>{m['reader.annotations.add_note']()}</button>
 			</div>
 
 			{#if draft}
@@ -184,20 +167,6 @@
 
 			{#if !controller.highlights.length && !controller.notes.length}
 				<p class="text-slate-600">{m['reader.annotations.empty']()}</p>
-			{/if}
-			{#if controller.bookNotes.length}
-				<div class="space-y-3">
-					<h3 class="font-semibold">{m['reader.annotations.book_notes']()}</h3>
-					{#each controller.bookNotes as note (note.id)}
-						<div class="space-y-3 rounded-md border border-slate-200 bg-white p-4">
-							<div class="reader-markdown break-words text-sm">{@html renderMarkdown(note.body_md)}</div>
-							<div class="flex gap-4 text-sm">
-								<button class="underline focus-visible:outline-2" onclick={() => openNote(null, note)}>{m['reader.annotations.edit']()}</button>
-								<button class="underline focus-visible:outline-2" disabled={controller.busy} onclick={() => controller.deleteNote(note)}>{m['reader.annotations.delete']()}</button>
-							</div>
-						</div>
-					{/each}
-				</div>
 			{/if}
 			{#each controller.orderedHighlights as highlight (highlight.id)}
 				<div class="space-y-3 rounded-md border border-slate-200 bg-white p-4">

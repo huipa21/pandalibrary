@@ -20,7 +20,6 @@
 <span class="pv4-counter">
 	<input
 		class="pv4-page"
-		style:width={`${Math.max(1, String(pageCount).length)}ch`}
 		type="text"
 		inputmode="numeric"
 		pattern="[0-9]*"
@@ -39,5 +38,5 @@
 			}
 		}}
 	/>
-	<span> / {pageCount}</span>
+	<span>/</span><span class="pv4-total">{pageCount}</span>
 </span>

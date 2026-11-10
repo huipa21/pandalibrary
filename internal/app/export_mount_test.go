@@ -17,12 +17,12 @@ func TestNotesExportRouteIsMountedInApplication(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	response := httptest.NewRecorder()
-	application.handler.ServeHTTP(response, httptest.NewRequest(
-		http.MethodGet, "/api/v1/me/notes/export?book_ids=1", nil,
-	))
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("notes export route = %d %s, want authenticated API route",
-			response.Code, response.Body.String())
+	for _, path := range []string{"/api/v1/me/notes?limit=50", "/api/v1/me/notes/export?book_ids=1"} {
+		response := httptest.NewRecorder()
+		application.handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("notes route %s = %d %s, want authenticated API route",
+				path, response.Code, response.Body.String())
+		}
 	}
 }

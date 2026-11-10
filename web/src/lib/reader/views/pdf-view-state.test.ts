@@ -4,13 +4,13 @@ import type { PdfViewState } from '#lib/reader/pdf/types.js';
 import { storedTool, toolShortcut, viewSettings, viewSettingsChanged } from './pdf-view-state.js';
 
 const state: PdfViewState = {
-	page: 3, pageCount: 9, fraction: 0.25, offset: 0, layout: 'split', zoom: 1.375, scale: 1.375, rotation: 90, coverAlone: true
+	page: 3, pageCount: 9, fraction: 0.25, offset: 0, layout: 'split', zoom: 1.375, scale: 1.375, rotation: 90
 };
 const key = (value: string, modifiers: Partial<KeyboardEvent> = {}) => ({ key: value, ctrlKey: false, metaKey: false, altKey: false, ...modifiers });
 
 describe('viewSettings', () => {
 	it('maps engine view state to persisted settings fields', () => {
-		expect(viewSettings(state)).toEqual({ pdfLayout: 'split', pdfZoom: 1.375, pdfRotation: 90, pdfCoverAlone: true });
+		expect(viewSettings(state)).toEqual({ pdfLayout: 'split', pdfZoom: 1.375, pdfRotation: 90 });
 	});
 
 	it('detects free-zoom and other engine-side changes, ignoring position and rendered scale', () => {
@@ -20,7 +20,6 @@ describe('viewSettings', () => {
 		expect(viewSettingsChanged(synced, { ...state, zoom: 'auto' })).toBe(true);
 		expect(viewSettingsChanged(synced, { ...state, layout: 'single' })).toBe(true);
 		expect(viewSettingsChanged(synced, { ...state, rotation: 0 })).toBe(true);
-		expect(viewSettingsChanged(synced, { ...state, coverAlone: false })).toBe(true);
 	});
 });
 

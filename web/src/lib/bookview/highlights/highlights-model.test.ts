@@ -10,6 +10,7 @@ import {
 	markStats,
 	matchSegments,
 	parseMarkSort,
+	sortColorOptions,
 	sortMarks,
 	UNKNOWN_FORMAT,
 	weekStartDate,
@@ -161,6 +162,28 @@ describe('colorCounts and colorTone', () => {
 		expect(colorTone('Blue').bar).toBe('bg-sky-500');
 		expect(colorTone('teal').bar).toBe('bg-slate-400');
 		expect(colorTone('toString').bar).toBe('bg-slate-400');
+		expect(colorTone('#A1B2C3')).toMatchObject({ bar: '', hex: '#a1b2c3' });
+		expect(colorTone('blue').hex).toBe('#60a5fa');
+		for (const color of ['teal', 'red', 'Blue', '#abc']) {
+			expect(colorTone(color).hex).toBe('#facc15');
+		}
+	});
+
+	it('groups equivalent colours and orders filter options by preset then custom hex', () => {
+		const marks = [
+			mark('a', { color: '#ABCDEF' }), mark('b', { color: '#123456' }),
+			mark('c', { color: '#F87171' }), mark('d', { color: 'yellow' }),
+			mark('e', { color: '#FACC15' }), mark('f', { color: 'blue' }),
+			mark('g', { color: '#abcdef' })
+		];
+		const counts = colorCounts(marks);
+		expect(counts).toContainEqual({ color: 'yellow', count: 2 });
+		expect(counts).toContainEqual({ color: '#abcdef', count: 2 });
+		expect(sortColorOptions(counts).map((item) => item.color)).toEqual([
+			'yellow', '#f87171', 'blue', '#123456', '#abcdef'
+		]);
+		expect(filterMarks(marks, { query: '', colors: new Set(['yellow', '#abcdef']), notesOnly: false }).map((item) => item.id))
+			.toEqual(['a', 'd', 'e', 'g']);
 	});
 });
 

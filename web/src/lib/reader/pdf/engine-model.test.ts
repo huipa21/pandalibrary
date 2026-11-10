@@ -75,23 +75,20 @@ describe('PDF geometry', () => {
 });
 
 describe('PDF layout modes', () => {
-	it('maps the four layouts and cover-alone to pdf.js modes and back', () => {
+	it('maps the four layouts to pdf.js modes and back using odd spreads', () => {
 		for (const layout of ['single', 'single-continuous', 'split', 'split-continuous'] as const) {
-			for (const coverAlone of [false, true]) {
-				const { scrollMode, spreadMode } = layoutModes(layout, coverAlone);
-				const back = layoutFromModes(scrollMode, spreadMode);
-				expect(back.layout).toBe(layout);
-				expect(back.coverAlone).toBe(layout.startsWith('split') && coverAlone);
-			}
+			const { scrollMode, spreadMode } = layoutModes(layout);
+			const back = layoutFromModes(scrollMode, spreadMode);
+			expect(back.layout).toBe(layout);
 		}
 		expect(layoutModes('single-continuous')).toEqual({ scrollMode: 0, spreadMode: 0 });
-		expect(layoutModes('split', true)).toEqual({ scrollMode: 3, spreadMode: 2 });
+		expect(layoutModes('split')).toEqual({ scrollMode: 3, spreadMode: 1 });
 	});
 
 	it('finds spread starts like pdf.js spreads', () => {
-		expect([1, 2, 3, 4, 5].map((page) => spreadStart(page, 'split', false))).toEqual([1, 1, 3, 3, 5]);
-		expect([1, 2, 3, 4, 5].map((page) => spreadStart(page, 'split-continuous', true))).toEqual([1, 2, 2, 4, 4]);
-		expect(spreadStart(4, 'single', true)).toBe(4);
+		expect([1, 2, 3, 4, 5].map((page) => spreadStart(page, 'split'))).toEqual([1, 1, 3, 3, 5]);
+		expect([1, 2, 3, 4, 5].map((page) => spreadStart(page, 'split-continuous'))).toEqual([1, 1, 3, 3, 5]);
+		expect(spreadStart(4, 'single')).toBe(4);
 	});
 });
 
@@ -123,15 +120,15 @@ describe('PDF zoom', () => {
 
 describe('PDF view settings', () => {
 	it('reads merged settings with continuous/automatic defaults and patches them back', () => {
-		expect(readPdfViewState({})).toEqual({ layout: 'single-continuous', zoom: 'auto', rotation: 0, coverAlone: false });
-		const view = readPdfViewState({ pdfLayout: 'split', pdfZoom: 1.5, pdfRotation: 270, pdfCoverAlone: true });
-		expect(pdfViewStatePatch(view)).toEqual({ pdfLayout: 'split', pdfZoom: 1.5, pdfRotation: 270, pdfCoverAlone: true });
+		expect(readPdfViewState({})).toEqual({ layout: 'single-continuous', zoom: 'auto', rotation: 0 });
+		const view = readPdfViewState({ pdfLayout: 'split', pdfZoom: 1.5, pdfRotation: 270 });
+		expect(pdfViewStatePatch(view)).toEqual({ pdfLayout: 'split', pdfZoom: 1.5, pdfRotation: 270 });
 	});
 
 	it('loads and persists all layouts, presets and arbitrary scales with book overrides', () => {
 		for (const pdfLayout of ['single', 'single-continuous', 'split', 'split-continuous'] as const) {
 			for (const pdfZoom of ['auto', 'page-width', 'page-fit', 'page-actual', 0.1, 1.375, 5] as const) {
-				const settings = { ...DEFAULT_SETTINGS, pdfLayout, pdfZoom, pdfRotation: 270 as const, pdfCoverAlone: true };
+				const settings = { ...DEFAULT_SETTINGS, pdfLayout, pdfZoom, pdfRotation: 270 as const };
 				expect(isReaderSettings(settings)).toBe(true);
 				const saved = mergeBookSettings({ future: true }, settings);
 				const loaded = loadReaderSettings([
@@ -148,7 +145,7 @@ describe('PDF view settings', () => {
 	it('rejects invalid PDF settings explicitly without losing valid settings', () => {
 		const invalidSettings: Record<string, JsonValue>[] = [
 			{ pdfLayout: 'unknown' }, { pdfZoom: 0 }, { pdfZoom: 5.01 }, { pdfZoom: Number.NaN },
-			{ pdfZoom: 'custom' }, { pdfRotation: 45 }, { pdfCoverAlone: 'true' }
+			{ pdfZoom: 'custom' }, { pdfRotation: 45 }
 		];
 		for (const invalid of invalidSettings) {
 			expect(isReaderSettings({ ...DEFAULT_SETTINGS, ...invalid } as typeof DEFAULT_SETTINGS)).toBe(false);

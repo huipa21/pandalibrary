@@ -114,9 +114,32 @@ func TestReviewHTTPContract(t *testing.T) {
 	expectShelfStatus(t, f.request(http.MethodDelete, base+"/me", nil, f.admin, nil), http.StatusNoContent)
 }
 
+func TestPersonalActivityHTTPContract(t *testing.T) {
+	f := newReviewHTTPFixture(t)
+	if response := f.request(http.MethodPut, "/api/v1/books/101/reviews/me",
+		strings.NewReader(`{"body":"My activity review"}`), f.reader, nil); response.Code != http.StatusOK {
+		t.Fatalf("save review: status %d, body %s", response.Code, response.Body.String())
+	}
+	response := f.request(http.MethodGet, "/api/v1/me/notes?limit=1", nil, f.reader, nil)
+	expectShelfStatus(t, response, http.StatusOK)
+	var page catalog.Page[catalog.PersonalActivity]
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Kind != "review" || page.Items[0].BookID != 101 ||
+		page.Items[0].Content != "My activity review" || page.Items[0].BookTitle != "Visible" ||
+		page.NextCursor != nil {
+		t.Fatalf("activity page: %+v", page)
+	}
+}
+
 func TestReviewHTTPRejections(t *testing.T) {
 	f := newReviewHTTPFixture(t)
 	const base = "/api/v1/books/101/reviews"
+	expectShelfStatus(t, f.request(http.MethodGet, "/api/v1/me/notes", nil, nil, nil), http.StatusUnauthorized)
+	for _, query := range []string{"?limit=0", "?cursor=bad", "?unknown=x"} {
+		expectShelfStatus(t, f.request(http.MethodGet, "/api/v1/me/notes"+query, nil, f.reader, nil), http.StatusBadRequest)
+	}
 	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
 		path := base
 		if method != http.MethodGet {

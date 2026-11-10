@@ -1,0 +1,47 @@
+.reader-pdf[data-background] {
+	--rp-grain: none;
+}
+
+.reader-pdf[data-background='white'] { --rp-page: #ffffff; --rp-text: #1f2937; }
+.reader-pdf[data-background='cream'] { --rp-page: #faf6ec; --rp-text: #2b2b2b; }
+.reader-pdf[data-background='sepia'] { --rp-page: #f4ecd8; --rp-text: #5b4636; }
+.reader-pdf[data-background='green'] { --rp-page: #c7edcc; --rp-text: #1f3a24; }
+.reader-pdf[data-background='wood'] {
+	--rp-page: #dcc29b;
+	--rp-text: #3e2c1c;
+	--rp-grain: repeating-linear-gradient(90deg, rgb(0 0 0 / 3%) 0 2px, transparent 2px 7px);
+}
+.reader-pdf[data-background='gray'] { --rp-page: #e6e6e6; --rp-text: #262626; }
+.reader-pdf[data-background='blue'] { --rp-page: #dce8f5; --rp-text: #1e2a3a; }
+.reader-pdf[data-background='pink'] { --rp-page: #f9e3e3; --rp-text: #3f2a2a; }
+.reader-pdf[data-background='night'] { --rp-page: #1c1c1e; --rp-text: #c8c8c8; }
+.reader-pdf[data-background='black'] { --rp-page: #000000; --rp-text: #a3a3a3; }
+
+.reader-pdf[data-background] .pdfViewer.removePageBorders .page {
+	background-color: var(--rp-page);
+	background-image: var(--rp-grain);
+}
+
+.reader-pdf[data-background][data-tone='light'] {
+	background: #e2e8f0;
+}
+
+.reader-pdf[data-background][data-tone='dark'] {
+	background: #18181b;
+}
+
+.reader-pdf[data-tone='light'] .pdfViewer .page canvas {
+	filter: none;
+	mix-blend-mode: multiply;
+}
+
+.reader-pdf[data-tone='dark'] .pdfViewer .page canvas {
+	filter: invert(1) hue-rotate(180deg);
+	mix-blend-mode: screen;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.reader-pdf[data-tone] .pdfViewer .page canvas {
+		transition: none;
+	}
+}
