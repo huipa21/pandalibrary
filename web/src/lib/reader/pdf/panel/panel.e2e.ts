@@ -77,32 +77,27 @@ async function setup(page: Page) {
 	page.on('dialog', (dialog) => dialog.accept());
 	await page.goto('/read/21/31');
 	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
-	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
+	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 	await expect(panel(page)).toBeVisible();
 	return { pushes, failPushes: () => { fail = true; } };
 }
-const panel = (page: Page) => page.getByRole('complementary', { name: 'Annotations', exact: true });
+const panel = (page: Page) => page.getByRole('tabpanel', { name: 'Annotations', exact: true });
 const entry = (page: Page, n: number) => panel(page).locator(`[data-panel-entry="${id(n)}"]`);
 
-test('groups every annotation type by page, filters and searches English and Chinese', async ({ page }) => {
+test('groups every annotation type by page and searches English and Chinese', async ({ page }) => {
 	await setup(page);
 	const drawer = panel(page);
-	await expect(drawer.getByRole('heading', { name: 'Annotations (6)' })).toBeVisible();
+	await expect(drawer.getByRole('heading', { name: 'Annotations', exact: true })).toBeVisible();
 	await expect(drawer.getByRole('heading', { name: 'Page 1', exact: true })).toBeVisible();
 	await expect(drawer.getByRole('heading', { name: 'Page 2', exact: true })).toBeVisible();
 	await expect(drawer.locator('[data-panel-entry]')).toHaveCount(7);
 	await drawer.getByText('Another file (1)').click();
 	await expect(entry(page, 3).locator('button').first()).toBeDisabled();
-	await drawer.getByRole('button', { name: 'Comments (1)', exact: true }).click();
-	await expect(drawer.locator('[data-panel-entry]')).toHaveCount(1);
-	await drawer.getByRole('button', { name: 'All (6)', exact: true }).click();
 	await drawer.getByRole('searchbox').fill('STRIKEOUT');
 	await expect(drawer.locator('[data-panel-entry]')).toHaveCount(1);
 	await expect(entry(page, 2)).toBeVisible();
 	await drawer.getByRole('searchbox').fill('中文');
 	await expect(drawer.locator('[data-panel-entry]')).toHaveCount(2);
-	await drawer.getByRole('button', { name: 'Inserts (3)', exact: true }).click();
-	await expect(drawer.locator('[data-panel-entry]')).toHaveCount(1);
 	await expect(entry(page, 31)).toBeVisible();
 });
 
@@ -119,7 +114,7 @@ test('jump navigates, flashes the item and Escape restores focus without a focus
 	await expect(entry(page, 1).locator('[data-panel-jump]')).toBeFocused();
 	await page.keyboard.press('Escape');
 	await expect(panel(page)).toHaveCount(0);
-	await expect(page.getByRole('button', { name: 'Annotations', exact: true })).toBeFocused();
+	await expect(page.getByRole('tab', { name: 'Annotations', exact: true })).toBeFocused();
 });
 
 test('edits comments, bookmarks and inserted text, and deletes and restores a mark with its comment', async ({ page }) => {
@@ -187,24 +182,27 @@ test('book notes can be added, edited, deleted and restored, and offline deletio
 	expect(JSON.stringify(queued)).toContain(id(32));
 });
 
-test('unsaved notes are guarded on close, toggle and navigation', async ({ page }) => {
+test('collapsing keeps unsaved notes; switching tabs and navigation are guarded', async ({ page }) => {
 	await setup(page);
 	const bookNotes = panel(page).getByRole('region', { name: 'Book notes' });
 	await bookNotes.getByRole('button', { name: 'Add book note' }).click();
 	await bookNotes.getByRole('textbox', { name: 'Note in Markdown' }).fill('Unsaved draft');
 	page.removeAllListeners('dialog');
 	page.on('dialog', (dialog) => dialog.dismiss());
-	await panel(page).getByRole('button', { name: 'Close annotations' }).click();
-	await expect(panel(page)).toBeVisible();
-	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
+	await panel(page).getByRole('button', { name: 'Collapse sidebar' }).click();
+	await expect(panel(page)).toHaveCount(0);
+	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
+	await expect(bookNotes.getByRole('textbox', { name: 'Note in Markdown' })).toContainText('Unsaved draft');
+	await page.getByRole('tab', { name: 'Contents', exact: true }).click();
 	await expect(panel(page)).toBeVisible();
 	await page.getByRole('button', { name: 'Close reader', exact: true }).click();
 	await expect(page).toHaveURL('/read/21/31');
 	await expect(bookNotes.getByRole('textbox', { name: 'Note in Markdown' })).toContainText('Unsaved draft');
 	page.removeAllListeners('dialog');
 	page.on('dialog', (dialog) => dialog.accept());
-	await panel(page).getByRole('button', { name: 'Close annotations' }).click();
+	await page.getByRole('tab', { name: 'Contents', exact: true }).click();
 	await expect(panel(page)).toHaveCount(0);
+	await expect(page.getByRole('tabpanel', { name: 'Contents', exact: true })).toBeVisible();
 });
 for (const width of [1440, 360]) {
 	for (const theme of ['light', 'dark']) {
@@ -214,8 +212,8 @@ for (const width of [1440, 360]) {
 			await setup(page);
 			await page.evaluate((value) => document.documentElement.dataset.theme = value, theme);
 			const bounds = await panel(page).boundingBox();
-			expect(bounds?.width).toBe(360);
-			expect(bounds?.x).toBe(width - 360);
+			expect(bounds?.width).toBe(width < 640 ? width - 44 : 300);
+			expect(bounds?.x).toBe(44);
 			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
 			await page.screenshot({ path: test.info().outputPath(`panel-${theme}-${width}.png`) });
 		});

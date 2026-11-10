@@ -95,7 +95,7 @@ text across pages creates a separate mark on each page. Click a mark to change
 its colour or style, add or edit its comment, copy its text, or delete it.
 Comment editors show a live Markdown preview.
 Bookmarks made from selected text use that text as their initial label; you can
-rename them in the Annotations panel.
+rename them in the Annotations tab.
 
 The borderless **X** saves progress and reading time before returning to the
 book's details. If saving fails, retry the unsaved changes or explicitly
@@ -103,15 +103,24 @@ choose to leave without saving. A coloured status dot indicates offline,
 pending or failed sync, or a settings-save warning; open it for details and a
 retry action when synchronization is available.
 
-**Annotations** opens a side panel grouped by page. Search marks, comments,
-bookmarks and inserted items, or filter by type. Open an entry to jump to its
+A narrow tab rail on the left edge opens the reader sidebar: **Contents**,
+**Pages**, **Annotations** and **Bookmarks** (Contents, Pages and Bookmarks are
+coming soon). Select a tab to open it and select it again, or use the collapse
+button, to close the sidebar. On wide screens the sidebar sits beside the page
+and keeps your place; on smaller screens it floats over the page, and Escape or
+a click on the page closes it. This device remembers whether the sidebar is
+open and which tab was last used. Clicking a comment marker on the page shows
+that entry in the Annotations tab.
+
+The **Annotations** tab groups items by page. Search marks, comments,
+bookmarks and inserted items. Open an entry to jump to its
 position; edit comments, bookmark labels and inserted text there, or delete an
 item and choose **Undo** within eight seconds. Entries from another file are
 listed separately and cannot be changed from the current file. Book-level
-Markdown notes can be added, edited and deleted at the bottom of the panel.
-Escape closes the panel and returns focus to its toolbar button. On phones the
-panel fills the available width. Changes are saved on this device while offline
-and sync when connected.
+Markdown notes can be added, edited and deleted at the bottom of the tab.
+Escape closes the sidebar and returns focus to its tab. Collapsing keeps an
+unsaved note; switching to another tab asks first. Changes are saved on this
+device while offline and sync when connected.
 
 Scanned PDF pages (pages that are images with little or no text) are recognized
 in your browser so you can select and copy their text. Recognition supports

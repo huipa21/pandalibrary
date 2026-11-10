@@ -88,11 +88,10 @@ test('progress is bilingual and handles NaN; disabled controls emit nothing', as
 	await mount(page, 'zh');
 	await expect(page.getByLabel('阅读进度 10.05%')).toHaveText('10.05%');
 	await expect(page.getByRole('textbox')).toHaveAccessibleName('第 12 页，共 240 页');
-	await update(page, { fraction: NaN, disabled: true, count: 0 });
+	await update(page, { fraction: NaN, disabled: true });
 	await expect(page.getByLabel('阅读进度 0.00%')).toHaveText('0.00%');
 	await expect(page.getByRole('textbox')).toBeDisabled();
 	await expect(page.getByRole('button', { name: '插入文字、绘图或图片' })).toBeDisabled();
-	await expect(page.locator('.pv4-badge')).toHaveCount(0);
 	await page.getByRole('button', { name: '缩放', exact: true }).click();
 	await expect(page.getByRole('menuitemradio', { name: '自动', exact: true })).toBeChecked();
 	await page.keyboard.press('Escape');
@@ -214,9 +213,7 @@ test('layout, cover, theme, optional OCR, rotate and toggles follow props', asyn
 	await page.getByRole('button', { name: 'Insert text, drawing or image' }).click();
 	await expectLog(page, 'insert', true);
 	await expect(page.getByRole('button', { name: 'Insert text, drawing or image' })).toHaveAttribute('aria-pressed', 'true');
-	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
-	await expectLog(page, 'panel', true);
-	await expect(page.getByRole('button', { name: 'Annotations', exact: true })).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByRole('button', { name: 'Annotations', exact: true })).toHaveCount(0);
 });
 
 test('only one desktop menu stays open and Mac hint uses the command key', async ({ page }) => {

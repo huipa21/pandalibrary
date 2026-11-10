@@ -1610,5 +1610,12 @@
 	"pv8.delete": "删除标记",
 	"pv8.deleted": "标记已删除",
 	"pv8.undo": "撤销",
-	"pv8.restored": "标记已恢复"
+	"pv8.restored": "标记已恢复",
+	"rp4.sidebar": "阅读侧栏",
+	"rp4.contents": "目录",
+	"rp4.pages": "页面",
+	"rp4.annotations": "批注",
+	"rp4.bookmarks": "书签",
+	"rp4.collapse": "收起侧栏",
+	"rp4.coming_soon": "即将推出。"
 }

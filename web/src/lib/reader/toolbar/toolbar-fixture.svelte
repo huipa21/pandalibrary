@@ -10,7 +10,6 @@
 	import RotateMenu from './RotateMenu.svelte';
 	import ToolToggle from './ToolToggle.svelte';
 	import InsertToggle from './InsertToggle.svelte';
-	import PanelToggle from './PanelToggle.svelte';
 	import type { PdfLayout, PdfZoom, ReaderTheme } from './types.js';
 
 	let page = $state(12);
@@ -24,8 +23,6 @@
 	let ocrEnabled = $state(true);
 	let tool = $state<'select' | 'hand'>('select');
 	let active = $state(false);
-	let panelOpen = $state(false);
-	let count = $state(3);
 	let disabled = $state(false);
 	let showOcr = $state(true);
 
@@ -34,13 +31,12 @@
 	onMount(() => {
 		const update = (event: Event) => {
 			const detail = (event as CustomEvent<{
-				page?: number; pageCount?: number; fraction?: number; count?: number;
+				page?: number; pageCount?: number; fraction?: number;
 				disabled?: boolean; showOcr?: boolean;
 			}>).detail;
 			if (detail.page !== undefined) page = detail.page;
 			if (detail.pageCount !== undefined) pageCount = detail.pageCount;
 			if (detail.fraction !== undefined) fraction = detail.fraction;
-			if (detail.count !== undefined) count = detail.count;
 			if (detail.disabled !== undefined) disabled = detail.disabled;
 			if (detail.showOcr !== undefined) showOcr = detail.showOcr;
 		};
@@ -67,7 +63,6 @@
 	{#snippet right()}
 		<ToolToggle {tool} ontoggle={() => { tool = tool === 'select' ? 'hand' : 'select'; active = false; log('tool', tool); }} />
 		<InsertToggle {active} {disabled} ontoggle={() => { active = !active; log('insert', active); }} />
-		<PanelToggle open={panelOpen} {count} ontoggle={() => { panelOpen = !panelOpen; log('panel', panelOpen); }} />
 		<span class="divider" aria-hidden="true"></span>
 		<button type="button" class="pv4-button" aria-label={m['reader.close']()} title={m['reader.close']()} onclick={() => log('close', true)}><Icon name="x" /></button>
 	{/snippet}

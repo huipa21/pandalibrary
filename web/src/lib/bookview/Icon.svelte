@@ -9,7 +9,8 @@
 		| 'layout-split-continuous' | 'rotate-ccw' | 'rotate-cw' | 'hand'
 		| 'text-cursor' | 'insert' | 'panel-right'
 		| 'highlighter' | 'underline' | 'strikethrough' | 'message' | 'bookmark-plus'
-		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move';
+		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move'
+		| 'list-tree' | 'bookmark' | 'chevrons-left';
 </script>
 
 <script lang="ts">
@@ -124,5 +125,11 @@
 		<path d="m3 10 5 5L17 5" />
 	{:else if name === 'move'}
 		<path d="M10 2v16M2 10h16M7 5l3-3 3 3m-6 10 3 3 3-3M5 7l-3 3 3 3m10-6 3 3-3 3" />
+	{:else if name === 'list-tree'}
+		<path d="M3 5h4m-2 0v12a2 2 0 0 0 2 2h1M5 12h3M11 5h10M11 12h10M11 19h10" />
+	{:else if name === 'bookmark'}
+		<path d="M6 3h12v18l-6-4-6 4z" />
+	{:else if name === 'chevrons-left'}
+		<path d="m11 17-5-5 5-5m7 10-5-5 5-5" />
 	{/if}
 </svg>

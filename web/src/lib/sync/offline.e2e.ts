@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { pdfFixture } from '../reader/fixtures';
+import { openAnnotationsPanel } from '../real-pdf.js';
 
 type Mutation = {
 	entity: string; key?: string; id?: string; op: string;
@@ -167,8 +168,7 @@ test('offline progress and notes survive reload and reconnect pushes then pulls 
 	await pageBox.fill('2');
 	await pageBox.press('Enter');
 	await expect(page.locator('.reader-pdf-page[data-page="2"] .reader-pdf-text')).toContainText('Second PDF page text');
-	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
-	const bookNotes = page.getByRole('complementary', { name: 'Annotations', exact: true }).getByRole('region', { name: 'Book notes' });
+	const bookNotes = (await openAnnotationsPanel(page)).getByRole('region', { name: 'Book notes' });
 	await bookNotes.getByRole('button', { name: 'Add book note' }).click();
 	await bookNotes.getByRole('textbox', { name: 'Note in Markdown' }).fill('Written offline');
 	await bookNotes.getByRole('button', { name: 'Save note' }).click();
@@ -179,7 +179,7 @@ test('offline progress and notes survive reload and reconnect pushes then pulls 
 	await page.reload();
 	await expect(page.locator('.reader-pdf-page[data-page="2"] .reader-pdf-text')).toContainText('Second PDF page text');
 	await expect(pageBox).toHaveValue('2');
-	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
+	await openAnnotationsPanel(page);
 	await expect(bookNotes.getByText('Written offline', { exact: true })).toBeVisible();
 	const countBefore = state.mutations.length;
 	state.calls.length = 0;

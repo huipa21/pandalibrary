@@ -1610,5 +1610,12 @@
 	"pv8.delete": "Delete mark",
 	"pv8.deleted": "Mark deleted",
 	"pv8.undo": "Undo",
-	"pv8.restored": "Mark restored"
+	"pv8.restored": "Mark restored",
+	"rp4.sidebar": "Reader sidebar",
+	"rp4.contents": "Contents",
+	"rp4.pages": "Pages",
+	"rp4.annotations": "Annotations",
+	"rp4.bookmarks": "Bookmarks",
+	"rp4.collapse": "Collapse sidebar",
+	"rp4.coming_soon": "Coming soon."
 }

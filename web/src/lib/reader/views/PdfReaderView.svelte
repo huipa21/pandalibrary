@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, type Snippet } from 'svelte';
+	import { onMount, untrack, type Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { readerChrome } from '#lib/shell/reader-chrome.js';
 	import ReaderFrame from '#lib/reader/frame/ReaderFrame.svelte';
@@ -13,7 +13,6 @@
 	import RotateMenu from '#lib/reader/toolbar/RotateMenu.svelte';
 	import ToolToggle from '#lib/reader/toolbar/ToolToggle.svelte';
 	import InsertToggle from '#lib/reader/toolbar/InsertToggle.svelte';
-	import PanelToggle from '#lib/reader/toolbar/PanelToggle.svelte';
 	import { PdfViewerEngine } from '#lib/reader/pdf/engine.js';
 	import type { ReaderController } from '#lib/reader/session/reader-controller.svelte.js';
 	import type { PdfLayout, PdfZoom, ReaderSettings } from '#lib/reader/types.js';
@@ -24,7 +23,8 @@
 	import { editableTarget, viewKey } from '#lib/reader/pdf/view-keys.js';
 	import MarksLayer from '#lib/reader/pdf/marks/MarksLayer.svelte';
 	import InsertLayer from '#lib/reader/pdf/insert/InsertLayer.svelte';
-	import AnnotationsPanel from '#lib/reader/pdf/panel/AnnotationsPanel.svelte';
+	import ReaderSidebar from '#lib/reader/pdf/sidebar/ReaderSidebar.svelte';
+	import { createPanelAdapter, createSidebarState, PANEL_WIDTH, RAIL_WIDTH } from '#lib/reader/pdf/sidebar/sidebar-state.svelte.js';
 	import type { HighlightColor } from '#lib/reader/annotations.js';
 	import { offlineStatus } from '#lib/sync/client.js';
 
@@ -37,8 +37,7 @@
 	let tool = $state<PdfTool>('select');
 	let previousTool = $state<'select' | 'hand'>('select');
 	let markColor = $state<HighlightColor>('yellow');
-	let panelOpen = $state(false);
-	let panelTarget = $state<{ kind: 'mark' | 'bookmark' | 'insert' | 'note'; id: string } | null>(null);
+	const sidebar = createSidebarState();
 	let ocrEnabled = $state(true);
 	let announcement = $state('');
 	let statuses = $state<Record<string, Snippet>>({});
@@ -53,10 +52,7 @@
 
 	const page = $derived(view?.page ?? (controller.location?.locator.type === 'pdf' ? controller.location.locator.page : 1));
 	const savedMessage = $derived(controller.savedMessage === autosavedMessage ? '' : controller.savedMessage);
-	const annotationCount = $derived(
-		controller.highlights.filter((row) => row.book_file_id === controller.file?.id).length +
-		controller.availableBookmarks.length + controller.pageAnnotations.length
-	);
+	const sidebarInset = $derived(RAIL_WIDTH + (sidebar.open && sidebar.docked ? PANEL_WIDTH : 0));
 
 	setPdfReaderContext({
 		get engine() {
@@ -73,12 +69,8 @@
 		get offline() { return !$offlineStatus.online; },
 		get bookLanguage() { return controller.book?.language ?? null; },
 		announce: (message) => { announcement = message; },
-		panel: {
-			get open() { return panelOpen; },
-			get target() { return panelTarget; },
-			toggle: () => { panelOpen = !panelOpen; },
-			reveal: (kind, id) => { panelTarget = { kind, id }; panelOpen = true; }
-		},
+		sidebar,
+		panel: createPanelAdapter(sidebar),
 		ocr: {
 			get enabled() { return ocrEnabled; },
 			set: setOcr
@@ -174,6 +166,7 @@
 
 	function onKeydown(event: KeyboardEvent) {
 		if (event.defaultPrevented || !engine) return;
+		if (event.target instanceof Element && event.target.closest('.pv-sidebar')) return;
 		const menuOpen = !!document.querySelector('[role="menu"], #reader-sync-status');
 		if (event.target instanceof Element && event.target.closest('button, a, [role="dialog"]') && event.key !== 'Escape') return;
 		const action = viewKey(event, editableTarget(event.target), menuOpen);
@@ -207,6 +200,36 @@
 		else await engine[direction === 1 ? 'next' : 'previous']();
 	}
 
+	// A docked panel narrows the viewport; once the engine has re-fitted, return to the page that was showing.
+	let lastInset: number | undefined;
+	let insetVersion = 0;
+	$effect.pre(() => {
+		const inset = sidebarInset;
+		const active = untrack(() => engine);
+		const changed = lastInset !== undefined && lastInset !== inset;
+		lastInset = inset;
+		if (!changed || !active) return;
+		const { page, offset, zoom } = active.state;
+		if (typeof zoom !== 'string') return;
+		const version = ++insetVersion;
+		// Any reader input during the settle window wins over restoring the old page.
+		const cancel = () => { if (version === insetVersion) insetVersion += 1; };
+		const events = ['keydown', 'wheel', 'pointerdown', 'touchstart'] as const;
+		for (const type of events) window.addEventListener(type, cancel, { capture: true, passive: true });
+		const settle = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200;
+		setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+			for (const type of events) window.removeEventListener(type, cancel, { capture: true });
+			if (version === insetVersion && engine === active) run(() => active.goToPage(page, offset));
+		})), settle);
+	});
+
+	/** A click on a mark's comment marker also reveals the mark in the Annotations tab. */
+	function onSurfaceClick(event: MouseEvent) {
+		const marker = event.target instanceof Element ? event.target.closest<HTMLElement>('.pv-mark-comment') : null;
+		const id = marker?.dataset.annotationId;
+		if (id && tool !== 'insert') sidebar.reveal('mark', id);
+	}
+
 	onMount(() => {
 		if (!surface) throw new Error('The reader surface is unavailable.');
 		boundBookId = controller.book?.id;
@@ -223,6 +246,8 @@
 		let destroyed = false;
 		let unsubscribe: (() => void) | undefined;
 		let detachGestures: (() => void) | undefined;
+		const element = surface;
+		element.addEventListener('click', onSurfaceClick);
 		controller.setViewSave(persist);
 		void controller.attach(surface).then((reader) => {
 			if (destroyed) return;
@@ -241,6 +266,9 @@
 		return () => {
 			destroyed = true;
 			closingView = true;
+			insetVersion += 1;
+			element.removeEventListener('click', onSurfaceClick);
+			sidebar.dispose();
 			unsubscribe?.();
 			detachGestures?.();
 			controller.setViewSave(async () => {});
@@ -289,47 +317,51 @@
 			{#snippet right()}
 				<ToolToggle tool={tool === 'hand' ? 'hand' : 'select'} ontoggle={() => setTool(tool === 'hand' ? 'select' : 'hand')} />
 				<InsertToggle active={tool === 'insert'} disabled={!engine} ontoggle={() => setTool(tool === 'insert' ? previousTool : 'insert')} />
-				<PanelToggle open={panelOpen} count={annotationCount} ontoggle={() => panelOpen = !panelOpen} />
 				<span class="pv-divider" aria-hidden="true"></span>
 				<ReaderCloseButton closing={controller.closing} onclose={() => controller.close()} />
 			{/snippet}
 		</ReaderToolbar>
 	{/snippet}
-	<!-- svelte-ignore a11y_no_noninteractive_tabindex: the book surface must be keyboard-scrollable -->
-	<div
-		bind:this={surface}
-		id="reader-surface"
-		role="region"
-		aria-label={m['reader.surface']()}
-		tabindex="0"
-		data-tool={tool}
-		class="absolute inset-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-500"
-	></div>
-	{#if engine}
-		<MarksLayer />
-		<InsertLayer />
-		<AnnotationsPanel />
-	{/if}
+	<ReaderSidebar ready={!!engine} />
+	<div class="pv-page-area absolute inset-y-0 right-0" style:left="{sidebarInset}px">
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex: the book surface must be keyboard-scrollable -->
+		<div
+			bind:this={surface}
+			id="reader-surface"
+			role="region"
+			aria-label={m['reader.surface']()}
+			tabindex="0"
+			data-tool={tool}
+			class="absolute inset-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-500"
+		></div>
+		{#if engine}
+			<MarksLayer />
+			<InsertLayer />
+		{/if}
+		{#if controller.pendingError || controller.actionError || controller.opening || savedMessage}
+			<div class="absolute inset-x-2 top-2 z-20 max-h-[50%] overflow-auto rounded-md bg-[var(--pv-chrome)] p-3 text-sm shadow-md">
+				{#if controller.pendingError}
+					<div role="alert" class="space-y-2">
+						<p>{controller.pendingError}</p>
+						<button class="underline focus-visible:outline-2" onclick={() => controller.retryWrites()}>{m['reader.retry_saves']()}</button>
+						<a class="ml-4 underline focus-visible:outline-2" href={`/books/${controller.book?.id}`}>{m['reader.leave_unsaved']()}</a>
+					</div>
+				{/if}
+				{#if controller.actionError}<p role="alert">{controller.actionError}</p>{/if}
+				{#if controller.opening}<p role="status">{m['reader.loading']()}</p>{/if}
+				{#if savedMessage}<p role="status">{savedMessage}</p>{/if}
+			</div>
+		{/if}
+	</div>
 	<p class="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
-	{#if controller.pendingError || controller.actionError || controller.opening || savedMessage}
-		<div class="absolute inset-x-2 top-2 z-20 max-h-[50%] overflow-auto rounded-md bg-[var(--pv-chrome)] p-3 text-sm shadow-md">
-			{#if controller.pendingError}
-				<div role="alert" class="space-y-2">
-					<p>{controller.pendingError}</p>
-					<button class="underline focus-visible:outline-2" onclick={() => controller.retryWrites()}>{m['reader.retry_saves']()}</button>
-					<a class="ml-4 underline focus-visible:outline-2" href={`/books/${controller.book?.id}`}>{m['reader.leave_unsaved']()}</a>
-				</div>
-			{/if}
-			{#if controller.actionError}<p role="alert">{controller.actionError}</p>{/if}
-			{#if controller.opening}<p role="status">{m['reader.loading']()}</p>{/if}
-			{#if savedMessage}<p role="status">{savedMessage}</p>{/if}
-		</div>
-	{/if}
 </ReaderFrame>
 
 <style>
 	.pv-title { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 400; }
 	.pv-divider { width: 1px; height: 20px; margin: 0 2px; background: var(--shell-border, #94a3b8); flex: none; }
+	@media (prefers-reduced-motion: no-preference) {
+		.pv-page-area { transition: left 150ms ease; }
+	}
 	[data-tool='hand'], [data-tool='hand'] :global(*) { cursor: grab; user-select: none; }
 	:global(.pv-panning), :global(.pv-panning *) { cursor: grabbing !important; }
 	[data-tool='insert'], [data-tool='insert'] :global(*) { cursor: crosshair; user-select: none; }

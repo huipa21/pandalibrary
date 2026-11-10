@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 export const pdfPageBox = (page: Page) => page.getByRole('textbox', { name: /^Page \d+ of \d+$/ });
 export const pdfPageText = (page: Page, n: number) => page.locator(`.reader-pdf-page[data-page="${n}"] .reader-pdf-text`);
-export const annotationsPanel = (page: Page) => page.getByRole('complementary', { name: 'Annotations', exact: true });
+export const annotationsPanel = (page: Page) => page.getByRole('tabpanel', { name: 'Annotations', exact: true });
 export const selectionToolbar = (page: Page) => page.getByRole('toolbar', { name: 'Selection actions', exact: true });
 
 /** Waits for PDF controls and, when provided, the expected page text. */
@@ -40,7 +40,7 @@ export async function selectPdfText(page: Page, from: string, to = from) {
 
 export async function openAnnotationsPanel(page: Page) {
 	if (await annotationsPanel(page).isVisible()) return annotationsPanel(page);
-	await page.getByRole('button', { name: 'Annotations', exact: true }).click();
+	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 	await expect(annotationsPanel(page)).toBeVisible();
 	return annotationsPanel(page);
 }

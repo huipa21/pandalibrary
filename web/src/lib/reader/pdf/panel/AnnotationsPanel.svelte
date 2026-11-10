@@ -10,6 +10,8 @@
 
 	const ctx = getPdfReaderContext();
 	const controller = ctx.controller;
+	/** Embedded in the sidebar's Annotations tab (RP4): no drawer frame, close button or kind filters. */
+	let { embedded = false }: { embedded?: boolean } = $props();
 	let root = $state<HTMLElement>();
 	let filter = $state<PanelFilter>('all');
 	let query = $state('');
@@ -56,8 +58,11 @@
 	}
 	onMount(() => {
 		const unregisterGuard = controller.registerDraftGuard(canDiscard);
-		window.addEventListener('keydown', onKeydown, true);
-		window.addEventListener('click', onToggle, true);
+		const unregisterTabGuard = embedded ? ctx.sidebar.registerGuard(canDiscard) : () => {};
+		if (!embedded) {
+			window.addEventListener('keydown', onKeydown, true);
+			window.addEventListener('click', onToggle, true);
+		}
 		const unregister = ctx.engine.pageLayers.register({
 			name: 'panel-focus', z: 50,
 			paint(context) {
@@ -79,6 +84,7 @@
 			unregister();
 			window.removeEventListener('keydown', onKeydown, true);
 			window.removeEventListener('click', onToggle, true);
+			unregisterTabGuard();
 			unregisterGuard();
 		};
 	});
@@ -92,15 +98,19 @@
 			flashed = entry;
 			ctx.engine.pageLayers.repaint();
 			flashTimer = setTimeout(() => { flashed = null; ctx.engine.pageLayers.repaint(); }, 1000);
+			if (embedded && !ctx.sidebar.docked) ctx.sidebar.collapse();
 		} catch (error) {
 			console.error('Could not jump to annotation', error);
 			ctx.announce(m['reader.error.render']());
 		}
 	}
+	let revealed = 0;
 	$effect(() => {
 		const target = ctx.panel.target;
 		if (!ctx.panel.open) return;
-		if (target) { filter = 'all'; query = ''; }
+		// Embedded: the shell owns focus on open, so only a new reveal acts.
+		if (embedded && (!target || target.seq === revealed)) return;
+		if (target) { revealed = target.seq; filter = 'all'; query = ''; }
 		void tick().then(() => {
 			const kind = target?.kind;
 			const selector = kind === 'note' ? '[data-note-id]' : '[data-panel-jump]';
@@ -114,6 +124,11 @@
 				})
 				: root?.querySelector<HTMLInputElement>('input[type="search"]');
 			element?.scrollIntoView({ block: 'nearest' });
+			if (embedded) {
+				// Revealing from the page scrolls to and flashes the entry; focus stays where the reader is.
+				element?.animate([{ boxShadow: '0 0 0 3px #10b981' }, { boxShadow: '0 0 0 3px transparent' }], { duration: 1200 });
+				return;
+			}
 			if (kind === 'note') {
 				element?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
 			} else element?.focus({ preventScroll: true });
@@ -145,18 +160,28 @@
 	}
 </script>
 
-{#if ctx.panel.open}
-	<aside bind:this={root} id="pdf-annotations-panel" class="pv10-panel absolute inset-y-0 right-0 z-30 flex w-[360px] max-w-[90vw] flex-col border-l border-[var(--shell-border)] bg-[var(--shell-surface)] text-[var(--shell-text)] shadow-xl" aria-label={m['pv4.annotations']()}>
-		<header class="space-y-3 border-b border-[var(--shell-border)] p-4">
-			<div class="flex items-center justify-between">
-				<h2 class="font-semibold">{m['pv4.annotations']()} <span class="text-sm">({panel.counts.all})</span></h2>
-				<button type="button" aria-label={m['pv10.close']()} onclick={close}><Icon name="x" /></button>
-			</div>
-			<div class="flex flex-wrap gap-1" role="group" aria-label={m['pv10.kind_filter']()}>
-				{#each PANEL_FILTERS as kind (kind)}
-					<button type="button" class="rounded border px-2 py-1 text-xs aria-pressed:bg-emerald-800 aria-pressed:text-white" aria-pressed={filter === kind} onclick={() => { if (canDiscard()) filter = kind; }}>{labels[kind]()} ({panel.counts[kind]})</button>
-				{/each}
-			</div>
+{#if embedded || ctx.panel.open}
+	<svelte:element
+		this={embedded ? 'div' : 'aside'}
+		bind:this={root}
+		id={embedded ? undefined : 'pdf-annotations-panel'}
+		class={embedded
+			? 'pv10-panel pv10-embedded flex min-h-0 flex-1 flex-col'
+			: 'pv10-panel absolute inset-y-0 right-0 z-30 flex w-[360px] max-w-[90vw] flex-col border-l border-[var(--shell-border)] bg-[var(--shell-surface)] text-[var(--shell-text)] shadow-xl'}
+		aria-label={embedded ? undefined : m['pv4.annotations']()}
+	>
+		<header class={embedded ? 'border-b border-[var(--shell-border)] p-3' : 'space-y-3 border-b border-[var(--shell-border)] p-4'}>
+			{#if !embedded}
+				<div class="flex items-center justify-between">
+					<h2 class="font-semibold">{m['pv4.annotations']()} <span class="text-sm">({panel.counts.all})</span></h2>
+					<button type="button" aria-label={m['pv10.close']()} onclick={close}><Icon name="x" /></button>
+				</div>
+				<div class="flex flex-wrap gap-1" role="group" aria-label={m['pv10.kind_filter']()}>
+					{#each PANEL_FILTERS as kind (kind)}
+						<button type="button" class="rounded border px-2 py-1 text-xs aria-pressed:bg-emerald-800 aria-pressed:text-white" aria-pressed={filter === kind} onclick={() => { if (canDiscard()) filter = kind; }}>{labels[kind]()} ({panel.counts[kind]})</button>
+					{/each}
+				</div>
+			{/if}
 			<input type="search" class="w-full rounded border p-2 text-sm" aria-label={m['pv10.search']()} placeholder={m['pv10.search']()} value={query} oninput={(event) => { if (canDiscard()) query = event.currentTarget.value; else event.currentTarget.value = query; }} />
 		</header>
 		{#if controller.actionError || controller.pendingError}
@@ -200,7 +225,7 @@
 				<button type="button" class="underline" disabled={controller.busy} onclick={restore}>{m['pv10.undo']()}</button>
 			</div>
 		{/if}
-	</aside>
+	</svelte:element>
 {/if}
 
 <style>
