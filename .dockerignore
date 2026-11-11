@@ -7,6 +7,7 @@ web/node_modules
 web/.svelte-kit
 web/build
 web/src/lib/paraglide
+web/src/lib/paraglide-dev
 web/test-results
 web/playwright-report
 *.db
