@@ -1,5 +1,6 @@
 import { api } from '#lib/api/client.js';
 import type { InkData, PageAnnotationLocator } from '#lib/reader/types.js';
+import type { AnnotationKindFilter } from './entry.js';
 
 interface Activity {
 	readonly id: string;
@@ -23,18 +24,21 @@ export type PersonalActivity = Activity & (
 export interface PersonalActivityPage {
 	readonly items: PersonalActivity[];
 	readonly next_cursor: string | null;
+	readonly total: number;
 }
 
 export function listPersonalActivity(options: {
 	cursor?: string | null;
 	limit?: number;
 	signal?: AbortSignal;
+	kind?: AnnotationKindFilter;
 } = {}): Promise<PersonalActivityPage> {
 	const limit = options.limit ?? 50;
 	if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
 		throw new RangeError('Activity page limit must be between 1 and 100.');
 	}
 	const params = new URLSearchParams({ limit: String(limit) });
+	if (options.kind) params.set('kind', options.kind);
 	if (options.cursor) params.set('cursor', options.cursor);
 	return api.request(`/me/notes?${params}`, options.signal === undefined ? {} : { signal: options.signal });
 }

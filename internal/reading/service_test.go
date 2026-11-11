@@ -162,7 +162,7 @@ func TestPushLWWClockClampPullAndAnnotationCascade(t *testing.T) {
 	).Scan(&sessionStart, &sessionEnd); err != nil || sessionStart != 1900 || sessionEnd != 2000 {
 		t.Fatalf("clamped session times = (%d, %d), %v", sessionStart, sessionEnd, err)
 	}
-	search, err := fixture.service.SearchAnnotations(ctx, viewer, "alpha")
+	search, err := fixture.service.SearchAnnotations(ctx, viewer, "alpha", "")
 	if err != nil || len(search) != 2 {
 		t.Fatalf("annotation FTS results = %+v, %v", search, err)
 	}
@@ -182,7 +182,7 @@ func TestPushLWWClockClampPullAndAnnotationCascade(t *testing.T) {
 	if err != nil || len(state.Highlights) != 0 || len(state.Notes) != 0 {
 		t.Fatalf("state after highlight cascade = %+v, %v", state, err)
 	}
-	search, err = fixture.service.SearchAnnotations(ctx, viewer, "alpha")
+	search, err = fixture.service.SearchAnnotations(ctx, viewer, "alpha", "")
 	if err != nil || len(search) != 0 {
 		t.Fatalf("search after tombstone = %+v, %v", search, err)
 	}
@@ -270,7 +270,7 @@ func TestPushRejectsForeignRowsAndFiltersSyncVisibility(t *testing.T) {
 		query string
 		count int
 	}{{"alpha", 2}, {"al", 3}} {
-		results, err := fixture.service.SearchAnnotations(ctx, Viewer{UserID: 2}, test.query)
+		results, err := fixture.service.SearchAnnotations(ctx, Viewer{UserID: 2}, test.query, "")
 		if err != nil || len(results) != test.count {
 			t.Fatalf("visible-only search %q = %+v, %v", test.query, results, err)
 		}
@@ -279,7 +279,7 @@ func TestPushRejectsForeignRowsAndFiltersSyncVisibility(t *testing.T) {
 				t.Errorf("search %q exposed an annotation: %+v", test.query, row)
 			}
 		}
-		wildcardResults, err := fixture.service.SearchAnnotations(ctx, Viewer{UserID: 2}, "%")
+		wildcardResults, err := fixture.service.SearchAnnotations(ctx, Viewer{UserID: 2}, "%", "")
 		if err != nil || len(wildcardResults) != 1 || wildcardResults[0].Content != "100% literal" {
 			t.Fatalf("escaped LIKE wildcard search = %+v, %v", wildcardResults, err)
 		}

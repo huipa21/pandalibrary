@@ -7,6 +7,7 @@
 	import { getShelf, listShelves } from '#lib/shelves/api.js';
 	import type { Shelf } from '#lib/shelves/types.js';
 	import { offlineStatus } from '#lib/sync/client.js';
+	import { filterControlClass } from '#lib/catalog/filter-styles.js';
 	import { uniquePages } from './api.js';
 	import { dashboardConfigure } from './configure.svelte.js';
 	import DashboardRow from './DashboardRow.svelte';
@@ -344,22 +345,22 @@
 			<div class="space-y-2">
 				<label for="dashboard-builtin" class="block text-sm font-medium">{m['ux5.select_builtin']()}</label>
 				<div class="flex flex-wrap gap-2">
-					<select id="dashboard-builtin" bind:value={selectedBuiltin} disabled={saving || !availableBuiltins.length} class="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-60">
+					<select id="dashboard-builtin" bind:value={selectedBuiltin} disabled={saving || !availableBuiltins.length} class="{filterControlClass} min-w-0 flex-1">
 						<option value="">{m['ux5.select_placeholder']()}</option>
 						{#each availableBuiltins as id}<option value={id}>{sectionLabel(id)}</option>{/each}
 					</select>
-					<button class="rounded-md border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 focus-visible:outline-2 disabled:opacity-40" disabled={saving || !selectedBuiltin} onclick={addBuiltIn}>{m['ux5.add_builtin']()}</button>
+					<button class="inline-flex h-(--control-height) items-center rounded-md border border-emerald-700 px-3 text-sm font-medium text-emerald-800 focus-visible:outline-2 disabled:opacity-40" disabled={saving || !selectedBuiltin} onclick={addBuiltIn}>{m['ux5.add_builtin']()}</button>
 				</div>
 			</div>
 
 			<div class="space-y-2">
 				<label for="dashboard-shelf" class="block text-sm font-medium">{m['ux5.select_shelf']()}</label>
 				<div class="flex flex-wrap gap-2">
-					<select id="dashboard-shelf" bind:value={selectedShelf} disabled={saving || shelfBusy || !choices.length} class="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-60">
+					<select id="dashboard-shelf" bind:value={selectedShelf} disabled={saving || shelfBusy || !choices.length} class="{filterControlClass} min-w-0 flex-1">
 						<option value="">{m['ux5.select_placeholder']()}</option>
 						{#each choices as shelf (shelf.id)}<option value={String(shelf.id)}>{shelfLabel(shelf)}</option>{/each}
 					</select>
-					<button class="rounded-md border border-emerald-700 px-3 py-2 text-sm font-medium text-emerald-800 focus-visible:outline-2 disabled:opacity-40" disabled={saving || shelfBusy || !selectedShelf} onclick={() => void addShelf()}>{m['ux5.add_shelf']()}</button>
+					<button class="inline-flex h-(--control-height) items-center rounded-md border border-emerald-700 px-3 text-sm font-medium text-emerald-800 focus-visible:outline-2 disabled:opacity-40" disabled={saving || shelfBusy || !selectedShelf} onclick={() => void addShelf()}>{m['ux5.add_shelf']()}</button>
 				</div>
 				{#if shelfError}<p class="text-sm text-red-800" role="alert">{shelfError}</p>{/if}
 				{#if shelfPager.status === 'loading'}

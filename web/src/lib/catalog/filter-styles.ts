@@ -1,2 +1,6 @@
-export const filterControlClass =
-	'h-[2.375rem] rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium leading-[normal] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900';
+/** Class names for the shared control tokens defined in `routes/layout.css`. */
+export const filterControlClass = 'control-field';
+export const controlButtonClass = 'control-button';
+export const iconControlClass = 'control-button control-square';
+export const primaryIconControlClass = 'control-button control-button-primary control-square';
+export const controlIconClass = 'control-icon';

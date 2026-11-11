@@ -167,6 +167,13 @@
 		void changeQuery({ status: query.status, q: searchText });
 	}
 
+	function clearSearch() {
+		if (searchTimer !== null) clearTimeout(searchTimer);
+		searchTimer = null;
+		searchText = '';
+		void changeQuery({ status: query.status, q: '' });
+	}
+
 	function changeStatus(value: string) {
 		if (isHeapStatusFilter(value)) void changeQuery({ status: value, q: query.q });
 	}
@@ -221,15 +228,12 @@
 
 <div class="space-y-6 pb-20">
 	<div>
-		<form class="flex flex-wrap items-end gap-3" role="search" onsubmit={submitSearch}>
-			<label class="grid gap-1 text-sm font-medium">
-				<span>{m['bh4.filter.status']()}</span>
-				<select class="{filterControlClass} min-w-40" value={query.status} onchange={(event) => changeStatus(event.currentTarget.value)}>
-					{#each statusOptions as option (option.value)}
-						<option value={option.value}>{option.label()}</option>
-					{/each}
-				</select>
-			</label>
+		<form class="flex flex-wrap items-center gap-3" role="search" onsubmit={submitSearch}>
+			<select aria-label={m['bh4.filter.status']()} class="{filterControlClass} min-w-40" value={query.status} onchange={(event) => changeStatus(event.currentTarget.value)}>
+				{#each statusOptions as option (option.value)}
+					<option value={option.value}>{option.label()}</option>
+				{/each}
+			</select>
 			<SearchField
 				class="min-w-52 flex-1 sm:max-w-sm"
 				label={m['bh4.filter.search']()}
@@ -237,6 +241,8 @@
 				placeholder={m['bh4.filter.search_placeholder']()}
 				bind:value={searchText}
 				oninput={onSearchInput}
+				clear={query.q !== '' && searchText.trim() === query.q}
+				onclear={clearSearch}
 			/>
 			<ScanControl controller={scan} />
 			<ViewToggle {view} onchange={changeView} />

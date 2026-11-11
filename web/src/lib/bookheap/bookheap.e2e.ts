@@ -3,6 +3,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 const stamp = '2026-11-06T05:00:00Z';
 
 async function authenticate(page: Page, role = 'admin') {
+	await page.route('**/api/v1/me/notes?*', (route) => route.fulfill({ json: { items: [], next_cursor: null, total: 0 } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
 	} }));
@@ -82,7 +83,7 @@ async function mockBookheap(page: Page, initial: Item[], { scanAdds = [] as Item
 		const q = url.searchParams.get('q')?.toLowerCase() ?? '';
 		const limit = Number(url.searchParams.get('limit') ?? 50);
 		const offset = Number(url.searchParams.get('cursor') ?? 0);
-		if (!(status === 'ready' && limit === 1)) listQueries.push(url.search);
+		if (limit !== 1) listQueries.push(url.search);
 		// Queued items import after a few list reads.
 		if (items.some((item) => item.status === 'queued') && ++queuedPolls > 2) {
 			items = items.filter((item) => item.status !== 'queued');
@@ -161,12 +162,12 @@ test('administrators see Bookheap in HOME, an empty heap, and a scan that refres
 
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	const home = sidebar.getByRole('region', { name: 'Home' }).getByRole('link');
-	await expect(home).toHaveText(['Dashboard', 'All Books', /^Bookheap/, 'Annotations']);
+	await expect(home).toHaveText(['Dashboard', 'All Books', /^Bookheap/, /^Annotations/]);
 	await expect(sidebar.getByRole('link', { name: /^Bookheap/ })).toHaveAttribute('aria-current', 'page');
 	await expect(page).toHaveTitle(/^Bookheap ·/);
 	await expect(page.getByRole('heading', { level: 1, name: 'Bookheap' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'The Bookheap is empty' })).toBeVisible();
-	await expect(page.getByTestId('bh4-nav-count')).toHaveCount(0);
+	await expect(page.getByTestId('bh4-nav-count')).toHaveAttribute('title', 'Total Bookheap items: 0');
 
 	await page.getByRole('main').getByRole('search').getByRole('button', { name: 'Scan', exact: true }).click();
 	const summary = page.getByTestId('bh4-scan-summary');
@@ -185,7 +186,7 @@ test('administrators see Bookheap in HOME, an empty heap, and a scan that refres
 	const invalid = rows.filter({ hasText: 'broken' });
 	await expect(invalid.getByTestId('bh4-row-error')).toHaveText('not a valid EPUB');
 	await expect(invalid).toContainText('Unknown');
-	await expect(page.getByTestId('bh4-nav-count')).toContainText('1');
+	await expect(page.getByTestId('bh4-nav-count')).toHaveAttribute('title', 'Total Bookheap items: 3');
 });
 
 for (const view of ['grid', 'list'] as const) {
@@ -486,7 +487,7 @@ test('readers do not see Bookheap and are told the page is for administrators', 
 	await page.goto('/bookheap');
 	await expect(page.getByRole('alert')).toContainText(/administrator/i);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await expect(sidebar.getByRole('region', { name: 'Home' }).getByRole('link')).toHaveText(['Dashboard', 'All Books', 'Annotations']);
+	await expect(sidebar.getByRole('region', { name: 'Home' }).getByRole('link')).toHaveText(['Dashboard', 'All Books', /^Annotations/]);
 	await expect(page.getByTestId('bh4-row')).toHaveCount(0);
 	expect(requests).toEqual([]);
 });

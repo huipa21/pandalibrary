@@ -5,8 +5,8 @@
 	import { BOOKHEAP_CHANGED_EVENT } from './events.js';
 
 	/**
-	 * Count of `ready` Bookheap items for the sidebar entry. Loads in the background and renders
-	 * nothing until (or unless) the count is known and non-zero, so it never blocks the sidebar.
+	 * Total Bookheap items, independent of the page's search and status filters.
+	 * Loads in the background without blocking the sidebar.
 	 */
 	let count = $state<number | null>(null);
 	let version = 0;
@@ -18,10 +18,13 @@
 		const request = new AbortController();
 		controller = request;
 		try {
-			const page = await listHeapItems({ status: 'ready', limit: 1, signal: request.signal });
+			const page = await listHeapItems({ limit: 1, signal: request.signal });
 			if (current === version) count = page.total;
-		} catch {
-			if (current === version) count = null;
+		} catch (error) {
+			if (current === version && !request.signal.aborted) {
+				console.error('Could not load the Bookheap count', error);
+				count = null;
+			}
 		}
 	}
 
@@ -37,9 +40,9 @@
 	});
 </script>
 
-{#if count}
-	<span class="shell-count" data-testid="bh4-nav-count" title={m['bh4.nav.ready_count']({ count })}>
+{#if count !== null}
+	<span class="shell-count" data-testid="bh4-nav-count" title={m['bh4.nav.total_count']({ count })}>
 		<span aria-hidden="true">{count}</span>
-		<span class="sr-only">{m['bh4.nav.ready_count']({ count })}</span>
+		<span class="sr-only">{m['bh4.nav.total_count']({ count })}</span>
 	</span>
 {/if}

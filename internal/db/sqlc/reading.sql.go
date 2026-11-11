@@ -1647,16 +1647,18 @@ FROM highlights_fts(?1) f JOIN highlights h ON h.seq = f.rowid
 JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?2
 AND h.deleted_at IS NULL
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?3 AS TEXT) = '' OR h.style = ?3)
+AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
 ))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
-ORDER BY f.rank, h.id LIMIT ?4
+ORDER BY f.rank, h.id LIMIT ?5
 `
 
 type ReadingSearchHighlightsFTSParams struct {
 	Query    interface{}
 	UserID   int64
+	Kind     string
 	IsAdmin  int64
 	PageSize int64
 }
@@ -1674,6 +1676,7 @@ func (q *Queries) ReadingSearchHighlightsFTS(ctx context.Context, arg ReadingSea
 	rows, err := q.db.QueryContext(ctx, readingSearchHighlightsFTS,
 		arg.Query,
 		arg.UserID,
+		arg.Kind,
 		arg.IsAdmin,
 		arg.PageSize,
 	)
@@ -1709,16 +1712,18 @@ const readingSearchHighlightsLike = `-- name: ReadingSearchHighlightsLike :many
 SELECT h.id, h.book_id, h.text AS content, 'highlight' AS kind, h.position, h.created_at
 FROM highlights h JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?1 AND h.deleted_at IS NULL
-AND ((h.text LIKE ?2 ESCAPE '\'))
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS TEXT) = '' OR h.style = ?2)
+AND ((h.text LIKE ?3 ESCAPE '\'))
+AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
 ))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1)
-ORDER BY h.position, h.id LIMIT ?4
+ORDER BY h.position, h.id LIMIT ?5
 `
 
 type ReadingSearchHighlightsLikeParams struct {
 	UserID   int64
+	Kind     string
 	Pattern  string
 	IsAdmin  int64
 	PageSize int64
@@ -1736,6 +1741,7 @@ type ReadingSearchHighlightsLikeRow struct {
 func (q *Queries) ReadingSearchHighlightsLike(ctx context.Context, arg ReadingSearchHighlightsLikeParams) ([]ReadingSearchHighlightsLikeRow, error) {
 	rows, err := q.db.QueryContext(ctx, readingSearchHighlightsLike,
 		arg.UserID,
+		arg.Kind,
 		arg.Pattern,
 		arg.IsAdmin,
 		arg.PageSize,
@@ -1774,16 +1780,19 @@ FROM notes_fts(?1) f JOIN notes n ON n.seq = f.rowid
 JOIN books b ON b.id = n.book_id
 WHERE n.user_id = ?2
 AND n.deleted_at IS NULL
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?3 AS TEXT) = '' OR
+    CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END = ?3)
+AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
 ))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
-ORDER BY f.rank, n.id LIMIT ?4
+ORDER BY f.rank, n.id LIMIT ?5
 `
 
 type ReadingSearchNotesFTSParams struct {
 	Query    interface{}
 	UserID   int64
+	Kind     string
 	IsAdmin  int64
 	PageSize int64
 }
@@ -1801,6 +1810,7 @@ func (q *Queries) ReadingSearchNotesFTS(ctx context.Context, arg ReadingSearchNo
 	rows, err := q.db.QueryContext(ctx, readingSearchNotesFTS,
 		arg.Query,
 		arg.UserID,
+		arg.Kind,
 		arg.IsAdmin,
 		arg.PageSize,
 	)
@@ -1836,21 +1846,24 @@ const readingSearchNotesLike = `-- name: ReadingSearchNotesLike :many
 SELECT n.id, n.book_id, n.body_md AS content, 'note' AS kind, 0.0 AS position, n.created_at
 FROM notes n JOIN books b ON b.id = n.book_id
 WHERE n.user_id = ?1 AND n.deleted_at IS NULL
-AND ((n.body_md LIKE ?2 ESCAPE '\')
+AND (CAST(?2 AS TEXT) = '' OR
+    CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END = ?2)
+AND ((n.body_md LIKE ?3 ESCAPE '\')
     OR EXISTS (
         SELECT 1 FROM highlights h
         WHERE h.id = n.highlight_id AND h.deleted_at IS NULL
-        AND (h.text LIKE ?2 ESCAPE '\')
+        AND (h.text LIKE ?3 ESCAPE '\')
     ))
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
 ))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1)
-ORDER BY n.created_at DESC, n.id LIMIT ?4
+ORDER BY n.created_at DESC, n.id LIMIT ?5
 `
 
 type ReadingSearchNotesLikeParams struct {
 	UserID   int64
+	Kind     string
 	Pattern  string
 	IsAdmin  int64
 	PageSize int64
@@ -1868,6 +1881,7 @@ type ReadingSearchNotesLikeRow struct {
 func (q *Queries) ReadingSearchNotesLike(ctx context.Context, arg ReadingSearchNotesLikeParams) ([]ReadingSearchNotesLikeRow, error) {
 	rows, err := q.db.QueryContext(ctx, readingSearchNotesLike,
 		arg.UserID,
+		arg.Kind,
 		arg.Pattern,
 		arg.IsAdmin,
 		arg.PageSize,

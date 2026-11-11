@@ -145,10 +145,14 @@ for (const theme of ['light', 'dark']) {
 		const standardSearchButton = page.getByRole('banner').getByRole('button', { name: 'Search', exact: true });
 		await expect(standardSearchButton).toHaveCSS('background-color', 'rgb(4, 120, 87)');
 		expect(standard).toMatchObject({
-			height: 38, fontSize: '14px', fontWeight: '500', lineHeight: 'normal',
-			paddingTop: '8px', paddingRight: '12px', paddingBottom: '8px', paddingLeft: '12px',
+			height: 36, fontSize: '14px', fontWeight: '400', lineHeight: 'normal',
+			paddingTop: '0px', paddingRight: '12px', paddingBottom: '0px', paddingLeft: '12px',
 			borderWidth: '1px', borderRadius: '6px'
 		});
+		expect(standardSearch, 'filters and search boxes share one control token').toEqual(standard);
+		for (const name of ['Switch to list view', 'Clear filters']) {
+			expect((await page.getByRole('main').getByRole('button', { name }).boundingBox())?.height, name).toBe(36);
+		}
 		expect((await author.boundingBox())?.width).toBe(160);
 		await checkNarrowLayout(page, author);
 
@@ -158,7 +162,6 @@ for (const theme of ['light', 'dark']) {
 		expect.soft(await fieldStyle(status), 'Bookheap status').toEqual(standard);
 		expect.soft(await fieldStyle(search), 'Bookheap search').toEqual(standardSearch);
 		await expect(page.getByRole('main').getByRole('button', { name: 'Search', exact: true })).toHaveCSS('background-color', 'rgb(4, 120, 87)');
-		expect.soft(await labelStyle(status), 'Bookheap status label').toEqual(standardLabel);
 		expect.soft((await status.boundingBox())!.width).toBeGreaterThanOrEqual(160);
 		const searchBox = await search.boundingBox();
 		expect.soft(searchBox!.width).toBeGreaterThanOrEqual(160);
@@ -176,6 +179,13 @@ for (const theme of ['light', 'dark']) {
 			};
 		});
 		expect.soft(placeholder.width).toBeLessThanOrEqual(placeholder.available);
+		const toolbar = await page.getByRole('main').getByRole('search').locator('select, input[type="search"], button')
+			.evaluateAll((elements) => elements.map((element) => {
+				const rect = element.getBoundingClientRect();
+				return { top: Math.round(rect.top), height: rect.height };
+			}));
+		expect.soft(new Set(toolbar.map((control) => control.top)).size, 'Bookheap toolbar shares one row').toBe(1);
+		expect.soft(toolbar.map((control) => control.height), 'Bookheap toolbar heights').toEqual(toolbar.map(() => 36));
 		await checkNarrowLayout(page, search);
 		await status.selectOption('ready');
 		await search.fill('dune');

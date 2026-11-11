@@ -8,8 +8,9 @@
 	import { AnnotationSearch } from '#lib/notes/AnnotationSearch.svelte.js';
 	import PersonalActivityFeed from '#lib/notes/PersonalActivityFeed.svelte';
 	import AnnotationEntry from '#lib/notes/AnnotationEntry.svelte';
-	import Icon from '#lib/bookview/Icon.svelte';
 	import SearchField from '#lib/search/SearchField.svelte';
+	import { filterControlClass } from '#lib/catalog/filter-styles.js';
+	import { annotationKindFilter } from '#lib/notes/entry.js';
 	import {
 		annotationErrorKey, annotationQueryIssue, isShortQuery,
 		MAX_ANNOTATION_QUERY_CHARS, MAX_ANNOTATION_RESULTS, normalizeAnnotationQuery,
@@ -18,19 +19,34 @@
 
 	const search = new AnnotationSearch();
 	const query = $derived(normalizeAnnotationQuery(page.url.searchParams.get(NOTES_QUERY_PARAM)));
+	const kind = $derived(annotationKindFilter(page.url.searchParams.get('kind')));
+	const kindOptions = [
+		{ value: '', label: m['notes.filter.all'] },
+		{ value: 'review', label: m['notes.activity.review'] },
+		{ value: 'comment', label: m['notes.activity.comment'] },
+		{ value: 'book_note', label: m['notes.activity.private_note'] },
+		{ value: 'highlight', label: m['notes.kind.highlight'] },
+		{ value: 'underline', label: m['pv10.underline'] },
+		{ value: 'strikeout', label: m['pv10.strikeout'] },
+		{ value: 'text', label: m['pv10.text'] },
+		{ value: 'ink', label: m['pv10.drawing'] },
+		{ value: 'image', label: m['pv10.image'] }
+	];
 	const queryIssue = $derived(annotationQueryIssue(query));
 	let draft = $state('');
 	let validation = $state('');
 	let input = $state<HTMLInputElement | null>(null);
 	const errorKind = $derived(requestErrorKind(search.error));
+	const showClear = $derived(query !== '' && normalizeAnnotationQuery(draft) === query);
 
 	$effect(() => {
 		const current = query;
 		const issue = queryIssue;
+		const currentKind = kind;
 		untrack(() => {
 			draft = current;
 			validation = issue === 'too_long' ? m['notes.too_long']({ max: MAX_ANNOTATION_QUERY_CHARS }) : '';
-			void search.search(issue ? '' : current);
+			void search.search(issue ? '' : current, currentKind);
 		});
 	});
 
@@ -48,13 +64,13 @@
 			if (search.status === 'error') await search.retry();
 			return;
 		}
-		await goto(notesPageHref(next), { reset: false });
+		await goto(notesPageHref(next, kind), { reset: false });
 	}
 
 	async function clear() {
 		draft = '';
 		validation = '';
-		if (query) await goto('/notes', { reset: false });
+		if (query) await goto(notesPageHref('', kind), { reset: false });
 		await tick();
 		input?.focus();
 	}
@@ -68,8 +84,19 @@
 
 <section class="space-y-8" aria-labelledby="notes-heading">
 	<h1 id="notes-heading" class="sr-only">{m['notes.title']()}</h1>
-	<form role="search" aria-label={m['notes.landmark']()} class="flex min-w-0 items-end gap-2" onsubmit={submit} novalidate>
+	<form role="search" aria-label={m['notes.landmark']()} class="flex min-w-0 flex-wrap items-center gap-3" onsubmit={submit} novalidate>
+		<select
+			aria-label={m['notes.filter.label']()}
+			class="{filterControlClass} min-w-40 max-w-full"
+			value={kind}
+			onchange={(event) => goto(notesPageHref(draft, annotationKindFilter(event.currentTarget.value)), { reset: false })}
+		>
+			{#each kindOptions as option (option.value)}
+				<option value={option.value}>{option.label()}</option>
+			{/each}
+		</select>
 		<SearchField
+			class="min-w-52 flex-1 sm:max-w-sm"
 			id="notes-query"
 			name={NOTES_QUERY_PARAM}
 			label={m['notes.label']()}
@@ -77,23 +104,26 @@
 			aria-invalid={validation ? 'true' : undefined}
 			aria-describedby={validation ? 'notes-validation' : undefined}
 			buttonLabel={m['notes.submit']()}
+			clearLabel={m['notes.clear']()}
 			disabled={search.status === 'loading'}
+			clear={showClear}
+			onclear={clear}
 			bind:value={draft}
 			bind:input
 		/>
-		<button type="button" class="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-600 disabled:opacity-60 {focusRing}" aria-label={m['notes.clear']()} title={m['notes.clear']()} disabled={!draft && !query} onclick={clear}>
-			<Icon name="x" class="size-4" />
-		</button>
 	</form>
 	{#if validation}
 		<p id="notes-validation" class="text-sm text-red-700" role="alert">{validation}</p>
 	{/if}
 
 	{#if !query}
-		<PersonalActivityFeed />
+		<PersonalActivityFeed {kind} />
 	{:else if !queryIssue}
 		<section class="space-y-4" aria-labelledby="notes-results-heading" aria-busy={search.status === 'loading'}>
-			<h2 id="notes-results-heading" class="text-xl font-semibold break-words">{m['notes.results_heading']({ query })}</h2>
+			<h2 id="notes-results-heading" class="flex items-baseline gap-2 text-xl font-semibold">
+				{m['notes.activity.heading']()}
+				{#if search.status === 'ready'}<span class="text-sm font-normal text-slate-600" role="status">{search.results.length}</span>{/if}
+			</h2>
 			{#if isShortQuery(query)}
 				<p class="text-sm text-slate-600">{m['notes.short_hint']()}</p>
 			{/if}
@@ -113,10 +143,7 @@
 			{:else if search.status === 'ready' && search.results.length === 0}
 				<p role="status" class="text-sm text-slate-600">{m['notes.empty']({ query })}</p>
 			{:else if search.status === 'ready'}
-				<p role="status" class="text-sm text-slate-600">
-					{m['notes.result_count']({ count: search.results.length })}
-					{#if search.capped}{m['notes.capped']({ max: MAX_ANNOTATION_RESULTS })}{/if}
-				</p>
+				{#if search.capped}<p role="status" class="text-sm text-slate-600">{m['notes.capped']({ max: MAX_ANNOTATION_RESULTS })}</p>{/if}
 				<ol class="divide-y divide-slate-200" aria-label={m['notes.results_label']()}>
 					{#each search.results as item (`${item.kind}:${item.id}`)}
 						<li><AnnotationEntry {item} /></li>

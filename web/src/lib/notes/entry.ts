@@ -1,5 +1,12 @@
 import type { AnnotationEntry } from './types.js';
 
+export const annotationKinds = ['review', 'comment', 'book_note', 'highlight', 'underline', 'strikeout', 'text', 'ink', 'image'] as const;
+export type AnnotationKindFilter = '' | typeof annotationKinds[number];
+
+export function annotationKindFilter(value: string | null): AnnotationKindFilter {
+	return annotationKinds.find((kind) => kind === value) ?? '';
+}
+
 export function annotationHref(item: AnnotationEntry): string {
 	if (item.book_file_id && item.kind !== 'review' && item.kind !== 'book_note') {
 		const target = item.highlight_id

@@ -324,6 +324,7 @@ FROM highlights_fts(sqlc.arg(query)) f JOIN highlights h ON h.seq = f.rowid
 JOIN books b ON b.id = h.book_id
 WHERE h.user_id = sqlc.arg(user_id)
 AND h.deleted_at IS NULL
+AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR h.style = sqlc.arg(kind))
 AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
 ))
@@ -336,6 +337,8 @@ FROM notes_fts(sqlc.arg(query)) f JOIN notes n ON n.seq = f.rowid
 JOIN books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(user_id)
 AND n.deleted_at IS NULL
+AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR
+    CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END = sqlc.arg(kind))
 AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
 ))
@@ -346,6 +349,7 @@ ORDER BY f.rank, n.id LIMIT sqlc.arg(page_size);
 SELECT h.id, h.book_id, h.text AS content, 'highlight' AS kind, h.position, h.created_at
 FROM highlights h JOIN books b ON b.id = h.book_id
 WHERE h.user_id = sqlc.arg(user_id) AND h.deleted_at IS NULL
+AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR h.style = sqlc.arg(kind))
 AND ((h.text LIKE sqlc.arg(pattern) ESCAPE '\'))
 AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -357,6 +361,8 @@ ORDER BY h.position, h.id LIMIT sqlc.arg(page_size);
 SELECT n.id, n.book_id, n.body_md AS content, 'note' AS kind, 0.0 AS position, n.created_at
 FROM notes n JOIN books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(user_id) AND n.deleted_at IS NULL
+AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR
+    CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END = sqlc.arg(kind))
 AND ((n.body_md LIKE sqlc.arg(pattern) ESCAPE '\')
     OR EXISTS (
         SELECT 1 FROM highlights h

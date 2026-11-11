@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
@@ -10,7 +10,6 @@
 		page.url.pathname === '/search' ? normalizeSearchInput(page.url.searchParams.get(SEARCH_QUERY_PARAM)) : ''
 	);
 	let draft = $state('');
-	let input = $state<HTMLInputElement | null>(null);
 
 	$effect(() => {
 		const current = activeQuery;
@@ -29,10 +28,7 @@
 	}
 
 	async function clear() {
-		draft = '';
 		await goto('/search');
-		await tick();
-		input?.focus();
 	}
 </script>
 
@@ -44,9 +40,7 @@
 		label={m['search.label']()}
 		placeholder={m['search.placeholder']()}
 		bind:value={draft}
-		bind:input
 		clear={showClear}
-		buttonLabel={showClear ? m['search.clear']() : m['search.submit']()}
-		onsearch={showClear ? clear : undefined}
+		onclear={clear}
 	/>
 </form>

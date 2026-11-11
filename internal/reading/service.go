@@ -1277,10 +1277,15 @@ func (s *Service) Pull(ctx context.Context, viewer Viewer, cursor int64) (PullRe
 
 // SearchAnnotations searches only the viewer's live annotations on visible books.
 func (s *Service) SearchAnnotations(
-	ctx context.Context, viewer Viewer, query string,
+	ctx context.Context, viewer Viewer, query, kind string,
 ) ([]AnnotationResult, error) {
 	if err := checkViewer(viewer); err != nil {
 		return nil, err
+	}
+	switch kind {
+	case "", "review", "comment", "book_note", "highlight", "underline", "strikeout", "text", "ink", "image":
+	default:
+		return nil, fmt.Errorf("%w: annotation kind is invalid", ErrInvalid)
 	}
 	query = strings.TrimSpace(query)
 	if query == "" || utf8.RuneCountInString(query) > 200 {
@@ -1292,7 +1297,7 @@ func (s *Service) SearchAnnotations(
 		if utf8.RuneCountInString(query) >= 3 {
 			phrase := `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
 			highlights, err := q.ReadingSearchHighlightsFTS(ctx, sqlc.ReadingSearchHighlightsFTSParams{
-				Query: phrase, UserID: viewer.UserID, IsAdmin: adminFlag(viewer), PageSize: 100,
+				Query: phrase, UserID: viewer.UserID, IsAdmin: adminFlag(viewer), PageSize: 100, Kind: kind,
 			})
 			if err != nil {
 				return fmt.Errorf("search highlight FTS: %w", err)
@@ -1304,7 +1309,7 @@ func (s *Service) SearchAnnotations(
 				})
 			}
 			notes, err := q.ReadingSearchNotesFTS(ctx, sqlc.ReadingSearchNotesFTSParams{
-				Query: phrase, UserID: viewer.UserID, IsAdmin: adminFlag(viewer), PageSize: 100,
+				Query: phrase, UserID: viewer.UserID, IsAdmin: adminFlag(viewer), PageSize: 100, Kind: kind,
 			})
 			if err != nil {
 				return fmt.Errorf("search note FTS: %w", err)
@@ -1318,7 +1323,7 @@ func (s *Service) SearchAnnotations(
 		} else {
 			pattern := "%" + escapeLike(query) + "%"
 			highlights, err := q.ReadingSearchHighlightsLike(ctx, sqlc.ReadingSearchHighlightsLikeParams{
-				UserID: viewer.UserID, Pattern: pattern, IsAdmin: adminFlag(viewer), PageSize: 100,
+				UserID: viewer.UserID, Pattern: pattern, IsAdmin: adminFlag(viewer), PageSize: 100, Kind: kind,
 			})
 			if err != nil {
 				return fmt.Errorf("search highlights: %w", err)
@@ -1330,7 +1335,7 @@ func (s *Service) SearchAnnotations(
 				})
 			}
 			notes, err := q.ReadingSearchNotesLike(ctx, sqlc.ReadingSearchNotesLikeParams{
-				UserID: viewer.UserID, Pattern: pattern, IsAdmin: adminFlag(viewer), PageSize: 100,
+				UserID: viewer.UserID, Pattern: pattern, IsAdmin: adminFlag(viewer), PageSize: 100, Kind: kind,
 			})
 			if err != nil {
 				return fmt.Errorf("search notes: %w", err)
@@ -1355,12 +1360,13 @@ func (s *Service) SearchAnnotations(
 				FROM page_annotations WHERE kind = 'text' AND deleted_at IS NULL
 			) a JOIN books b ON b.id = a.book_id
 			WHERE a.user_id = ? AND a.content LIKE ? ESCAPE '\'
+			AND (? = '' OR a.kind = ?)
 			AND (? = 1 OR EXISTS (
 				SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
 			))
 			AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?)
 			ORDER BY a.created_at DESC, a.kind, a.id LIMIT 100`,
-			viewer.UserID, "%"+escapeLike(query)+"%", adminFlag(viewer), viewer.UserID, viewer.UserID)
+			viewer.UserID, "%"+escapeLike(query)+"%", kind, kind, adminFlag(viewer), viewer.UserID, viewer.UserID)
 		if err != nil {
 			return fmt.Errorf("search reviews and inserted text: %w", err)
 		}

@@ -55,10 +55,16 @@ describe('annotation search helpers', () => {
 		expect(buildAnnotationSearchPath('a&b "c"')).toBe('/search/annotations?q=a%26b+%22c%22');
 		expect(notesPageHref('  spice ')).toBe('/notes?q=spice');
 		expect(notesPageHref(' ')).toBe('/notes');
+		expect(notesPageHref(' spice ', 'comment')).toBe('/notes?q=spice&kind=comment');
+		expect(notesPageHref('', 'underline')).toBe('/notes?kind=underline');
+		expect(buildAnnotationSearchPath('spice', 'book_note')).toBe('/search/annotations?q=spice&kind=book_note');
 
 		const request = vi.spyOn(api, 'request').mockResolvedValue({ items: [result('h1', 1)] });
 		await expect(searchAnnotations('spice')).resolves.toHaveLength(1);
 		expect(request).toHaveBeenCalledWith('/search/annotations?q=spice', { signal: undefined, cache: 'no-store' });
+		const signal = new AbortController().signal;
+		await searchAnnotations('spice', signal, 'underline');
+		expect(request).toHaveBeenLastCalledWith('/search/annotations?q=spice&kind=underline', { signal, cache: 'no-store' });
 	});
 
 	it('produces plain-text excerpts and leaves markup as text', () => {
@@ -92,6 +98,23 @@ describe('annotation search helpers', () => {
 });
 
 describe('AnnotationSearch', () => {
+	it('supersedes the same query when its type changes and retries with that type', async () => {
+		const first = deferred<AnnotationResult[]>();
+		const second = deferred<AnnotationResult[]>();
+		const fetcher = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise).mockResolvedValue([]);
+		const search = new AnnotationSearch(fetcher);
+		const all = search.search('spice');
+		const comments = search.search('spice', 'comment');
+		expect(fetcher.mock.calls[0][1].aborted).toBe(true);
+		second.resolve([result('comment', 1, 'note')]);
+		await comments;
+		first.resolve([result('highlight', 1)]);
+		await all;
+		expect(search.results.map((item) => item.id)).toEqual(['comment']);
+		await search.retry();
+		expect(fetcher).toHaveBeenLastCalledWith('spice', expect.any(AbortSignal), 'comment');
+	});
+
 	it('does not request empty or over-long queries', async () => {
 		const fetcher = vi.fn();
 		const search = new AnnotationSearch(fetcher);
@@ -112,7 +135,7 @@ describe('AnnotationSearch', () => {
 		expect(search.query).toBe('spice');
 		await pending;
 
-		expect(fetcher).toHaveBeenCalledWith('spice', expect.any(AbortSignal));
+		expect(fetcher).toHaveBeenCalledWith('spice', expect.any(AbortSignal), '');
 		expect(search.status).toBe('ready');
 		expect(search.results.map((item) => item.id)).toEqual(items.map((item) => item.id));
 		expect(search.capped).toBe(true);

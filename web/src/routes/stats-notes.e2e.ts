@@ -154,7 +154,7 @@ const annotation = (id: string, bookId: number, kind: 'highlight' | 'note' | 're
 
 test('searches annotations with unified entries and no export panel', async ({ page }) => {
 	await authenticate(page);
-	await page.route('**/api/v1/me/notes?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/me/notes?*', (route) => route.fulfill({ json: { items: [], next_cursor: null, total: 0 } }));
 	const searches: URLSearchParams[] = [];
 	await page.route('**/api/v1/search/annotations?*', (route) => {
 		const params = new URL(route.request().url()).searchParams;
@@ -171,7 +171,8 @@ test('searches annotations with unified entries and no export panel', async ({ p
 	});
 	await page.goto('/notes');
 	await expect(page.getByText('You have no annotations yet.')).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Annotations', exact: true })).toBeVisible();
+	await expect(page.getByRole('link', { name: /^Annotations/ })).toBeVisible();
+	await expect(page.getByTestId('annotations-count')).toHaveAttribute('title', 'Total annotations: 0');
 	expect(searches).toHaveLength(0);
 
 	const box = page.getByRole('searchbox', { name: 'Search annotations', exact: true });
@@ -182,7 +183,7 @@ test('searches annotations with unified entries and no export panel', async ({ p
 	await box.fill('  spice ');
 	await box.press('Enter');
 	await expect(page).toHaveURL(/\/notes\?q=spice$/);
-	await expect(page.getByText('Matches: 3.')).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 3');
 	const results = page.getByRole('list', { name: 'Matching annotations, newest first' }).getByRole('listitem');
 	await expect(results).toHaveCount(3);
 	await expect(results.nth(0)).toContainText('The spice must flow.');
@@ -196,7 +197,7 @@ test('searches annotations with unified entries and no export panel', async ({ p
 	await expect(results.nth(1).getByText('Comment', { exact: true })).toHaveClass(/bg-emerald-100/);
 	expect(searches).toHaveLength(1);
 
-	await page.getByRole('search', { name: 'Annotations search' }).getByRole('button', { name: 'Search', exact: true }).click();
+	await page.getByRole('search', { name: 'Annotations search' }).getByRole('searchbox').press('Enter');
 	expect(searches).toHaveLength(1);
 
 	await expect(page.getByText('Export notes', { exact: true })).toHaveCount(0);
@@ -217,7 +218,7 @@ test('searches annotations with unified entries and no export panel', async ({ p
 
 test('notes search reports expired sessions and connection failures with recovery', async ({ page }) => {
 	await authenticate(page);
-	await page.route('**/api/v1/me/notes?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/me/notes?*', (route) => route.fulfill({ json: { items: [], next_cursor: null, total: 0 } }));
 	let calls = 0;
 	await page.route('**/api/v1/search/annotations?*', (route) => {
 		calls += 1;
@@ -245,25 +246,27 @@ test('shows reviews and comments newest first with book covers and pagination', 
 	const requests: string[] = [];
 	await page.route('**/api/v1/me/notes?*', (route) => {
 		const params = new URL(route.request().url()).searchParams;
-		requests.push(params.get('cursor') ?? 'first');
+		if (params.get('limit') !== '1') requests.push(params.get('cursor') ?? 'first');
 		if (!params.has('cursor')) {
 			return route.fulfill({ json: {
 				items: [
 					{ id: '18', kind: 'review', book_id: 21, book_title: 'Dune', cover_url: '/api/v1/books/21/cover', content: 'My review', created_at: '2026-11-10T12:00:00Z', updated_at: '2026-11-10T12:00:00Z' },
 					{ id: '00000000-0000-7000-8000-000000000001', kind: 'comment', book_id: 22, book_title: 'A Wizard of Earthsea', cover_url: null, content: 'A **passage** comment <img src=x onerror="window.__xss=1">', anchor: 'The quoted passage', created_at: '2026-11-09T12:00:00Z', updated_at: '2026-11-09T12:00:00Z' }
 				],
-				next_cursor: 'older'
+				next_cursor: 'older', total: 3
 			} });
 		}
 		return route.fulfill({ json: {
 			items: [{ id: '00000000-0000-7000-8000-000000000002', kind: 'book_note', book_id: 23, book_title: 'The Left Hand of Darkness', cover_url: null, content: 'A private legacy note', created_at: '2026-11-08T12:00:00Z', updated_at: '2026-11-08T12:00:00Z' }],
-			next_cursor: null
+			next_cursor: null, total: 3
 		} });
 	});
 
 	await page.goto('/notes');
 	const list = page.getByRole('list', { name: 'Your annotations, newest first' });
 	await expect(list.getByRole('listitem')).toHaveCount(2);
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 2');
+	await expect(page.getByTestId('annotations-count')).toHaveAttribute('title', 'Total annotations: 3');
 	await expect(list.getByRole('listitem').nth(0)).toContainText('Dune');
 	await expect(list.getByRole('listitem').nth(0)).toContainText('My review');
 	await expect(list.getByRole('listitem').nth(0).locator('img')).toHaveAttribute('src', '/api/v1/books/21/cover');
@@ -272,6 +275,7 @@ test('shows reviews and comments newest first with book covers and pagination', 
 	await expect(list.getByRole('listitem').nth(1).locator('.reader-markdown img')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Show more' }).click();
 	await expect(list.getByRole('listitem')).toHaveCount(3);
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 3');
 	await expect(list.getByRole('listitem').nth(2)).toContainText('A private legacy note');
 	expect(requests).toEqual(['first', 'older']);
 });
@@ -284,7 +288,7 @@ test('Notes shows inserted text and drawing previews and searches reviews using 
 		{ ...base, id: 'review', kind: 'review', content: '这是一个扣子的大纲' },
 		{ ...base, id: 'text', kind: 'text', content: '扣子已经关闭了', locator },
 		{ ...base, id: 'ink', kind: 'ink', content: '', locator, data: { color: '#000000', width: 0.01, strokes: [[0.1, 0.2, 0.3, 0.4]] } }
-	], next_cursor: null } }));
+	], next_cursor: null, total: 3 } }));
 	await page.route('**/api/v1/search/annotations?*', (route) => {
 		expect(new URL(route.request().url()).searchParams.get('q')).toBe('扣子');
 		return route.fulfill({ json: { items: [
@@ -306,13 +310,17 @@ test('Notes shows inserted text and drawing previews and searches reviews using 
 	const form = page.getByRole('search', { name: 'Annotations search' });
 	const submit = form.getByRole('button', { name: 'Search', exact: true });
 	const clear = form.getByRole('button', { name: 'Clear search' });
-	await expect(submit).toHaveClass(/shell-search-submit/);
+	await expect(submit).toHaveClass(/control-button-primary/);
 	await expect(submit).toHaveText('');
-	await expect(clear).toHaveText('');
+	await expect(clear).toHaveCount(0);
 	await form.getByRole('searchbox').fill('扣子');
 	await submit.click();
 	const matches = page.getByRole('list', { name: 'Matching annotations, newest first' });
 	await expect(matches.getByRole('listitem')).toHaveCount(3);
+	// The applied query turns the same button into a clear icon, matching the header search.
+	await expect(submit).toHaveCount(0);
+	await expect(clear).toHaveClass(/control-button-primary/);
+	await expect(clear).toHaveText('');
 	await expect(matches).toContainText('Review');
 	await expect(matches).toContainText('Inserted text');
 	await expect(matches).toContainText('Comment');
@@ -329,11 +337,93 @@ test('Notes explains an unavailable backend and retries the feed', async ({ page
 	await authenticate(page);
 	let calls = 0;
 	await page.route('**/api/v1/me/notes?*', (route) => {
+		if (new URL(route.request().url()).searchParams.get('limit') === '1') return problem(route, 404);
 		if (++calls === 1) return problem(route, 404);
-		return route.fulfill({ json: { items: [], next_cursor: null } });
+		return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 	});
 	await page.goto('/notes');
 	await expect(page.getByRole('alert')).toContainText('Restart or update the backend');
 	await page.getByRole('button', { name: 'Try again' }).click();
 	await expect(page.getByText('You have no annotations yet.')).toBeVisible();
+});
+
+test('annotation type dropdown combines with search, preserves URLs, and keeps totals independent', async ({ page }) => {
+	await authenticate(page);
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const base = { book_id: 21, book_title: 'Dune', cover_url: null, created_at: '2026-11-10T12:00:00Z', updated_at: '2026-11-10T12:00:00Z' };
+	const items = [
+		{ ...base, id: 'review', kind: 'review', content: 'spice review' },
+		{ ...base, id: 'comment', kind: 'comment', content: 'spice comment' },
+		{ ...base, id: 'underline', kind: 'underline', content: 'another passage' }
+	];
+	const searches: URLSearchParams[] = [];
+	await page.route('**/api/v1/me/notes?*', (route) => {
+		const params = new URL(route.request().url()).searchParams;
+		const kind = params.get('kind');
+		const filtered = kind ? items.filter((item) => item.kind === kind) : items;
+		return route.fulfill({ json: {
+			items: params.get('limit') === '1' ? filtered.slice(0, 1) : filtered,
+			next_cursor: null, total: kind ? filtered.length : 83
+		} });
+	});
+	await page.route('**/api/v1/search/annotations?*', (route) => {
+		const params = new URL(route.request().url()).searchParams;
+		searches.push(params);
+		const kind = params.get('kind');
+		const filtered = items.filter((item) => item.content.includes(params.get('q')!) && (!kind || item.kind === kind));
+		return route.fulfill({ json: { items: filtered.map((item) => ({ ...item, position: 0 })) } });
+	});
+	await page.goto('/notes');
+	const type = page.getByRole('combobox', { name: 'Annotation type' });
+	await expect(type).toHaveValue('');
+	await expect(type.getByRole('option')).toHaveCount(10);
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 3');
+	const total = page.getByTestId('annotations-count');
+	await expect(total).toHaveAttribute('title', 'Total annotations: 83');
+	await expect(page.getByText(/^Shown:/)).toHaveCount(0);
+
+	await type.selectOption('review');
+	await expect(page).toHaveURL(/\/notes\?kind=review$/);
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 1');
+	await page.getByRole('searchbox', { name: 'Search annotations', exact: true }).fill('spice');
+	await page.getByRole('searchbox', { name: 'Search annotations', exact: true }).press('Enter');
+	await expect(page).toHaveURL(/\/notes\?q=spice&kind=review$/);
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 1');
+	expect(searches.at(-1)?.get('kind')).toBe('review');
+	await expect(total).toHaveAttribute('title', 'Total annotations: 83');
+
+	await type.selectOption('underline');
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 0');
+	await expect(page.getByText('None of your annotations match “spice”.')).toBeVisible();
+	await page.goBack();
+	await expect(type).toHaveValue('review');
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 1');
+	await page.reload();
+	await expect(type).toHaveValue('review');
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 1');
+
+	await page.getByRole('button', { name: 'Clear search', exact: true }).click();
+	await expect(page).toHaveURL(/\/notes\?kind=review$/);
+	await expect(page.getByRole('list', { name: 'Your annotations, newest first' }).getByRole('listitem')).toHaveCount(1);
+	await type.selectOption('ink');
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 0');
+	await expect(page.getByText('No annotations of this type.')).toBeVisible();
+	await type.selectOption('');
+	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 3');
+	await expect(total).toHaveAttribute('title', 'Total annotations: 83');
+
+	await page.setViewportSize({ width: 375, height: 812 });
+	await expect(type).toBeVisible();
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('annotation filters and total badges are localized in Chinese', async ({ page }) => {
+	await authenticate(page, 'zh');
+	await page.route('**/api/v1/me/notes?*', (route) => route.fulfill({ json: { items: [], next_cursor: null, total: 0 } }));
+	await page.goto('/notes?kind=image');
+	await expect(page.getByRole('combobox', { name: '批注类型' })).toHaveValue('image');
+	await expect(page.getByRole('option', { name: '全部', exact: true })).toHaveCount(1);
+	await expect(page.getByRole('heading', { name: '我的批注', exact: true })).toHaveText('我的批注 0');
+	await expect(page.getByText('没有此类型的批注。')).toBeVisible();
+	await expect(page.getByTestId('annotations-count')).toHaveAttribute('title', '批注总数：0');
 });

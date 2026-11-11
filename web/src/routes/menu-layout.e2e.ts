@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -31,7 +31,7 @@ async function mockApi(page: Page, state: MockState) {
 		if (path === '/me/settings') return route.fulfill({ json: { settings: [] } });
 		if (path === '/me/profile') return route.fulfill({ json: { user: viewer } });
 		if (path === '/me/app-passwords') return route.fulfill({ json: { app_passwords: [] } });
-		if (path === '/me/notes') return route.fulfill({ json: { items: [], next_cursor: null } });
+		if (path === '/me/notes') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		if (path === '/admin/bookheap/items') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		if (path === '/admin/bookheap/scan') return route.fulfill({ json: { scan: null } });
 		if (path === '/shelves') return route.fulfill({ json: { items: [customShelf], next_cursor: null } });
@@ -131,6 +131,94 @@ test('shelf descriptions remain available without showing introductory text by d
 	await expect(page.getByText('Books marked as favorites.')).toBeVisible();
 	expect(unexpected).toEqual([]);
 });
+
+async function expectGreenFocus(control: Locator) {
+	await control.focus();
+	await expect(control).toBeFocused();
+	await expect(control).toHaveCSS('outline-style', 'solid');
+	await expect(control).toHaveCSS('outline-width', '2px');
+	await expect(control).toHaveCSS('outline-offset', '-2px');
+	const style = await control.evaluate((element) => {
+		const computed = getComputedStyle(element);
+		const probe = document.createElement('span');
+		probe.style.color = 'var(--color-shell-accent)';
+		element.after(probe);
+		const green = getComputedStyle(probe).color;
+		probe.remove();
+		const rect = element.getBoundingClientRect();
+		// The sticky header band must not paint over the top edge of the ring.
+		const coveredBy = [rect.left + 3, rect.left + rect.width / 2, rect.right - 3]
+			.map((x) => document.elementFromPoint(x, rect.top + 1))
+			.filter((hit) => hit !== element)
+			.map((hit) => hit?.tagName ?? 'none');
+		const clippedBy: string[] = [];
+		for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+			const bounds = parent.getBoundingClientRect();
+			const parentStyle = getComputedStyle(parent);
+			if (/(hidden|clip|auto|scroll)/.test(parentStyle.overflowX) &&
+				(rect.left - 4 < bounds.left || rect.right + 4 > bounds.right)) {
+				clippedBy.push(parent.tagName);
+			}
+			if (/(hidden|clip|auto|scroll)/.test(parentStyle.overflowY) &&
+				(rect.top - 4 < bounds.top || rect.bottom + 4 > bounds.bottom)) {
+				clippedBy.push(parent.tagName);
+			}
+		}
+		return { color: computed.outlineColor, green, height: rect.height,
+			radius: computed.borderRadius, border: computed.borderWidth, clippedBy, coveredBy };
+	});
+	expect(style.color).toBe(style.green);
+	expect(style.height).toBe(36);
+	expect(style.radius).toBe('6px');
+	expect(style.border).toBe('1px');
+	expect(style.clippedBy).toEqual([]);
+	expect(style.coveredBy).toEqual([]);
+}
+
+for (const theme of ['light', 'dark'] as const) {
+	for (const width of [375, 1440]) {
+		test(`search and filter controls have complete green focus outlines in ${theme} at ${width}px`, async ({ page }) => {
+			const unexpected = await mockApi(page, { locale: 'en' });
+			await page.setViewportSize({ width, height: 900 });
+			await page.emulateMedia({ colorScheme: theme });
+			await page.goto('/bookheap');
+			await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+			const main = page.getByRole('main');
+			const status = main.getByRole('combobox', { name: 'Status', exact: true });
+			await expect(status).toBeVisible();
+			await expect(main.getByText('Status', { exact: true })).toHaveCount(0);
+			await expectGreenFocus(status);
+			await expectGreenFocus(main.getByRole('searchbox', { name: 'Search', exact: true }));
+			await status.selectOption('ready');
+			await expect(page).toHaveURL(/status=ready/);
+
+			await page.goto('/notes');
+			const type = main.getByRole('combobox', { name: 'Annotation type' });
+			const search = main.getByRole('searchbox', { name: 'Search annotations', exact: true });
+			await expectGreenFocus(type);
+			await type.press('Tab');
+			await expect(search).toBeFocused();
+			await expectGreenFocus(search);
+			const dropdownBounds = await type.boundingBox();
+			const searchBounds = await search.boundingBox();
+			expect(dropdownBounds).not.toBeNull();
+			expect(searchBounds).not.toBeNull();
+			if (dropdownBounds && searchBounds) {
+				expect(searchBounds.x >= dropdownBounds.x + dropdownBounds.width + 8 ||
+					searchBounds.y >= dropdownBounds.y + dropdownBounds.height + 8).toBe(true);
+			}
+			await type.selectOption('review');
+			await expect(page).toHaveURL(/kind=review/);
+
+			await page.goto('/books');
+			const filters = main.getByRole('combobox');
+			await expect(filters).toHaveCount(4);
+			for (const filter of await filters.all()) await expectGreenFocus(filter);
+			expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+			expect(unexpected).toEqual([]);
+		});
+	}
+}
 
 for (const locale of ['en', 'zh'] as const) {
 	test(`retired ${locale} bookmarks links redirect to the book list`, async ({ page }) => {

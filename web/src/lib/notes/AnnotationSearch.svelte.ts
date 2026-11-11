@@ -1,7 +1,8 @@
 import { annotationQueryIssue, MAX_ANNOTATION_RESULTS, normalizeAnnotationQuery, resultBooks, searchAnnotations } from './api.js';
 import type { AnnotationResult, ResultBook } from './types.js';
+import type { AnnotationKindFilter } from './entry.js';
 
-export type AnnotationFetcher = (query: string, signal: AbortSignal) => Promise<AnnotationResult[]>;
+export type AnnotationFetcher = (query: string, signal: AbortSignal, kind: AnnotationKindFilter) => Promise<AnnotationResult[]>;
 export type AnnotationSearchStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 /**
@@ -10,6 +11,7 @@ export type AnnotationSearchStatus = 'idle' | 'loading' | 'ready' | 'error';
  */
 export class AnnotationSearch {
 	query = $state('');
+	kind = $state<AnnotationKindFilter>('');
 	results = $state<AnnotationResult[]>([]);
 	status = $state<AnnotationSearchStatus>('idle');
 	error = $state<unknown>(null);
@@ -17,7 +19,7 @@ export class AnnotationSearch {
 	#fetcher: AnnotationFetcher;
 	#version = 0;
 	#controller: AbortController | null = null;
-	#pending: { query: string; promise: Promise<void> } | null = null;
+	#pending: { query: string; kind: AnnotationKindFilter; promise: Promise<void> } | null = null;
 
 	constructor(fetcher: AnnotationFetcher = searchAnnotations) {
 		this.#fetcher = fetcher;
@@ -37,25 +39,26 @@ export class AnnotationSearch {
 	}
 
 	/** Searches for a query; empty or over-long queries clear the results without a request. */
-	search(raw: string): Promise<void> {
+	search(raw: string, kind: AnnotationKindFilter = ''): Promise<void> {
 		const query = normalizeAnnotationQuery(raw);
 		if (annotationQueryIssue(query)) {
 			this.clear();
 			return Promise.resolve();
 		}
-		if (this.#pending?.query === query) return this.#pending.promise;
+		if (this.#pending?.query === query && this.#pending.kind === kind) return this.#pending.promise;
 
 		this.#invalidate();
 		const version = this.#version;
 		const controller = new AbortController();
 		this.#controller = controller;
 		this.query = query;
+		this.kind = kind;
 		this.results = [];
 		this.error = null;
 		this.status = 'loading';
 		const promise = (async () => {
 			try {
-				const results = await this.#fetcher(query, controller.signal);
+				const results = await this.#fetcher(query, controller.signal, kind);
 				if (version !== this.#version) return;
 				this.results = results;
 				this.status = 'ready';
@@ -70,17 +73,18 @@ export class AnnotationSearch {
 				}
 			}
 		})();
-		this.#pending = { query, promise };
+		this.#pending = { query, kind, promise };
 		return promise;
 	}
 
 	retry(): Promise<void> {
-		return this.search(this.query);
+		return this.search(this.query, this.kind);
 	}
 
 	clear(): void {
 		this.#invalidate();
 		this.query = '';
+		this.kind = '';
 		this.results = [];
 		this.error = null;
 		this.status = 'idle';

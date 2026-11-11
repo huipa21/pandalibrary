@@ -66,7 +66,7 @@
 .rp7-expand { grid-column: 2; grid-row: 2; }
 .rp7-action-spacer { grid-column: 2; grid-row: 1; }
 .rp7-delete-button:hover, .rp7-expand:hover, .rp7-icon-button:hover, .rp7-entry-body:not(:disabled):hover { background: rgb(127 127 127 / 12%); }
-.rp7-tab button:focus-visible, .rp7-dialog button:focus-visible, .rp7-tab input:focus-visible {
+.rp7-tab button:not(.control-button):focus-visible, .rp7-dialog button:focus-visible {
 	outline: 2px solid #059669;
 	outline-offset: -2px;
 }

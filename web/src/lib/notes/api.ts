@@ -1,6 +1,7 @@
 import { api } from '#lib/api/client.js';
 import { requestErrorKind } from '#lib/paging/errors.js';
 import type { AnnotationResult, AnnotationSearchResponse, ResultBook } from './types.js';
+import type { AnnotationKindFilter } from './entry.js';
 
 export const NOTES_QUERY_PARAM = 'q';
 /** R1 rejects trimmed queries that are empty or longer than 200 characters (code points). */
@@ -33,17 +34,22 @@ export function isShortQuery(query: string): boolean {
 	return length > 0 && length < PHRASE_QUERY_CHARS;
 }
 
-export function buildAnnotationSearchPath(query: string): string {
-	return `/search/annotations?${new URLSearchParams({ q: query })}`;
+export function buildAnnotationSearchPath(query: string, kind: AnnotationKindFilter = ''): string {
+	const params = new URLSearchParams({ q: query });
+	if (kind) params.set('kind', kind);
+	return `/search/annotations?${params}`;
 }
 
-export function notesPageHref(query: string): string {
+export function notesPageHref(query: string, kind: AnnotationKindFilter = ''): string {
 	const normalized = normalizeAnnotationQuery(query);
-	return normalized ? `/notes?${new URLSearchParams({ [NOTES_QUERY_PARAM]: normalized })}` : '/notes';
+	const params = new URLSearchParams();
+	if (normalized) params.set(NOTES_QUERY_PARAM, normalized);
+	if (kind) params.set('kind', kind);
+	return params.size ? `/notes?${params}` : '/notes';
 }
 
-export async function searchAnnotations(query: string, signal?: AbortSignal): Promise<AnnotationResult[]> {
-	const response = await api.request<AnnotationSearchResponse>(buildAnnotationSearchPath(query), {
+export async function searchAnnotations(query: string, signal?: AbortSignal, kind: AnnotationKindFilter = ''): Promise<AnnotationResult[]> {
+	const response = await api.request<AnnotationSearchResponse>(buildAnnotationSearchPath(query, kind), {
 		signal,
 		cache: 'no-store'
 	});

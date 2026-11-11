@@ -2,7 +2,7 @@
 	import { onDestroy, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import Icon from '../Icon.svelte';
-	import { filterControlClass } from '#lib/catalog/filter-styles.js';
+	import { controlButtonClass, controlIconClass, filterControlClass, iconControlClass } from '#lib/catalog/filter-styles.js';
 	import SearchField from '#lib/search/SearchField.svelte';
 	import { colorTone, MARK_SORTS, sortColorOptions, type ColorCount, type MarkSort } from './highlights-model.js';
 	import { colorName } from './labels.js';
@@ -108,8 +108,6 @@
 	});
 
 	const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900';
-	const iconButton = `inline-flex size-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`;
-	const pressedClass = 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800';
 </script>
 
 <div class="flex flex-wrap items-center gap-2">
@@ -119,12 +117,14 @@
 			placeholder={m['bv9.search_placeholder']()}
 			bind:value={draft}
 			oninput={onInput}
+			clear={draft.trim() !== '' && draft.trim() === query}
+			onclear={searchNow}
 		/>
 	</form>
 
 	<button
 		type="button"
-		class="inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-medium {notesOnly ? pressedClass : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'} {focusRing}"
+		class={controlButtonClass}
 		aria-pressed={notesOnly}
 		title={m['bv9.notes_toggle_label']()}
 		onclick={() => (notesOnly = !notesOnly)}
@@ -148,14 +148,15 @@
 		<button
 			bind:this={filtersButton}
 			type="button"
-			class="{iconButton} {filterCount > 0 ? pressedClass : ''}"
+			class={iconControlClass}
+			data-active={filterCount > 0 ? '' : undefined}
 			aria-expanded={filtersOpen}
 			aria-controls="highlights-filters"
 			aria-label={filterCount > 0 ? m['bv9.filters_active']({ count: filterCount }) : m['bv9.filters']()}
 			title={m['bv9.filters']()}
 			onclick={() => (filtersOpen = !filtersOpen)}
 		>
-			<svg aria-hidden="true" class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6 7.5V19l-4 1v-7.5z" /></svg>
+			<svg aria-hidden="true" class={controlIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6 7.5V19l-4 1v-7.5z" /></svg>
 		</button>
 		{#if filtersOpen}
 			<div
@@ -188,24 +189,24 @@
 
 	<button
 		type="button"
-		class="{iconButton} {compact ? pressedClass : ''}"
+		class={iconControlClass}
 		aria-pressed={compact}
 		aria-label={m['bv9.compact']()}
 		title={m['bv9.compact']()}
 		onclick={() => (compact = !compact)}
 	>
-		<svg aria-hidden="true" class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+		<svg aria-hidden="true" class={controlIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
 	</button>
 
 	<span class="inline-flex" title={offline ? m['bv9.export_offline']() : m['bv9.export_label']()}>
 		<button
 			type="button"
-			class="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 {focusRing}"
+			class={controlButtonClass}
 			disabled={offline || exporting}
 			aria-describedby={offline ? 'highlights-export-offline' : undefined}
 			onclick={onExport}
 		>
-			<Icon name="download" class="size-4" />
+			<Icon name="download" class={controlIconClass} />
 			{exporting ? m['bv9.exporting']() : m['bv9.export']()}
 		</button>
 	</span>

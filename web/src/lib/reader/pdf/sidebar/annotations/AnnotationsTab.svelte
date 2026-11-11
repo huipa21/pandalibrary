@@ -169,7 +169,7 @@
 <div class="rp7-tab" bind:this={root}>
 	<header class="rp7-header">
 		<form class="min-w-0 flex-1" role="search" onsubmit={(event) => event.preventDefault()}>
-			<SearchField label={m['pv10.search']()} placeholder={m['pv10.search']()} bind:value={query} />
+			<SearchField label={m['pv10.search']()} placeholder={m['pv10.search']()} bind:value={query} clear={query.trim() !== ''} onclear={() => (query = '')} />
 		</form>
 		<span class="rp7-count">{m['rp7.count']({ count: list.count })}</span>
 	</header>

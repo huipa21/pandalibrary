@@ -208,7 +208,7 @@ func (h *readingHTTP) searchAnnotations(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	values, valid := h.query(w, r, "q")
+	values, valid := h.query(w, r, "q", "kind")
 	if !valid {
 		return
 	}
@@ -217,7 +217,7 @@ func (h *readingHTTP) searchAnnotations(w http.ResponseWriter, r *http.Request) 
 		WriteProblem(w, h.logger, http.StatusBadRequest, "One annotation query is required.")
 		return
 	}
-	items, err := h.service.SearchAnnotations(r.Context(), viewer, query[0])
+	items, err := h.service.SearchAnnotations(r.Context(), viewer, query[0], values.Get("kind"))
 	if err != nil {
 		h.writeError(w, r, err)
 		return

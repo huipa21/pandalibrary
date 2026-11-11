@@ -28,10 +28,19 @@ type PersonalActivity struct {
 	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
-const personalActivityQuery = `
-SELECT kind, id, book_id, book_title, cover_sha256, content, anchor, created_at, updated_at,
-	book_file_id, locator, data, highlight_id
-FROM (
+type PersonalActivityOptions struct {
+	Limit  int
+	Cursor string
+	Kind   string
+}
+
+type PersonalActivityPage struct {
+	Page[PersonalActivity]
+	Total int64 `json:"total"`
+}
+
+const personalActivitySource = `
+WITH activity AS (
 	SELECT 'review' AS kind, CAST(r.id AS TEXT) AS id, r.book_id, b.title AS book_title,
 		b.cover_sha256, r.body AS content, '' AS anchor, r.created_at, r.updated_at,
 		NULL AS book_file_id, '' AS locator, '' AS data, NULL AS highlight_id
@@ -74,21 +83,33 @@ FROM (
 		SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
 	))
 	AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?)
-) activity
-WHERE (? = 0 OR created_at < ? OR
+)`
+
+const personalActivityQuery = personalActivitySource + `
+SELECT kind, id, book_id, book_title, cover_sha256, content, anchor, created_at, updated_at,
+	book_file_id, locator, data, highlight_id
+FROM activity
+WHERE (? = '' OR kind = ?)
+AND (? = 0 OR created_at < ? OR
 	(created_at = ? AND (kind < ? OR (kind = ? AND id < ?))))
 ORDER BY created_at DESC, kind DESC, id DESC
 LIMIT ?`
 
 // ListPersonalActivity returns the viewer's visible reviews and live annotations newest first.
-func (s *Service) ListPersonalActivity(ctx context.Context, viewer Viewer, options PageOptions) (Page[PersonalActivity], error) {
+func (s *Service) ListPersonalActivity(ctx context.Context, viewer Viewer, options PersonalActivityOptions) (PersonalActivityPage, error) {
 	if err := checkViewer(viewer); err != nil {
-		return Page[PersonalActivity]{}, err
+		return PersonalActivityPage{}, err
+	}
+	if options.Kind != "" && !validActivityKind(options.Kind) {
+		return PersonalActivityPage{}, invalid("activity kind is invalid")
 	}
 	scope := viewerScope(viewer)
-	limit, after, err := parsePage(options, "personal_activity", scope, "created")
+	if options.Kind != "" {
+		scope += ":" + options.Kind
+	}
+	limit, after, err := parsePage(PageOptions{Limit: options.Limit, Cursor: options.Cursor}, "personal_activity", scope, "created")
 	if err != nil {
-		return Page[PersonalActivity]{}, err
+		return PersonalActivityPage{}, err
 	}
 	hasCursor := options.Cursor != ""
 	afterKind, afterID := "", ""
@@ -96,27 +117,35 @@ func (s *Service) ListPersonalActivity(ctx context.Context, viewer Viewer, optio
 		var found bool
 		afterKind, afterID, found = strings.Cut(after.Text, ":")
 		if !found || !validActivityKind(afterKind) || afterID == "" {
-			return Page[PersonalActivity]{}, invalid("activity cursor is invalid")
+			return PersonalActivityPage{}, invalid("activity cursor is invalid")
 		}
 	}
 
 	tx, err := s.reader.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return Page[PersonalActivity]{}, fmt.Errorf("begin personal activity read: %w", err)
+		return PersonalActivityPage{}, fmt.Errorf("begin personal activity read: %w", err)
 	}
 	defer tx.Rollback()
 
 	admin := adminFlag(viewer)
-	rows, err := tx.QueryContext(ctx, personalActivityQuery,
+	args := []any{
 		viewer.UserID, admin, viewer.UserID, viewer.UserID,
 		viewer.UserID, admin, viewer.UserID, viewer.UserID,
 		viewer.UserID, admin, viewer.UserID, viewer.UserID,
 		viewer.UserID, admin, viewer.UserID, viewer.UserID,
+		options.Kind, options.Kind,
+	}
+	var total int64
+	if err := tx.QueryRowContext(ctx, personalActivitySource+`
+		SELECT COUNT(*) FROM activity WHERE (? = '' OR kind = ?)`, args...).Scan(&total); err != nil {
+		return PersonalActivityPage{}, fmt.Errorf("count personal activity: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx, personalActivityQuery, append(args,
 		boolInt(hasCursor), after.Time, after.Time, afterKind, afterKind, afterID,
 		limit+1,
-	)
+	)...)
 	if err != nil {
-		return Page[PersonalActivity]{}, fmt.Errorf("query personal activity: %w", err)
+		return PersonalActivityPage{}, fmt.Errorf("query personal activity: %w", err)
 	}
 	items := make([]PersonalActivity, 0, limit+1)
 	for rows.Next() {
@@ -129,7 +158,7 @@ func (s *Service) ListPersonalActivity(ctx context.Context, viewer Viewer, optio
 		if err := rows.Scan(&item.Kind, &item.ID, &item.BookID, &item.BookTitle, &coverHash,
 			&item.Content, &item.Anchor, &createdAt, &updatedAt, &bookFileID, &locator, &data, &highlightID); err != nil {
 			_ = rows.Close()
-			return Page[PersonalActivity]{}, fmt.Errorf("scan personal activity: %w", err)
+			return PersonalActivityPage{}, fmt.Errorf("scan personal activity: %w", err)
 		}
 		item.CreatedAt = utcMillis(createdAt)
 		item.UpdatedAt = utcMillis(updatedAt)
@@ -146,7 +175,7 @@ func (s *Service) ListPersonalActivity(ctx context.Context, viewer Viewer, optio
 		if coverHash.Valid {
 			if !blobstore.ValidHash(coverHash.String) {
 				_ = rows.Close()
-				return Page[PersonalActivity]{}, fmt.Errorf("book %d has an invalid cover hash", item.BookID)
+				return PersonalActivityPage{}, fmt.Errorf("book %d has an invalid cover hash", item.BookID)
 			}
 			url := fmt.Sprintf("/api/v1/books/%d/cover", item.BookID)
 			item.CoverURL = &url
@@ -155,13 +184,13 @@ func (s *Service) ListPersonalActivity(ctx context.Context, viewer Viewer, optio
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return Page[PersonalActivity]{}, fmt.Errorf("read personal activity: %w", err)
+		return PersonalActivityPage{}, fmt.Errorf("read personal activity: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return Page[PersonalActivity]{}, fmt.Errorf("close personal activity rows: %w", err)
+		return PersonalActivityPage{}, fmt.Errorf("close personal activity rows: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return Page[PersonalActivity]{}, fmt.Errorf("commit personal activity read: %w", err)
+		return PersonalActivityPage{}, fmt.Errorf("commit personal activity read: %w", err)
 	}
 	items, next, err := paginate(items, limit, func(item PersonalActivity) cursor {
 		return cursor{
@@ -170,9 +199,9 @@ func (s *Service) ListPersonalActivity(ctx context.Context, viewer Viewer, optio
 		}
 	})
 	if err != nil {
-		return Page[PersonalActivity]{}, err
+		return PersonalActivityPage{}, err
 	}
-	return Page[PersonalActivity]{Items: items, NextCursor: next}, nil
+	return PersonalActivityPage{Page: Page[PersonalActivity]{Items: items, NextCursor: next}, Total: total}, nil
 }
 
 func validActivityKind(kind string) bool {

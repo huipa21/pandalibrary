@@ -181,6 +181,15 @@
 		void candidates.reset(query ? (cursor, signal) => searchBooks(query, { cursor, signal }) : null);
 	}
 
+	function clearCandidates() {
+		addDraft = '';
+		addQuery = '';
+		addNotice = '';
+		addError = '';
+		addValidation = '';
+		void candidates.reset(null);
+	}
+
 	async function addBook(result: SearchResult) {
 		if (!shelf || adding !== null) return;
 		const id = shelf.id;
@@ -331,6 +340,8 @@
 						bind:value={addDraft}
 						buttonLabel={m['shelves.add.submit']()}
 						disabled={candidates.status === 'loading'}
+						clear={addQuery !== '' && normalizeSearchInput(addDraft) === addQuery}
+						onclear={clearCandidates}
 					/>
 				</form>
 				{#if addValidation}<p class="text-sm text-red-700" role="alert">{addValidation}</p>{/if}

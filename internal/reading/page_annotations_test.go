@@ -62,11 +62,11 @@ func TestHighlightStylesAndLegacyUpdates(t *testing.T) {
 	push(`,"style":"underline"`, 1350, "stale")
 	push(`,"style":"unknown"`, 1500, "rejected")
 	check("highlight")
-	search, err := fixture.service.SearchAnnotations(ctx, viewer, "text")
+	search, err := fixture.service.SearchAnnotations(ctx, viewer, "text", "")
 	if err != nil || len(search) != 2 {
 		t.Fatalf("highlight search after style updates = %+v, %v", search, err)
 	}
-	search, err = fixture.service.SearchAnnotations(ctx, viewer, "companion")
+	search, err = fixture.service.SearchAnnotations(ctx, viewer, "companion", "")
 	if err != nil || len(search) != 1 || search[0].ID != noteID {
 		t.Fatalf("attached note search after style updates = %+v, %v", search, err)
 	}

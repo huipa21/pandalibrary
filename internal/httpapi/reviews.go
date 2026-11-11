@@ -25,7 +25,7 @@ func ReviewMount(service *catalog.Service, authentication *auth.Service, logger 
 }
 
 func (h *catalogHTTP) listPersonalActivity(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	values, ok := h.query(w, r, "limit", "cursor")
+	values, ok := h.query(w, r, "limit", "cursor", "kind")
 	if !ok {
 		return
 	}
@@ -33,7 +33,9 @@ func (h *catalogHTTP) listPersonalActivity(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	result, err := h.service.ListPersonalActivity(r.Context(), viewer, options)
+	result, err := h.service.ListPersonalActivity(r.Context(), viewer, catalog.PersonalActivityOptions{
+		Limit: options.Limit, Cursor: options.Cursor, Kind: values.Get("kind"),
+	})
 	if err != nil {
 		h.writeError(w, r, err)
 		return

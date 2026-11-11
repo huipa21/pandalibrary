@@ -151,7 +151,7 @@
 						required
 					/>
 				</label>
-				<button type="submit" class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-60 {focusRing}">
+				<button type="submit" class="inline-flex h-(--control-height) items-center rounded-md bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-60 {focusRing}">
 					{m['stats.range.submit']()}
 				</button>
 			</div>

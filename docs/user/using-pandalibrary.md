@@ -213,7 +213,20 @@ passages; older book notes remain private and are shown as private notes.
 
 Use the search bar at the top to search your own reviews, comments, private notes,
 highlights and inserted text, including short Chinese keywords such as “扣子”.
-The green magnifier searches; the X clears the search and restores the full feed.
+Use the **All** dropdown beside the search input to choose an annotation type.
+Like Bookheap, the dropdown and search input are separate controls with green
+focus outlines. Bookheap's status dropdown has no visible **Status** heading.
+The type filter works with or without a search and is preserved in the page URL.
+The green magnifier searches. After a search the same button becomes **✕**, as in the
+header search; select it to clear the search while keeping the selected type. Every
+search box in PandaLibrary (Bookheap, highlights, shelves, languages and the reader's
+annotation list) uses this same magnifier/✕ button, and all search boxes, dropdowns
+and toolbar buttons share one height.
+The number immediately after **Your annotations** counts the entries currently
+displayed, updating with filters, searches and **Show more**.
+The **Annotations** sidebar badge counts all your visible annotations, independent
+of these filters. The **Bookheap** badge counts all indexed items, across statuses;
+both badges show zero when empty.
 Drawings have previews but no searchable text; images also appear in the full feed.
 The full list and search results use the same cover, title, preview and colored
 category tags. Passage notes are labeled **Comment**, matching the reader toolbar.

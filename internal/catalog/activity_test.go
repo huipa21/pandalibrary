@@ -46,9 +46,12 @@ func TestListPersonalActivityNewestFirstAndPaginated(t *testing.T) {
 		if pageNumber > 5 {
 			t.Fatal("pagination did not terminate")
 		}
-		page, err := fixture.service.ListPersonalActivity(ctx, viewer, PageOptions{Limit: 2, Cursor: cursor})
+		page, err := fixture.service.ListPersonalActivity(ctx, viewer, PersonalActivityOptions{Limit: 2, Cursor: cursor})
 		if err != nil {
 			t.Fatal(err)
+		}
+		if page.Total != 4 {
+			t.Fatalf("total = %d, want 4 across all pages", page.Total)
 		}
 		got = append(got, page.Items...)
 		if page.NextCursor == nil {
@@ -76,6 +79,29 @@ func TestListPersonalActivityNewestFirstAndPaginated(t *testing.T) {
 	if len(got) != 4 {
 		t.Fatalf("got %d activities, want 4", len(got))
 	}
+	for _, kind := range []string{"review", "comment", "book_note", "highlight", "underline", "strikeout", "text", "ink", "image"} {
+		page, err := fixture.service.ListPersonalActivity(ctx, viewer, PersonalActivityOptions{Limit: 1, Kind: kind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := int64(0)
+		if kind == "review" || kind == "comment" || kind == "book_note" || kind == "highlight" {
+			want = 1
+		}
+		if page.Total != want || int64(len(page.Items)) != want || page.NextCursor != nil {
+			t.Fatalf("filtered %s = %+v, want total %d", kind, page, want)
+		}
+		if want > 0 && page.Items[0].Kind != kind {
+			t.Fatalf("filter %s returned %s", kind, page.Items[0].Kind)
+		}
+	}
+	first, err := fixture.service.ListPersonalActivity(ctx, viewer, PersonalActivityOptions{Limit: 1})
+	if err != nil || first.NextCursor == nil {
+		t.Fatalf("expected activity cursor: %+v, %v", first, err)
+	}
+	if _, err := fixture.service.ListPersonalActivity(ctx, viewer, PersonalActivityOptions{Limit: 1, Kind: "comment", Cursor: *first.NextCursor}); err == nil {
+		t.Fatal("cursor from All must not be accepted by a type filter")
+	}
 }
 
 func TestPersonalActivityIncludesInsertedTextAndDrawingsWithVisibilityAndTies(t *testing.T) {
@@ -102,20 +128,20 @@ func TestPersonalActivityIncludesInsertedTextAndDrawingsWithVisibilityAndTies(t 
 			t.Fatal(err)
 		}
 	}
-	first, err := fixture.service.ListPersonalActivity(ctx, Viewer{UserID: 2}, PageOptions{Limit: 1})
+	first, err := fixture.service.ListPersonalActivity(ctx, Viewer{UserID: 2}, PersonalActivityOptions{Limit: 1})
 	if err != nil || len(first.Items) != 1 || first.Items[0].Kind != "text" || first.NextCursor == nil {
 		t.Fatalf("first page = %+v, %v", first, err)
 	}
 	if first.Items[0].Content != "扣子已经关闭了" || !strings.Contains(string(first.Items[0].Locator), `"page":5`) {
 		t.Fatalf("inserted text = %+v", first.Items[0])
 	}
-	second, err := fixture.service.ListPersonalActivity(ctx, Viewer{UserID: 2}, PageOptions{Limit: 1, Cursor: *first.NextCursor})
+	second, err := fixture.service.ListPersonalActivity(ctx, Viewer{UserID: 2}, PersonalActivityOptions{Limit: 1, Cursor: *first.NextCursor})
 	if err != nil || len(second.Items) != 1 || second.Items[0].Kind != "ink" || second.NextCursor != nil ||
 		!strings.Contains(string(second.Items[0].Data), `"strokes"`) {
 		t.Fatalf("drawing page = %+v, %v", second, err)
 	}
 	// Admin access still never includes other users' annotations.
-	admin, err := fixture.service.ListPersonalActivity(ctx, Viewer{UserID: 1, IsAdmin: true}, PageOptions{})
+	admin, err := fixture.service.ListPersonalActivity(ctx, Viewer{UserID: 1, IsAdmin: true}, PersonalActivityOptions{})
 	if err != nil || len(admin.Items) != 1 || admin.Items[0].Content != "someone else's" {
 		t.Fatalf("admin activity = %+v, %v", admin, err)
 	}
@@ -127,10 +153,11 @@ func TestListPersonalActivityRejectsInvalidViewerAndCursor(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		viewer Viewer
-		page   PageOptions
+		page   PersonalActivityOptions
 	}{
-		{name: "viewer", page: PageOptions{}},
-		{name: "cursor", viewer: Viewer{UserID: 2}, page: PageOptions{Cursor: "eyJ2IjoxLCJrIjoicGVyc29uYWxfYWN0aXZpdHkiLCJzIjoiMjpmYWxzZSIsIm8iOiJjcmVhdGVkIiwiaSI6MSwidCI6ImJhZDogMSIsImQiOjF9"}},
+		{name: "viewer", page: PersonalActivityOptions{}},
+		{name: "kind", viewer: Viewer{UserID: 2}, page: PersonalActivityOptions{Kind: "invalid"}},
+		{name: "cursor", viewer: Viewer{UserID: 2}, page: PersonalActivityOptions{Cursor: "eyJ2IjoxLCJrIjoicGVyc29uYWxfYWN0aXZpdHkiLCJzIjoiMjpmYWxzZSIsIm8iOiJjcmVhdGVkIiwiaSI6MSwidCI6ImJhZDogMSIsImQiOjF9"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := fixture.service.ListPersonalActivity(ctx, test.viewer, test.page); err == nil {

@@ -5,6 +5,7 @@
 	import { homeNavigationFor, isActive, navigationFor, type NavigationItem } from '#lib/nav.js';
 	import BookheapCount from '#lib/bookheap/BookheapCount.svelte';
 	import AllBooksCount from '#lib/catalog/AllBooksCount.svelte';
+	import AnnotationsCount from '#lib/notes/AnnotationsCount.svelte';
 	import { requestDashboardConfigure } from '#lib/dashboard/configure.svelte.js';
 	import SidebarShelves from './SidebarShelves.svelte';
 
@@ -38,6 +39,9 @@
 					{:else if item.id === 'books'}
 						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
 						<AllBooksCount {pathname} />
+					{:else if item.id === 'notes'}
+						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
+						<AnnotationsCount {pathname} />
 					{:else}
 						{item.label()}
 					{/if}

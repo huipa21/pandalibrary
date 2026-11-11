@@ -72,6 +72,8 @@
 					label={m['hm1.language.search']()}
 					placeholder={m['hm1.language.search']()}
 					bind:value={query}
+					clear={query !== ''}
+					onclear={() => (query = '')}
 				/>
 			</form>
 
