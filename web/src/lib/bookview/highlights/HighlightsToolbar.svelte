@@ -2,6 +2,8 @@
 	import { onDestroy, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import Icon from '../Icon.svelte';
+	import { filterControlClass } from '#lib/catalog/filter-styles.js';
+	import SearchField from '#lib/search/SearchField.svelte';
 	import { colorTone, MARK_SORTS, sortColorOptions, type ColorCount, type MarkSort } from './highlights-model.js';
 	import { colorName } from './labels.js';
 	import type { HighlightStyle } from '#lib/reader/types.js';
@@ -75,6 +77,11 @@
 		timer = setTimeout(() => onQuery(draft.trim()), SEARCH_DELAY_MS);
 	}
 
+	function searchNow() {
+		clearTimeout(timer);
+		onQuery(draft.trim());
+	}
+
 	function closeFilters(restoreFocus: boolean) {
 		filtersOpen = false;
 		if (restoreFocus) filtersButton?.focus();
@@ -106,18 +113,14 @@
 </script>
 
 <div class="flex flex-wrap items-center gap-2">
-	<label class="relative min-w-48 flex-1">
-		<span class="sr-only">{m['bv9.search_label']()}</span>
-		<Icon name="search" class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
-		<input
-			type="search"
-			class="w-full rounded-md border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm {focusRing}"
+	<form class="min-w-48 flex-1" role="search" onsubmit={(event) => { event.preventDefault(); searchNow(); }}>
+		<SearchField
+			label={m['bv9.search_label']()}
 			placeholder={m['bv9.search_placeholder']()}
-			autocomplete="off"
 			bind:value={draft}
 			oninput={onInput}
 		/>
-	</label>
+	</form>
 
 	<button
 		type="button"
@@ -132,7 +135,7 @@
 	<label class="sr-only" for="highlights-sort">{m['bv9.sort_label']()}</label>
 	<select
 		id="highlights-sort"
-		class="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm {focusRing}"
+		class={filterControlClass}
 		value={sort}
 		onchange={(event) => onSort(event.currentTarget.value as MarkSort)}
 	>

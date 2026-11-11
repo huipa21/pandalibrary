@@ -13,5 +13,5 @@
 
 <section class="space-y-8">
 	<h1 class="sr-only">{m['ux1.books.title']()}</h1>
-	<BookBrowser {scope} showHeading={false} />
+	<BookBrowser {scope} showHeading={false} rememberSettings />
 </section>

@@ -176,6 +176,62 @@ test('All Books uses the standard tile grid', async ({ page }) => {
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
 });
 
+test('All Books remembers filters, sort, and view until manually changed', async ({ page }) => {
+	await authenticate(page);
+	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	for (const entity of ['authors', 'series', 'tags']) {
+		await page.route(`**/api/v1/${entity}**`, (route) => route.fulfill({
+			json: { items: [{ id: 4, name: `Saved ${entity}`, visible_book_count: 1 }], next_cursor: null }
+		}));
+	}
+	const queries: URLSearchParams[] = [];
+	await page.route('**/api/v1/books?*', (route) => {
+		queries.push(new URL(route.request().url()).searchParams);
+		return route.fulfill({ json: { items: [], next_cursor: null } });
+	});
+
+	await page.goto('/books');
+	await page.locator('#filter-author').selectOption('4');
+	await page.locator('#filter-series').selectOption('4');
+	await page.locator('#filter-tag').selectOption('4');
+	await page.locator('#sort-books').selectOption('series');
+	await page.locator('button[data-view="grid"]').click();
+	await expect(page.locator('button[data-view="list"]')).toBeVisible();
+
+	await page.getByRole('link', { name: 'Libraries', exact: true }).click();
+	await expect(page).toHaveURL(/\/libraries$/);
+	await page.getByRole('link', { name: /^All Books/ }).click();
+	await expect(page.locator('#filter-author')).toHaveValue('4');
+	await expect(page.locator('#filter-series')).toHaveValue('4');
+	await expect(page.locator('#filter-tag')).toHaveValue('4');
+	await expect(page.locator('#sort-books')).toHaveValue('series');
+	await expect(page.locator('button[data-view="list"]')).toBeVisible();
+	await expect.poll(() => queries.at(-1)?.get('tag_id')).toBe('4');
+
+	await page.reload();
+	await expect(page.locator('button[data-view="list"]')).toBeVisible();
+	await page.getByRole('button', { name: 'Clear filters' }).click();
+	await expect(page.locator('#filter-author')).toHaveValue('');
+	await expect(page.locator('#filter-series')).toHaveValue('');
+	await expect(page.locator('#filter-tag')).toHaveValue('');
+	await expect(page.locator('#sort-books')).toHaveValue('title');
+	await page.goto('/libraries');
+	await page.getByRole('link', { name: /^All Books/ }).click();
+	await expect(page.locator('#filter-tag')).toHaveValue('');
+	await expect(page.locator('#sort-books')).toHaveValue('title');
+	await expect(page.locator('button[data-view="list"]')).toBeVisible();
+
+	await page.goto('/books?author_id=4&sort=added');
+	await expect(page.locator('#filter-author')).toHaveValue('4');
+	await expect(page.locator('#sort-books')).toHaveValue('added');
+	await expect(page.locator('#filter-tag')).toHaveValue('');
+	await page.locator('button[data-view="list"]').click();
+	await page.goto('/books');
+	await expect(page.locator('#filter-author')).toHaveValue('4');
+	await expect(page.locator('#sort-books')).toHaveValue('added');
+	await expect(page.locator('button[data-view="grid"]')).toBeVisible();
+});
+
 test('All Books sidebar entry shows the visible book count and refreshes on change events', async ({ page }) => {
 	await authenticate(page);
 	let response: { status: number; count: number } = { status: 200, count: 12 };

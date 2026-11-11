@@ -142,7 +142,6 @@ export function originLabel(href: string): string | null {
 	if (pathname === '/books') return m['bd1.origin.all_books']();
 	if (pathname === '/search') return m['bd1.origin.search']();
 	if (pathname === '/bookheap') return m['bd1.origin.bookheap']();
-	if (pathname === '/bookmarks') return m['bd1.origin.bookmarks']();
 	if (pathname === '/notes') return m['bd1.origin.notes']();
 	const section = /^\/(shelves|authors|series|tags|library)\/[^/]/.exec(pathname)?.[1];
 	switch (section) {

@@ -61,6 +61,12 @@ body {
 	min-width: 20rem;
 }
 
+/* Reserve native scrollbar space without narrowing the full-screen reader. */
+:root:has(.shell-body) {
+	scrollbar-gutter: stable;
+	background: var(--shell-bg);
+}
+
 @layer components {
 	/* Top-level content surface. Inside `.app-panel` the dark theme remaps white/slate-200 to surface tokens. */
 	.card {
@@ -427,7 +433,6 @@ body {
 }
 
 .header-menu-item:focus-visible,
-.language-search input:focus-visible,
 .language-option:focus-visible {
 	outline: 2px solid var(--color-shell-accent);
 	outline-offset: 1px;
@@ -442,31 +447,6 @@ body {
 	max-height: calc(24rem - 1rem);
 	flex-direction: column;
 	gap: 0.625rem;
-}
-
-.language-search {
-	display: flex;
-	min-height: 2.5rem;
-	align-items: center;
-	gap: 0.5rem;
-	border: 1px solid var(--shell-border);
-	border-radius: 0.5rem;
-	padding: 0 0.625rem;
-	color: var(--shell-muted);
-}
-
-.language-search input {
-	width: 100%;
-	min-width: 0;
-	border: 0;
-	background: transparent;
-	color: var(--shell-text);
-	font: inherit;
-	outline: none;
-}
-
-.language-search input::placeholder {
-	color: var(--shell-muted);
 }
 
 .language-section {
@@ -515,14 +495,14 @@ body {
 	font-size: 0.875rem;
 }
 
-.shell-search input {
+.site-search-input {
 	min-width: 4rem;
-	border-color: var(--shell-hover);
+	border-color: var(--shell-border);
 	background-color: var(--shell-surface);
 	color: var(--shell-text);
 }
 
-.shell-search input::placeholder {
+.site-search-input::placeholder {
 	color: var(--shell-muted);
 }
 
@@ -531,7 +511,7 @@ body {
 	color: #ffffff;
 }
 
-.shell-search input:focus-visible,
+.site-search-input:focus-visible,
 .shell-search-submit:focus-visible {
 	outline-color: var(--color-shell-accent);
 }

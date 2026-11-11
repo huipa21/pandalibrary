@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } });
+
 async function authenticate(page: Page, role = 'user', locale = 'en') {
 	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
@@ -103,6 +105,7 @@ test('header and sidebar float as matching panels, content cards sit on an invis
 				if (!(body instanceof HTMLElement)) throw new Error('The shell body is missing');
 				return {
 					gap: parseFloat(getComputedStyle(body).gap),
+					layoutRight: document.documentElement.getBoundingClientRect().right,
 					pageBackground: getComputedStyle(document.querySelector('.app-shell')!).backgroundColor,
 					band: measure('.shell-header-band'),
 					header: measure('.shell-header'),
@@ -112,7 +115,7 @@ test('header and sidebar float as matching panels, content cards sit on an invis
 			});
 			expect(metrics.header.left).toBe(metrics.gap);
 			expect(metrics.header.top).toBe(metrics.gap);
-			expect(metrics.header.right).toBe(width - metrics.gap);
+			expect(metrics.header.right).toBe(metrics.layoutRight - metrics.gap);
 			expect(metrics.sidebar.left).toBe(metrics.header.left);
 			expect(metrics.sidebar.top - metrics.header.bottom).toBe(metrics.gap);
 			expect(metrics.band.bottom).toBe(metrics.sidebar.top);
@@ -170,6 +173,55 @@ test('header and sidebar float as matching panels, content cards sit on an invis
 	expect(tabsBox.y).toBe(band.y + band.height);
 });
 
+test('sidebar navigation keeps shell geometry stable between scrolling and non-scrolling pages', async ({ page }) => {
+	await authenticate(page);
+	await mockCatalog(page);
+	await page.route('**/api/v1/authors?*', (route) => route.fulfill({ json: {
+		items: Array.from({ length: 40 }, (_, index) => ({
+			id: index + 1, name: `Writer ${index + 1}`, visible_book_count: 1
+		})),
+		next_cursor: null
+	} }));
+
+	const geometry = () => page.evaluate(() => {
+		const measure = (selector: string) => {
+			const element = document.querySelector(selector);
+			if (!(element instanceof HTMLElement)) throw new Error(`Missing shell element: ${selector}`);
+			const { x, y, width, height } = element.getBoundingClientRect();
+			return { x, y, width, height };
+		};
+		const { x, y, width } = measure('#main-content');
+		return {
+			header: measure('.shell-header'),
+			sidebar: measure('#app-sidebar'),
+			content: { x, y, width }
+		};
+	});
+	const scrolls = () => page.evaluate(() =>
+		document.documentElement.scrollHeight > document.documentElement.clientHeight
+	);
+
+	for (const width of [1024, 1280, 1600]) {
+		await page.setViewportSize({ width, height: 900 });
+		await page.goto('/books');
+		await expect(page.getByTitle('A Book', { exact: true })).toBeVisible();
+		await expect.poll(scrolls).toBe(false);
+		const shortPage = await geometry();
+
+		const navigation = page.getByRole('navigation', { name: 'Main navigation' });
+		await navigation.getByRole('link', { name: 'Authors', exact: true }).click();
+		await expect(page.getByRole('main').getByRole('link', { name: 'Writer 40', exact: true })).toBeAttached();
+		await expect.poll(scrolls).toBe(true);
+		expect(await geometry()).toEqual(shortPage);
+		await expectNoHorizontalOverflow(page);
+
+		await navigation.getByRole('link', { name: 'All Books' }).click();
+		await expect(page.getByTitle('A Book', { exact: true })).toBeVisible();
+		await expect.poll(scrolls).toBe(false);
+		expect(await geometry()).toEqual(shortPage);
+	}
+});
+
 test('desktop sidebar lists HOME links, shelves, and All Books across every library', async ({ page }) => {
 	await authenticate(page);
 	const bookQueries = await mockCatalog(page);
@@ -180,7 +232,8 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 	await expect(sidebar).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeHidden();
 	const home = sidebar.getByRole('region', { name: 'Home' }).getByRole('link');
-	await expect(home).toHaveText(['Dashboard', 'All Books', 'Bookmarks', 'Annotations']);
+	await expect(home).toHaveText(['Dashboard', 'All Books', 'Annotations']);
+	await expect(sidebar.locator('a[href="/bookmarks"]')).toHaveCount(0);
 	await expect(sidebar.getByRole('link', { name: 'All Books' })).toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0);
@@ -241,7 +294,8 @@ test('administrators see the Admin entry with localized Chinese navigation', asy
 	await authenticate(page, 'admin', 'zh');
 	await page.goto('/');
 	const sidebar = page.getByRole('navigation', { name: '主导航' });
-	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', /^书堆/, '书签', '批注']);
+	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', /^书堆/, '批注']);
+	await expect(sidebar.locator('a[href="/bookmarks"]')).toHaveCount(0);
 	await expect(sidebar.getByRole('link', { name: /^书堆/ })).toHaveAttribute('href', '/bookheap');
 	await expect(sidebar.getByRole('link', { name: '管理', exact: true })).toHaveAttribute('href', '/admin');
 	await sidebar.getByRole('button', { name: '书架操作' }).click();
@@ -293,6 +347,7 @@ test('mobile drawer toggles by keyboard, traps focus, closes on Escape and navig
 	await expect(close).toHaveAttribute('aria-expanded', 'true');
 	const drawer = page.getByRole('dialog', { name: 'Sidebar' });
 	await expect(drawer).toBeVisible();
+	await expect(drawer.locator('a[href="/bookmarks"]')).toHaveCount(0);
 	const [headerBox, drawerBox] = await Promise.all([
 		page.getByRole('banner').boundingBox(), drawer.boundingBox()
 	]);
@@ -393,6 +448,7 @@ test('language selection persists through the profile API and shows local-only f
 		await route.fulfill({ json: { user: { id: 1, username: 'reader', display_name: 'Reader', role: 'user', locale: selectedLocale } } });
 	});
 	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
 	await page.getByRole('button', { name: 'Language' }).click();
 	await expect(page.getByRole('dialog', { name: 'Language' })).toBeVisible();
 	const search = page.getByRole('searchbox', { name: 'Search languages' });
@@ -436,6 +492,7 @@ test('theme choice persists and avatar menu supports keyboard navigation', async
 	await authenticate(page);
 	await page.emulateMedia({ colorScheme: 'light' });
 	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
 	const theme = page.getByRole('button', { name: 'Switch to dark mode' });
 	const panel = page.locator('.app-panel');
 	const surfaces = () => panel.evaluate((element) => {

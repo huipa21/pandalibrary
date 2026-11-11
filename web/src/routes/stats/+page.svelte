@@ -5,6 +5,7 @@
 	import { ApiError } from '#lib/api/client.js';
 	import { requestErrorKind } from '#lib/paging/errors.js';
 	import { translate } from '#lib/paging/translate.js';
+	import { filterControlClass } from '#lib/catalog/filter-styles.js';
 	import BarChart from '#lib/stats/BarChart.svelte';
 	import {
 		browserTimeZone,
@@ -110,8 +111,6 @@
 		}
 	}
 
-	const inputClass =
-		'rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900';
 	const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900';
 </script>
 
@@ -131,7 +130,7 @@
 					<input
 						id="stats-from"
 						type="date"
-						class={inputClass}
+						class={filterControlClass}
 						bind:value={from}
 						max={to || undefined}
 						aria-invalid={issue === 'invalid_from' || issue === 'reversed' || issue === 'too_long' ? 'true' : undefined}
@@ -144,7 +143,7 @@
 					<input
 						id="stats-to"
 						type="date"
-						class={inputClass}
+						class={filterControlClass}
 						bind:value={to}
 						min={from || undefined}
 						aria-invalid={issue === 'invalid_to' || issue === 'reversed' || issue === 'too_long' ? 'true' : undefined}

@@ -161,7 +161,7 @@ test('administrators see Bookheap in HOME, an empty heap, and a scan that refres
 
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	const home = sidebar.getByRole('region', { name: 'Home' }).getByRole('link');
-	await expect(home).toHaveText(['Dashboard', 'All Books', /^Bookheap/, 'Bookmarks', 'Annotations']);
+	await expect(home).toHaveText(['Dashboard', 'All Books', /^Bookheap/, 'Annotations']);
 	await expect(sidebar.getByRole('link', { name: /^Bookheap/ })).toHaveAttribute('aria-current', 'page');
 	await expect(page).toHaveTitle(/^Bookheap ·/);
 	await expect(page.getByRole('heading', { level: 1, name: 'Bookheap' })).toBeVisible();
@@ -237,13 +237,13 @@ for (const view of ['grid', 'list'] as const) {
 		await expect(rows).toHaveCount(4, { timeout: 15_000 });
 		await expect(page.getByTestId('bh4-total')).toContainText('Files: 4');
 
-		await main.getByLabel('Search').fill('ready 5');
+		await main.getByRole('searchbox', { name: 'Search', exact: true }).fill('ready 5');
 		await expect(page).toHaveURL(/status=ready/);
 		await expect(page).toHaveURL(/q=ready\+5/);
 		await main.getByLabel('Status').selectOption('');
 		await expect(page).not.toHaveURL(/status=/);
 		await expect(page).toHaveURL(/q=ready\+5/);
-		await main.getByLabel('Search').fill('nothing here');
+		await main.getByRole('searchbox', { name: 'Search', exact: true }).fill('nothing here');
 		await expect(main.getByText('No files match these filters.')).toBeVisible();
 		await main.getByRole('button', { name: 'Clear filters' }).first().click();
 		await expect(page).toHaveURL(/\/bookheap$/);
@@ -251,7 +251,7 @@ for (const view of ['grid', 'list'] as const) {
 
 		await page.goto('/bookheap?status=duplicate&q=twin');
 		await expect(rows).toHaveCount(1);
-		await expect(main.getByLabel('Search')).toHaveValue('twin');
+		await expect(main.getByRole('searchbox', { name: 'Search', exact: true })).toHaveValue('twin');
 		expect(heap.listQueries.some((query) => query.includes('status=duplicate') && query.includes('q=twin'))).toBe(true);
 	});
 }
@@ -486,7 +486,7 @@ test('readers do not see Bookheap and are told the page is for administrators', 
 	await page.goto('/bookheap');
 	await expect(page.getByRole('alert')).toContainText(/administrator/i);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await expect(sidebar.getByRole('region', { name: 'Home' }).getByRole('link')).toHaveText(['Dashboard', 'All Books', 'Bookmarks', 'Annotations']);
+	await expect(sidebar.getByRole('region', { name: 'Home' }).getByRole('link')).toHaveText(['Dashboard', 'All Books', 'Annotations']);
 	await expect(page.getByTestId('bh4-row')).toHaveCount(0);
 	expect(requests).toEqual([]);
 });

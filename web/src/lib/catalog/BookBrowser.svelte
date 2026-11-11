@@ -5,6 +5,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { catalogErrorMessage } from './errors.js';
 	import { listAllEntities, listBooks } from './api.js';
+	import { filterControlClass } from './filter-styles.js';
 	import { allowsCatalogFilters, bookFiltersFromSearch, bookPageOptions, hasNextPage, selectedSort, setCatalogFilter } from './query.js';
 	import type { Book, BookFilters, BookSort, CatalogEntity, EntityKind } from './types.js';
 	import BookCard from './BookCard.svelte';
@@ -12,7 +13,11 @@
 	import ViewToggle from './ViewToggle.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 
-	let { scope, showHeading = true }: { scope: BookFilters; showHeading?: boolean } = $props();
+	let { scope, showHeading = true, rememberSettings = false }: { scope: BookFilters; showHeading?: boolean; rememberSettings?: boolean } = $props();
+	const filtersKey = 'pandalibrary.books.filters';
+	const viewKey = 'pandalibrary.books.view';
+	const settingKeys = ['author_id', 'series_id', 'tag_id', 'sort'] as const;
+	let settingsReady = $state(false);
 	let books = $state<Book[]>([]);
 	let nextCursor = $state<string | null>(null);
 	let loading = $state(true);
@@ -44,11 +49,51 @@
 
 	onMount(() => {
 		if (filterable) void loadFilterOptions();
+		void restoreSettings();
+	});
+
+	async function restoreSettings() {
+		try {
+			if (rememberSettings) {
+				const savedMode = localStorage.getItem(viewKey);
+				if (savedMode === 'grid' || savedMode === 'list') mode = savedMode;
+				const savedFilters = localStorage.getItem(filtersKey);
+				if (savedFilters && !settingKeys.some((key) => page.url.searchParams.has(key))) {
+					const params = new URLSearchParams(page.url.searchParams.toString());
+					const saved = new URLSearchParams(savedFilters);
+					for (const key of settingKeys) {
+						const value = saved.get(key);
+						if (value) params.set(key, value);
+					}
+					if (params.toString() !== page.url.searchParams.toString()) {
+						await goto(`${page.url.pathname}?${params}`, { replaceState: true });
+					}
+				}
+			}
+		} catch {
+		} finally {
+			settingsReady = true;
+		}
+	}
+
+	$effect(() => {
+		if (!rememberSettings || !settingsReady || page.url.pathname !== '/books') return;
+		const params = new URLSearchParams();
+		for (const key of settingKeys) {
+			const value = page.url.searchParams.get(key);
+			if (value) params.set(key, value);
+		}
+		try {
+			localStorage.setItem(filtersKey, params.toString());
+			localStorage.setItem(viewKey, mode);
+		} catch {
+		}
 	});
 
 	$effect(() => { if (!loading && !error) rememberBrowseContext({ ids: books.map((book) => book.id), label: document.querySelector('main h1')?.textContent?.trim() || m['catalog.books.title'](), href: `${page.url.pathname}${page.url.search}` }); });
 
 	$effect(() => {
+		if (!settingsReady) return;
 		const search = page.url.searchParams.toString();
 		const currentScope = scope;
 		const refresh = reloadVersion;
@@ -162,7 +207,7 @@
 						<span>{m['catalog.books.author_filter']()}</span>
 						<select
 							id="filter-author"
-							class="min-w-40 rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+							class="{filterControlClass} min-w-40"
 							disabled={optionsLoading || Boolean(optionsError)}
 							value={selectedAuthor}
 							onchange={(event) => changeQuery('author_id', event.currentTarget.value)}
@@ -177,7 +222,7 @@
 						<span>{m['catalog.books.series_filter']()}</span>
 						<select
 							id="filter-series"
-							class="min-w-40 rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+							class="{filterControlClass} min-w-40"
 							disabled={optionsLoading || Boolean(optionsError)}
 							value={selectedSeries}
 							onchange={(event) => changeQuery('series_id', event.currentTarget.value)}
@@ -192,7 +237,7 @@
 						<span>{m['catalog.books.tag_filter']()}</span>
 						<select
 							id="filter-tag"
-							class="min-w-40 rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+							class="{filterControlClass} min-w-40"
 							disabled={optionsLoading || Boolean(optionsError)}
 							value={selectedTag}
 							onchange={(event) => changeQuery('tag_id', event.currentTarget.value)}
@@ -209,7 +254,7 @@
 				<span>{m['catalog.books.sort']()}</span>
 				<select
 					id="sort-books"
-					class="rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+					class={filterControlClass}
 					value={sort}
 					onchange={(event) => changeQuery('sort', event.currentTarget.value)}
 				>

@@ -26,7 +26,7 @@ Installation, configuration, backups and upgrades are in the
 | Libraries, Authors, Series, Tags | Sidebar → **Browse** | Browse the catalog by collection |
 | Book page | Open any book | Details, reading status, rating, reviews, shelves, files, activity and highlights |
 | Reader | **Read** on a book | Read in the browser and add highlights, passage comments and bookmarks |
-| Bookmarks | Sidebar → **Bookmarks** | Saved reading positions across all books |
+| Bookmarks | Open a book in the reader | Saved reading positions for that book |
 | Annotations | Sidebar → **Annotations** | Reviews, comments, highlights, inserted text and drawings in date order; consistent search results and direct navigation |
 | Shelves | Sidebar → shelf list | Favorites, your own manual shelves and automatic (rule-based) shelves |
 | Search | Header search, or Sidebar → **Search** | Find books by title, author or series |

@@ -6,9 +6,11 @@
 	import { translate } from '#lib/paging/translate.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
 	import { BoundedPoller } from '#lib/admin/poller.js';
-	import { focusRing, inputClass, primaryButton, dangerButton, linkClass } from '#lib/admin/ui.js';
+	import { focusRing, primaryButton, dangerButton, linkClass } from '#lib/admin/ui.js';
 	import ClearFiltersButton from '#lib/catalog/ClearFiltersButton.svelte';
 	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
+	import { filterControlClass } from '#lib/catalog/filter-styles.js';
+	import SearchField from '#lib/search/SearchField.svelte';
 	import AssignDialog from './AssignDialog.svelte';
 	import DeleteDialog from './DeleteDialog.svelte';
 	import HeapItemRow from './HeapItemRow.svelte';
@@ -222,23 +224,20 @@
 		<form class="flex flex-wrap items-end gap-3" role="search" onsubmit={submitSearch}>
 			<label class="grid gap-1 text-sm font-medium">
 				<span>{m['bh4.filter.status']()}</span>
-				<select class={inputClass} value={query.status} onchange={(event) => changeStatus(event.currentTarget.value)}>
+				<select class="{filterControlClass} min-w-40" value={query.status} onchange={(event) => changeStatus(event.currentTarget.value)}>
 					{#each statusOptions as option (option.value)}
 						<option value={option.value}>{option.label()}</option>
 					{/each}
 				</select>
 			</label>
-			<label class="grid min-w-40 flex-1 gap-1 text-sm font-medium sm:max-w-sm">
-				<span>{m['bh4.filter.search']()}</span>
-				<input
-					class={`${inputClass} w-full min-w-0`}
-					type="search"
-					maxlength={MAX_HEAP_QUERY_LENGTH}
-					placeholder={m['bh4.filter.search_placeholder']()}
-					bind:value={searchText}
-					oninput={onSearchInput}
-				/>
-			</label>
+			<SearchField
+				class="min-w-52 flex-1 sm:max-w-sm"
+				label={m['bh4.filter.search']()}
+				maxlength={MAX_HEAP_QUERY_LENGTH}
+				placeholder={m['bh4.filter.search_placeholder']()}
+				bind:value={searchText}
+				oninput={onSearchInput}
+			/>
 			<ScanControl controller={scan} />
 			<ViewToggle {view} onchange={changeView} />
 			{#if filtered}

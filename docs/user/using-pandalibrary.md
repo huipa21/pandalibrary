@@ -8,6 +8,9 @@ only in the header; the sidebar has no Search entry. The sidebar holds
 navigation and your shelves; on small screens it opens as a drawer from the
 menu button. Select the PandaLibrary logo to return to the dashboard.
 
+The header, sidebar and main content keep the same width and position when
+switching between pages with and without a vertical scrollbar.
+
 ## Dashboard
 
 The dashboard is your home page. It shows reading feeds such as Continue
@@ -194,9 +197,11 @@ OCR models to have been downloaded beforehand.
 
 ## Bookmarks
 
-The **Bookmarks** page lists your saved positions across all books. Open,
-rename or delete them there. A bookmark is not opened if its original file is
-no longer available.
+Bookmarks stay with their book. Open the book in the reader to jump to, rename
+or delete its saved positions. For PDFs, use the **Bookmarks** tab in the
+reader's left rail; other formats have a **Bookmarks** section in the reader.
+A bookmark can be opened only in its original file. Older links to the former
+Bookmarks page now open **All Books**.
 
 ## Annotations, reviews and comments
 
@@ -206,9 +211,9 @@ in newest-first order, with a small cover for each book. Reviews are also
 available on the book's **Details** tab. Comments stay attached to their
 passages; older book notes remain private and are shown as private notes.
 
-Use **Search annotations** to search your own reviews, comments, private notes,
+Use the search bar at the top to search your own reviews, comments, private notes,
 highlights and inserted text, including short Chinese keywords such as “扣子”.
-The magnifier searches; the X clears the search and restores the full feed.
+The green magnifier searches; the X clears the search and restores the full feed.
 Drawings have previews but no searchable text; images also appear in the full feed.
 The full list and search results use the same cover, title, preview and colored
 category tags. Passage notes are labeled **Comment**, matching the reader toolbar.

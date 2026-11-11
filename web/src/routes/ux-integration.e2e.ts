@@ -52,6 +52,14 @@ async function importBook(page: Page, name: string, bytes: Buffer) {
 	return { bookID, fileID: book.files[0].id, libraryID: library.id, title: book.title };
 }
 
+async function expectEpubSection(page: Page, title: string) {
+	await expect(async () => {
+		const frames = page.frames().filter((frame) => frame.url().startsWith('blob:'));
+		const visible = await Promise.all(frames.map((frame) => frame.getByRole('heading', { name: title, exact: true }).isVisible()));
+		expect(visible).toContain(true);
+	}).toPass({ timeout: 10_000 });
+}
+
 test('real accounts lifecycle, selectors, denied access and self credential retirement', async ({ page, browser }, info) => {
 	test.setTimeout(150_000);
 	await signInRealAdmin(page);
@@ -157,38 +165,47 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 	}
 });
 
-test('real PDF and CFI bookmarks jump, rename, survive offline reload and propagate to another session', async ({ page, context, browser }, info) => {
+test('book-scoped PDF and CFI bookmarks jump, rename, survive offline reload and sync', async ({ page, context, browser }, info) => {
 	test.setTimeout(150_000);
 	await signInRealAdmin(page);
 	const pdf = await importBook(page, 'UXPDF', pdfFixture());
 	const epub = await importBook(page, 'UXEPUB', epubFixture('UX EPUB Fixture'));
 	await page.goto(`/read/${pdf.bookID}/${pdf.fileID}`);
 	await openedPdf(page, 1, 'First PDF page text');
-	await bookmarkPdfSelection(page, 'First PDF page text', 'PDF saved page');
+	const pdfBookmark = await bookmarkPdfSelection(page, 'First PDF page text', 'PDF saved page');
 	await page.goto(`/read/${epub.bookID}/${epub.fileID}`);
 	await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeEnabled();
 	await page.getByRole('button', { name: 'Save position', exact: true }).click();
 	await page.getByLabel('Label (optional)').fill('CFI saved position');
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByText('Bookmark saved.', { exact: true })).toBeVisible();
-	await page.goto('/bookmarks');
-	await expect(page.getByText('CFI saved position', { exact: true })).toBeVisible();
-	await expect(page.getByText('PDF saved page', { exact: true })).toBeVisible();
-	await page.screenshot({ path: info.outputPath('bookmarks-populated.png'), fullPage: true });
-	const pdfItem = page.getByRole('listitem').filter({ hasText: 'PDF saved page' });
-	await pdfItem.getByRole('link', { name: 'Open bookmark' }).click();
+	const epubBookmarks = page.locator('section[aria-labelledby="bookmarks-heading"]');
+	await expect(epubBookmarks.getByRole('option', { name: 'CFI saved position' })).toHaveCount(1);
+	await expect(epubBookmarks.getByRole('option', { name: 'PDF saved page' })).toHaveCount(0);
+	await expectEpubSection(page, 'First section');
+	await page.getByRole('slider', { name: 'Reading position' }).evaluate((element: HTMLInputElement) => {
+		element.value = '1000';
+		element.dispatchEvent(new Event('change', { bubbles: true }));
+	});
+	await expectEpubSection(page, 'Second section');
+	await page.getByLabel('Jump to bookmark').selectOption({ label: 'CFI saved position' });
+	await expectEpubSection(page, 'First section');
+	await page.goto(`/read/${pdf.bookID}/${pdf.fileID}`);
 	await openedPdf(page, 1, 'First PDF page text');
-	await jumpToPdfPage(page, 2);
 	const panel = await openBookmarksPanel(page);
-	await renamePdfBookmark(panel.locator('[data-bookmark-id]').filter({ hasText: 'PDF saved page' }).first(), 'PDF renamed');
+	const pdfItem = panel.locator(`[data-bookmark-id="${pdfBookmark}"]`);
+	await expect(pdfItem).toContainText('PDF saved page');
+	await expect(panel).not.toContainText('CFI saved position');
+	await page.screenshot({ path: info.outputPath('reader-bookmarks-populated.png'), fullPage: true });
+	await jumpToPdfPage(page, 2);
+	await renamePdfBookmark(pdfItem, 'PDF renamed');
 	// Renaming must not move the saved position to page two.
-	await page.goto('/bookmarks');
-	await page.getByRole('listitem').filter({ hasText: 'PDF renamed' }).getByRole('link', { name: 'Open bookmark' }).click();
-	await openedPdf(page, 1, 'First PDF page text');
+	await pdfItem.locator('[data-bookmark-jump]').click();
 	await expect(pdfPageBox(page)).toHaveValue('1');
-	await page.goto('/bookmarks');
-	await page.getByRole('listitem').filter({ hasText: 'CFI saved position' }).getByRole('link', { name: 'Open bookmark' }).click();
+	await page.goto(`/read/${epub.bookID}/${epub.fileID}`);
 	await expect(page.getByRole('button', { name: 'Next page', exact: true })).toBeEnabled();
+	await expect(page.getByLabel('Jump to bookmark').getByRole('option', { name: 'CFI saved position' })).toHaveCount(1);
+	await page.getByLabel('Jump to bookmark').selectOption({ label: 'CFI saved position' });
 	await expect.poll(() => page.frames().some((frame) => frame.url().startsWith('blob:'))).toBe(true);
 	await page.goto(`/books/${pdf.bookID}/files`);
 	const filePanel = page.getByRole('region', { name: 'This file' });
@@ -218,29 +235,33 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 	await page.reload();
 	await openedPdf(page);
 	await expect((await openBookmarksPanel(page)).getByText('Offline page two', { exact: true })).toBeVisible();
-	await page.goto('/bookmarks');
-	await expect(page.getByText('Offline page two', { exact: true })).toBeVisible();
 	await context.setOffline(false);
 	await expect.poll(async () => {
-		const result = await page.request.get('/api/v1/me/bookmarks');
-		const data = await result.json() as { items: Array<{ label: string }> };
-		return data.items.some((item) => item.label === 'Offline page two');
+		const result = await page.request.get(`/api/v1/me/books/${pdf.bookID}`);
+		expect(result.ok()).toBe(true);
+		const data = await result.json() as { bookmarks: Array<{ id: string; label: string }> };
+		return data.bookmarks.some((item) => item.id === offlineBookmark && item.label === 'Offline page two');
 	}).toBe(true);
 	const other = await browser.newContext();
 	try {
 		const second = await other.newPage();
 		await login(second, realAdmin.username, realAdmin.password);
-		await second.goto('/bookmarks');
-		const saved = second.getByRole('listitem').filter({ hasText: 'Offline page two' });
-		await saved.getByRole('link', { name: 'Open bookmark' }).click();
-		await openedPdf(second, 2, 'Second PDF page text');
+		await second.goto(`/read/${pdf.bookID}/${pdf.fileID}`);
+		await openedPdf(second);
+		await jumpToPdfPage(second, 1);
+		let secondPanel = await openBookmarksPanel(second);
+		let saved = secondPanel.locator(`[data-bookmark-id="${offlineBookmark}"]`);
+		await expect(saved).toContainText('Offline page two');
+		await saved.locator('[data-bookmark-jump]').click();
 		await expect(pdfPageBox(second)).toHaveValue('2');
-		await second.goto('/bookmarks');
-		second.once('dialog', (dialog) => dialog.accept());
-		await saved.getByRole('button', { name: 'Delete', exact: true }).click();
+		secondPanel = await openBookmarksPanel(second);
+		saved = secondPanel.locator(`[data-bookmark-id="${offlineBookmark}"]`);
+		await saved.getByRole('button', { name: 'Delete bookmark: Offline page two', exact: true }).click();
+		await saved.getByRole('button', { name: 'Confirm delete bookmark: Offline page two', exact: true }).click();
 		await expect(saved).toHaveCount(0);
 		await page.reload();
-		await expect(page.getByText('Offline page two', { exact: true })).toHaveCount(0);
+		await openedPdf(page);
+		await expect((await openBookmarksPanel(page)).locator(`[data-bookmark-id="${offlineBookmark}"]`)).toHaveCount(0);
 	} finally {
 		await other.close();
 	}
@@ -339,16 +360,13 @@ test('real sidebar shelves, automatic rule changes, favorites and bilingual resp
 	const { user } = await (await page.request.get('/api/v1/auth/me')).json() as { user: { id: number } };
 	for (const locale of ['en', 'zh']) {
 		expect((await page.request.patch(`/api/v1/admin/users/${user.id}`, { data: { locale } })).ok()).toBe(true);
-		for (const route of ['/books', `/books/${book.id}`, '/shelves', '/bookmarks', '/notes', '/admin/users']) {
+		for (const route of ['/books', `/books/${book.id}`, '/shelves', '/notes', '/admin/users']) {
 			await page.goto(`${locale === 'zh' ? '/zh' : ''}${route}`);
 			const heading = page.getByRole('main').getByRole('heading', { level: 1 });
-			if (route === `/books/${book.id}` || route === '/admin/users') {
+			if (route === `/books/${book.id}` || route === '/notes' || route === '/admin/users') {
 				await expect(heading).toBeVisible();
 			} else {
 				await expect(heading).toHaveClass('sr-only');
-			}
-			if (route === '/bookmarks') {
-				await expect(page.getByRole('heading', { name: locale === 'zh' ? '书签' : 'Bookmarks', exact: true })).toHaveClass('sr-only');
 			}
 			expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 			await page.screenshot({ path: info.outputPath(`${locale}-${route.replaceAll('/', '-')}.png`), fullPage: true });

@@ -175,6 +175,10 @@ test('searches annotations with unified entries and no export panel', async ({ p
 	expect(searches).toHaveLength(0);
 
 	const box = page.getByRole('searchbox', { name: 'Search annotations', exact: true });
+	await expect(page.getByRole('heading', { name: 'Annotations', exact: true })).toHaveClass('sr-only');
+	await expect(box).toHaveAttribute('placeholder', 'Search reviews, comments, notes, highlights, and inserted text');
+	await expect(page.locator('#notes-query-hint')).toHaveCount(0);
+	await expect(page.getByText('Search annotations', { exact: true })).toHaveCount(0);
 	await box.fill('  spice ');
 	await box.press('Enter');
 	await expect(page).toHaveURL(/\/notes\?q=spice$/);

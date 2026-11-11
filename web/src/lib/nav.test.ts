@@ -24,22 +24,28 @@ describe('navigationFor', () => {
 		const entries = [...homeNavigation, ...navigationFor('admin')];
 		expect(entries.some((entry) => entry.id === 'search' || entry.href === '/search')).toBe(false);
 	});
+
+	it('does not expose a library-wide bookmarks destination', () => {
+		for (const role of ['admin', 'user', null]) {
+			const entries = [...homeNavigationFor(role), ...navigationFor(role)];
+			expect(entries.some((entry) => entry.id === 'bookmarks' || entry.href === '/bookmarks')).toBe(false);
+		}
+	});
 });
 
 describe('homeNavigation', () => {
-	it('lists Dashboard, All Books, Bookheap, Bookmarks, and Notes in order', () => {
+	it('lists Dashboard, All Books, Bookheap, and Notes in order', () => {
 		expect(homeNavigation.map((entry) => [entry.id, entry.href])).toEqual([
 			['dashboard', '/'],
 			['books', '/books'],
 			['bookheap', '/bookheap'],
-			['bookmarks', '/bookmarks'],
 			['notes', '/notes']
 		]);
 	});
 
 	it('shows Bookheap right after All Books only to administrators', () => {
-		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'bookheap', 'bookmarks', 'notes']);
-		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'bookmarks', 'notes']);
+		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'bookheap', 'notes']);
+		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'notes']);
 		expect(homeNavigationFor(null).some((entry) => entry.id === 'bookheap')).toBe(false);
 	});
 });

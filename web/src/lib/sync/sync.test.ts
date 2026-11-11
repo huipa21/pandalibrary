@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import * as catalog from '#lib/catalog/api.js';
 import type { Book } from '#lib/catalog/types.js';
-import { localBookmarks } from '#lib/bookmarks/offline.js';
 import {
 	activeViewer, AccountChangedError, cursorState, downloadedBooks, downloadedFile,
 	enqueue, outbox, persistPull, recordResults, removeAllBooks, removeBook,
@@ -115,6 +114,10 @@ describe('durable R1 synchronization', () => {
 			locator: { type: 'cfi', value: 'epubcfi(/6/2)' }, position: 0.4, label: 'Saved',
 			chapter: null, created_at: timestamp, updated_at: timestamp, deleted_at: null, rev: 2
 		};
+		const otherBookmark = {
+			...bookmark, id: '019a4d48-cc00-7000-8000-000000000002', book_id: 22,
+			book_file_id: 32, label: 'Other book', rev: 3
+		};
 		const old = pull(1);
 		old.reading_progress.push({
 			book_id: 21, book_file_id: 31, source: 'web', locator: null, percentage: 0.2,
@@ -122,12 +125,13 @@ describe('durable R1 synchronization', () => {
 		});
 		await persistPull(1, 0, old, true);
 		expect((await readerState(1, 21)).state.bookmarks).toEqual([]);
-		const next = pull(2);
-		next.bookmarks.push(bookmark);
+		const next = pull(3);
+		next.bookmarks.push(bookmark, otherBookmark);
 		await persistPull(1, 1, next, false);
 		expect((await readerState(1, 21)).state).toMatchObject({
 			progress: { percentage: 0.2 }, bookmarks: [{ id: bookmark.id, label: 'Saved' }]
 		});
+		expect((await readerState(1, 22)).state.bookmarks).toMatchObject([{ id: otherBookmark.id, label: 'Other book' }]);
 		const edit: SyncMutation = {
 			entity: 'bookmarks', id: bookmark.id, op: 'upsert', updated_at: Date.parse(timestamp) + 1,
 			data: { book_id: 21, book_file_id: 31, locator: bookmark.locator, position: 0.4, label: 'Offline', chapter: null }
@@ -135,20 +139,22 @@ describe('durable R1 synchronization', () => {
 		await enqueue(1, edit);
 		await setActiveViewer(null);
 		await setActiveViewer(viewer);
-		expect((await readerState(1, 21)).state.bookmarks[0].label).toBe('Offline');
-		await saveDownload(1, book, file, new Blob(['book']), null);
-		expect(await localBookmarks(1)).toMatchObject([{ id: bookmark.id, label: 'Offline', book: { title: book.title } }]);
+		expect((await readerState(1, 21)).state.bookmarks).toMatchObject([{ id: bookmark.id, label: 'Offline' }]);
+		expect((await readerState(1, 22)).state.bookmarks).toMatchObject([{ id: otherBookmark.id, label: 'Other book' }]);
 		await enqueue(1, { entity: 'bookmarks', id: bookmark.id, op: 'delete', data: {}, updated_at: edit.updated_at + 1 });
 		expect((await readerState(1, 21)).state.bookmarks).toEqual([]);
+		expect((await readerState(1, 22)).state.bookmarks).toMatchObject([{ id: otherBookmark.id, label: 'Other book' }]);
 		await setActiveViewer({ ...viewer, id: 2 });
 		expect((await readerState(2, 21)).state.bookmarks).toEqual([]);
-		expect(await localBookmarks(2)).toEqual([]);
+		expect((await readerState(2, 22)).state.bookmarks).toEqual([]);
 		await setActiveViewer(viewer);
-		const tombstone = pull(3);
-		tombstone.bookmarks.push({ ...bookmark, deleted_at: timestamp, rev: 3 });
-		await persistPull(1, 2, tombstone, false);
-		expect((await rows(1)).find((row) => row.entity === 'bookmarks')?.value).toMatchObject({ deleted_at: timestamp });
+		const tombstone = pull(4);
+		tombstone.bookmarks.push({ ...bookmark, deleted_at: timestamp, rev: 4 });
+		await persistPull(1, 3, tombstone, false);
+		expect((await rows(1)).find((row) => row.entity === 'bookmarks' && row.value.id === bookmark.id)?.value)
+			.toMatchObject({ deleted_at: timestamp });
 		expect((await readerState(1, 21)).state.bookmarks).toEqual([]);
+		expect((await readerState(1, 22)).state.bookmarks).toMatchObject([{ id: otherBookmark.id, label: 'Other book' }]);
 	});
 
 	it('accepts old pulls without bookmarks but rejects malformed bookmark revisions', () => {

@@ -3,11 +3,6 @@ import { expect, test, type Page } from '@playwright/test';
 test.use({ serviceWorkers: 'block' });
 
 const timestamp = '2026-11-04T00:00:00Z';
-const bookmark = {
-	id: 'bookmark-1', book_id: 21, book_file_id: 31, locator: { type: 'cfi', value: 'epubcfi(/6/2)' },
-	position: 0.25, label: 'Saved page one', chapter: null, created_at: timestamp, updated_at: timestamp,
-	deleted_at: null, rev: 1, book: { id: 21, title: 'A Book', cover_url: null }
-};
 const customShelf = {
 	id: 11, kind: 'private', owner_id: 1, name: 'Weekend reads', description: 'Picked for weekends.',
 	created_by: 1, visible_book_count: 0, created_at: timestamp, updated_at: timestamp,
@@ -16,7 +11,6 @@ const customShelf = {
 
 interface MockState {
 	locale: 'en' | 'zh';
-	bookmarks: (typeof bookmark)[];
 }
 
 async function mockApi(page: Page, state: MockState) {
@@ -37,7 +31,7 @@ async function mockApi(page: Page, state: MockState) {
 		if (path === '/me/settings') return route.fulfill({ json: { settings: [] } });
 		if (path === '/me/profile') return route.fulfill({ json: { user: viewer } });
 		if (path === '/me/app-passwords') return route.fulfill({ json: { app_passwords: [] } });
-		if (path === '/me/bookmarks') return route.fulfill({ json: { items: state.bookmarks, next_cursor: null } });
+		if (path === '/me/notes') return route.fulfill({ json: { items: [], next_cursor: null } });
 		if (path === '/admin/bookheap/items') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		if (path === '/admin/bookheap/scan') return route.fulfill({ json: { scan: null } });
 		if (path === '/shelves') return route.fulfill({ json: { items: [customShelf], next_cursor: null } });
@@ -70,41 +64,15 @@ async function mockApi(page: Page, state: MockState) {
 	return unexpected;
 }
 
-async function expectBookmarkAlignment(page: Page) {
-	const metrics = await page.locator('section[aria-labelledby="bookmarks-heading"]').evaluate((section) => {
-		const panel = section.closest('#main-content > div');
-		const content = section.querySelector('ul > li') ?? section.querySelector('p');
-		if (!(panel instanceof HTMLElement) || !(content instanceof HTMLElement)) {
-			throw new Error('The bookmarks panel or its content is missing');
-		}
-		const style = getComputedStyle(panel);
-		const panelBox = panel.getBoundingClientRect();
-		const sectionBox = section.getBoundingClientRect();
-		const contentBox = content.getBoundingClientRect();
-		return {
-			expectedLeft: panelBox.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
-			expectedRight: panelBox.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight),
-			sectionLeft: sectionBox.left, sectionRight: sectionBox.right, sectionTop: sectionBox.top,
-			contentLeft: contentBox.left, contentRight: contentBox.right, contentTop: contentBox.top
-		};
-	});
-	expect(Math.abs(metrics.sectionLeft - metrics.expectedLeft)).toBeLessThan(1);
-	expect(Math.abs(metrics.sectionRight - metrics.expectedRight)).toBeLessThan(1);
-	expect(Math.abs(metrics.contentLeft - metrics.sectionLeft)).toBeLessThan(1);
-	expect(Math.abs(metrics.contentRight - metrics.sectionRight)).toBeLessThan(1);
-	expect(Math.abs(metrics.contentTop - metrics.sectionTop)).toBeLessThan(1);
-}
-
 test('menu destinations keep accessible titles without repeated visible introductions', async ({ page }) => {
 	test.setTimeout(90_000);
-	const unexpected = await mockApi(page, { locale: 'en', bookmarks: [bookmark] });
+	const unexpected = await mockApi(page, { locale: 'en' });
 	await page.setViewportSize({ width: 1600, height: 900 });
 	const destinations = [
 		{ path: '/', heading: 'Dashboard', description: 'Your books, arranged your way.' },
 		{ path: '/books', heading: 'All Books', description: 'Every book you can access, across all of your libraries.' },
 		{ path: '/bookheap', heading: 'Bookheap', description: 'Files waiting to be added to a library. Scan the server folder or upload files, then assign them to a library and shelves.' },
-		{ path: '/bookmarks', heading: 'Bookmarks', description: 'Your saved reading positions across books.' },
-		{ path: '/notes', heading: 'Notes and highlights', description: 'Search your own notes and highlights, then download them as Markdown.' },
+		{ path: '/notes', heading: 'Annotations', description: 'Browse your reviews, comments and reader annotations.' },
 		{ path: '/shelves', heading: 'Shelves', description: 'Organize books on your private shelves and browse shared shelves.' },
 		{ path: '/shelves/11', heading: 'Weekend reads' },
 		{ path: '/shelves/system/unshelved', heading: 'Unshelved' },
@@ -122,7 +90,8 @@ test('menu destinations keep accessible titles without repeated visible introduc
 	for (const destination of destinations) {
 		await page.goto(destination.path);
 		const main = page.getByRole('main');
-		await expect(main.getByRole('heading', { name: destination.heading, level: 1, exact: true })).toHaveClass('sr-only');
+		const heading = main.getByRole('heading', { name: destination.heading, level: 1, exact: true });
+		await expect(heading).toHaveClass('sr-only');
 		if (destination.description) await expect(main.getByText(destination.description, { exact: true })).toHaveCount(0);
 		if (destination.path === '/settings') {
 			await page.getByRole('button', { name: 'Account menu', exact: true }).click();
@@ -150,34 +119,8 @@ test('menu destinations keep accessible titles without repeated visible introduc
 	expect(unexpected).toEqual([]);
 });
 
-test('bookmark empty and populated states align with the content panel on desktop and mobile', async ({ page }) => {
-	const state: MockState = { locale: 'en', bookmarks: [] };
-	const unexpected = await mockApi(page, state);
-	for (const width of [1600, 390]) {
-		await page.setViewportSize({ width, height: 900 });
-		state.bookmarks = [];
-		await page.goto('/bookmarks');
-		await expect(page.getByText('No bookmarks saved yet.')).toBeVisible();
-		await expectBookmarkAlignment(page);
-
-		state.bookmarks = [bookmark];
-		await page.reload();
-		const card = page.getByRole('listitem').filter({ hasText: 'A Book' });
-		await expect(card).toBeVisible();
-		await expectBookmarkAlignment(page);
-		await expect(card.getByRole('link', { name: 'Open bookmark' })).toHaveAttribute('href', '/read/21/31?bookmark=bookmark-1');
-		await card.getByRole('button', { name: 'Edit', exact: true }).click();
-		await expect(card.getByLabel('Label (optional)')).toHaveValue('Saved page one');
-		await card.getByRole('button', { name: 'Cancel' }).click();
-		await expect(card.getByText('Saved page one')).toBeVisible();
-		expect(await page.evaluate(() => document.documentElement.scrollWidth))
-			.toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth));
-	}
-	expect(unexpected).toEqual([]);
-});
-
 test('shelf descriptions remain available without showing introductory text by default', async ({ page }) => {
-	const unexpected = await mockApi(page, { locale: 'en', bookmarks: [] });
+	const unexpected = await mockApi(page, { locale: 'en' });
 	await page.goto('/shelves/11');
 	await expect(page.getByText('Picked for weekends.')).toBeHidden();
 	await page.getByText('Shelf details', { exact: true }).click();
@@ -189,15 +132,14 @@ test('shelf descriptions remain available without showing introductory text by d
 	expect(unexpected).toEqual([]);
 });
 
-test('localized bookmarks retain their accessible title and aligned mobile layout', async ({ page }) => {
-	const unexpected = await mockApi(page, { locale: 'zh', bookmarks: [bookmark] });
-	await page.setViewportSize({ width: 390, height: 844 });
-	await page.goto('/zh/bookmarks');
-	await expect(page.getByRole('main').getByRole('heading', { name: '书签', level: 1 })).toHaveClass('sr-only');
-	await expect(page.getByText('查看各本书中保存的阅读位置。')).toHaveCount(0);
-	await expect(page.getByText('Saved page one')).toBeVisible();
-	await expectBookmarkAlignment(page);
-	expect(await page.evaluate(() => document.documentElement.scrollWidth))
-		.toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth));
-	expect(unexpected).toEqual([]);
-});
+for (const locale of ['en', 'zh'] as const) {
+	test(`retired ${locale} bookmarks links redirect to the book list`, async ({ page }) => {
+		const unexpected = await mockApi(page, { locale });
+		await page.goto(locale === 'zh' ? '/zh/bookmarks' : '/bookmarks');
+		await expect(page).toHaveURL(/\/(?:zh\/)?books$/);
+		await expect(page.getByRole('main').getByRole('heading', {
+			name: locale === 'zh' ? '全部图书' : 'All Books', level: 1, exact: true
+		})).toHaveClass('sr-only');
+		expect(unexpected).toEqual([]);
+	});
+}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
+	import SearchField from '#lib/search/SearchField.svelte';
 	import { isPdfLocator, type Note } from '../../../types.js';
 	import { getPdfReaderContext } from '../../context.js';
 	import { buildAnnotationList, filterEntries, type AnnotationEntry } from './annotations-list.js';
@@ -167,7 +168,9 @@
 
 <div class="rp7-tab" bind:this={root}>
 	<header class="rp7-header">
-		<input type="search" aria-label={m['pv10.search']()} placeholder={m['pv10.search']()} bind:value={query} />
+		<form class="min-w-0 flex-1" role="search" onsubmit={(event) => event.preventDefault()}>
+			<SearchField label={m['pv10.search']()} placeholder={m['pv10.search']()} bind:value={query} />
+		</form>
 		<span class="rp7-count">{m['rp7.count']({ count: list.count })}</span>
 	</header>
 	{#if controller.actionError || controller.pendingError}

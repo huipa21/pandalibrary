@@ -9,6 +9,7 @@
 	import PersonalActivityFeed from '#lib/notes/PersonalActivityFeed.svelte';
 	import AnnotationEntry from '#lib/notes/AnnotationEntry.svelte';
 	import Icon from '#lib/bookview/Icon.svelte';
+	import SearchField from '#lib/search/SearchField.svelte';
 	import {
 		annotationErrorKey, annotationQueryIssue, isShortQuery,
 		MAX_ANNOTATION_QUERY_CHARS, MAX_ANNOTATION_RESULTS, normalizeAnnotationQuery,
@@ -66,31 +67,24 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="notes-heading">
-	<h1 id="notes-heading" class="text-2xl font-semibold">{m['notes.title']()}</h1>
+	<h1 id="notes-heading" class="sr-only">{m['notes.title']()}</h1>
 	<form role="search" aria-label={m['notes.landmark']()} class="flex min-w-0 items-end gap-2" onsubmit={submit} novalidate>
-		<label class="grid min-w-0 flex-1 gap-1 text-sm font-medium" for="notes-query">
-			<span>{m['notes.label']()}</span>
-			<input
-				id="notes-query"
-				type="search"
-				name={NOTES_QUERY_PARAM}
-				class="w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-normal {focusRing}"
-				placeholder={m['notes.placeholder']()}
-				autocomplete="off"
-				aria-invalid={validation ? 'true' : undefined}
-				aria-describedby="notes-query-hint{validation ? ' notes-validation' : ''}"
-				bind:value={draft}
-				bind:this={input}
-			/>
-		</label>
-		<button type="submit" class="shell-search-submit inline-flex size-9 shrink-0 items-center justify-center rounded-md disabled:opacity-60 {focusRing}" aria-label={m['notes.submit']()} title={m['notes.submit']()} disabled={search.status === 'loading'}>
-			<Icon name="search" class="size-4" />
-		</button>
+		<SearchField
+			id="notes-query"
+			name={NOTES_QUERY_PARAM}
+			label={m['notes.label']()}
+			placeholder={m['notes.placeholder']()}
+			aria-invalid={validation ? 'true' : undefined}
+			aria-describedby={validation ? 'notes-validation' : undefined}
+			buttonLabel={m['notes.submit']()}
+			disabled={search.status === 'loading'}
+			bind:value={draft}
+			bind:input
+		/>
 		<button type="button" class="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-600 disabled:opacity-60 {focusRing}" aria-label={m['notes.clear']()} title={m['notes.clear']()} disabled={!draft && !query} onclick={clear}>
 			<Icon name="x" class="size-4" />
 		</button>
 	</form>
-	<p id="notes-query-hint" class="-mt-5 text-sm text-slate-600">{m['notes.query_hint']({ max: MAX_ANNOTATION_QUERY_CHARS })}</p>
 	{#if validation}
 		<p id="notes-validation" class="text-sm text-red-700" role="alert">{validation}</p>
 	{/if}
@@ -132,11 +126,3 @@
 		</section>
 	{/if}
 </section>
-
-<style>
-	input::-webkit-search-cancel-button {
-		-webkit-appearance: none;
-		appearance: none;
-		display: none;
-	}
-</style>

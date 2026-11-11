@@ -3,6 +3,7 @@
 	import { locales, type Locale } from '#lib/paraglide/runtime.js';
 	import HeaderMenu from './HeaderMenu.svelte';
 	import { filterLanguages, suggestedLocales } from './languages.js';
+	import SearchField from '#lib/search/SearchField.svelte';
 
 	interface Props {
 		onlocale: (locale: Locale) => void | Promise<void>;
@@ -65,20 +66,14 @@
 	{/snippet}
 	{#snippet children(close)}
 		<div class="language-menu">
-			<label class="language-search">
-				<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
-					<circle cx="8.75" cy="8.75" r="5.75" />
-					<path d="m13 13 4 4" />
-				</svg>
-				<input
-					bind:this={searchInput}
-					type="search"
-					aria-label={m['hm1.language.search']()}
+			<form role="search" onsubmit={(event) => event.preventDefault()}>
+				<SearchField
+					bind:input={searchInput}
+					label={m['hm1.language.search']()}
 					placeholder={m['hm1.language.search']()}
-					autocomplete="off"
 					bind:value={query}
 				/>
-			</label>
+			</form>
 
 			{#if hasResults}
 				{#if suggested.length}

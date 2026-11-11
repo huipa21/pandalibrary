@@ -11,16 +11,6 @@
 	padding: 8px;
 	border-bottom: 1px solid var(--shell-border);
 }
-.rp7-header input {
-	min-width: 0;
-	flex: 1;
-	padding: 6px 8px;
-	border: 1px solid var(--shell-border);
-	border-radius: 4px;
-	background: var(--shell-surface);
-	color: var(--shell-text);
-	font-size: 13px;
-}
 .rp7-count { flex: none; font-size: 12px; white-space: nowrap; }
 .rp7-content { flex: 1; min-height: 0; overflow-y: auto; }
 .rp7-list { padding: 0; margin: 0; list-style: none; }

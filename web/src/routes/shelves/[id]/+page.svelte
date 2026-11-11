@@ -13,6 +13,7 @@
 	import { translate } from '#lib/paging/translate.js';
 	import { normalizeSearchInput, queryTooLong, searchBooks, searchErrorKey } from '#lib/search/api.js';
 	import SearchResultCard from '#lib/search/SearchResultCard.svelte';
+	import SearchField from '#lib/search/SearchField.svelte';
 	import type { SearchResult } from '#lib/search/types.js';
 	import {
 		addBookToShelf,
@@ -323,22 +324,14 @@
 			<section class="space-y-4 card p-4 sm:p-6" aria-labelledby="add-books-heading">
 				<h2 id="add-books-heading" class="text-xl font-semibold">{m['shelves.add.heading']()}</h2>
 				<form role="search" aria-labelledby="add-books-heading" class="flex flex-wrap items-end gap-3" onsubmit={findCandidates} novalidate>
-					<label class="grid min-w-0 flex-1 gap-1 text-sm font-medium" for="add-book-query">
-						<span>{m['shelves.add.search_label']()}</span>
-						<input
-							id="add-book-query"
-							type="search"
-							class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-							placeholder={m['search.placeholder']()}
-							autocomplete="off"
-							bind:value={addDraft}
-						/>
-					</label>
-					<button
-						type="submit"
-						class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+					<SearchField
+						id="add-book-query"
+						label={m['shelves.add.search_label']()}
+						placeholder={m['search.placeholder']()}
+						bind:value={addDraft}
+						buttonLabel={m['shelves.add.submit']()}
 						disabled={candidates.status === 'loading'}
-					>{m['shelves.add.submit']()}</button>
+					/>
 				</form>
 				{#if addValidation}<p class="text-sm text-red-700" role="alert">{addValidation}</p>{/if}
 				{#if addNotice}<p class="text-sm text-green-700" role="status">{addNotice}</p>{/if}

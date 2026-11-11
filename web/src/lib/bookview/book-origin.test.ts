@@ -157,7 +157,6 @@ describe('origin label', () => {
 		expect(originLabel('/books?sort=title')).toBe('All books');
 		expect(originLabel('/search?q=x')).toBe('Search');
 		expect(originLabel('/bookheap')).toBe('Bookheap');
-		expect(originLabel('/bookmarks')).toBe('Bookmarks');
 		expect(originLabel('/notes')).toBe('Annotations');
 		expect(originLabel('/shelves/system/favorites')).toBe('Shelf');
 		expect(originLabel('/authors/3')).toBe('Author');
@@ -167,7 +166,7 @@ describe('origin label', () => {
 	});
 
 	it('returns null for other routes', () => {
-		for (const href of ['/shelves', '/authors', '/libraries', '/stats', '/read', '/settings/profile']) {
+		for (const href of ['/bookmarks', '/shelves', '/authors', '/libraries', '/stats', '/read', '/settings/profile']) {
 			expect(originLabel(href), href).toBeNull();
 		}
 	});

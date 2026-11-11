@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Book } from '#lib/catalog/types.js';
+	import { filterControlClass } from '#lib/catalog/filter-styles.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import BookCover from '../BookCover.svelte';
 	import { formatTone } from '../cover.js';
@@ -43,9 +44,9 @@
 				</nav>
 			</div>
 		</div>
-		<label class="flex shrink-0 items-center gap-2 text-sm text-slate-600">
+		<label class="grid shrink-0 gap-1 text-sm font-medium">
 			<span>{m['bv7.sort']()}</span>
-			<select bind:value={sort} class="min-w-0 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-800 focus-visible:outline-2 focus-visible:outline-emerald-700">
+			<select bind:value={sort} class="{filterControlClass} min-w-0">
 				<option value="format">{m['bv7.sort_format']()}</option>
 				<option value="name">{m['bv7.sort_name']()}</option>
 				<option value="size">{m['bv7.sort_size']()}</option>
