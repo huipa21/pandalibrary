@@ -71,3 +71,8 @@ export function formatDate(iso: string, locale: string = getLocale()): string {
 		...(dateOnly ? { timeZone: 'UTC' } : {})
 	}).format(date);
 }
+
+export function formatPublicationDate(iso: string, locale: string = getLocale()): string {
+	if (/^\d{4}(?:-\d{2})?$/.test(iso)) return iso;
+	return formatDate(iso.split('T')[0], locale);
+}

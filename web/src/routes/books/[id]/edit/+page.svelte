@@ -25,6 +25,7 @@
 		selectionCount
 	} from '#lib/metadata/merge.js';
 	import { ObjectUrlSlot } from '#lib/metadata/object-url.js';
+	import { InvalidTagsError, normalizeTags, saveBookTags } from '#lib/metadata/tags.js';
 	import { MERGE_FIELDS, type Candidate, type LookupResponse, type MergeField, type Selections } from '#lib/metadata/types.js';
 
 	let book = $state<Book | null>(null);
@@ -38,6 +39,11 @@
 	let applying = $state(false);
 	let notice = $state('');
 	let applyError = $state('');
+	let tagDraft = $state<string[]>([]);
+	let newTag = $state('');
+	let tagsSaving = $state(false);
+	let tagsError = $state('');
+	let tagsNotice = $state('');
 	let previewKey = $state<string | null>(null);
 	let previewUrl = $state<string | null>(null);
 	let previewPending = $state<string | null>(null);
@@ -65,6 +71,7 @@
 	const candidates = $derived(lookup ? allCandidates(lookup.providers) : []);
 	const selected = $derived(selectionCount(selections));
 	const partialFailure = $derived(!!lookup && lookup.providers.some((provider) => provider.error !== null));
+	const tagsDirty = $derived(newTag !== '' || JSON.stringify(tagDraft) !== JSON.stringify(book?.tags.map((tag) => tag.name) ?? []));
 
 	$effect(() => {
 		const id = page.params.id ?? '';
@@ -131,6 +138,11 @@
 	async function load(id: string) {
 		const request = ++version;
 		resetMerge();
+		tagDraft = [];
+		newTag = '';
+		tagsSaving = false;
+		tagsError = '';
+		tagsNotice = '';
 		book = null;
 		error = '';
 		forbidden = false;
@@ -149,6 +161,7 @@
 				return;
 			}
 			book = loaded;
+			tagDraft = loaded.tags.map((tag) => tag.name);
 		} catch (cause) {
 			if (request !== version) return;
 			if (!handleAccessError(cause)) {
@@ -199,7 +212,7 @@
 	}
 
 	async function apply() {
-		if (!book || !lookup || applying || lookupPending) return;
+		if (!book || !lookup || applying || lookupPending || tagsSaving || tagsDirty) return;
 		notice = '';
 		applyError = '';
 		if (selected === 0) {
@@ -212,6 +225,8 @@
 			const updated = await applyMetadata(book.id, lookup.request_key, $state.snapshot(selections));
 			if (request !== version) return;
 			book = updated;
+			tagDraft = updated.tags.map((tag) => tag.name);
+			tagsNotice = '';
 			selections = {};
 			clearPreview();
 			notice = m['metadata.apply.success']();
@@ -280,6 +295,64 @@
 	function radioId(field: MergeField, index: number | 'keep'): string {
 		return `merge-${field}-${index}`;
 	}
+
+	function tagValidationMessage(cause: InvalidTagsError): string {
+		switch (cause.reason) {
+			case 'duplicate': return m['metadata.tags.duplicate']();
+			case 'limit': return m['metadata.tags.limit']();
+			default: return m['metadata.tags.invalid']();
+		}
+	}
+
+	function editTags() {
+		tagsError = '';
+		tagsNotice = '';
+	}
+
+	function addTag() {
+		if (tagsSaving || applying) return;
+		editTags();
+		try {
+			tagDraft = normalizeTags([...tagDraft, newTag]);
+			newTag = '';
+		} catch (cause) {
+			if (!(cause instanceof InvalidTagsError)) throw cause;
+			tagsError = tagValidationMessage(cause);
+		}
+	}
+
+	async function saveTags() {
+		if (!book || tagsSaving || applying || !tagsDirty) return;
+		editTags();
+		let tags: string[];
+		try {
+			tags = normalizeTags(newTag === '' ? tagDraft : [...tagDraft, newTag]);
+		} catch (cause) {
+			if (!(cause instanceof InvalidTagsError)) throw cause;
+			tagsError = tagValidationMessage(cause);
+			return;
+		}
+		const request = version;
+		tagsSaving = true;
+		try {
+			const updated = await saveBookTags(book.id, tags);
+			if (request !== version) return;
+			book = updated;
+			tagDraft = updated.tags.map((tag) => tag.name);
+			newTag = '';
+			tagsNotice = m['metadata.tags.success']();
+		} catch (cause) {
+			if (request !== version || handleAccessError(cause)) return;
+			console.error('Could not save book tags', cause);
+			tagsError = cause instanceof ApiError && cause.status === 400
+				? m['metadata.tags.rejected']()
+				: cause instanceof ApiError && cause.status === 409
+					? m['metadata.tags.conflict']()
+					: m['metadata.tags.failure']();
+		} finally {
+			if (request === version) tagsSaving = false;
+		}
+	}
 </script>
 
 {#snippet values(items: string[], field: MergeField)}
@@ -317,6 +390,44 @@
 			<h1 class="text-3xl font-semibold tracking-tight">{m['metadata.edit.title']({ title: book.title })}</h1>
 			<p class="text-slate-600">{m['metadata.edit.description']()}</p>
 		</header>
+
+		<section aria-labelledby="tags-heading" class="card space-y-4 p-4">
+			<h2 id="tags-heading" class="text-xl font-semibold">{m['metadata.tags.heading']()}</h2>
+			<p id="tags-help" class="text-sm text-slate-600">{m['metadata.tags.help']()}</p>
+			<fieldset disabled={tagsSaving || applying} aria-describedby="tags-help" class="space-y-4 disabled:opacity-60">
+				{#if tagDraft.length}
+					<ul class="space-y-2">
+						{#each tagDraft as tag, index (index)}
+							<li class="flex flex-wrap items-center gap-2">
+								<label class="sr-only" for={`tag-${index}`}>{m['metadata.tags.name']({ number: index + 1 })}</label>
+								<input id={`tag-${index}`} class="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2" value={tag} oninput={(event) => { tagDraft[index] = event.currentTarget.value; editTags(); }} />
+								<button type="button" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2" aria-label={m['metadata.tags.remove_named']({ name: tag })} onclick={() => { tagDraft = tagDraft.filter((_, position) => position !== index); editTags(); }}>{m['metadata.tags.remove']()}</button>
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p class="text-sm text-slate-500">{m['metadata.tags.empty']()}</p>
+				{/if}
+				<form class="flex flex-wrap items-end gap-2" onsubmit={(event) => { event.preventDefault(); addTag(); }}>
+					<div class="min-w-0 flex-1 space-y-1">
+						<label class="block text-sm font-medium" for="new-tag">{m['metadata.tags.new']()}</label>
+						<input id="new-tag" class="w-full rounded-md border border-slate-300 px-3 py-2" bind:value={newTag} oninput={editTags} />
+					</div>
+					<button type="submit" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:outline-2">{m['metadata.tags.add']()}</button>
+				</form>
+				<button type="button" class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60" disabled={!tagsDirty} onclick={() => saveTags()}>
+					{tagsSaving ? m['metadata.tags.saving']() : m['metadata.tags.save']()}
+				</button>
+			</fieldset>
+			{#if tagsError}
+				<div role="alert" class="space-y-2 text-sm text-red-800">
+					<p>{tagsError}</p>
+					<button type="button" class="underline underline-offset-4 focus-visible:outline-2 disabled:opacity-60" disabled={tagsSaving || applying || !tagsDirty} onclick={() => saveTags()}>{m['catalog.retry']()}</button>
+				</div>
+			{/if}
+			{#if tagsNotice}<p role="status" class="text-sm text-green-800">{tagsNotice}</p>{/if}
+			{#if tagsDirty}<p class="text-sm text-amber-900">{m['metadata.tags.unsaved']()}</p>{/if}
+		</section>
 
 		<section aria-labelledby="lookup-heading" class="space-y-4">
 			<div class="flex flex-wrap items-center justify-between gap-3">
@@ -466,7 +577,7 @@
 					<button
 						type="submit"
 						class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
-						disabled={applying || lookupPending || selected === 0}
+						disabled={applying || lookupPending || tagsSaving || tagsDirty || selected === 0}
 					>
 						{applying ? m['metadata.apply.applying']() : m['metadata.apply.submit']({ count: selected })}
 					</button>

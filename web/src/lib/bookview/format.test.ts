@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatDuration, formatPercent, formatRelative, formatSize, parseDate } from './format.js';
+import { formatDate, formatDuration, formatPercent, formatPublicationDate, formatRelative, formatSize, parseDate } from './format.js';
 
 describe('book view formatting', () => {
 	it('formats byte sizes and handles each unit boundary', () => {
@@ -44,5 +44,18 @@ describe('book view formatting', () => {
 		expect(() => formatDate('invalid')).toThrow(RangeError);
 		expect(() => formatDate('2026-02-31')).toThrow(RangeError);
 		expect(() => formatDate('2026-02-31T12:00:00Z')).toThrow(RangeError);
+	});
+
+	it('formats publication dates without a time or timezone day shift', () => {
+		expect(formatPublicationDate('2026-11-07', 'en')).toBe('Nov 7, 2026');
+		expect(formatPublicationDate('2026-11-07T00:30:00+14:00', 'en')).toBe('Nov 7, 2026');
+		expect(formatPublicationDate('2026-11-07T23:30:00-12:00', 'en')).toBe('Nov 7, 2026');
+		expect(formatPublicationDate('2024-02-29T12:00:00Z', 'zh')).toBe(formatDate('2024-02-29', 'zh'));
+	});
+
+	it('preserves partial publication dates without inventing a month or day', () => {
+		expect(formatPublicationDate('2026', 'en')).toBe('2026');
+		expect(formatPublicationDate('2026-11', 'en')).toBe('2026-11');
+		expect(formatPublicationDate('2026-11', 'zh')).toBe('2026-11');
 	});
 });

@@ -6,6 +6,7 @@
 	import ReadStatusMenu from '../ReadStatusMenu.svelte';
 	import StatusIcon from '../StatusIcon.svelte';
 	import { formatPercent } from '../format.js';
+	import { detailsVisibleIdentifiers } from '../identifiers.js';
 	import { readStatusLabel, saveUserBook, statusTone } from '../user-book.js';
 	import type { DetailsState } from './details-data.js';
 
@@ -21,6 +22,7 @@
 	const rating = $derived(optimisticRating === undefined ? details?.userBook?.rating ?? null : optimisticRating);
 	const status = $derived(details?.userBook?.status ?? 'unread');
 	const progress = $derived(details?.progress?.percentage ?? 0);
+	const visibleIdentifiers = $derived(detailsVisibleIdentifiers(book.identifiers));
 
 	$effect(() => {
 		book.id;
@@ -107,9 +109,9 @@
 	</div>
 	{#if ratingError}<p class="text-sm text-red-800" role="alert">{ratingError}</p>{/if}
 
-	{#if book.identifiers.length}
+	{#if visibleIdentifiers.length}
 		<div class="flex flex-wrap items-center gap-2">
-			<IdentifierLinks identifiers={book.identifiers} variant="chips" />
+			<IdentifierLinks identifiers={visibleIdentifiers} variant="chips" />
 		</div>
 	{/if}
 	{#if book.tags.length}

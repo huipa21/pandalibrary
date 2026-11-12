@@ -57,6 +57,15 @@ third icon lets you make it private or public after confirmation: private means
 only you can see it, while public means any signed-in user can see it, not
 anonymous visitors.
 
+The book's **Library** is shown below **Shelves**. Tags remain above the overview,
+separate from the metadata card. Publication dates show only the date; file sizes
+and added dates are in **Files**, and reading dates are in **Activities**.
+Technical UUID identifiers are hidden on **Details** but remain stored.
+
+Administrators can select **Edit metadata** (the pencil in the **Details** card)
+to add, rename or remove tags in the **Edit book tags** section and save the changes.
+Editing tags does not require looking up metadata candidates.
+
 - **Unread** and **Want to read** are only for books you have not started.
   Saving positive reading progress automatically starts **Reading**. After
   starting, a book cannot return to either untouched status.

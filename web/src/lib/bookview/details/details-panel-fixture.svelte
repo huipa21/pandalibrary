@@ -27,4 +27,4 @@
 </label>
 <label><input type="checkbox" bind:checked={offline} /> Offline</label>
 <button type="button" onclick={() => (book = { ...book, id: 22 })}>Switch book</button>
-<DetailsPanel {book} primaryFile={null} userBook={null} ready={false} {offline} canEdit={permission === 'context' ? undefined : permission === 'allow'} />
+<DetailsPanel {book} {offline} canEdit={permission === 'context' ? undefined : permission === 'allow'} />

@@ -9,7 +9,9 @@
 	import { getBookContext } from '../book-context.svelte.js';
 	import { sortedFormats } from '../cover.js';
 	import { BOOK_STATE_CHANGED_EVENT, type BookStateChangedDetail } from '../events.js';
+	import { detailsVisibleIdentifiers } from '../identifiers.js';
 	import { readTarget } from '../read.js';
+	import BookLibrary from '../details/BookLibrary.svelte';
 	import BookShelfTags from '../details/BookShelfTags.svelte';
 	import BookVisibilityButton from '../details/BookVisibilityButton.svelte';
 	import DetailsHero from '../details/DetailsHero.svelte';
@@ -26,6 +28,7 @@
 	const book = $derived(context.book);
 	const bookId = $derived(book?.id ?? null);
 	const offline = $derived(context.offline || !$offlineStatus.online);
+	const visibleIdentifiers = $derived(detailsVisibleIdentifiers(book?.identifiers ?? []));
 	const shelves = createBookShelves(() => bookId);
 	let details = $state<DetailsState | null>(null);
 	let detailsLoading = $state(true);
@@ -178,6 +181,7 @@
 				{#if !offline || shelves.status !== 'error'}
 					<BookShelfTags {shelves} bookTitle={book.title} {offline} />
 				{/if}
+				<BookLibrary {book} {offline} />
 			</aside>
 
 			<div class="min-w-0 space-y-6">
@@ -187,13 +191,13 @@
 			</div>
 
 			<aside class="grid min-w-0 content-start gap-6 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1">
-				<DetailsPanel {book} {primaryFile} userBook={details?.userBook ?? null} ready={detailsReady} {offline} />
+				<DetailsPanel {book} {offline} />
 				<EditionsCard {book} progress={details?.progress ?? null} />
-				{#if book.identifiers.length}
+				{#if visibleIdentifiers.length}
 					<section class="min-w-0 space-y-2 card p-5" aria-labelledby="book-identifiers-heading">
 						<h2 id="book-identifiers-heading" class="text-xs font-semibold tracking-wider text-slate-500 uppercase">{m['catalog.book.identifiers']()}</h2>
 						<ul class="space-y-1 text-sm text-slate-700 [overflow-wrap:anywhere]">
-							{#each book.identifiers as identifier (`${identifier.scheme}:${identifier.value}`)}
+							{#each visibleIdentifiers as identifier (`${identifier.scheme}:${identifier.value}`)}
 								<li><span class="font-medium">{identifier.scheme}:</span> {identifier.value}</li>
 							{/each}
 						</ul>

@@ -6,6 +6,10 @@ export type IdentifierItem =
 	| { provider: Provider; value: string; href: string }
 	| { provider: null; scheme: string; value: string };
 
+export function detailsVisibleIdentifiers(identifiers: readonly Identifier[]): Identifier[] {
+	return identifiers.filter(({ scheme }) => scheme.trim().toLowerCase() !== 'uuid');
+}
+
 function openLibraryUrl(value: string, encoded: string): string {
 	const match = /^(?:\/?(books|works)\/)?(OL\d+([MW]))$/i.exec(value.trim());
 	if (!match) return `https://openlibrary.org/search?q=${encoded}`;

@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { identifierLinks } from './identifiers.js';
+import { detailsVisibleIdentifiers, identifierLinks } from './identifiers.js';
+
+describe('details visible identifiers', () => {
+	it('hides UUID schemes regardless of case or surrounding whitespace', () => {
+		expect(detailsVisibleIdentifiers([
+			{ scheme: 'uuid', value: 'internal-id' },
+			{ scheme: 'UUID', value: 'another-id' },
+			{ scheme: ' \tUuId\n', value: 'padded-id' }
+		])).toEqual([]);
+		expect(detailsVisibleIdentifiers([])).toEqual([]);
+	});
+
+	it('preserves other schemes, values, order and stored UUID metadata', () => {
+		const identifiers = [
+			{ scheme: ' ISBN13 ', value: '9781234567890' },
+			{ scheme: 'UUID', value: 'internal-id' },
+			{ scheme: 'custom', value: 'custom-id' },
+			{ scheme: 'uuid-extra', value: 'another-id' }
+		];
+		const original = structuredClone(identifiers);
+		const visible = detailsVisibleIdentifiers(identifiers);
+		expect(visible).toEqual([identifiers[0], identifiers[2], identifiers[3]]);
+		expect(identifiers).toEqual(original);
+		expect(identifierLinks(visible).map((link) => link.provider))
+			.toEqual(['openlibrary', 'google', 'goodreads', 'amazon', null, null]);
+		expect(identifierLinks([identifiers[1]]))
+			.toEqual([{ provider: null, scheme: 'UUID', value: 'internal-id' }]);
+	});
+});
 
 describe('identifier links', () => {
 	it('maps ISBNs to the four safe provider searches and deduplicates them', () => {

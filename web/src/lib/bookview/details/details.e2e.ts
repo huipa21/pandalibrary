@@ -18,6 +18,7 @@ type CapturedMutation = {
 };
 
 const stamp = '2026-11-06T10:00:00Z';
+const uuidIdentifier = { scheme: 'uuid', value: '6cc2ed23-59f2-4150-936a-2986ffa3e9a9' };
 const book: Book = {
 	owner_id: 1, visibility: 'public', can_manage_visibility: true,
 	id: 21, library_id: 1, title: 'The Emerald Library', sort_title: 'The Emerald Library',
@@ -426,6 +427,57 @@ test('renders details, reading statistics, editions and related books responsive
 	expect(state.shelfAdds).toBe(1);
 });
 
+test('focuses the metadata card and places Library below Shelves', async ({ page }, testInfo) => {
+	const state = await setup(page);
+	state.book = {
+		...book, published_date: '1946-11-15T05:00:00+00:00',
+		identifiers: [uuidIdentifier, ...book.identifiers]
+	};
+	state.userBook = {
+		status: 'finished', rating: 6, started_at: '2026-03-04T00:00:00Z',
+		finished_at: '2026-04-05T00:00:00Z', updated_at: stamp, rev: 1
+	};
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/books/21');
+	const card = page.getByRole('region', { name: 'Details', exact: true });
+	await expect(card.locator('dt')).toHaveText([
+		'Publisher', 'Publication date', 'Language', 'Pages', 'ISBN', 'Metadata source', 'Cover source'
+	]);
+	const publication = card.locator('dl > div').filter({
+		has: page.getByText('Publication date', { exact: true })
+	}).locator('dd');
+	await expect(publication).toHaveText('Nov 15, 1946');
+	await expect(card.getByRole('button', { name: /^Edit Date/ })).toHaveCount(0);
+	await expect(card.getByRole('link', { name: 'Fantasy', exact: true })).toHaveCount(0);
+	const hero = page.locator('header').filter({ has: page.getByRole('heading', { name: book.title, exact: true }) });
+	await expect(hero.getByRole('link', { name: 'Fantasy', exact: true })).toHaveAttribute('href', '/tags/9');
+	await expect(hero.getByRole('link', { name: /Open Library:/ })).toBeVisible();
+	const identifiers = page.getByRole('region', { name: 'Identifiers', exact: true });
+	await expect(identifiers).toContainText('isbn13: 9781234567890');
+	await expect(page.getByText(/6cc2ed23-59f2-4150-936a-2986ffa3e9a9/)).toHaveCount(0);
+
+	const library = page.getByRole('region', { name: 'Library', exact: true });
+	await expect(library.getByRole('link', { name: 'Fiction', exact: true })).toHaveAttribute('href', '/library/1');
+	const shelvesBox = await page.getByRole('list', { name: 'Shelves', exact: true }).boundingBox();
+	const libraryBox = await library.boundingBox();
+	if (!shelvesBox || !libraryBox) throw new Error('Missing Shelves or Library section.');
+	expect(libraryBox.y).toBeGreaterThanOrEqual(shelvesBox.y + shelvesBox.height);
+	expect(Math.abs(libraryBox.x - shelvesBox.x)).toBeLessThan(1);
+	await page.screenshot({ path: testInfo.outputPath('details-metadata.png'), fullPage: true });
+});
+
+test('omits identifier displays when the book only has a UUID', async ({ page }) => {
+	const state = await setup(page);
+	state.book = { ...book, identifiers: [uuidIdentifier] };
+	await page.goto('/books/21');
+	await expect(page.getByRole('heading', { name: book.title, exact: true })).toBeVisible();
+	await expect(page.getByRole('region', { name: 'Identifiers', exact: true })).toHaveCount(0);
+	const hero = page.locator('header').filter({ has: page.getByRole('heading', { name: book.title, exact: true }) });
+	await expect(hero.getByText(/uuid/i)).toHaveCount(0);
+	await expect(hero.getByRole('link', { name: /Open Library:/ })).toHaveCount(0);
+	await expect(hero.getByRole('link', { name: 'Fantasy', exact: true })).toBeVisible();
+});
+
 test('shows a borderless hero status without duplicate format chips or review link', async ({ page }, testInfo) => {
 	await setup(page);
 	await page.goto('/books/21');
@@ -521,7 +573,8 @@ test('reports a library load failure without the removed back-to-library link', 
 		route.fulfill({ status: 503, json: { title: 'Unavailable', status: 503 } })
 	);
 	await page.goto('/books/21');
-	await expect(page.getByText('Could not load the library.')).toBeVisible();
+	await expect(page.getByRole('region', { name: 'Library', exact: true }).getByRole('alert')).toHaveText('Could not load the library.');
+	await expect(page.getByRole('region', { name: 'Details', exact: true }).getByText('Could not load the library.')).toHaveCount(0);
 	await expect(page.getByRole('link', { name: 'Back to library' })).toHaveCount(0);
 });
 
@@ -532,7 +585,7 @@ test('resumes the saved readable format', async ({ page }) => {
 	await expect(page).toHaveURL('/read/21/31');
 });
 
-test('persists rating, status and dates without showing private notes as a review', async ({ page }) => {
+test('persists rating and status without showing private notes as a review', async ({ page }) => {
 	const state = await setup(page);
 	state.notes = [{
 		id: 'private-note', book_id: 21, highlight_id: null, body_md: 'A private book note.',
@@ -552,25 +605,14 @@ test('persists rating, status and dates without showing private notes as a revie
 	await expect.poll(() => state.userBook?.status).toBe('finished');
 	await expect(page.getByRole('button', { name: 'Reading status: Read' })).toBeVisible();
 
-	await page.getByRole('button', { name: 'Edit Date started' }).click();
-	await page.getByLabel('Date started', { exact: true }).fill('2026-03-04');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
-	await expect.poll(() => state.mutations.some((item) => item.entity === 'user_books' && item.data.started_at === Date.parse('2026-03-04T00:00:00Z'))).toBe(true);
-	await expect(page.getByText('Mar 4, 2026', { exact: true })).toBeVisible();
-
 	await page.reload();
 	await expect(rating).toHaveAttribute('aria-checked', 'true');
 	await expect(page.getByRole('button', { name: 'Reading status: Read' })).toBeVisible();
-	await expect(page.getByText('Mar 4, 2026', { exact: true })).toBeVisible();
 
 	if (!state.userBook) throw new Error('Expected a saved user book.');
 	state.userBook = { ...state.userBook, rating: 2, updated_at: '2026-11-07T12:00:00Z', rev: state.userBook.rev + 1 };
 	await page.evaluate(() => window.dispatchEvent(new CustomEvent('pandalibrary-book-state-changed', { detail: { bookId: 21 } })));
 	await expect(page.getByRole('radio', { name: '1 out of 5', exact: true })).toHaveAttribute('aria-checked', 'true');
-
-	await page.getByRole('button', { name: 'Edit Date started' }).click();
-	await page.getByRole('button', { name: 'Clear', exact: true }).click();
-	await expect.poll(() => state.userBook?.started_at).toBeNull();
 });
 
 test('uses the stored status and persists a new re-read without a finish date', async ({ page }) => {
@@ -752,6 +794,9 @@ test('keeps metadata sources but hides the admin edit control when offline', asy
 	state.online = false;
 	await context.setOffline(true);
 	await expect(card.getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
+	const library = page.getByRole('region', { name: 'Library', exact: true });
+	await expect(library).toContainText('Fiction');
+	await expect(library.getByRole('link')).toHaveCount(0);
 	state.online = true;
 	await context.setOffline(false);
 	await expect(card.getByRole('link', { name: 'Edit metadata' })).toBeVisible();
