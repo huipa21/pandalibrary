@@ -8,6 +8,7 @@
 	import { isCompletedStatus, type UserBook } from '../user-book.js';
 	import ProgressRing from '../ProgressRing.svelte';
 	import AddSessionDialog from './AddSessionDialog.svelte';
+	import { hoursToFinish } from './log-model.js';
 
 	interface Props {
 		bookId: number;
@@ -19,16 +20,17 @@
 	let dialogOpen = $state(false);
 	const locale = $derived(getLocale());
 	const progress = $derived(Math.min(1, Math.max(0, summary.progress)));
-	const pace = $derived(summary.pace_percent_per_hour === null
+	const hoursLeft = $derived(hoursToFinish(summary.progress, summary.total_seconds));
+	const pace = $derived(hoursLeft === null
 		? m['bv8.no_data']()
-		: m['bv8.pace_value']({ pace: new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(summary.pace_percent_per_hour) }));
+		: m['bv8.pace_hours']({ hours: new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(hoursLeft) }));
 	const rows = $derived([
 		{ label: m['bv8.started'](), value: userBook?.started_at ? formatDate(userBook.started_at, locale) : m['bv8.not_set']() },
 		{ label: m['bv8.finished'](), value: userBook?.finished_at ? formatDate(userBook.finished_at, locale) : m['bv8.not_set']() },
 		{ label: m['bv8.total_time'](), value: formatDuration(summary.total_seconds) },
 		{ label: m['bv8.sessions'](), value: new Intl.NumberFormat(locale).format(summary.sessions) },
 		{ label: m['bv8.average_session'](), value: formatDuration(summary.average_seconds) },
-		{ label: m['bv8.active_days'](), value: m['bv8.active_span']({ active: summary.active_days, span: summary.span_days }) },
+		{ label: m['bv8.active_days'](), value: new Intl.NumberFormat(locale).format(summary.active_days) },
 		{ label: m['bv8.pace'](), value: pace },
 		{ label: m['bv8.last_read'](), value: summary.last_read_at ? formatRelative(summary.last_read_at, new Date(), locale) : m['bv8.not_set']() }
 	]);

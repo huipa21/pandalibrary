@@ -182,11 +182,11 @@ async function openLog(page: Page, query = '') {
 	await expect(page.getByRole('heading', { name: 'Reading summary' })).toBeVisible();
 }
 
-test('shows the ended cycle as read once alongside the new active cycle', async ({ page }) => {
+test('shows only the latest cycle in the reading cycles card', async ({ page }) => {
 	await mockApi(page);
 	await openLog(page);
-	await expect(page.getByText('Read once · Read', { exact: true })).toBeVisible();
 	await expect(page.getByText('Cycle 2 · In progress', { exact: true })).toBeVisible();
+	await expect(page.getByText('Read once · Read', { exact: true })).toHaveCount(0);
 	await expect(page.getByRole('heading', { name: 'Reading cycles 2', exact: true })).toBeVisible();
 });
 
@@ -196,8 +196,10 @@ test('renders summary, timezone-aware sessions, filters and cursor pagination', 
 	await expect(page.getByRole('img', { name: 'Reading progress: 21%' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Reading status: Reading' })).toBeVisible();
 	await expect(page.getByText('~5m to finish')).toBeVisible();
-	await expect(page.getByText('3 of 4', { exact: true })).toBeVisible();
-	await expect(page.getByText('14.2%/h').first()).toBeVisible();
+	const summaryCard = page.getByRole('region', { name: 'Reading summary' });
+	const summaryValue = (label: string) => summaryCard.locator('div').filter({ has: page.getByText(label, { exact: true }) }).locator('dd');
+	await expect(summaryValue('Active days')).toHaveText('3');
+	await expect(summaryValue('Pace')).toHaveText('11.3 hours');
 	await expect(page.getByText('Showing 25 of 31')).toBeVisible();
 	await expect(page.getByText(/Attempt 2 began/)).toBeVisible();
 	await expect(page.getByRole('cell', { name: '-60%' })).toHaveClass(/text-amber-700/);
@@ -357,7 +359,7 @@ test('caps export at exactly 10,000 sessions and reports the limit', async ({ pa
 	expect(state.requests.filter((item) => item.path.endsWith('/sessions') && item.query.includes('limit=100'))).toHaveLength(100);
 });
 
-test('changes chart paths, exposes daily details and handles an empty book', async ({ page }) => {
+test('changes chart paths, labels daily minutes and handles an empty book', async ({ page }) => {
 	await mockApi(page);
 	await openLog(page);
 	const chart = page.getByRole('img', { name: /Reading progress over 3 active days/ });
@@ -372,8 +374,12 @@ test('changes chart paths, exposes daily details and handles an empty book', asy
 	await chart.locator('[role=button]').first().blur();
 	await chart.locator('[role=button]').nth(1).hover();
 	await expect(page.getByRole('status').filter({ hasText: 'Mar 8, 2026' })).toBeVisible();
-	await page.getByText('Show daily chart data').click();
-	await expect(page.getByRole('table').last()).toContainText('Mar 8, 2026');
+	await expect(chart.getByTestId('bv8-bar-minutes')).toHaveText(['2', '10', '5']);
+	await expect(chart.locator('text').filter({ hasText: /^\d+%$/ })).toHaveText(['0%', '20%', '40%', '60%', '80%', '100%']);
+	await expect(page.getByText('Show daily chart data')).toHaveCount(0);
+	const chartRegion = page.getByRole('region', { name: 'Progress over time' });
+	await expect(chartRegion.getByText('Progress', { exact: true })).toBeVisible();
+	await expect(chartRegion.getByText('Minutes', { exact: true })).toBeVisible();
 });
 
 test('renders explicit empty and offline states and recovers after reconnecting', async ({ page, context }) => {

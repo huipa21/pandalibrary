@@ -108,7 +108,7 @@
 						<SessionsTable bookId={context.book.id} title={context.book.title} {timezone} {refreshVersion} />
 					</div>
 					<div class="grid min-w-0 gap-5 content-start">
-						<AttemptsCard attempts={summary.attempts} />
+						<AttemptsCard bookId={context.book.id} attempts={summary.attempts} />
 						<RecordsCard {summary} />
 					</div>
 				</div>

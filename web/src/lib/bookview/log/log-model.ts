@@ -173,7 +173,8 @@ export function chartSeries(days: readonly ReadingDay[], mode: ChartMode, width:
 	}
 	const first = dates[0] ?? 0;
 	const span = ((dates.at(-1) ?? first) - first) / DAY_MS;
-	const minutesMax = niceCeiling(Math.max(0, ...days.map((day) => day.seconds / 60)));
+	// At least one minute so the six minute ticks stay readable for very short days.
+	const minutesMax = niceCeiling(Math.max(1, ...days.map((day) => day.seconds / 60)));
 	const minimumGap = dates.length > 1
 		? Math.min(...dates.slice(1).map((date, index) => (date - dates[index]) / DAY_MS))
 		: 0;
@@ -203,11 +204,21 @@ export function chartSeries(days: readonly ReadingDay[], mode: ChartMode, width:
 			dateTicks.push({ x: lastPoint.x, date: lastPoint.day.date });
 		}
 	}
-	const percentTicks = [0, 25, 50, 75, 100].map((value) => ({
-		value, y: BASELINE - value / 100 * PLOT_HEIGHT
+	const fractions = [0, 0.2, 0.4, 0.6, 0.8, 1];
+	const percentTicks = fractions.map((fraction) => ({
+		value: Math.round(fraction * 100), y: BASELINE - fraction * PLOT_HEIGHT
 	}));
-	const minuteTicks = [0, 0.5, 1].map((fraction) => ({
-		value: minutesMax * fraction, y: BASELINE - fraction * PLOT_HEIGHT
+	// niceCeiling yields 1, 2 or 5 × 10ⁿ, so fifths stay clean numbers aligned with the percent gridlines.
+	const minuteTicks = fractions.map((fraction) => ({
+		value: Number((minutesMax * fraction).toPrecision(12)), y: BASELINE - fraction * PLOT_HEIGHT
 	}));
 	return { path: linePath(linePoints, mode), points, barWidth, dateTicks, percentTicks, minuteTicks };
+}
+
+/** Hours left to finish at the current rate (time spent / progress); null when there is no data yet. */
+export function hoursToFinish(progress: number, totalSeconds: number): number | null {
+	const done = Math.min(1, Math.max(0, progress));
+	if (!(done > 0) || !(totalSeconds > 0)) return null;
+	if (done >= 1) return 0;
+	return totalSeconds * (1 - done) / done / 3600;
 }
