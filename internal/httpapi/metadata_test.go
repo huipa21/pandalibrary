@@ -123,6 +123,36 @@ func TestMetadataAdminRoutesRedactionVisibilityAndSelections(t *testing.T) {
 	if len(appliedDTO.Book.FieldSources) != 1 || appliedDTO.Book.FieldSources[0].Source != "openlibrary" {
 		t.Fatalf("provenance = %+v", appliedDTO.Book.FieldSources)
 	}
+	request["patch"] = map[string]any{"subtitle": nil, "description": "Manual description", "tags": []string{"Manual tag"}}
+	applied = authRequest(t, router, http.MethodPost, base+"apply", request, fixture.admin)
+	if applied.Code != http.StatusOK || json.Unmarshal(applied.Body.Bytes(), &appliedDTO) != nil ||
+		appliedDTO.Book.Title != candidate.Title || appliedDTO.Book.Subtitle != nil ||
+		appliedDTO.Book.Description == nil || *appliedDTO.Book.Description != "Manual description" ||
+		len(appliedDTO.Book.Tags) != 1 || appliedDTO.Book.Tags[0].Name != "Manual tag" {
+		t.Fatalf("mixed apply DTO = %d %s", applied.Code, applied.Body.String())
+	}
+	if len(appliedDTO.Book.FieldSources) != 4 {
+		t.Fatalf("mixed provenance = %+v", appliedDTO.Book.FieldSources)
+	}
+	for _, source := range appliedDTO.Book.FieldSources {
+		if source.Field == "title" {
+			if source.Source != "openlibrary" || source.SourceRef == nil || *source.SourceRef != candidate.Reference {
+				t.Fatalf("mixed provider provenance = %+v", source)
+			}
+		} else if source.Source != "manual" || source.SourceRef != nil {
+			t.Fatalf("mixed manual provenance = %+v", source)
+		}
+	}
+	for _, patch := range []any{
+		map[string]any{"title": "Colliding manual title"},
+		map[string]any{"library_id": nil},
+		map[string]any{"cover": "https://evil.example"},
+		map[string]any{"unknown": true},
+	} {
+		request["patch"] = patch
+		requireProblem(t, authRequest(t, router, http.MethodPost, base+"apply", request, fixture.admin), http.StatusBadRequest)
+	}
+	request["patch"] = map[string]any{"description": "Must not save"}
 	injected := map[string]any{"request_key": lookupDTO.RequestKey, "fields": map[string]any{
 		"title": map[string]string{"provider": "openlibrary", "reference": candidate.Reference, "value": "Injected Title"},
 	}}
@@ -135,6 +165,10 @@ func TestMetadataAdminRoutesRedactionVisibilityAndSelections(t *testing.T) {
 	}, fixture.admin), http.StatusNotFound)
 	request["request_key"] = "book:101:" + strings.Repeat("a", 64)
 	requireProblem(t, authRequest(t, router, http.MethodPost, base+"apply", request, fixture.admin), http.StatusConflict)
+	unchanged, err := books.GetBook(ctx, catalog.Viewer{UserID: 1, IsAdmin: true}, 101)
+	if err != nil || unchanged.Title != candidate.Title || unchanged.Description == nil || *unchanged.Description != "Manual description" {
+		t.Fatalf("rejected HTTP saves mutated book = %+v, %v", unchanged, err)
+	}
 	requireProblem(t, authRequest(t, router, http.MethodPost, base+"candidates?base_url=https://evil.example", nil, fixture.admin), http.StatusBadRequest)
 	for _, path := range []string{base + "candidates", base + "apply", base + "cover", "/api/v1/admin/metadata/providers/neodb"} {
 		method := http.MethodPost

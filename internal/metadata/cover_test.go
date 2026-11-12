@@ -86,6 +86,22 @@ func TestCoverNormalizationCoverOnlyApplyAndAtomicRollback(t *testing.T) {
 	if err := content.File.Close(); err != nil {
 		t.Fatal(err)
 	}
+	book, err = f.service.Apply(ctx, administrator, 101, ApplyRequest{
+		RequestKey: lookup.RequestKey, Fields: map[string]Selection{"cover": selection},
+		Patch: catalog.BookPatch{Description: catalog.Optional[string]{Set: true, Value: text("Manual description")}},
+	})
+	if err != nil || book.Description == nil || *book.Description != "Manual description" ||
+		book.CoverSource == nil || *book.CoverSource != "neodb" {
+		t.Fatalf("mixed cover apply = %+v %v", book, err)
+	}
+	for _, source := range book.FieldSources {
+		if source.Field == "description" && (source.Source != "manual" || source.SourceRef != nil) {
+			t.Fatalf("mixed cover manual provenance = %+v", source)
+		}
+		if source.Field == "cover" && (source.Source != "neodb" || source.SourceRef == nil || *source.SourceRef != selection.Reference) {
+			t.Fatalf("mixed cover provider provenance = %+v", source)
+		}
+	}
 	if _, err := f.db.Writer.ExecContext(ctx, `
 		UPDATE books SET cover_sha256 = NULL, cover_source = NULL WHERE id = 101;
 		CREATE TRIGGER fail_cover_provenance BEFORE UPDATE ON book_field_sources
@@ -94,12 +110,15 @@ func TestCoverNormalizationCoverOnlyApplyAndAtomicRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = f.service.Apply(ctx, administrator, 101, ApplyRequest{RequestKey: lookup.RequestKey,
-		Fields: map[string]Selection{"title": selection, "cover": selection}})
+		Fields: map[string]Selection{"title": selection, "cover": selection},
+		Patch:  catalog.BookPatch{Description: catalog.Optional[string]{Set: true}},
+	})
 	if err == nil {
 		t.Fatal("provenance failure did not fail apply")
 	}
 	book, err = f.books.GetBook(ctx, administrator, 101)
-	if err != nil || book.Title != "Original Title" || book.CoverURL != nil {
+	if err != nil || book.Title != "Original Title" || book.CoverURL != nil ||
+		book.Description == nil || *book.Description != "Manual description" {
 		t.Fatalf("cover and fields did not roll back together: %+v %v", book, err)
 	}
 	if _, err := f.service.Cover(ctx, catalog.Viewer{UserID: 2}, 101, request); !errors.Is(err, catalog.ErrForbidden) {

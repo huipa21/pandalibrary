@@ -13,7 +13,7 @@ import (
 	"pandalibrary/internal/db/sqlc"
 )
 
-// Apply uses only server-cached values and records each explicit field's provenance.
+// Apply combines server-cached selections and manual edits with per-field provenance.
 func (s *Service) Apply(ctx context.Context, viewer catalog.Viewer, bookID int64, request ApplyRequest) (catalog.Book, error) {
 	if err := admin(viewer); err != nil {
 		return catalog.Book{}, err
@@ -83,7 +83,7 @@ func (s *Service) Apply(ctx context.Context, viewer catalog.Viewer, bookID int64
 			return catalog.Book{}, ErrInvalid
 		}
 	}
-	return s.catalog.ApplyMetadata(ctx, viewer, bookID, patch, sources, cover)
+	return s.catalog.ApplyMetadataWithPatch(ctx, viewer, bookID, patch, sources, cover, request.Patch)
 }
 
 // Cover retrieves a cached candidate's cover for administrator preview.

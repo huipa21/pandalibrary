@@ -108,8 +108,13 @@ and added dates are in **Files**, and reading dates are in **Activities**.
 Technical UUID identifiers are hidden on **Details** but remain stored.
 
 Administrators can select **Edit metadata** (the pencil in the **Details** card)
-to add, rename or remove tags in the **Edit book tags** section and save the changes.
-Editing tags does not require looking up metadata candidates.
+to edit the existing metadata in one form, including adding, renaming or removing
+tags. Select **Save metadata** at the bottom to save all changes. Direct edits do
+not require looking up metadata candidates. **Find metadata** at the top right
+adds source tabs and a side-by-side comparison; use the buttons between each
+row's values to copy a found value or restore the saved value before saving.
+See [editing book metadata](./administration.md#editing-book-metadata) for
+combining results from different sources.
 
 - **Unread** and **Want to read** are only for books you have not started.
   Saving positive reading progress automatically starts **Reading**. After

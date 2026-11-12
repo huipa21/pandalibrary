@@ -1,5 +1,6 @@
 import { ApiError, api, type JsonValue, type ProblemDetails } from '#lib/api/client.js';
 import type { Book } from '#lib/catalog/types.js';
+import type { MetadataPatch } from './editor.js';
 import type {
 	ApplyResponse,
 	Candidate,
@@ -74,6 +75,33 @@ export async function applyMetadata(bookId: number, requestKey: string, selectio
 	const body = buildApplyBody(requestKey, selections);
 	if (Object.keys(body.fields as object).length === 0) throw new Error('No metadata fields were selected.');
 	const response = await api.request<ApplyResponse>(`/books/${bookId}/metadata/apply`, { method: 'POST', body });
+	if (!response?.book || response.book.id !== bookId) throw new InvalidMetadataResponseError();
+	return response.book;
+}
+
+/** Save manual edits alone, or atomically alongside trusted provider selections. */
+export async function saveMetadata(
+	bookId: number,
+	patch: MetadataPatch,
+	requestKey: string | null,
+	selections: Selections
+): Promise<Book> {
+	const selected = Object.values(selections).some((ref) => ref !== undefined);
+	const hasPatch = Object.values(patch).some((value) => value !== undefined);
+	if (!selected && !hasPatch) throw new Error('No metadata changes were made.');
+	let response: ApplyResponse;
+	if (selected) {
+		if (!requestKey) throw new Error('A metadata request key is required for selected fields.');
+		response = await api.request<ApplyResponse>(`/books/${bookId}/metadata/apply`, {
+			method: 'POST',
+			body: {
+				...buildApplyBody(requestKey, selections),
+				...(hasPatch ? { patch } : {})
+			}
+		});
+	} else {
+		response = await api.request<ApplyResponse>(`/books/${bookId}`, { method: 'PATCH', body: patch });
+	}
 	if (!response?.book || response.book.id !== bookId) throw new InvalidMetadataResponseError();
 	return response.book;
 }

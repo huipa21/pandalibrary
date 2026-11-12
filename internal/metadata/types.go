@@ -102,10 +102,11 @@ type Selection struct {
 	Reference string `json:"reference"`
 }
 
-// ApplyRequest chooses one cached provider candidate per updated field.
+// ApplyRequest chooses cached provider fields and optionally edits other fields manually.
 type ApplyRequest struct {
 	RequestKey string               `json:"request_key"`
 	Fields     map[string]Selection `json:"fields"`
+	Patch      catalog.BookPatch    `json:"patch,omitempty"`
 }
 
 // LookupResponse binds subsequent selections to this book's cached lookup.

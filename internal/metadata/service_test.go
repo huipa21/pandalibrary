@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -396,6 +397,191 @@ func TestSelectionExpirySchemaBindingAndPermissions(t *testing.T) {
 	if _, err := f.service.UpdateProvider(ctx, reader, "googlebooks", ProviderPatch{}); !errors.Is(err, catalog.ErrForbidden) {
 		t.Fatal("non-admin update allowed")
 	}
+}
+
+func TestApplyMixedFieldsProvenanceAndIndex(t *testing.T) {
+	f := newServiceFixture(t)
+	ctx := context.Background()
+	installStub(f.service, func(name string, _ context.Context, _ Query) ([]Candidate, error) {
+		return []Candidate{stubCandidate(name)}, nil
+	})
+	lookup, err := f.service.Lookup(ctx, administrator, 101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request ApplyRequest
+	if err := json.Unmarshal([]byte(`{
+			"fields":{"title":{"provider":"openlibrary","reference":"record123"}},
+			"patch":{"subtitle":null,"description":"Manual description","language":"zh",
+				"publisher":"Manual press","published_date":"2025-01","page_count":null,
+				"series":{"name":"Manual series","index":2.5},
+				"authors":[{"name":"Manual author","role":"editor"}],
+				"tags":[],"identifiers":[{"scheme":"isbn13","value":"978123"}]}
+		}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	request.RequestKey = lookup.RequestKey
+	book, err := f.service.Apply(ctx, administrator, 101, request)
+	if err != nil || book.Title != "Chosen Title" || book.Subtitle != nil ||
+		book.Description == nil || *book.Description != "Manual description" ||
+		book.Language == nil || *book.Language != "zh" || book.Publisher == nil || *book.Publisher != "Manual press" ||
+		book.PublishedDate == nil || *book.PublishedDate != "2025-01" || book.PageCount != nil ||
+		book.Series == nil || book.Series.Name != "Manual series" || book.Series.Index == nil || *book.Series.Index != 2.5 ||
+		len(book.Authors) != 1 || book.Authors[0].Name != "Manual author" || book.Authors[0].Role != "editor" ||
+		len(book.Tags) != 0 || len(book.Identifiers) != 1 || book.Identifiers[0].Value != "978123" {
+		t.Fatalf("mixed apply = %+v, %v", book, err)
+	}
+	if len(book.FieldSources) != 11 {
+		t.Fatalf("mixed sources = %+v", book.FieldSources)
+	}
+	for _, source := range book.FieldSources {
+		if source.ChosenBy == nil || *source.ChosenBy != administrator.UserID || source.ChosenAt.UnixMilli() <= 2 {
+			t.Fatalf("chooser = %+v", source)
+		}
+		if source.Field == "title" {
+			if source.Source != "openlibrary" || source.SourceRef == nil || *source.SourceRef != "record123" {
+				t.Fatalf("provider source = %+v", source)
+			}
+		} else if source.Source != "manual" || source.SourceRef != nil {
+			t.Fatalf("manual source = %+v", source)
+		}
+	}
+	var title, description, authors, publisher string
+	if err := f.db.Reader.QueryRowContext(ctx, `
+			SELECT title, description, authors, publisher FROM books_fts WHERE rowid = 101`).
+		Scan(&title, &description, &authors, &publisher); err != nil ||
+		title != book.Title || description != *book.Description || authors != "Manual author" || publisher != "Manual press" {
+		t.Fatalf("mixed index = %q %q %q %q, %v", title, description, authors, publisher, err)
+	}
+	request.Fields = map[string]Selection{"publisher": {Provider: "openlibrary", Reference: "record123"}}
+	request.Patch = catalog.BookPatch{Title: catalog.Optional[string]{Set: true, Value: text("Manual title")}}
+	book, err = f.service.Apply(ctx, administrator, 101, request)
+	if err != nil || book.Title != "Manual title" || book.Publisher == nil || *book.Publisher != "Chosen Press" {
+		t.Fatalf("manual title = %+v, %v", book, err)
+	}
+	for _, source := range book.FieldSources {
+		if source.Field == "title" && (source.Source != "manual" || source.SourceRef != nil) {
+			t.Fatalf("manual edit did not clear provider reference: %+v", source)
+		}
+		if source.Field == "publisher" && (source.Source != "openlibrary" || source.SourceRef == nil || *source.SourceRef != "record123") {
+			t.Fatalf("selected field did not replace manual provenance: %+v", source)
+		}
+	}
+}
+
+func TestApplyMixedRejectionAndRollback(t *testing.T) {
+	f := newServiceFixture(t)
+	ctx := context.Background()
+	installStub(f.service, func(name string, _ context.Context, _ Query) ([]Candidate, error) {
+		return []Candidate{stubCandidate(name)}, nil
+	})
+	lookup, err := f.service.Lookup(ctx, administrator, 101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := f.books.UpdateBook(ctx, administrator, 101, catalog.BookPatch{
+		Description: catalog.Optional[string]{Set: true, Value: text("Before description")},
+		Tags:        catalog.Optional[[]string]{Set: true, Value: &[]string{"Before tag"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := Selection{Provider: "openlibrary", Reference: "record123"}
+	base := ApplyRequest{RequestKey: lookup.RequestKey, Fields: map[string]Selection{"title": selection},
+		Patch: catalog.BookPatch{
+			Subtitle:    catalog.Optional[string]{Set: true},
+			Description: catalog.Optional[string]{Set: true, Value: text("After description")},
+			Tags:        catalog.Optional[[]string]{Set: true, Value: &[]string{"After tag"}},
+		}}
+	assertUnchanged := func(t *testing.T) {
+		t.Helper()
+		after, err := f.books.GetBook(ctx, administrator, 101)
+		if err != nil || !reflect.DeepEqual(before, after) {
+			t.Fatalf("failed mixed save mutated book: before=%+v after=%+v err=%v", before, after, err)
+		}
+		var title, description, tags string
+		if err := f.db.Reader.QueryRowContext(ctx, `
+				SELECT title, description, tags FROM books_fts WHERE rowid = 101`).
+			Scan(&title, &description, &tags); err != nil ||
+			title != before.Title || description != *before.Description || tags != "Before tag" {
+			t.Fatalf("failed mixed save mutated index: %q %q %q, %v", title, description, tags, err)
+		}
+	}
+	for _, test := range []struct {
+		name   string
+		change func(*ApplyRequest)
+		want   error
+	}{
+		{"empty selections", func(r *ApplyRequest) { r.Fields = nil }, ErrInvalid},
+		{"unknown field", func(r *ApplyRequest) { r.Fields = map[string]Selection{"unknown": selection} }, ErrInvalid},
+		{"invalid selection", func(r *ApplyRequest) { r.Fields = map[string]Selection{"title": {}} }, ErrInvalid},
+		{"forged reference", func(r *ApplyRequest) {
+			r.Fields = map[string]Selection{"title": {Provider: selection.Provider, Reference: "forged"}}
+		}, ErrConflict},
+		{"cross-book key", func(r *ApplyRequest) { r.RequestKey = requestKey(102, Query{Title: "Hidden"}) }, ErrInvalid},
+		{"library move", func(r *ApplyRequest) { r.Patch.LibraryID = catalog.Optional[int64]{Set: true, Value: pages(10)} }, catalog.ErrInvalid},
+		{"null library", func(r *ApplyRequest) { r.Patch.LibraryID = catalog.Optional[int64]{Set: true} }, catalog.ErrInvalid},
+		{"invalid manual value", func(r *ApplyRequest) { r.Patch.PageCount = catalog.Optional[int64]{Set: true, Value: new(int64)} }, catalog.ErrInvalid},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := base
+			test.change(&request)
+			if _, err := f.service.Apply(ctx, administrator, 101, request); !errors.Is(err, test.want) {
+				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+			assertUnchanged(t)
+		})
+	}
+	for _, test := range []struct {
+		field string
+		value string
+	}{
+		{"title", `"Manual"`}, {"subtitle", "null"}, {"description", `"Manual"`},
+		{"language", `"en"`}, {"publisher", `"Manual"`}, {"published_date", `"2025"`},
+		{"page_count", "null"}, {"series", "null"}, {"authors", "[]"}, {"tags", "[]"}, {"identifiers", "[]"},
+	} {
+		t.Run("collision "+test.field, func(t *testing.T) {
+			request := base
+			request.Fields = map[string]Selection{test.field: selection}
+			if err := json.Unmarshal([]byte(`{"`+test.field+`":`+test.value+`}`), &request.Patch); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.service.Apply(ctx, administrator, 101, request); !errors.Is(err, catalog.ErrInvalid) ||
+				!strings.Contains(err.Error(), "overlap") {
+				t.Fatalf("collision error = %v", err)
+			}
+			assertUnchanged(t)
+		})
+	}
+	for _, statement := range []string{
+		`UPDATE metadata_cache SET expires_at = 0`,
+		`UPDATE metadata_cache SET schema_version = 999`,
+		`UPDATE metadata_providers SET enabled = 0 WHERE provider = 'openlibrary'`,
+	} {
+		if _, err := f.db.Writer.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.service.Apply(ctx, administrator, 101, base); !errors.Is(err, ErrConflict) {
+			t.Fatalf("stale selection error = %v", err)
+		}
+		assertUnchanged(t)
+		if _, err := f.db.Writer.ExecContext(ctx, `
+				UPDATE metadata_cache SET expires_at = 9999999999999, schema_version = 1;
+				UPDATE metadata_providers SET enabled = 1 WHERE provider = 'openlibrary';
+			`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.db.Writer.ExecContext(ctx, `
+			CREATE TRIGGER fail_mixed_provenance BEFORE UPDATE ON book_field_sources
+			WHEN NEW.source = 'openlibrary' BEGIN SELECT RAISE(ABORT, 'fixture provenance failure'); END;
+		`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.service.Apply(ctx, administrator, 101, base); err == nil {
+		t.Fatal("provenance failure did not reject mixed save")
+	}
+	assertUnchanged(t)
 }
 
 func TestBookISBNPrecedenceAndRateBuckets(t *testing.T) {

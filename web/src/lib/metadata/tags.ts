@@ -8,12 +8,17 @@ export class InvalidTagsError extends Error {
 	}
 }
 
+/** Use Go strings.TrimSpace's whitespace set, preserving BOM characters. */
+export function trimSpace(value: string): string {
+	return value.replace(/^[\u0009-\u000d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g, '');
+}
+
 /** Match Go strings.TrimSpace and SQLite NOCASE, rather than Unicode case folding. */
 export function normalizeTags(tags: readonly string[]): string[] {
 	if (tags.length > 1000) throw new InvalidTagsError('limit');
 	const seen = new Set<string>();
 	return tags.map((tag) => {
-		const name = tag.replace(/^[\u0009-\u000d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g, '');
+		const name = trimSpace(tag);
 		if (!name || new TextEncoder().encode(name).length > 1024 || /[\u0000-\u001f\u007f-\u009f]/.test(name)) {
 			throw new InvalidTagsError('name');
 		}

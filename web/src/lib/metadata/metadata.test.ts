@@ -9,7 +9,8 @@ import {
 	fetchCoverPreview,
 	InvalidMetadataResponseError,
 	lookupCandidates,
-	normalizeLookup
+	normalizeLookup,
+	saveMetadata
 } from './api.js';
 import {
 	candidateClears,
@@ -137,6 +138,43 @@ describe('metadata lookup and apply API', () => {
 	it('surfaces 409 conflicts so the caller can repeat the lookup', async () => {
 		vi.spyOn(api, 'request').mockRejectedValue(new ApiError(409, 'Conflict', '{}', { status: 409 }));
 		await expect(applyMetadata(1, 'stale', { title: candidate() })).rejects.toMatchObject({ status: 409 });
+	});
+
+	it('saves manual patches without a lookup and combines patches with trusted selections', async () => {
+		const updated = book({ subtitle: null });
+		const spy = vi.spyOn(api, 'request').mockResolvedValue({ book: updated });
+		await expect(saveMetadata(1, { subtitle: null, tags: [] }, null, {})).resolves.toBe(updated);
+		expect(spy).toHaveBeenLastCalledWith('/books/1', {
+			method: 'PATCH', body: { subtitle: null, tags: [] }
+		});
+		await expect(saveMetadata(1, { subtitle: null }, 'key-1', { title: candidate() })).resolves.toBe(updated);
+		expect(spy).toHaveBeenLastCalledWith('/books/1/metadata/apply', {
+			method: 'POST',
+			body: {
+				request_key: 'key-1',
+				fields: { title: { provider: 'openlibrary', reference: '/works/OL1W' } },
+				patch: { subtitle: null }
+			}
+		});
+		await saveMetadata(1, {}, 'key-1', { cover: candidate() });
+		expect(spy).toHaveBeenLastCalledWith('/books/1/metadata/apply', {
+			method: 'POST',
+			body: { request_key: 'key-1', fields: { cover: { provider: 'openlibrary', reference: '/works/OL1W' } } }
+		});
+	});
+
+	it('rejects no-op saves, missing lookup keys, and invalid save responses', async () => {
+		const spy = vi.spyOn(api, 'request');
+		await expect(saveMetadata(1, {}, null, {})).rejects.toThrow('No metadata changes');
+		await expect(saveMetadata(1, { title: undefined }, null, {})).rejects.toThrow('No metadata changes');
+		await expect(saveMetadata(1, {}, 'key-1', { title: undefined })).rejects.toThrow('No metadata changes');
+		await expect(saveMetadata(1, { title: 'Changed' }, null, { cover: candidate() })).rejects.toThrow('request key');
+		await expect(saveMetadata(1, {}, '', { title: candidate() })).rejects.toThrow('request key');
+		expect(spy).not.toHaveBeenCalled();
+		spy.mockResolvedValue({ book: book({ id: 2 }) });
+		await expect(saveMetadata(1, { title: 'Changed' }, null, {})).rejects.toThrow(InvalidMetadataResponseError);
+		spy.mockRejectedValue(new ApiError(409, 'Conflict', '{}', { status: 409 }));
+		await expect(saveMetadata(1, { tags: [] }, 'stale', { title: candidate() })).rejects.toMatchObject({ status: 409 });
 	});
 
 	it('fetches cover previews through the server with the same request key', async () => {

@@ -17,6 +17,10 @@ func (s *Service) UpdateBook(ctx context.Context, viewer Viewer, id int64, patch
 }
 
 func (s *Service) updateBook(ctx context.Context, viewer Viewer, id int64, patch BookPatch, sources map[string]MetadataSource, cover *covers.Result) (Book, error) {
+	return s.updateBookWithManualPatch(ctx, viewer, id, patch, sources, cover, BookPatch{})
+}
+
+func (s *Service) updateBookWithManualPatch(ctx context.Context, viewer Viewer, id int64, patch BookPatch, sources map[string]MetadataSource, cover *covers.Result, manual BookPatch) (Book, error) {
 	if err := checkAdmin(viewer); err != nil {
 		return Book{}, err
 	}
@@ -28,7 +32,7 @@ func (s *Service) updateBook(ctx context.Context, viewer Viewer, id int64, patch
 		return Book{}, err
 	}
 	if sources != nil {
-		if patch.LibraryID.Set {
+		if patch.LibraryID.Set || manual.LibraryID.Set {
 			return Book{}, invalid("provider metadata cannot move books")
 		}
 		expected := append([]string(nil), fields...)
@@ -44,6 +48,18 @@ func (s *Service) updateBook(ctx context.Context, viewer Viewer, id int64, patch
 				return Book{}, invalid("provider provenance is invalid")
 			}
 		}
+		// Validate provider provenance against the provider patch before merging.
+		manual, manualFields, err := normalizeBookPatch(manual, true)
+		if err != nil {
+			return Book{}, err
+		}
+		for _, field := range manualFields {
+			if _, selected := sources[field]; selected {
+				return Book{}, invalid("manual and provider fields overlap: " + field)
+			}
+		}
+		patch = mergeManualPatch(patch, manual)
+		fields = append(fields, manualFields...)
 	}
 	if cover != nil {
 		if err := s.blobs.PublishCover(cover.FullSHA256, cover.FullJPEG, cover.ThumbnailJPEG); err != nil {
@@ -135,7 +151,7 @@ func (s *Service) updateBook(ctx context.Context, viewer Viewer, id int64, patch
 			return fmt.Errorf("update book: %w", err)
 		}
 		for _, field := range fields {
-			if sources == nil {
+			if _, selected := sources[field]; !selected {
 				if err := setManualSource(ctx, queries, viewer, id, field, now); err != nil {
 					return err
 				}

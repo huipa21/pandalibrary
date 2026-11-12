@@ -96,8 +96,34 @@ abandoned images and images belonging to deleted accounts.
 
 ## Editing book metadata
 
-On a book page, administrators can open the metadata editor. It shows the
-current value next to the values from each provider, so you can pick each field.
+On a book page, administrators can open **Edit metadata** from the **Details**
+card. The form starts with the saved metadata, including tags. Edit values
+directly and use **Save metadata** at the bottom; no provider lookup is required.
+Contributors retain their order and roles, and series positions and identifiers
+can also be edited. Remove every tag to save an empty tag list.
+
+Select **Find metadata** at the top right to search enabled sources concurrently.
+Only sources that return candidates have a tab. Select a source tab and, if it
+has several matches, an alternative to compare with the editable values on the
+same rows. Buttons between the columns copy a found value or restore that
+field's saved value. You can mix fields from several sources; switching tabs
+does not discard edits. **Use all found values** copies available values without
+clearing fields the source does not supply. Individual empty values can still
+be chosen to clear a field.
+
+Copying values only changes the draft. **Save metadata** commits manual edits
+and selected provider values together, preserving their field sources. Editing
+a copied value manually makes that field a manual edit. Covers are previewed
+through the server, not downloaded directly from a provider in your browser.
+Failed saves keep the draft for retry. Expired provider results must be searched
+and chosen again before saving.
+
+For API clients, `POST /api/v1/books/{id}/metadata/apply` accepts
+`{request_key, fields: {field: {provider, reference}}, patch?}` and returns
+`{book}`. The optional `patch` uses the catalog metadata patch shape; it cannot
+include `library_id` or a field already selected in `fields`. Selected values
+come from the server's cached candidates. Requests without provider selections
+should use `PATCH /api/v1/books/{id}` instead.
 
 ## Backups
 
