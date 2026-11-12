@@ -40,10 +40,9 @@ Missing or invalid provenance fails the image build; it never creates a fake
 version. The image does not include Git or Node.js.
 
 The image is based on `scratch`, runs as UID/GID `65532:65532`, keeps all persistent
-state under `/data`, and includes a binary `/healthz` healthcheck. The release workflow is
-configured to attach Linux amd64 and arm64 binaries to GitHub Releases; the project does
-not publish a container image. Build the image locally or publish it through your own
-registry.
+state under `/data`, and includes a binary `/healthz` healthcheck. Release binaries
+must be built and attached manually. The project does not publish a container image;
+build the image locally or publish it through your own registry.
 
 On the first start, open `https://books.example.org/setup` (or `http://localhost:8080/setup`
 for local use) and enter the one-time setup token from the server logs to create the first
@@ -139,11 +138,10 @@ docker inspect --format '{{.State.Health.Status}}' pandalibrary
 curl --fail https://books.example.org/healthz
 ```
 
-The release upgrade check seeds a database with an earlier release binary when that
-release has a Linux amd64 asset. Before the first release exists, it generates a v1-schema
-baseline with fixed user/library, shelf membership, annotation, note, reader-setting
-and book-file fixtures; later releases automatically use the previous
-published binary.
+The release upgrade check seeds a database with an earlier release binary when
+`PANDA_PREVIOUS_BINARY` is set. Otherwise, it generates a v1-schema baseline with
+fixed user/library, shelf membership, annotation, note, reader-setting and
+book-file fixtures.
 
 `pandalibrary version` reports `YYYYMMDD-HHmmss+<12-character-hash>`, using
 the commit's committer timestamp in UTC; a modified checkout adds `-dirty`.
@@ -151,9 +149,8 @@ A release tag is shown separately when supplied. Public `GET /api/v1/version`
 returns the same version plus the full commit hash, UTC RFC3339 `commit_date`,
 boolean `dirty`, and nullable `release`; responses are not cached. If provenance
 is unavailable, the CLI reports an error and the endpoint returns HTTP 503
-rather than an invented version. Releases are published only when a GitHub
-Release is published; the workflow validates the browser suite, upgrade baseline,
-and scratch image before attaching Linux amd64/arm64 binaries.
+rather than an invented version. Run the [release checks](#release-verification)
+locally before attaching binaries to a GitHub Release.
 
 ## Known limitations
 
@@ -218,8 +215,9 @@ with `pnpm --dir web dev`; its development server proxies `/api`, `/opds`, and
 For explicitly stamped release binaries, use
 `node scripts/build-binary.mjs --output bin/pandalibrary --release v1.0.0`
 from the tagged checkout; `GOOS` and `GOARCH` can select a target platform.
-Run `pnpm --dir web test:e2e` for the browser suite; CI builds the Go binary and points the
-same suite at its real server and embedded SPA.
+Run `pnpm --dir web test:e2e` for the browser suite. Set `PANDA_E2E_BINARY` to a built
+binary to run the suite against the real server and embedded SPA; see
+[Release verification](#release-verification).
 
 The [PDF engine](web/src/lib/reader/pdf.ts) exposes `viewState` and
 `subscribeView`, plus `setLayout`, `setZoom`, `zoomBy`, `rotate`, and
