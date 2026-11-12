@@ -10,7 +10,7 @@
 		| 'text-cursor' | 'insert'
 		| 'highlighter' | 'underline' | 'strikethrough' | 'message' | 'bookmark-plus'
 		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move'
-		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe';
+		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe' | 'maximize';
 </script>
 
 <script lang="ts">
@@ -133,5 +133,7 @@
 		<path d="M6 3h12v18l-6-4-6 4z" />
 	{:else if name === 'chevrons-left'}
 		<path d="m11 17-5-5 5-5m7 10-5-5 5-5" />
+	{:else if name === 'maximize'}
+		<path d="M15 3h6v6m0-6-7 7M9 21H3v-6m0 6 7-7" />
 	{/if}
 </svg>

@@ -18,6 +18,7 @@
 	const active = $derived(focused ?? hovered);
 	const activePoint = $derived(active === null ? null : series.points[active] ?? null);
 	const number = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }));
+	const integer = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }));
 	const description = $derived(m['bv8.chart_summary']({
 		days: summary.active_days, progress: formatPercent(summary.progress, locale)
 	}));
@@ -72,8 +73,12 @@
 						<text x={width - CHART.right + 7} y={tick.y + 4} text-anchor="start" class="fill-slate-500 text-[11px]">{number.format(tick.value)}</text>
 					{/each}
 					{#each series.points as point (point.day.date)}
-						<rect x={Math.max(CHART.left, Math.min(width - CHART.right - series.barWidth, point.x - series.barWidth / 2))}
-							y={point.barY} width={series.barWidth} height={point.barHeight} class="fill-slate-200" />
+						{@const barX = Math.max(CHART.left, Math.min(width - CHART.right - series.barWidth, point.x - series.barWidth / 2))}
+						<rect x={barX} y={point.barY} width={series.barWidth} height={point.barHeight} class="fill-slate-200" />
+						{#if point.day.seconds > 0}
+							<text data-testid="bv8-bar-minutes" x={barX + series.barWidth / 2} y={Math.max(12, point.barY - 4)}
+								text-anchor="middle" aria-hidden="true" class="fill-slate-500 text-[11px]">{integer.format(Math.round(point.minutes))}</text>
+						{/if}
 					{/each}
 					{#if series.path}
 						<path data-testid="bv8-chart-line" d={series.path} fill="none" class="stroke-emerald-600" stroke-width="2.5" vector-effect="non-scaling-stroke" />
@@ -105,21 +110,6 @@
 					</p>
 				{/if}
 			</div>
-			<details class="mt-2 text-sm text-slate-600">
-				<summary class="cursor-pointer font-medium text-emerald-700 focus-visible:outline-2 focus-visible:outline-emerald-700">{m['bv8.chart_data']()}</summary>
-				<table class="mt-3 w-full text-left text-xs">
-					<thead><tr><th class="p-1">{m['bv8.day']()}</th><th class="p-1">{m['bv8.chart_minutes']()}</th><th class="p-1">{m['bv8.reached']()}</th></tr></thead>
-					<tbody>
-						{#each series.points as point (point.day.date)}
-							<tr class="border-t border-slate-100">
-								<td class="p-1">{formatCalendarDay(point.day.date, locale)}</td>
-								<td class="p-1">{number.format(point.minutes)}</td>
-								<td class="p-1">{point.day.max_percentage === null ? m['bv8.no_data']() : formatPercent(point.day.max_percentage, locale)}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</details>
 			<figcaption class="sr-only">{description}</figcaption>
 		</figure>
 	{/if}

@@ -89,10 +89,13 @@ describe('progress chart', () => {
 		expect(curve.path).not.toBe(trace.path);
 		expect(curve.points[1].x - curve.points[0].x).toBe(curve.points[2].x - curve.points[1].x);
 		expect(curve.points.map((point) => point.minutes)).toEqual([2, 10, 5]);
-		expect(curve.percentTicks.map((tick) => tick.value)).toEqual([0, 25, 50, 75, 100]);
-		expect(curve.minuteTicks.at(-1)?.value).toBe(10);
+		expect(curve.percentTicks.map((tick) => tick.value)).toEqual([0, 20, 40, 60, 80, 100]);
+		expect(curve.minuteTicks.map((tick) => tick.value)).toEqual([0, 2, 4, 6, 8, 10]);
+		expect(curve.minuteTicks.map((tick) => tick.y)).toEqual(curve.percentTicks.map((tick) => tick.y));
 		expect(chartSeries([day('2026-03-07', 0.1, 1)], 'curve').minuteTicks.map((tick) => tick.value))
-			.toEqual([0, 0.01, 0.02]);
+			.toEqual([0, 0.2, 0.4, 0.6, 0.8, 1]);
+		expect(chartSeries([day('2026-03-07', 0.1, 3600 * 3)], 'curve').minuteTicks.map((tick) => tick.value))
+			.toEqual([0, 40, 80, 120, 160, 200]);
 	});
 
 	it('does not overshoot a monotonic segment when smoothing uneven data', () => {
@@ -151,5 +154,21 @@ describe('progress chart', () => {
 		expect(formatCalendarDay('2026-03-08', 'en-US')).toContain('Mar 8, 2026');
 		expect(() => chartSeries([day('2026-02-31', 0)], 'curve')).toThrow(RangeError);
 		expect(() => chartSeries([day('2026-02-02', 0), day('2026-02-01', 0)], 'curve')).toThrow(RangeError);
+	});
+});
+
+import { hoursToFinish } from './log-model.js';
+
+describe('hoursToFinish', () => {
+	it('extrapolates remaining hours from time spent per progress', () => {
+		expect(hoursToFinish(0.2, 3600)).toBeCloseTo(4);
+		expect(hoursToFinish(0.21, 10_800)).toBeCloseTo(11.2857, 3);
+	});
+	it('returns null without progress or time, and 0 when complete', () => {
+		expect(hoursToFinish(0, 3600)).toBeNull();
+		expect(hoursToFinish(-0.5, 3600)).toBeNull();
+		expect(hoursToFinish(0.5, 0)).toBeNull();
+		expect(hoursToFinish(1, 3600)).toBe(0);
+		expect(hoursToFinish(1.4, 3600)).toBe(0);
 	});
 });
