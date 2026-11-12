@@ -4,17 +4,18 @@
 	import Icon from './Icon.svelte';
 	import StatusIcon from './StatusIcon.svelte';
 	import {
-		previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, statusTone, type ReadStatus, type UserBook
+		availableReadStatuses, previewUserBook, readStatusLabel, saveUserBook, statusPatch, statusTone, type ReadStatus, type UserBook
 	} from './user-book.js';
 
 	interface Props {
 		bookId: number;
 		userBook: UserBook | null;
+		percentage?: number | null;
 		variant?: 'pill' | 'icon' | 'badge' | 'inline';
 		loadCurrentUserBook?: (bookId: number) => Promise<UserBook | null>;
 	}
 
-	let { bookId, userBook, variant = 'pill', loadCurrentUserBook }: Props = $props();
+	let { bookId, userBook, percentage = 0, variant = 'pill', loadCurrentUserBook }: Props = $props();
 	const menuId = $props.id();
 	let optimistic = $state<UserBook | undefined>(undefined);
 	let open = $state(false);
@@ -28,6 +29,7 @@
 	let propVersion = 0;
 	const current = $derived(optimistic ?? userBook);
 	const selected = $derived(current?.status ?? 'unread');
+	const statuses = $derived(availableReadStatuses(current, percentage ?? 0));
 
 	$effect(() => {
 		bookId;
@@ -99,7 +101,7 @@
 		}
 		const options = menu?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
 		if (!options?.length) return;
-		const index = position === 'first' ? 0 : position === 'last' ? options.length - 1 : READ_STATUSES.indexOf(selected);
+		const index = position === 'first' ? 0 : position === 'last' ? options.length - 1 : statuses.indexOf(selected);
 		options[index]?.focus();
 	}
 
@@ -153,15 +155,15 @@
 		if (busy) return;
 		const before = optimistic;
 		const displayed = current;
-		const previewPatch = statusPatch(displayed, status);
 		closeMenu(true);
-		if (!loadCurrentUserBook && displayed?.status === status && Object.keys(previewPatch).length === 1) return;
 		const version = propVersion;
 		const targetBookId = bookId;
-		optimistic = previewUserBook(displayed, previewPatch);
 		error = '';
 		busy = true;
 		try {
+			const previewPatch = statusPatch(displayed, status);
+			if (!loadCurrentUserBook && (displayed?.status ?? 'unread') === status && Object.keys(previewPatch).length === 1) return;
+			optimistic = previewUserBook(displayed, previewPatch);
 			const previous = loadCurrentUserBook ? await loadCurrentUserBook(targetBookId) : displayed;
 			if (targetBookId !== bookId) return;
 			if (version !== propVersion) {
@@ -170,7 +172,7 @@
 			}
 			const patch = statusPatch(previous, status);
 			optimistic = previewUserBook(previous, patch);
-			if (previous?.status === status && Object.keys(patch).length === 1) return;
+			if ((previous?.status ?? 'unread') === status && Object.keys(patch).length === 1) return;
 			await saveUserBook(targetBookId, previous, patch);
 		} catch (cause) {
 			console.error('Could not update reading status', cause);
@@ -232,7 +234,7 @@
 				: undefined}
 			onkeydown={menuKey}
 		>
-			{#each READ_STATUSES as status}
+			{#each statuses as status}
 				<button
 					type="button"
 					role="menuitemradio"

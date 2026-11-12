@@ -25,6 +25,7 @@ export interface OutboxEntry {
 	mutation: SyncMutation;
 	status: 'pending' | 'applied' | 'stale' | 'rejected';
 	reason?: string;
+	conflictChecked?: boolean;
 }
 
 export interface UserBookRow {
@@ -35,6 +36,8 @@ export interface UserBookRow {
 	finished_at: string | null;
 	updated_at: string;
 	rev: number;
+	reading_cycle?: number;
+	resume_status?: 'reading' | 'rereading';
 }
 
 export type ProgressRow = Progress & { book_id: number };

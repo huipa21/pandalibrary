@@ -52,12 +52,12 @@ it('chooses only the exact saved, supported file rather than the first available
 	expect(savedReadingFile(book, progress(99))).toBeNull();
 });
 
-it('resumes using account-scoped queued progress over the online snapshot', async () => {
+it('resumes using newer account-scoped queued progress over the online snapshot', async () => {
 	vi.spyOn(readerApi, 'getBookState').mockResolvedValue({
 		user_book: null, progress: progress(11), highlights: [], notes: [], bookmarks: []
 	});
 	await enqueue(1, {
-		entity: 'reading_progress', key: '21', op: 'upsert', updated_at: Date.parse(timestamp),
+		entity: 'reading_progress', key: '21', op: 'upsert', updated_at: Date.parse(timestamp) + 1,
 		data: {
 			book_id: 21, book_file_id: 12, source: 'web', locator: null, percentage: 0.5,
 			device: 'Web', device_id: 'device'

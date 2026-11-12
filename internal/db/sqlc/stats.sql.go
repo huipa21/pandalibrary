@@ -65,27 +65,33 @@ func (q *Queries) StatsDaily(ctx context.Context, arg StatsDailyParams) ([]Stats
 }
 
 const statsFinishedDays = `-- name: StatsFinishedDays :many
+WITH terminal_cycles AS (
+    SELECT book_id, ended_at FROM reading_cycles WHERE user_id = ?3
+    UNION ALL
+    SELECT book_id, COALESCE(finished_at, updated_at) AS ended_at
+    FROM user_books WHERE user_id = ?3 AND status IN ('finished', 'skimmed', 'abandoned')
+)
 SELECT CAST(json_extract(d.value, '$.date') AS TEXT) AS date, COUNT(*) AS books_finished
-FROM json_each(CAST(?1 AS TEXT)) d
-JOIN user_books ub ON ub.user_id = ?2 AND ub.status = 'finished'
-    AND ub.finished_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
-    AND ub.finished_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
-JOIN books b ON b.id = ub.book_id
-WHERE (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+FROM terminal_cycles
+JOIN books b ON b.id = terminal_cycles.book_id
+CROSS JOIN json_each(CAST(?1 AS TEXT)) d
+WHERE terminal_cycles.ended_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
+AND terminal_cycles.ended_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
+AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
+    WHERE la.library_id = b.library_id AND la.user_id = ?3
 ))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
-    WHERE h.book_id = b.id AND h.user_id = ?2
+    WHERE h.book_id = b.id AND h.user_id = ?3
 )
 GROUP BY date ORDER BY date
 `
 
 type StatsFinishedDaysParams struct {
 	Days    string
-	UserID  int64
 	IsAdmin int64
+	UserID  int64
 }
 
 type StatsFinishedDaysRow struct {
@@ -94,7 +100,7 @@ type StatsFinishedDaysRow struct {
 }
 
 func (q *Queries) StatsFinishedDays(ctx context.Context, arg StatsFinishedDaysParams) ([]StatsFinishedDaysRow, error) {
-	rows, err := q.db.QueryContext(ctx, statsFinishedDays, arg.Days, arg.UserID, arg.IsAdmin)
+	rows, err := q.db.QueryContext(ctx, statsFinishedDays, arg.Days, arg.IsAdmin, arg.UserID)
 	if err != nil {
 		return nil, err
 	}

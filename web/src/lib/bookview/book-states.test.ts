@@ -340,7 +340,7 @@ describe('bookState', () => {
 		await settle();
 		expect(mocks.request).not.toHaveBeenCalled();
 		expect(states.map(({ status, percentage }) => ({ status, percentage }))).toEqual([
-			{ status: 'finished', percentage: 0.3 },
+			{ status: 'finished', percentage: 1 },
 			{ status: 'want_to_read', percentage: null },
 			{ status: 'unread', percentage: null }
 		]);

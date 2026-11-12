@@ -89,7 +89,7 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 	if validCursor.Code != http.StatusOK || !strings.Contains(validCursor.Body.String(), `"user_settings":[]`) {
 		t.Fatalf("initial pull = %d %s", validCursor.Code, validCursor.Body.String())
 	}
-	pushBody := `{"mutations":[{"entity":"user_books","key":"101","op":"upsert","data":{"book_id":101,"status":"reading"},"updated_at":100}]}`
+	pushBody := `{"mutations":[{"entity":"user_books","key":"101","op":"upsert","data":{"book_id":101,"status":"unread"},"updated_at":100}]}`
 	push := readingHTTPRequest(t, router, http.MethodPost, "/api/v1/sync/push", pushBody, cookie, "https://books.example")
 	if push.Code != http.StatusOK || !strings.Contains(push.Body.String(), `"status":"applied"`) {
 		t.Fatalf("push = %d %s", push.Code, push.Body.String())
@@ -111,7 +111,7 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 	}
 	t.Run("reading statuses round-trip", func(t *testing.T) {
 		var cursor int64
-		for i, status := range []string{"unread", "want_to_read", "reading", "on_hold", "rereading", "finished", "skimmed", "abandoned"} {
+		for i, status := range []string{"unread", "want_to_read", "reading", "on_hold", "finished", "rereading", "skimmed", "abandoned"} {
 			body := fmt.Sprintf(`{"mutations":[{"entity":"user_books","key":"101","op":"upsert","data":{"book_id":101,"status":%q,"rating":7,"started_at":10,"finished_at":null},"updated_at":%d}]}`, status, 101+i)
 			response := readingHTTPRequest(t, router, http.MethodPost, "/api/v1/sync/push", body, cookie, "https://books.example")
 			var pushed reading.PushResponse
@@ -125,9 +125,14 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 			if err := json.Unmarshal(pull.Body.Bytes(), &pulled); err != nil || pull.Code != http.StatusOK ||
 				len(pulled.UserBooks) != 1 || pulled.UserBooks[0].BookID != 101 || pulled.UserBooks[0].Status != status ||
 				pulled.UserBooks[0].Rating == nil || *pulled.UserBooks[0].Rating != 7 ||
-				pulled.UserBooks[0].StartedAt == nil || pulled.UserBooks[0].StartedAt.UnixMilli() != 10 ||
-				pulled.UserBooks[0].FinishedAt != nil || pulled.Cursor <= cursor {
+				pulled.Cursor <= cursor {
 				t.Fatalf("pull %s = %d %s, %v", status, pull.Code, pull.Body.String(), err)
+			}
+			initial := status == "unread" || status == "want_to_read"
+			terminal := status == "finished" || status == "skimmed" || status == "abandoned"
+			if (pulled.UserBooks[0].StartedAt == nil) != initial ||
+				(pulled.UserBooks[0].FinishedAt != nil) != terminal {
+				t.Fatalf("lifecycle timestamps for %s = %+v", status, pulled.UserBooks[0])
 			}
 			summary := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/book-states?ids=101", "", cookie, "")
 			if summary.Code != http.StatusOK || !strings.Contains(summary.Body.String(), fmt.Sprintf(`"status":%q`, status)) {
@@ -141,6 +146,14 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 		if err := json.Unmarshal(response.Body.Bytes(), &rejected); err != nil || response.Code != http.StatusOK ||
 			len(rejected.Results) != 1 || rejected.Results[0].Status != "rejected" || rejected.Results[0].Reason != "status is invalid" {
 			t.Fatalf("invalid status = %d %s, %v", response.Code, response.Body.String(), err)
+		}
+		for _, invalidTransition := range []string{"unread", "want_to_read", "on_hold"} {
+			body := fmt.Sprintf(`{"mutations":[{"entity":"user_books","key":"101","op":"upsert","data":{"book_id":101,"status":%q},"updated_at":109}]}`, invalidTransition)
+			response := readingHTTPRequest(t, router, http.MethodPost, "/api/v1/sync/push", body, cookie, "https://books.example")
+			if err := json.Unmarshal(response.Body.Bytes(), &rejected); err != nil || response.Code != http.StatusOK ||
+				len(rejected.Results) != 1 || rejected.Results[0].Status != "rejected" || rejected.Results[0].Reason == "" {
+				t.Fatalf("invalid transition to %s = %d %s, %v", invalidTransition, response.Code, response.Body.String(), err)
+			}
 		}
 	})
 	bookmarkPush := `{"mutations":[{"entity":"bookmarks","id":"018f0f7e-7b00-7000-8000-000000000001","op":"upsert","data":{"book_id":101,"book_file_id":201,"locator":{"type":"pdf","page":2},"position":0.5,"label":"Here"},"updated_at":100}]}`
@@ -204,7 +217,7 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 
 	states := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/book-states?ids=101,102,999,101", "", cookie, "")
 	if states.Code != http.StatusOK ||
-		!strings.Contains(states.Body.String(), `"items":[{"book_id":101,"status":"abandoned","percentage":null,"book_file_id":null,"updated_at":"`) ||
+		!strings.Contains(states.Body.String(), `"items":[{"book_id":101,"status":"abandoned","percentage":1,"book_file_id":null,"updated_at":"`) ||
 		strings.Count(states.Body.String(), `"book_id"`) != 1 {
 		t.Fatalf("book states = %d %s", states.Code, states.Body.String())
 	}
@@ -233,10 +246,79 @@ func TestReadingHTTPAuthenticationVisibilitySyncAndSearch(t *testing.T) {
 	if response := readingHTTPRequest(t, router, http.MethodGet, "/api/v1/me/book-states?ids=101", "", nil, ""); response.Code != http.StatusUnauthorized {
 		t.Errorf("unauthenticated book states = %d", response.Code)
 	}
+
+	t.Run("sync account header", func(t *testing.T) {
+		account := func(values ...string) http.Header {
+			header := http.Header{}
+			for _, value := range values {
+				header.Add("X-PandaLibrary-Account", value)
+			}
+			return header
+		}
+		bookmarkBody := func(id string) string {
+			return `{"mutations":[{"entity":"bookmarks","id":"` + id + `","op":"upsert","data":{"book_id":101,"book_file_id":201,"locator":{"type":"pdf","page":3},"position":0.6,"label":"Header"},"updated_at":200}]}`
+		}
+		const matchingID = "018f0f7e-7b00-7000-8000-000000000008"
+		const mismatchedID = "018f0f7e-7b00-7000-8000-000000000009"
+
+		response := readingHTTPRequestWithHeader(t, router, http.MethodPost, "/api/v1/sync/push",
+			bookmarkBody(matchingID), cookie, "https://books.example", account("2"))
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"status":"applied"`) {
+			t.Fatalf("matching account push = %d %s", response.Code, response.Body.String())
+		}
+		response = readingHTTPRequestWithHeader(t, router, http.MethodGet, "/api/v1/sync/pull?cursor=0", "", cookie, "", account("2"))
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), matchingID) {
+			t.Fatalf("matching account pull = %d %s", response.Code, response.Body.String())
+		}
+
+		response = readingHTTPRequestWithHeader(t, router, http.MethodPost, "/api/v1/sync/push",
+			bookmarkBody(mismatchedID), cookie, "https://books.example", account("1"))
+		if response.Code != http.StatusConflict ||
+			response.Header().Get("Cache-Control") != "no-store" ||
+			!strings.Contains(response.Body.String(), "The signed-in account changed.") {
+			t.Fatalf("mismatched account push = %d %s", response.Code, response.Body.String())
+		}
+		response = readingHTTPRequestWithHeader(t, router, http.MethodGet, "/api/v1/sync/pull?cursor=0", "", cookie, "", account("1"))
+		if response.Code != http.StatusConflict || strings.Contains(response.Body.String(), matchingID) {
+			t.Fatalf("mismatched account pull = %d %s", response.Code, response.Body.String())
+		}
+		response = readingHTTPRequest(t, router, http.MethodGet, "/api/v1/sync/pull?cursor=0", "", cookie, "")
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), matchingID) ||
+			strings.Contains(response.Body.String(), mismatchedID) {
+			t.Fatalf("pull after mismatched push = %d %s", response.Code, response.Body.String())
+		}
+
+		for _, header := range []http.Header{
+			account(""), account("0"), account("-1"), account("02"), account("+2"), account("2.0"),
+			account(" 2"), account("abc"), account("9223372036854775808"), account("2", "2"),
+		} {
+			push := readingHTTPRequestWithHeader(t, router, http.MethodPost, "/api/v1/sync/push",
+				bookmarkBody(mismatchedID), cookie, "https://books.example", header)
+			pull := readingHTTPRequestWithHeader(t, router, http.MethodGet, "/api/v1/sync/pull?cursor=0", "", cookie, "", header)
+			for name, response := range map[string]*httptest.ResponseRecorder{"push": push, "pull": pull} {
+				if response.Code != http.StatusBadRequest ||
+					response.Header().Get("Content-Type") != "application/problem+json" ||
+					!strings.Contains(response.Body.String(), "The account header is invalid.") {
+					t.Errorf("%s with account %q = %d %s", name, header.Values("X-PandaLibrary-Account"), response.Code, response.Body.String())
+				}
+			}
+		}
+		response = readingHTTPRequest(t, router, http.MethodGet, "/api/v1/sync/pull?cursor=0", "", cookie, "")
+		if response.Code != http.StatusOK || strings.Contains(response.Body.String(), mismatchedID) {
+			t.Fatalf("pull after invalid account pushes = %d %s", response.Code, response.Body.String())
+		}
+	})
 }
 
 func readingHTTPRequest(
 	t *testing.T, handler http.Handler, method, path, body string, cookie *http.Cookie, origin string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	return readingHTTPRequestWithHeader(t, handler, method, path, body, cookie, origin, nil)
+}
+
+func readingHTTPRequestWithHeader(
+	t *testing.T, handler http.Handler, method, path, body string, cookie *http.Cookie, origin string, header http.Header,
 ) *httptest.ResponseRecorder {
 	t.Helper()
 	var requestBody io.Reader
@@ -253,6 +335,11 @@ func readingHTTPRequest(
 	}
 	if cookie != nil {
 		request.AddCookie(cookie)
+	}
+	for name, values := range header {
+		for _, value := range values {
+			request.Header.Add(name, value)
+		}
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)

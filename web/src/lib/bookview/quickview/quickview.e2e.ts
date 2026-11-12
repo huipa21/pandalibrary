@@ -256,11 +256,12 @@ test('changes the reading status with one mutation and adds the book to a shelf'
 	expect(menuBox?.x ?? -1).toBeGreaterThanOrEqual(0);
 	expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(1280);
 	expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(900);
-	await menu.getByRole('menuitemradio', { name: 'Want to read' }).click();
-	await expect(status).toHaveAttribute('title', 'Reading status: Want to read');
+	await expect(menu.getByRole('menuitemradio', { name: 'Want to read' })).toHaveCount(0);
+	await menu.getByRole('menuitemradio', { name: 'Reading', exact: true }).click();
+	await expect(status).toHaveAttribute('title', 'Reading status: Reading');
 	await expect.poll(() => state.pushes.length).toBe(1);
-	expect(state.pushes[0]).toMatchObject({ entity: 'user_books', key: '2', data: { book_id: 2, status: 'want_to_read' } });
-	await expect(status).toHaveAttribute('title', 'Reading status: Want to read');
+	expect(state.pushes[0]).toMatchObject({ entity: 'user_books', key: '2', data: { book_id: 2, status: 'reading' } });
+	await expect(status).toHaveAttribute('title', 'Reading status: Reading');
 
 	await drawer.getByRole('button', { name: 'Add to shelf' }).click();
 	const popover = drawer.getByRole('dialog', { name: 'Add to shelf' });
@@ -272,7 +273,7 @@ test('changes the reading status with one mutation and adds the book to a shelf'
 	await expect(drawer.getByRole('button', { name: 'Add to shelf' })).toBeFocused();
 	await page.keyboard.press('Escape');
 	await expect(card(page, 'Quiet Harbor').getByRole('button',
-		{ name: 'Reading status: Want to read. Change' })).toBeVisible();
+		{ name: 'Reading status: Reading. Change' })).toBeVisible();
 });
 
 test('the empty shelf picker points to the shelf menu and management page', async ({ page }) => {

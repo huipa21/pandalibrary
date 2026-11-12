@@ -18,13 +18,19 @@ AND NOT EXISTS (
 GROUP BY date ORDER BY date;
 
 -- name: StatsFinishedDays :many
+WITH terminal_cycles AS (
+    SELECT book_id, ended_at FROM reading_cycles WHERE user_id = sqlc.arg(user_id)
+    UNION ALL
+    SELECT book_id, COALESCE(finished_at, updated_at) AS ended_at
+    FROM user_books WHERE user_id = sqlc.arg(user_id) AND status IN ('finished', 'skimmed', 'abandoned')
+)
 SELECT CAST(json_extract(d.value, '$.date') AS TEXT) AS date, COUNT(*) AS books_finished
-FROM json_each(CAST(sqlc.arg(days) AS TEXT)) d
-JOIN user_books ub ON ub.user_id = sqlc.arg(user_id) AND ub.status = 'finished'
-    AND ub.finished_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
-    AND ub.finished_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
-JOIN books b ON b.id = ub.book_id
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+FROM terminal_cycles
+JOIN books b ON b.id = terminal_cycles.book_id
+CROSS JOIN json_each(CAST(sqlc.arg(days) AS TEXT)) d
+WHERE terminal_cycles.ended_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
+AND terminal_cycles.ended_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
+AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
 ))

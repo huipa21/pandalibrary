@@ -1,5 +1,7 @@
 import type { JsonValue } from '#lib/api/client.js';
-import { autoStatus, userBookFromState } from '#lib/bookview/user-book.js';
+import {
+	autoStatus, availableReadStatuses, statusPatch, storedPercentage, TERMINAL_STATUSES, userBookFromState
+} from '#lib/bookview/user-book.js';
 import { isHighlightStyle } from '#lib/reader/annotations.js';
 import { validatePageAnnotationInput } from '#lib/reader/page-annotations.js';
 import type { Bookmark, BookState, Highlight, Note, PageAnnotation, Progress, Setting } from '#lib/reader/types.js';
@@ -35,6 +37,14 @@ function json(data: SyncMutation['data'], key: string): JsonValue {
 	return data[key];
 }
 
+function canonicalJson(value: JsonValue): string {
+	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+	if (value !== null && typeof value === 'object') {
+		return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+	}
+	return JSON.stringify(value);
+}
+
 export function replayMutations(
 	bookId: number,
 	base: BookState,
@@ -65,19 +75,27 @@ export function replayMutations(
 		const { entity, op, data } = mutation;
 		const updatedAt = new Date(mutation.updated_at).toISOString();
 		if (entity === 'reading_progress' && op === 'upsert' && data.book_id === bookId) {
+			if (progress && mutation.updated_at <= Date.parse(progress.updated_at)) continue;
+			const previous = progress;
+			const current = userBookFromState(userBook);
 			progress = {
 				book_file_id: nullableNumber(data, 'book_file_id'),
 				source: text(data, 'source'),
 				locator: json(data, 'locator'),
-				percentage: number(data, 'percentage'),
+				percentage: storedPercentage(current?.status, number(data, 'percentage')),
 				device: text(data, 'device'),
 				device_id: text(data, 'device_id'),
 				updated_at: updatedAt,
 				rev: progress?.rev ?? 0
 			};
-			const current = userBookFromState(userBook);
-			const next = autoStatus(current?.status ?? null, progress.percentage);
-			if (next !== null) {
+			const next = autoStatus(current?.status ?? null, progress.percentage, {
+				moved: progress.percentage !== (previous?.percentage ?? 0) ||
+					canonicalJson(progress.locator) !== canonicalJson(previous?.locator ?? null),
+				resumeStatus: current?.resume_status,
+				readingCycle: current?.reading_cycle
+			});
+			if (next !== null && (!current || mutation.updated_at > Date.parse(current.updated_at))) {
+				if (next === 'finished') progress = { ...progress, percentage: 1 };
 				userBook = {
 					...current,
 					status: next,
@@ -89,10 +107,48 @@ export function replayMutations(
 				};
 			}
 		} else if (entity === 'user_books' && op === 'upsert' && data.book_id === bookId) {
-			if (data.status === 'rereading' && userBookFromState(userBook)?.status !== 'rereading' && progress) {
-				progress = { ...progress, percentage: 0, locator: null, updated_at: updatedAt };
+			const current = userBookFromState(userBook);
+			if (current && mutation.updated_at <= Date.parse(current.updated_at)) continue;
+			let next;
+			try {
+				next = userBookFromState({ ...data, updated_at: updatedAt, rev: current?.rev ?? 0 });
+			} catch {
+				throw new OfflineStorageError('Invalid queued user book.');
 			}
-			userBook = { ...data, updated_at: updatedAt, rev: 0 };
+			if (!next || !availableReadStatuses(current, progress?.percentage ?? 0).includes(next.status)) {
+				throw new OfflineStorageError('Invalid queued reading status transition.');
+			}
+			const dates = statusPatch(current, next.status, new Date(mutation.updated_at));
+			if (dates.started_at !== undefined &&
+				(next.started_at === null || (next.status === 'rereading' && TERMINAL_STATUSES.includes(current?.status ?? 'unread')))) {
+				next.started_at = dates.started_at;
+			}
+			if (dates.finished_at !== undefined) next.finished_at = dates.finished_at;
+			if (TERMINAL_STATUSES.includes(current?.status ?? 'unread') && TERMINAL_STATUSES.includes(next.status) && current?.finished_at) {
+				next.finished_at = current.finished_at;
+			}
+			const restarting = next.status === 'rereading' && TERMINAL_STATUSES.includes(current?.status ?? 'unread');
+			const completing = (next.status === 'finished' || next.status === 'skimmed') &&
+				(next.status !== current?.status || progress === null);
+			if (restarting || completing) {
+				const percentage = restarting ? 0 : 1;
+				const progressUpdatedAt = new Date(Math.max(mutation.updated_at, progress ? Date.parse(progress.updated_at) + 1 : 0)).toISOString();
+				progress = progress
+					? { ...progress, percentage, ...(restarting ? { locator: null } : {}), updated_at: progressUpdatedAt }
+					: {
+						book_file_id: null, source: 'web', percentage, locator: null,
+						device: '', device_id: '', updated_at: progressUpdatedAt, rev: 0
+					};
+			}
+			userBook = {
+				...next,
+				...(next.status === 'rereading' && TERMINAL_STATUSES.includes(current?.status ?? 'unread')
+					? { reading_cycle: (current?.reading_cycle ?? 1) + 1 }
+					: current?.reading_cycle !== undefined ? { reading_cycle: current.reading_cycle } : {}),
+				...(next.status === 'on_hold'
+					? { resume_status: current?.status === 'rereading' ? 'rereading' : current?.resume_status ?? 'reading' }
+					: {})
+			};
 		} else if (entity === 'user_settings' && 'key' in mutation && op === 'upsert') {
 			const previous = settings.get(mutation.key);
 			settings.set(mutation.key, {

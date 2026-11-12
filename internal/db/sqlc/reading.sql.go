@@ -519,7 +519,7 @@ func (q *Queries) ReadingGetSettingClock(ctx context.Context, arg ReadingGetSett
 }
 
 const readingGetUserBook = `-- name: ReadingGetUserBook :one
-SELECT ub.user_id, ub.book_id, ub.status, ub.rating, ub.started_at, ub.finished_at, ub.updated_at, ub.rev FROM user_books ub
+SELECT ub.user_id, ub.book_id, ub.status, ub.rating, ub.started_at, ub.finished_at, ub.updated_at, ub.rev, ub.reading_cycle FROM user_books ub
 JOIN books b ON b.id = ub.book_id
 WHERE ub.user_id = ?1 AND ub.book_id = ?2
 AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
@@ -550,6 +550,7 @@ func (q *Queries) ReadingGetUserBook(ctx context.Context, arg ReadingGetUserBook
 		&i.FinishedAt,
 		&i.UpdatedAt,
 		&i.Rev,
+		&i.ReadingCycle,
 	)
 	return i, err
 }
@@ -1542,7 +1543,7 @@ func (q *Queries) ReadingPullSettings(ctx context.Context, arg ReadingPullSettin
 }
 
 const readingPullUserBooks = `-- name: ReadingPullUserBooks :many
-SELECT ub.user_id, ub.book_id, ub.status, ub.rating, ub.started_at, ub.finished_at, ub.updated_at, ub.rev FROM user_books ub JOIN books b ON b.id = ub.book_id
+SELECT ub.user_id, ub.book_id, ub.status, ub.rating, ub.started_at, ub.finished_at, ub.updated_at, ub.rev, ub.reading_cycle FROM user_books ub JOIN books b ON b.id = ub.book_id
 WHERE ub.user_id = ?1 AND ub.rev > ?2 AND ub.rev <= ?3
 AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1581,6 +1582,7 @@ func (q *Queries) ReadingPullUserBooks(ctx context.Context, arg ReadingPullUserB
 			&i.FinishedAt,
 			&i.UpdatedAt,
 			&i.Rev,
+			&i.ReadingCycle,
 		); err != nil {
 			return nil, err
 		}

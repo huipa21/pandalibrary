@@ -3,6 +3,7 @@
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { formatDate, formatDuration } from '../format.js';
 	import type { Attempt, AttemptStatus } from '../log-api.js';
+	import { readStatusLabel } from '../user-book.js';
 
 	let { attempts }: { attempts: readonly Attempt[] } = $props();
 	const locale = $derived(getLocale());
@@ -28,7 +29,15 @@
 						attempt.status === 'completed' ? 'border-emerald-600 bg-emerald-600' :
 						attempt.status === 'in_progress' ? 'border-emerald-600 bg-white' : 'border-slate-400 bg-slate-400'
 					}`}></span>
-					<p class="text-sm font-semibold text-slate-800">{m['bv8.attempt']({ number: attempt.number, status: statusLabel(attempt.status) })}</p>
+					<p class="text-sm font-semibold text-slate-800">
+						{#if attempt.outcome}
+							{attempt.number === 1
+								? m['bv8.read_once']({ status: readStatusLabel(attempt.outcome) })
+								: m['bv8.read_count']({ count: attempt.number, status: readStatusLabel(attempt.outcome) })}
+						{:else}
+							{m['bv8.attempt']({ number: attempt.number, status: statusLabel(attempt.status) })}
+						{/if}
+					</p>
 					<p class="mt-1 text-xs text-slate-500">{m['bv8.attempt_range']({ start: formatDate(attempt.started_at, locale), end: formatDate(attempt.ended_at, locale) })}</p>
 					<p class="mt-1 text-xs text-slate-600">{m['bv8.attempt_details']({ sessions: attempt.sessions, duration: formatDuration(attempt.seconds) })}</p>
 					<div class="mt-2 flex flex-wrap gap-1">

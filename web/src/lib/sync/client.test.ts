@@ -38,13 +38,30 @@ async function setup(backgroundSync = true) {
 	const client = await import('./client.js');
 	await client.activateOffline(viewer);
 	await client.syncNow();
+	const started = pulls(synchronize);
 	synchronize.mockClear();
-	return { client, synchronize, window, document, network, register, serviceWorker };
+	return { client, synchronize, started, window, document, network, register, serviceWorker };
+}
+
+/** Waits for the in-flight sync, whose IndexedDB status refresh runs on real (unfaked) immediates. */
+async function idle(client: typeof import('./client.js')): Promise<void> {
+	for (let i = 0; i < 200 && get(client.offlineStatus).syncing; i++) {
+		await new Promise((resolve) => setImmediate(resolve));
+	}
+	expect(get(client.offlineStatus).syncing).toBe(false);
+	await Promise.resolve();
+}
+
+function pulls(synchronize: { mock: { calls: unknown[][] } }): unknown[] {
+	return synchronize.mock.calls.map(([account, client, , options]) => {
+		expect([account, client]).toEqual([1, undefined]);
+		return (options as { pull?: boolean }).pull;
+	});
 }
 
 beforeEach(() => {
 	vi.resetModules();
-	vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval'] });
+	vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'Date'] });
 	vi.stubGlobal('indexedDB', new IDBFactory());
 	vi.stubGlobal('IDBKeyRange', IDBKeyRange);
 });
@@ -55,38 +72,61 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-it('runs on start, reconnect and transition to visible', async () => {
-	const { client, synchronize, window, document, network } = await setup();
+it('only pushes on start, reconnect and transition to visible without an open reader', async () => {
+	const { client, synchronize, started, window, document, network } = await setup();
+	// The explicit full sync waits for the push-only start sync instead of reusing it.
+	expect(started).toEqual([false, true]);
 	expect(get(client.offlineStatus).account).toBe(1);
 	network.onLine = false;
 	window.dispatchEvent(new Event('offline'));
 	expect(get(client.offlineStatus).online).toBe(false);
 	network.onLine = true;
 	window.dispatchEvent(new Event('online'));
-	expect(synchronize).toHaveBeenCalledOnce();
-	await client.syncNow();
+	expect(pulls(synchronize)).toEqual([false]);
+	await idle(client);
 	synchronize.mockClear();
 	document.hidden = true;
 	document.dispatchEvent(new Event('visibilitychange'));
 	expect(synchronize).not.toHaveBeenCalled();
 	document.hidden = false;
 	document.dispatchEvent(new Event('visibilitychange'));
-	expect(synchronize).toHaveBeenCalledOnce();
-	await client.syncNow();
+	expect(pulls(synchronize)).toEqual([false]);
+	await idle(client);
 });
 
-it('synchronizes every 60 seconds only while a reader is open', async () => {
-	const { client, synchronize } = await setup();
+it('pulls immediately and every 60 seconds only while a visible reader is open', async () => {
+	const { client, synchronize, document } = await setup();
 	const close = client.readerOpened();
+	expect(pulls(synchronize)).toEqual([true]);
+	await idle(client);
 	await vi.advanceTimersByTimeAsync(59_999);
-	expect(synchronize).not.toHaveBeenCalled();
-	await vi.advanceTimersByTimeAsync(1);
 	expect(synchronize).toHaveBeenCalledOnce();
-	await client.syncNow();
+	await vi.advanceTimersByTimeAsync(1);
+	expect(pulls(synchronize)).toEqual([true, true]);
+	await idle(client);
+	synchronize.mockClear();
+
+	document.hidden = true;
+	document.dispatchEvent(new Event('visibilitychange'));
+	await vi.advanceTimersByTimeAsync(60_000);
+	expect(synchronize).not.toHaveBeenCalled();
+	document.hidden = false;
+	document.dispatchEvent(new Event('visibilitychange'));
+	expect(pulls(synchronize)).toEqual([true]);
+	await idle(client);
+	await vi.advanceTimersByTimeAsync(30_000);
+	document.dispatchEvent(new Event('visibilitychange'));
+	expect(pulls(synchronize)).toEqual([true, false]);
+	await idle(client);
+
+	close();
 	close();
 	synchronize.mockClear();
 	await vi.advanceTimersByTimeAsync(120_000);
 	expect(synchronize).not.toHaveBeenCalled();
+	document.dispatchEvent(new Event('visibilitychange'));
+	expect(pulls(synchronize)).toEqual([false]);
+	await idle(client);
 });
 
 it('durably queues before registering Background Sync and does not claim delivery', async () => {
@@ -100,12 +140,15 @@ it('durably queues before registering Background Sync and does not claim deliver
 });
 
 it('does not report a sync failure when Background Sync registration is refused', async () => {
-	const { client, register } = await setup();
+	const { client, register, synchronize } = await setup();
 	register.mockRejectedValueOnce(new DOMException('Permission denied.', 'NotAllowedError'));
 	const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 	await client.saveMutation(mutation);
 	await vi.waitFor(() => expect(warn).toHaveBeenCalledOnce());
 	expect(get(client.offlineStatus).error).toBe(false);
+	await vi.advanceTimersByTimeAsync(1000);
+	// Saving and the debounced follow-up only push queued writes.
+	expect(pulls(synchronize)).toEqual([false, false]);
 });
 
 it('keeps an explicit online retry path when Background Sync is absent', async () => {
@@ -116,7 +159,7 @@ it('keeps an explicit online retry path when Background Sync is absent', async (
 	expect(register).not.toHaveBeenCalled();
 	network.onLine = true;
 	await client.syncNow(true);
-	expect(synchronize).toHaveBeenCalledWith(1);
+	expect(pulls(synchronize)).toEqual([true]);
 	expect(get(client.offlineStatus).pending).toBe(1);
 });
 

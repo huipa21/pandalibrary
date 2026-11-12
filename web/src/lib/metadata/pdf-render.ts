@@ -41,6 +41,7 @@ export async function renderPdfFirstPage(pdf: Blob, maxEdge = PDF_COVER_MAX_EDGE
 		data: new Uint8Array(data),
 		BinaryDataFactory: PdfBinaryDataFactory,
 		useWorkerFetch: false,
+		verbosity: pdfjs.VerbosityLevel.ERRORS,
 		enableXfa: false
 	});
 	const canvas = document.createElement('canvas');

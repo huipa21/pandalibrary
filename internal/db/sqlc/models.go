@@ -281,6 +281,16 @@ type PageAnnotation struct {
 	Rev         int64
 }
 
+type ReadingCycle struct {
+	ID         int64
+	UserID     int64
+	BookID     int64
+	StartedAt  int64
+	EndedAt    int64
+	Status     string
+	Percentage float64
+}
+
 type ReadingProgress struct {
 	UserID     int64
 	BookID     int64
@@ -379,14 +389,15 @@ type User struct {
 }
 
 type UserBook struct {
-	UserID     int64
-	BookID     int64
-	Status     string
-	Rating     sql.NullInt64
-	StartedAt  sql.NullInt64
-	FinishedAt sql.NullInt64
-	UpdatedAt  int64
-	Rev        int64
+	UserID       int64
+	BookID       int64
+	Status       string
+	Rating       sql.NullInt64
+	StartedAt    sql.NullInt64
+	FinishedAt   sql.NullInt64
+	UpdatedAt    int64
+	Rev          int64
+	ReadingCycle int64
 }
 
 type UserSetting struct {

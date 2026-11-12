@@ -346,7 +346,7 @@ test('opens the inline status with the keyboard and updates it optimistically', 
 	await expect(chevron).toHaveCSS('transition-property', 'none');
 	await trigger.press('ArrowDown');
 	await expect(page.getByRole('menuitemradio', { name: 'Unread', exact: true })).toBeFocused();
-	await page.keyboard.press('ArrowDown');
+	await expect(page.getByRole('menuitemradio', { name: 'Want to read', exact: true })).toHaveCount(0);
 	await page.keyboard.press('ArrowDown');
 	await expect(page.getByRole('menuitemradio', { name: 'Reading', exact: true })).toBeFocused();
 	const pending = Promise.withResolvers<void>();

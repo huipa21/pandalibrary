@@ -13,23 +13,45 @@
 	let busy = $state(false);
 	let error = $state('');
 	let notice = $state('');
+	let refreshVersion = 0;
 
-	onMount(() => { void refresh(); });
+	onMount(() => {
+		let previous: { account: number | null; pending: number; issues: number; syncing: boolean } | null = null;
+		const unsubscribe = offlineStatus.subscribe((status) => {
+			const changed = previous !== null && status.account !== null &&
+				(previous.account !== status.account || previous.pending !== status.pending ||
+					previous.issues !== status.issues || (previous.syncing && !status.syncing));
+			previous = { account: status.account, pending: status.pending, issues: status.issues, syncing: status.syncing };
+			if (changed) void refresh();
+		});
+		void refresh();
+		return () => { refreshVersion += 1; unsubscribe(); };
+	});
 
 	async function refresh() {
 		if (!offlineAvailable()) return;
+		const version = ++refreshVersion;
 		try {
-			[books, entries] = await Promise.all([downloadedBooks(currentAccount()), outbox(currentAccount())]);
+			const account = currentAccount();
+			const [savedBooks, savedEntries] = await Promise.all([downloadedBooks(account), outbox(account)]);
+			if (version !== refreshVersion) return;
+			books = savedBooks;
+			entries = savedEntries;
 			if (navigator.storage?.estimate) {
 				const estimate = await navigator.storage.estimate();
+				if (version !== refreshVersion) return;
 				usage = estimate.usage ?? null;
 				quota = estimate.quota ?? null;
 			}
-			if (navigator.storage?.persisted) persistent = await navigator.storage.persisted();
+			if (navigator.storage?.persisted) {
+				const saved = await navigator.storage.persisted();
+				if (version !== refreshVersion) return;
+				persistent = saved;
+			}
 			await refreshStatus();
 		} catch (cause) {
 			console.error('Could not inspect offline storage', cause);
-			error = m['offline.storage.failure']();
+			if (version === refreshVersion) error = m['offline.storage.failure']();
 		}
 	}
 
@@ -130,6 +152,11 @@
 			case 'rejected': return m['offline.outbox.rejected']();
 		}
 	}
+
+	function queuedBookId(mutation: SyncMutation): number | null {
+		const id = mutation.data.book_id;
+		return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : null;
+	}
 </script>
 
 <section aria-labelledby="offline-storage-heading" class="max-w-3xl space-y-5">
@@ -187,10 +214,13 @@
 			{#if entries.length}
 				<ul class="divide-y divide-slate-200 rounded-md border border-slate-200">
 					{#each entries as entry (entry.sequence)}
+						{@const bookId = queuedBookId(entry.mutation)}
 						<li class="flex flex-wrap items-center justify-between gap-3 p-4">
 							<div>
 								<p class="font-medium">{entityLabel(entry.mutation.entity)}</p>
 								<p class="text-sm text-slate-600">{statusLabel(entry.status)}</p>
+								{#if entry.reason}<p class="text-sm text-slate-600">{m['offline.outbox.reason']({ reason: entry.reason })}</p>{/if}
+								{#if bookId !== null}<a class="text-sm underline focus-visible:outline-2" href={`/books/${bookId}`}>{m['offline.outbox.book_reference']({ id: bookId })}</a>{/if}
 							</div>
 							<button class="text-sm font-medium text-red-700 underline focus-visible:outline-2" disabled={busy} onclick={() => discard(entry.sequence)}>
 								{m['offline.outbox.discard']()}

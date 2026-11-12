@@ -138,7 +138,20 @@ export async function enqueue(account: number, mutation: SyncMutation): Promise<
 	};
 	return transaction(['meta', 'outbox'], 'readwrite', async (tx) => {
 		await requireAccount(tx, account);
-		const sequence = await result(tx.objectStore('outbox').add({ account, mutation: stored, status: 'pending' }));
+		const store = tx.objectStore('outbox');
+		if (stored.entity === 'reading_progress' && stored.op === 'upsert' && 'key' in stored) {
+			// Only the latest unsent position per book file matters; older pending positions are superseded.
+			const fileId = (stored.data as { book_file_id?: unknown }).book_file_id;
+			const queued = await result<OutboxEntry[]>(store.index('account').getAll(IDBKeyRange.only(account)));
+			for (const entry of queued) {
+				if (entry.status === 'pending' && entry.mutation.entity === 'reading_progress' &&
+					entry.mutation.op === 'upsert' && 'key' in entry.mutation && entry.mutation.key === stored.key &&
+					(entry.mutation.data as { book_file_id?: unknown }).book_file_id === fileId) {
+					await result(store.delete(entry.sequence));
+				}
+			}
+		}
+		const sequence = await result(store.add({ account, mutation: stored, status: 'pending' }));
 		if (typeof sequence !== 'number') throw new OfflineStorageError('The queued mutation has no sequence.');
 		return sequence;
 	});
@@ -162,11 +175,15 @@ export async function recordResults(
 		for (const item of results) {
 			const entry = entries[item.index];
 			const current = await result<OutboxEntry | undefined>(store.get(entry.sequence));
+			if (!current && entry.mutation.entity === 'reading_progress' && entry.mutation.op === 'upsert') {
+				// enqueue() replaced this in-flight position with a newer pending one.
+				continue;
+			}
 			if (!current || current.account !== account) {
 				throw new OfflineStorageError('A queued mutation changed while synchronizing.');
 			}
 			// Keep confirmed writes available for offline replay until their pull is durable.
-			await result(store.put({ ...current, status: item.status, reason: item.reason }));
+			await result(store.put({ ...current, status: item.status, reason: item.reason, conflictChecked: false }));
 		}
 	});
 }
@@ -178,7 +195,7 @@ export async function retryFailed(account: number): Promise<void> {
 		const entries = await result<OutboxEntry[]>(store.index('account').getAll(IDBKeyRange.only(account)));
 		for (const entry of entries) {
 			if (entry.status === 'stale' || entry.status === 'rejected') {
-				await result(store.put({ ...entry, status: 'pending', reason: undefined }));
+				await result(store.put({ ...entry, status: 'pending', reason: undefined, conflictChecked: false }));
 			}
 		}
 	});
@@ -225,6 +242,73 @@ function deleteMatching(index: IDBIndex, key: IDBValidKey): Promise<void> {
 	});
 }
 
+function equalJson(left: JsonValue, right: JsonValue): boolean {
+	if (left === right) return true;
+	if (Array.isArray(left)) {
+		return Array.isArray(right) && left.length === right.length &&
+			left.every((item, index) => equalJson(item, right[index]));
+	}
+	if (Array.isArray(right) || left === null || right === null ||
+		typeof left !== 'object' || typeof right !== 'object') return false;
+	const keys = Object.keys(left);
+	return keys.length === Object.keys(right).length &&
+		keys.every((key) => Object.hasOwn(right, key) && equalJson(left[key], right[key]));
+}
+
+function matchesData(
+	data: SyncMutation['data'],
+	required: Record<string, JsonValue>,
+	optional: Record<string, JsonValue> = {}
+): boolean {
+	return Object.entries(required).every(([key, value]) => Object.hasOwn(data, key) && equalJson(data[key], value)) &&
+		Object.keys(data).every((key) => Object.hasOwn(required, key) ||
+			(Object.hasOwn(optional, key) && equalJson(data[key], optional[key])));
+}
+
+function matchesSavedState(mutation: SyncMutation, row: StoredRow): boolean {
+	if (mutation.entity !== row.entity) return false;
+	if (mutation.op === 'delete') {
+		return (row.entity === 'highlights' || row.entity === 'bookmarks' ||
+			row.entity === 'page_annotations' || row.entity === 'notes') && row.value.deleted_at !== null;
+	}
+	const data = mutation.data;
+	switch (row.entity) {
+		case 'user_books':
+			return matchesData(data, {
+				book_id: row.value.book_id, status: row.value.status, rating: row.value.rating,
+				started_at: row.value.started_at === null ? null : Date.parse(row.value.started_at),
+				finished_at: row.value.finished_at === null ? null : Date.parse(row.value.finished_at)
+			});
+		case 'reading_progress':
+			return matchesData(data, {
+				book_id: row.value.book_id, book_file_id: row.value.book_file_id, source: row.value.source,
+				locator: row.value.locator, percentage: row.value.percentage, device: row.value.device,
+				device_id: row.value.device_id
+			});
+		case 'user_settings':
+			return matchesData(data, { value: row.value.value }, { key: row.value.key });
+		case 'highlights':
+			return row.value.deleted_at === null && matchesData(data, {
+				book_id: row.value.book_id, book_file_id: row.value.book_file_id, locator: row.value.locator,
+				position: row.value.position, text: row.value.text, color: row.value.color, chapter: row.value.chapter
+			}, { style: row.value.style ?? 'highlight', created_at: Date.parse(row.value.created_at) });
+		case 'bookmarks':
+			return row.value.deleted_at === null && matchesData(data, {
+				book_id: row.value.book_id, book_file_id: row.value.book_file_id, locator: row.value.locator,
+				position: row.value.position, label: row.value.label, chapter: row.value.chapter
+			}, { created_at: Date.parse(row.value.created_at) });
+		case 'page_annotations':
+			return row.value.deleted_at === null && matchesData(data, {
+				book_id: row.value.book_id, book_file_id: row.value.book_file_id, kind: row.value.kind,
+				locator: row.value.locator, position: row.value.position, data: row.value.data
+			}, { created_at: Date.parse(row.value.created_at) });
+		case 'notes':
+			return row.value.deleted_at === null && matchesData(data, {
+				book_id: row.value.book_id, highlight_id: row.value.highlight_id, body_md: row.value.body_md
+			}, { created_at: Date.parse(row.value.created_at) });
+	}
+}
+
 export async function persistPull(
 	account: number,
 	expectedCursor: number,
@@ -265,7 +349,20 @@ export async function persistPull(
 		const queue = tx.objectStore('outbox');
 		const entries = await result<OutboxEntry[]>(queue.index('account').getAll(IDBKeyRange.only(account)));
 		for (const entry of entries) {
-			if (entry.status === 'applied') await result(queue.delete(entry.sequence));
+			// A stale append-only session ID has already been recorded by the server.
+			if (entry.status === 'applied' ||
+				(entry.status === 'stale' && entry.mutation.entity === 'reading_sessions' && entry.mutation.op === 'upsert')) {
+				await result(queue.delete(entry.sequence));
+			} else if (entry.status === 'stale' && entry.mutation.entity !== 'reading_sessions') {
+				const key = 'id' in entry.mutation ? entry.mutation.id : entry.mutation.key;
+				const row = await result<StoredRow | undefined>(store.get([account, entry.mutation.entity, key]));
+				// A full pull or a row in this incremental pull verifies the current server state.
+				if (row && (full || row.value.rev > expectedCursor) && matchesSavedState(entry.mutation, row)) {
+					await result(queue.delete(entry.sequence));
+				} else if (full && !entry.conflictChecked) {
+					await result(queue.put({ ...entry, conflictChecked: true }));
+				}
+			}
 		}
 		await result(meta.put({
 			key: cursorKey(account),

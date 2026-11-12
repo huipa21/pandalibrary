@@ -97,7 +97,7 @@
 			{/if}
 		</div>
 		{#if details && !offline}
-			<ReadStatusMenu bookId={book.id} userBook={details.userBook} variant="inline" />
+			<ReadStatusMenu bookId={book.id} userBook={details.userBook} percentage={progress} variant="inline" />
 		{:else if details}
 			<span class="inline-flex items-center gap-1.5 rounded-md bg-transparent px-2 py-1 text-sm font-medium text-slate-800" aria-label={readStatusLabel(status)}>
 				<StatusIcon {status} class={`size-4 shrink-0 ${statusTone(status).text}`} />

@@ -5,7 +5,7 @@
 	import ReadStatusMenu from '../ReadStatusMenu.svelte';
 	import { formatDate, formatDuration, formatPercent, formatRelative } from '../format.js';
 	import type { ReadingSummary } from '../log-api.js';
-	import type { UserBook } from '../user-book.js';
+	import { isCompletedStatus, type UserBook } from '../user-book.js';
 	import ProgressRing from '../ProgressRing.svelte';
 	import AddSessionDialog from './AddSessionDialog.svelte';
 
@@ -39,7 +39,9 @@
 	<div class="mt-5 flex flex-col items-center gap-3 text-center">
 		<ProgressRing fraction={progress} size="lg" {locale} label={m['bv8.progress']({ percent: formatPercent(progress, locale) })} />
 		<ReadStatusMenu {bookId} {userBook} variant="pill" />
-		{#if summary.estimated_seconds_left !== null}
+		{#if isCompletedStatus(userBook?.status)}
+			<p class="text-sm text-slate-500">{m['bv8.read_completed']()}</p>
+		{:else if summary.estimated_seconds_left !== null}
 			<p class="text-sm text-slate-500">{m['bv8.estimate']({ duration: formatDuration(summary.estimated_seconds_left) })}</p>
 		{/if}
 	</div>

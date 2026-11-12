@@ -26,6 +26,8 @@ interface MockState {
 }
 
 const hash = 'a'.repeat(64);
+// Reader position changes are saved on a 10 second interval; only the opening position is immediate.
+const PROGRESS_SAVE = { timeout: 15_000 };
 
 async function setupReader(
 	page: Page,
@@ -256,7 +258,7 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 	await expect.poll(() => state.progress?.book_file_id).toBe(31);
 	await expect.poll(() => state.progress?.source).toBe('web');
-	await expect.poll(() => state.progress?.percentage).toBeGreaterThan(0.9);
+	await expect.poll(() => state.progress?.percentage, PROGRESS_SAVE).toBeGreaterThan(0.9);
 	await page.reload();
 	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 	frame = await bookFrame(page, 'Second section');
@@ -313,7 +315,7 @@ test('opens PDF, restores its page and paints persisted selectable highlights', 
 });
 
 test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async ({ page }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(120_000);
 	const state = await setupReader(page, 'pdf', pdfFixture(200), {
 		initialProgress: {
 			book_file_id: 31, source: 'web', locator: { type: 'pdf', page: 21 }, percentage: 20 / 199,
@@ -363,10 +365,10 @@ test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async (
 	await page.locator('#reader-surface').focus();
 	await page.keyboard.press('ArrowRight');
 	await expect(page.locator('.reader-pdf-page').first()).toHaveAttribute('data-page', '23');
-	await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 23 });
+	await expect.poll(() => state.progress?.locator, PROGRESS_SAVE).toMatchObject({ type: 'pdf', page: 23 });
 	await page.keyboard.press('ArrowLeft');
 	await expect(progress).toContainText('10.05%');
-	await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 21 });
+	await expect.poll(() => state.progress?.locator, PROGRESS_SAVE).toMatchObject({ type: 'pdf', page: 21 });
 
 	for (const value of ['single-continuous', 'split-continuous']) {
 		await settings({ pdfLayout: value });
@@ -381,11 +383,11 @@ test('PDF layouts, zoom, rotation and exact 10.05% progress round-trip', async (
 		});
 		await expect(progress).toContainText('20.10%');
 		await expect(page.locator('.reader-pdf-page[data-page="41"] .reader-pdf-text')).toContainText('Page 41 PDF page text');
-		await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 41 });
+		await expect.poll(() => state.progress?.locator, PROGRESS_SAVE).toMatchObject({ type: 'pdf', page: 41 });
 		await pdfPageBox(page).fill('21');
 		await pdfPageBox(page).press('Enter');
 		await expect(progress).toContainText('10.05%');
-		await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 21 });
+		await expect.poll(() => state.progress?.locator, PROGRESS_SAVE).toMatchObject({ type: 'pdf', page: 21 });
 		await page.reload();
 		await expect(progress).toContainText('10.05%');
 	}
@@ -418,7 +420,7 @@ test('PDF ignores retired cover-alone settings and odd spreads retain every page
 	await expect(page.locator('.reader-pdf-text').first()).toContainText('Page 3 PDF page text');
 	await page.keyboard.press('Home');
 	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
-	await expect.poll(() => state.progress?.locator).toMatchObject({ type: 'pdf', page: 1 });
+	await expect.poll(() => state.progress?.locator, PROGRESS_SAVE).toMatchObject({ type: 'pdf', page: 1 });
 	state.settings = [{ key: 'reader.book.21', value: { pdfLayout: 'split', pdfCoverAlone: false }, updated_at: new Date().toISOString(), rev: ++state.rev }];
 	await page.reload();
 	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');

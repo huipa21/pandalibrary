@@ -218,7 +218,7 @@
 				href={`/books/${book.id}`}
 			><span class="truncate">{m['bv5.details']()}</span></a>
 			<div class="status-slot">
-				<ReadStatusMenu bookId={book.id} userBook={data.userBook} variant="icon" />
+				<ReadStatusMenu bookId={book.id} userBook={data.userBook} percentage={data.progress?.percentage} variant="icon" />
 			</div>
 			{#if !data.offline}
 				<ShelfPopover bookId={book.id} {memberIds} />

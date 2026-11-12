@@ -1,13 +1,9 @@
 -- name: DashboardContinueReadingBooks :many
-SELECT b.id, rp.updated_at AS sort_time FROM books b
-JOIN reading_progress rp ON rp.book_id = b.id
-WHERE rp.user_id = sqlc.arg(user_id)
-AND rp.percentage > 0 AND rp.percentage < 1
-AND NOT EXISTS (
-    SELECT 1 FROM user_books ub
-    WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id
-      AND ub.status IN ('finished', 'skimmed', 'abandoned')
-)
+SELECT b.id, CAST(COALESCE(rp.updated_at, ub.updated_at) AS INTEGER) AS sort_time FROM books b
+LEFT JOIN reading_progress rp ON rp.book_id = b.id AND rp.user_id = sqlc.arg(user_id)
+LEFT JOIN user_books ub ON ub.book_id = b.id AND ub.user_id = sqlc.arg(user_id)
+WHERE ((rp.percentage > 0 AND rp.percentage < 1) OR ub.status IN ('reading', 'rereading', 'on_hold'))
+AND (ub.status IS NULL OR ub.status NOT IN ('finished', 'skimmed', 'abandoned'))
 AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -17,9 +13,9 @@ AND NOT EXISTS (
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 )
 AND (CAST(sqlc.arg(after_id) AS INTEGER) = 0
-    OR rp.updated_at < CAST(sqlc.arg(after_time) AS INTEGER)
-    OR (rp.updated_at = CAST(sqlc.arg(after_time) AS INTEGER) AND b.id < sqlc.arg(after_id)))
-ORDER BY rp.updated_at DESC, b.id DESC
+    OR COALESCE(rp.updated_at, ub.updated_at) < CAST(sqlc.arg(after_time) AS INTEGER)
+    OR (COALESCE(rp.updated_at, ub.updated_at) = CAST(sqlc.arg(after_time) AS INTEGER) AND b.id < sqlc.arg(after_id)))
+ORDER BY COALESCE(rp.updated_at, ub.updated_at) DESC, b.id DESC
 LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: DashboardRecentlyAddedBooks :many
@@ -39,8 +35,17 @@ ORDER BY b.created_at DESC, b.id DESC
 LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: DashboardReadBooks :many
-SELECT b.id, CAST(COALESCE(ub.finished_at, ub.updated_at) AS INTEGER) AS sort_time FROM books b
-JOIN user_books ub ON ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id AND ub.status IN ('finished', 'skimmed')
+WITH completed_cycles AS (
+    SELECT book_id, ended_at FROM reading_cycles
+    WHERE user_id = sqlc.arg(user_id) AND status IN ('finished', 'skimmed')
+    UNION ALL
+    SELECT book_id, COALESCE(finished_at, updated_at) AS ended_at FROM user_books
+    WHERE user_id = sqlc.arg(user_id) AND status IN ('finished', 'skimmed')
+), completed_books AS (
+    SELECT book_id, MAX(ended_at) AS ended_at FROM completed_cycles GROUP BY book_id
+)
+SELECT b.id, CAST(c.ended_at AS INTEGER) AS sort_time FROM books b
+JOIN completed_books c ON c.book_id = b.id
 WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -50,9 +55,9 @@ AND NOT EXISTS (
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 )
 AND (CAST(sqlc.arg(after_id) AS INTEGER) = 0
-    OR COALESCE(ub.finished_at, ub.updated_at) < CAST(sqlc.arg(after_time) AS INTEGER)
-    OR (COALESCE(ub.finished_at, ub.updated_at) = CAST(sqlc.arg(after_time) AS INTEGER) AND b.id < sqlc.arg(after_id)))
-ORDER BY COALESCE(ub.finished_at, ub.updated_at) DESC, b.id DESC
+    OR c.ended_at < CAST(sqlc.arg(after_time) AS INTEGER)
+    OR (c.ended_at = CAST(sqlc.arg(after_time) AS INTEGER) AND b.id < sqlc.arg(after_id)))
+ORDER BY c.ended_at DESC, b.id DESC
 LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: DashboardUnreadBooks :many

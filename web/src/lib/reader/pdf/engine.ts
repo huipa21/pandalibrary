@@ -165,6 +165,7 @@ export class PdfViewerEngine implements Reader {
 			data: new Uint8Array(data),
 			BinaryDataFactory: PdfBinaryDataFactory,
 			useWorkerFetch: false,
+			verbosity: pdfjs.VerbosityLevel.ERRORS,
 			enableXfa: false
 		});
 		this.loadingTask = loadingTask;

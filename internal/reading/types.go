@@ -14,12 +14,14 @@ type Viewer struct {
 
 // UserBook is a user's status and rating for one book.
 type UserBook struct {
-	Status     string     `json:"status"`
-	Rating     *int64     `json:"rating"`
-	StartedAt  *time.Time `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	Rev        int64      `json:"rev"`
+	Status       string     `json:"status"`
+	ResumeStatus string     `json:"resume_status,omitempty"`
+	ReadingCycle int64      `json:"reading_cycle"`
+	Rating       *int64     `json:"rating"`
+	StartedAt    *time.Time `json:"started_at"`
+	FinishedAt   *time.Time `json:"finished_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	Rev          int64      `json:"rev"`
 }
 
 // Progress is a user's latest reading position for one book.
@@ -152,13 +154,15 @@ type PullResponse struct {
 
 // UserBookRow is a synced user_books row.
 type UserBookRow struct {
-	BookID     int64      `json:"book_id"`
-	Status     string     `json:"status"`
-	Rating     *int64     `json:"rating"`
-	StartedAt  *time.Time `json:"started_at"`
-	FinishedAt *time.Time `json:"finished_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	Rev        int64      `json:"rev"`
+	BookID       int64      `json:"book_id"`
+	Status       string     `json:"status"`
+	ResumeStatus string     `json:"resume_status,omitempty"`
+	ReadingCycle int64      `json:"reading_cycle"`
+	Rating       *int64     `json:"rating"`
+	StartedAt    *time.Time `json:"started_at"`
+	FinishedAt   *time.Time `json:"finished_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	Rev          int64      `json:"rev"`
 }
 
 // ProgressRow is a synced reading_progress row.

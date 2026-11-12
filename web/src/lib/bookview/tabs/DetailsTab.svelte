@@ -149,7 +149,7 @@
 						{details?.progress && details.progress.percentage > 0 ? m['bv6.resume']() : m['bv6.read']()}
 					</button>
 					{#if detailsReady && details && !offline}
-						<ReadStatusMenu bookId={book.id} userBook={details.userBook} variant="icon" />
+						<ReadStatusMenu bookId={book.id} userBook={details.userBook} percentage={details.progress?.percentage} variant="icon" />
 					{/if}
 				</div>
 				{#if readError}<p class="text-sm text-red-800" role="alert">{readError}</p>{/if}

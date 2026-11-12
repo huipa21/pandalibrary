@@ -10,8 +10,45 @@ export type ReadStatus = (typeof READ_STATUSES)[number];
 
 export const AUTO_FINISH_THRESHOLD = 0.99;
 
-export function autoStatus(current: ReadStatus | null, percentage: number): ReadStatus | null {
+export const TERMINAL_STATUSES: readonly ReadStatus[] = ['finished', 'skimmed', 'abandoned'];
+
+/** Read books keep 100% progress even when the reader moves; only rereading starts over. */
+export const COMPLETED_STATUSES: readonly ReadStatus[] = ['finished', 'skimmed'];
+
+export function isCompletedStatus(status: ReadStatus | null | undefined): boolean {
+	return status !== null && status !== undefined && COMPLETED_STATUSES.includes(status);
+}
+
+/** The stored progress percentage for a position saved under the given status. */
+export function storedPercentage(status: ReadStatus | null | undefined, percentage: number): number {
+	return isCompletedStatus(status) ? 1 : percentage;
+}
+
+export function availableReadStatuses(current: UserBook | null, percentage = 0): ReadStatus[] {
+	const status = current?.status ?? 'unread';
+	const untouched = (status === 'unread' || status === 'want_to_read') &&
+		!current?.started_at && !current?.finished_at && percentage <= 0 && (current?.reading_cycle ?? 1) <= 1;
+	return READ_STATUSES.filter((next) => {
+		if (next === status) return true;
+		if (next === 'unread' || next === 'want_to_read') return untouched;
+		if (next === 'rereading') return TERMINAL_STATUSES.includes(status) ||
+			(status === 'on_hold' && (current?.resume_status === 'rereading' || (current?.reading_cycle ?? 1) > 1));
+		if (next === 'on_hold') return status === 'reading' || status === 'rereading';
+		return true;
+	});
+}
+
+export function autoStatus(
+	current: ReadStatus | null,
+	percentage: number,
+	context: { moved?: boolean; resumeStatus?: 'reading' | 'rereading'; readingCycle?: number } = {}
+): ReadStatus | null {
 	const status = current ?? 'unread';
+	if (status === 'on_hold' && context.moved && percentage > 0) {
+		return percentage >= AUTO_FINISH_THRESHOLD ? 'finished' : context.readingCycle !== undefined
+			? context.readingCycle > 1 ? 'rereading' : 'reading'
+			: context.resumeStatus ?? 'reading';
+	}
 	if (['unread', 'want_to_read', 'reading', 'rereading'].includes(status)) {
 		if (percentage >= AUTO_FINISH_THRESHOLD) return 'finished';
 		if (percentage > 0 && (status === 'unread' || status === 'want_to_read')) return 'reading';
@@ -54,6 +91,8 @@ export interface UserBook {
 	finished_at: string | null;
 	updated_at: string;
 	rev: number;
+	resume_status?: 'reading' | 'rereading';
+	reading_cycle?: number;
 }
 
 export type UserBookPatch = Partial<Pick<UserBook, 'status' | 'rating' | 'started_at' | 'finished_at'>>;
@@ -67,6 +106,9 @@ export function isUserBook(value: unknown): value is UserBook {
 			value.rating >= 1 && value.rating <= 10)) &&
 		(value.started_at === null || typeof value.started_at === 'string') &&
 		(value.finished_at === null || typeof value.finished_at === 'string') &&
+		(!('resume_status' in value) || value.resume_status === undefined || value.resume_status === 'reading' || value.resume_status === 'rereading') &&
+		(!('reading_cycle' in value) || value.reading_cycle === undefined ||
+			(typeof value.reading_cycle === 'number' && Number.isSafeInteger(value.reading_cycle) && value.reading_cycle >= 1)) &&
 		typeof value.updated_at === 'string' && typeof value.rev === 'number' &&
 		Number.isSafeInteger(value.rev) && value.rev >= 0;
 }
@@ -88,13 +130,20 @@ export function userBookFromState(value: unknown): UserBook | null {
 }
 
 export function statusPatch(current: UserBook | null, status: ReadStatus, now = new Date()): UserBookPatch {
+	if (!availableReadStatuses(current).includes(status)) throw new RangeError('Invalid reading status transition.');
 	const patch: UserBookPatch = { status };
-	if (status === 'reading' && !current?.started_at) patch.started_at = now.toISOString();
-	if (status === 'rereading' && (current?.status !== 'rereading' || !current.started_at)) {
+	if (status !== 'unread' && status !== 'want_to_read' && !current?.started_at) patch.started_at = now.toISOString();
+	if (status === 'reading' || status === 'on_hold' || status === 'rereading') {
+		if (current?.finished_at) patch.finished_at = null;
+	}
+	if (status === 'rereading' && (TERMINAL_STATUSES.includes(current?.status ?? 'unread') || !current?.started_at)) {
 		patch.started_at = now.toISOString();
 		patch.finished_at = null;
 	}
-	if (status === 'finished' && !current?.finished_at) patch.finished_at = now.toISOString();
+	if (TERMINAL_STATUSES.includes(status) &&
+		(!TERMINAL_STATUSES.includes(current?.status ?? 'unread') || !current?.finished_at)) {
+		patch.finished_at = now.toISOString();
+	}
 	return patch;
 }
 
@@ -105,7 +154,13 @@ export function previewUserBook(current: UserBook | null, patch: UserBookPatch, 
 		started_at: patch.started_at === undefined ? current?.started_at ?? null : patch.started_at,
 		finished_at: patch.finished_at === undefined ? current?.finished_at ?? null : patch.finished_at,
 		updated_at: now.toISOString(),
-		rev: current?.rev ?? 0
+		rev: current?.rev ?? 0,
+		...(patch.status === 'rereading' && TERMINAL_STATUSES.includes(current?.status ?? 'unread')
+			? { reading_cycle: (current?.reading_cycle ?? 1) + 1 }
+			: current?.reading_cycle !== undefined ? { reading_cycle: current.reading_cycle } : {}),
+		...(patch.status === 'on_hold'
+			? { resume_status: current?.status === 'rereading' ? 'rereading' as const : current?.resume_status ?? 'reading' as const }
+			: patch.status === undefined && current?.resume_status ? { resume_status: current.resume_status } : {})
 	};
 }
 
@@ -118,6 +173,10 @@ function timestamp(value: string | null): number | null {
 
 export async function saveUserBook(bookId: number, current: UserBook | null, patch: UserBookPatch): Promise<void> {
 	if (!Number.isSafeInteger(bookId) || bookId <= 0) throw new RangeError('Invalid book ID.');
+	if (patch.status !== undefined && !availableReadStatuses(current).includes(patch.status)) {
+		throw new RangeError('Invalid reading status transition.');
+	}
+	patch = patch.status === undefined ? patch : { ...statusPatch(current, patch.status), ...patch };
 	const status = patch.status ?? current?.status ?? 'unread';
 	const rating = patch.rating === undefined ? current?.rating ?? null : patch.rating;
 	const startedAt = patch.started_at === undefined ? current?.started_at ?? null : patch.started_at;

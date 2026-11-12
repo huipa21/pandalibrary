@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { pushMutation, SyncError } from '#lib/reader/api.js';
 import { notifyBookStateChanged } from './events.js';
 import {
-	autoStatus, AUTO_FINISH_THRESHOLD, isUserBook, previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, statusTone,
+	autoStatus, AUTO_FINISH_THRESHOLD, availableReadStatuses, isUserBook, previewUserBook, READ_STATUSES, readStatusLabel, saveUserBook, statusPatch, statusTone,
 	userBookFromState, type UserBook
 } from './user-book.js';
 
@@ -41,9 +41,46 @@ describe('automatic status', () => {
 			});
 		}
 	}
+
+	it('resumes paused reading only after movement and preserves a paused reread', () => {
+		expect(autoStatus('on_hold', 0.5)).toBeNull();
+		expect(autoStatus('on_hold', 0.5, { moved: true })).toBe('reading');
+		expect(autoStatus('on_hold', 0.5, { moved: true, resumeStatus: 'rereading' })).toBe('rereading');
+		expect(autoStatus('on_hold', 0.99, { moved: true, resumeStatus: 'rereading' })).toBe('finished');
+		expect(autoStatus('on_hold', 0.5, { moved: true, readingCycle: 2 })).toBe('rereading');
+		expect(autoStatus('on_hold', 0, { moved: true, readingCycle: 2 })).toBeNull();
+	});
 });
 
 describe('saveUserBook', () => {
+	it('offers only lifecycle-valid transitions, without blocking unchanged status', () => {
+		expect(availableReadStatuses(null)).toEqual([
+			'unread', 'want_to_read', 'reading', 'finished', 'skimmed', 'abandoned'
+		]);
+		expect(availableReadStatuses(current)).toEqual(['reading', 'on_hold', 'finished', 'skimmed', 'abandoned']);
+		expect(availableReadStatuses({ ...current, status: 'finished' })).toEqual([
+			'reading', 'rereading', 'finished', 'skimmed', 'abandoned'
+		]);
+		expect(availableReadStatuses({ ...current, status: 'unread' })).not.toContain('want_to_read');
+		expect(availableReadStatuses(null, 0.1)).not.toContain('want_to_read');
+		expect(() => statusPatch(current, 'unread')).toThrow('transition');
+		expect(() => statusPatch(current, 'rereading')).toThrow('transition');
+	});
+
+	it('allows rating-only saves and terminal-to-terminal changes, rejecting lifecycle resets', async () => {
+		await saveUserBook(21, current, { rating: 8 });
+		await saveUserBook(21, { ...current, status: 'abandoned' }, { status: 'skimmed' });
+		await expect(saveUserBook(21, current, { status: 'want_to_read' })).rejects.toThrow('transition');
+		await expect(saveUserBook(21, null, { status: 'on_hold' })).rejects.toThrow('transition');
+		expect(pushMutation).toHaveBeenCalledTimes(2);
+	});
+
+	it('resumes a held reread without starting another cycle', () => {
+		const held: UserBook = { ...current, status: 'on_hold', resume_status: 'rereading' };
+		expect(statusPatch(held, 'rereading')).toEqual({ status: 'rereading' });
+		expect(previewUserBook({ ...current, status: 'rereading' }, { status: 'on_hold' }))
+			.toMatchObject({ resume_status: 'rereading', started_at: current.started_at });
+	});
 	it('exposes all localized statuses in menu order with reusable tones', () => {
 		expect(READ_STATUSES).toEqual([
 			'unread', 'want_to_read', 'reading', 'on_hold', 'rereading', 'finished', 'skimmed', 'abandoned'
@@ -119,7 +156,7 @@ describe('saveUserBook', () => {
 		expect(patch).toEqual({ status: 'rereading', started_at: now.toISOString(), finished_at: null });
 		const preview = previewUserBook(finished, patch, now);
 		expect(preview).toMatchObject({
-			status: 'rereading', rating: 7, started_at: now.toISOString(), finished_at: null
+			status: 'rereading', reading_cycle: 2, rating: 7, started_at: now.toISOString(), finished_at: null
 		});
 		expect(statusPatch(preview, 'rereading', new Date('2026-11-08T00:00:00Z'))).toEqual({ status: 'rereading' });
 		expect(statusPatch({ ...preview, started_at: null }, 'rereading', now)).toEqual(patch);

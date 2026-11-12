@@ -99,6 +99,12 @@ func (f *statsFixture) finish(t *testing.T, user, book, at int64, status string)
 		VALUES (?, ?, ?, ?, 1, 1)`, user, book, status, at)
 }
 
+func (f *statsFixture) archive(t *testing.T, user, book, at int64, status string) {
+	t.Helper()
+	f.exec(t, `INSERT INTO reading_cycles (user_id, book_id, started_at, ended_at, status, percentage)
+		VALUES (?, ?, ?, ?, ?, 1)`, user, book, at-1000, at, status)
+}
+
 func TestCalendarValidation(t *testing.T) {
 	for _, test := range []struct {
 		from, to, zone string
@@ -227,14 +233,66 @@ func TestZeroFillMonthsAuthorsAndDeterministicBookOrder(t *testing.T) {
 	}
 }
 
-func TestSkimmedDoesNotCountAsFinished(t *testing.T) {
+func TestTerminalStatusesCountOncePerCycle(t *testing.T) {
 	f := newStatsFixture(t)
 	at := instant(t, "2026-01-15T12:00:00Z")
 	f.finish(t, 2, 101, at, "finished")
-	f.finish(t, 2, 104, at, "skimmed")
-	got, err := f.service.Get(context.Background(), Viewer{UserID: 2}, "2026-01-01", "2026-01-31", "UTC")
-	if err != nil || !reflect.DeepEqual(got.FinishedPerMonth, []FinishedMonth{{Month: "2026-01", BooksFinished: 1}}) {
-		t.Fatalf("finished counts = %+v, %v", got.FinishedPerMonth, err)
+	f.exec(t, `INSERT INTO user_books (user_id, book_id, status, updated_at, rev)
+		VALUES (2, 104, 'abandoned', ?, 1)`, at)
+	for _, status := range []string{"finished", "skimmed", "abandoned", "finished"} {
+		f.exec(t, `UPDATE user_books SET status = ?, updated_at = ? WHERE user_id = 2 AND book_id = 101`,
+			status, instant(t, "2026-02-01T12:00:00Z"))
+		got, err := f.service.Get(context.Background(), Viewer{UserID: 2}, "2026-01-01", "2026-02-28", "UTC")
+		if err != nil || !reflect.DeepEqual(got.FinishedPerMonth, []FinishedMonth{
+			{Month: "2026-01", BooksFinished: 2}, {Month: "2026-02"},
+		}) {
+			t.Fatalf("%s cycle counts = %+v, %v", status, got.FinishedPerMonth, err)
+		}
+	}
+}
+
+func TestFinishedCyclesSurviveRepeatedRereading(t *testing.T) {
+	f := newStatsFixture(t)
+	f.archive(t, 2, 101, instant(t, "2026-01-31T15:59:59.999Z"), "finished")
+	f.archive(t, 2, 101, instant(t, "2026-01-31T16:00:00Z"), "skimmed")
+	f.finish(t, 2, 101, instant(t, "2026-02-28T16:00:00Z"), "abandoned")
+	want := []FinishedMonth{
+		{Month: "2026-01", BooksFinished: 1},
+		{Month: "2026-02", BooksFinished: 1},
+		{Month: "2026-03", BooksFinished: 1},
+	}
+	got, err := f.service.Get(context.Background(), Viewer{UserID: 2}, "2026-01-01", "2026-03-31", "Asia/Shanghai")
+	if err != nil || !reflect.DeepEqual(got.FinishedPerMonth, want) {
+		t.Fatalf("three cycles = %+v, %v", got.FinishedPerMonth, err)
+	}
+	f.archive(t, 2, 101, instant(t, "2026-02-28T16:00:00Z"), "abandoned")
+	f.exec(t, `UPDATE user_books SET status = 'rereading', finished_at = NULL WHERE user_id = 2 AND book_id = 101`)
+	got, err = f.service.Get(context.Background(), Viewer{UserID: 2}, "2026-01-01", "2026-03-31", "Asia/Shanghai")
+	if err != nil || !reflect.DeepEqual(got.FinishedPerMonth, want) {
+		t.Fatalf("reset preserves cycles = %+v, %v", got.FinishedPerMonth, err)
+	}
+}
+
+func TestSessionsAfterFinishingCountWithoutRefinishing(t *testing.T) {
+	f := newStatsFixture(t)
+	f.archive(t, 2, 101, instant(t, "2025-12-20T12:00:00Z"), "finished")
+	f.finish(t, 2, 101, instant(t, "2026-01-10T08:00:00Z"), "finished")
+	f.finish(t, 2, 104, instant(t, "2026-01-10T09:00:00Z"), "skimmed")
+	f.session(t, 2, 101, instant(t, "2026-01-10T10:00:00Z"), 60)
+	f.session(t, 2, 101, instant(t, "2026-01-11T10:00:00Z"), 120)
+	f.session(t, 2, 104, instant(t, "2026-01-11T11:00:00Z"), 30)
+	f.session(t, 2, 104, instant(t, "2026-01-12T10:00:00Z"), 45)
+	got, err := f.service.Get(context.Background(), Viewer{UserID: 2}, "2026-01-10", "2026-01-12", "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Daily, []Day{
+		{Date: "2026-01-10", ActiveSeconds: 60, SessionCount: 1},
+		{Date: "2026-01-11", ActiveSeconds: 150, SessionCount: 2},
+		{Date: "2026-01-12", ActiveSeconds: 45, SessionCount: 1},
+	}) || got.Streaks != (Streaks{CurrentDays: 3, LongestDays: 3}) ||
+		!reflect.DeepEqual(got.FinishedPerMonth, []FinishedMonth{{Month: "2026-01", BooksFinished: 2}}) {
+		t.Fatalf("post-finish stats = %+v", got)
 	}
 }
 
@@ -343,6 +401,7 @@ func TestEveryStatsAggregateUsesCurrentVisibilityAndOwnership(t *testing.T) {
 				for _, book := range []int64{101, 102, 103, 104} {
 					f.session(t, user, book, at, 30)
 					f.finish(t, user, book, at, "finished")
+					f.archive(t, user, book, at+1, "skimmed")
 				}
 				// Invisible history must not lengthen either streak.
 				f.session(t, user, 102, at-86400000, 50)
@@ -362,7 +421,7 @@ func TestEveryStatsAggregateUsesCurrentVisibilityAndOwnership(t *testing.T) {
 				wantStreak = Streaks{CurrentDays: 1, LongestDays: 1}
 			}
 			if !reflect.DeepEqual(ids, test.books) || got.Daily[0].ActiveSeconds != 30*count ||
-				got.Daily[0].SessionCount != count || got.FinishedPerMonth[0].BooksFinished != count ||
+				got.Daily[0].SessionCount != count || got.FinishedPerMonth[0].BooksFinished != 2*count ||
 				got.Streaks != wantStreak {
 				t.Fatalf("visibility stats = %+v, book IDs %v", got, ids)
 			}

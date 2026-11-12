@@ -20,6 +20,7 @@ import { OfflineStorageError } from '#lib/sync/db.js';
 import { loadBook as loadOfflineBook, loadFile, loadReaderState } from '#lib/sync/library.js';
 import { readerState as cachedReaderState } from '#lib/sync/state.js';
 import { flushReaderWrites } from './flush.js';
+import { PeriodicProgressWriter } from './progress-gate.js';
 import { deletePageAnnotation, makePageAnnotation, validatePageAnnotationInput } from '#lib/reader/page-annotations.js';
 import type { HighlightStyle, PageAnnotation, PageAnnotationInput } from '#lib/reader/types.js';
 import { pdfSettingsForScope, initialPdfSettings } from './pdf-settings.js';
@@ -64,8 +65,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let location = $state<Relocation | null>(null);
 	let selection = $state<ReaderSelection | null>(null);
 	let reader: Reader | null = null;
-	let progressWriter: DurableProgressWriter | null = null;
-	const retiredProgressWriters = new Set<DurableProgressWriter>();
+	let progressWriter: PeriodicProgressWriter | null = null;
+	const retiredProgressWriters = new Set<PeriodicProgressWriter>();
 	let sessionClock: ReadingSessions | null = null;
 	let savedBookSettings: { [key: string]: JsonValue } = {};
 	let savedFormatSettings: { [key: string]: JsonValue } = {};
@@ -172,6 +173,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		mounted = false;
 		requestVersion += 1;
 		sessionClock?.stop();
+		progressWriter?.stop();
 		flushInBackground();
 		const current = reader;
 		reader = null;
@@ -215,7 +217,10 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		ready = false;
 		sessionClock?.stop();
 		sessionClock = null;
-		if (progressWriter) retiredProgressWriters.add(progressWriter);
+		if (progressWriter) {
+			progressWriter.stop();
+			retiredProgressWriters.add(progressWriter);
+		}
 		progressWriter = null;
 		flushInBackground();
 		const previous = reader;
@@ -304,7 +309,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			notes = state.notes.filter((note) => !note.deleted_at);
 			pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
 			otherPageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id !== fileId);
-			progressWriter = new DurableProgressWriter(reportPendingError);
+			progressWriter = new PeriodicProgressWriter(new DurableProgressWriter(reportPendingError));
 			loaded = { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId, annotationId };
 		} catch (cause) {
 			if (version !== requestVersion) return;

@@ -36,25 +36,25 @@ func TestDeriveAttempts(t *testing.T) {
 			numbers:  []int{1, 1}, statuses: []string{attemptInProgress}, maxima: []*float64{percent(0.5)},
 		},
 		{
-			name: "re-read after 100%",
+			name: "returning to beginning does not start a cycle",
 			sessions: []attemptSession{
 				session(1000, percent(0), percent(0.5)), session(2000, percent(0.5), percent(1)),
 				session(3000, percent(0), percent(0.2)),
 			},
-			numbers:  []int{1, 1, 2},
-			statuses: []string{attemptCompleted, attemptInProgress},
-			maxima:   []*float64{percent(1), percent(0.2)},
+			numbers:  []int{1, 1, 1},
+			statuses: []string{attemptInProgress},
+			maxima:   []*float64{percent(1)},
 		},
 		{
-			name: "re-read after finished_at",
+			name: "reading after finished_at stays in the same cycle",
 			sessions: []attemptSession{
 				session(1000, percent(0.2), percent(0.6)), session(6000, percent(0.5), percent(0.7)),
 				session(7000, percent(0.7), percent(0.8)),
 			},
 			finishedAt: &finished,
-			numbers:    []int{1, 2, 2},
-			statuses:   []string{attemptCompleted, attemptInProgress},
-			maxima:     []*float64{percent(0.6), percent(0.8)},
+			numbers:    []int{1, 1, 1},
+			statuses:   []string{attemptCompleted},
+			maxima:     []*float64{percent(0.8)},
 		},
 		{
 			name: "null percentages",
@@ -62,9 +62,9 @@ func TestDeriveAttempts(t *testing.T) {
 				session(1000, nil, nil), session(2000, nil, percent(0.97)), session(3000, nil, percent(0.05)),
 				session(4000, nil, nil),
 			},
-			numbers:  []int{1, 1, 2, 2},
-			statuses: []string{attemptCompleted, attemptInProgress},
-			maxima:   []*float64{percent(0.97), percent(0.05)},
+			numbers:  []int{1, 1, 1, 1},
+			statuses: []string{attemptInProgress},
+			maxima:   []*float64{percent(0.97)},
 		},
 		{
 			name: "backward jump is not a new attempt",
@@ -73,7 +73,7 @@ func TestDeriveAttempts(t *testing.T) {
 				session(3000, percent(0.3), percent(0.96)),
 			},
 			numbers:  []int{1, 1, 1},
-			statuses: []string{attemptCompleted},
+			statuses: []string{attemptInProgress},
 			maxima:   []*float64{percent(0.96)},
 		},
 		{
@@ -136,6 +136,15 @@ func TestDeriveAttempts(t *testing.T) {
 		!attempts[0].StartedAt.Equal(time.UnixMilli(1000)) || !attempts[0].EndedAt.Equal(time.UnixMilli(9000)) ||
 		!reflect.DeepEqual(attempts[0].Sources, []string{"koreader", "web"}) {
 		t.Fatalf("aggregated attempt = %+v", attempts)
+	}
+
+	attempts, _ = deriveAttempts([]attemptSession{
+		{StartedAt: 1000, EndedAt: 2000, ActiveSeconds: 30, Source: "web"},
+		{StartedAt: 6000, EndedAt: 9000, ActiveSeconds: 40, Source: "web"},
+	}, &finished, nil)
+	if len(attempts) != 1 || attempts[0].Status != attemptCompleted || attempts[0].Sessions != 2 ||
+		attempts[0].Seconds != 70 || !attempts[0].EndedAt.Equal(time.UnixMilli(finished)) {
+		t.Fatalf("completed attempt end moved = %+v", attempts)
 	}
 }
 
@@ -243,7 +252,7 @@ func TestReadingSummaryTotalsRecordsAndTimezoneDays(t *testing.T) {
 	}
 }
 
-func TestReadingSummaryAttemptsUseFinishedAt(t *testing.T) {
+func TestReadingSummaryDoesNotInventCycleAfterFinishedAt(t *testing.T) {
 	fixture := newReadingFixture(t)
 	ctx := context.Background()
 	fixture.insertSession(t, 1, 2, 101, "web", mustTime(t, "2026-01-01T10:00:00Z"), 60, percent(0), percent(0.5))
@@ -257,9 +266,154 @@ func TestReadingSummaryAttemptsUseFinishedAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(summary.Attempts) != 2 || summary.Attempts[0].Number != 2 || summary.Attempts[0].Status != attemptInProgress ||
-		summary.Attempts[1].Number != 1 || summary.Attempts[1].Status != attemptCompleted {
+	if len(summary.Attempts) != 1 || summary.Attempts[0].Number != 1 || summary.Attempts[0].Status != attemptInProgress {
 		t.Fatalf("attempts = %+v", summary.Attempts)
+	}
+}
+
+func TestReadingSummaryUsesPersistentCyclesWithoutSessions(t *testing.T) {
+	fixture := newReadingFixture(t)
+	ctx := context.Background()
+	start := mustTime(t, "2026-01-01T10:00:00Z")
+	restart := start.AddDate(0, 1, 0)
+	secondRestart := restart.AddDate(0, 1, 0)
+	for _, cycle := range []struct {
+		start, end time.Time
+		status     string
+		percentage float64
+	}{
+		{start, start.Add(time.Hour), "finished", 1},
+		{restart, restart.Add(time.Hour), "abandoned", 0.4},
+	} {
+		if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO reading_cycles
+			(user_id, book_id, started_at, ended_at, status, percentage) VALUES (2, 101, ?, ?, ?, ?)`,
+			cycle.start.UnixMilli(), cycle.end.UnixMilli(), cycle.status, cycle.percentage); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO user_books
+		(user_id, book_id, status, started_at, updated_at, rev) VALUES (2, 101, 'rereading', ?, ?, 1)`,
+		secondRestart.UnixMilli(), secondRestart.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	reader := Viewer{UserID: 2}
+	summary, err := fixture.service.GetReadingSummary(ctx, reader, 101, "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summary.Attempts) != 3 || summary.Sessions != 0 || summary.Progress != 0 ||
+		summary.Attempts[0].Number != 3 || summary.Attempts[0].Status != attemptInProgress ||
+		summary.Attempts[1].Outcome != "abandoned" || *summary.Attempts[1].MaxPercentage != 0.4 ||
+		summary.Attempts[2].Outcome != "finished" {
+		t.Fatalf("persistent summary without sessions = %+v", summary)
+	}
+
+	fixture.insertSession(t, 1, 2, 101, "web", start, 60, percent(0), percent(1))
+	// Reading after abandonment still belongs to that cycle until explicit rereading.
+	fixture.insertSession(t, 2, 2, 101, "web", restart.Add(2*time.Hour), 60, percent(0.4), percent(0.6))
+	fixture.insertSession(t, 3, 2, 101, "web", secondRestart, 60, percent(0), percent(1))
+	fixture.insertSession(t, 4, 2, 101, "web", secondRestart.Add(time.Hour), 60, percent(0), percent(0.1))
+	summary, err = fixture.service.GetReadingSummary(ctx, reader, 101, "UTC")
+	if err != nil || len(summary.Attempts) != 3 || summary.Attempts[0].Sessions != 2 ||
+		summary.Attempts[1].Sessions != 1 || summary.Attempts[2].Sessions != 1 {
+		t.Fatalf("persistent summary with sessions = %+v, %v", summary, err)
+	}
+	page, err := fixture.service.ListBookSessions(ctx, reader, 101, "all", "UTC", 25, "")
+	if err != nil || len(page.Items) != 4 {
+		t.Fatalf("cycle sessions = %+v, %v", page, err)
+	}
+	for index, want := range []int{3, 3, 2, 1} {
+		if page.Items[index].Attempt != want {
+			t.Fatalf("session %d cycle = %d, want %d", index, page.Items[index].Attempt, want)
+		}
+	}
+}
+
+func TestReadingSummaryPostCompletionSessionsKeepFinishDate(t *testing.T) {
+	fixture := newReadingFixture(t)
+	ctx := context.Background()
+	start := mustTime(t, "2026-01-01T10:00:00Z")
+	finished := start.Add(26 * time.Hour)
+	fixture.insertSession(t, 1, 2, 101, "web", start.Add(time.Hour), 3600, percent(0), percent(0.5))
+	fixture.insertSession(t, 2, 2, 101, "web", start.Add(24*time.Hour), 3600, percent(0.5), percent(1))
+	// Browsing after completion: counted as reading time but not as pace or a new attempt.
+	fixture.insertSession(t, 3, 2, 101, "web", finished.Add(24*time.Hour), 1800, percent(0.2), percent(0.6))
+	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO user_books
+		(user_id, book_id, status, started_at, finished_at, updated_at, rev) VALUES (2, 101, 'finished', ?, ?, ?, 1)`,
+		start.UnixMilli(), finished.UnixMilli(), finished.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := fixture.service.GetReadingSummary(ctx, Viewer{UserID: 2}, 101, "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summary.Attempts) != 1 {
+		t.Fatalf("attempts = %+v", summary.Attempts)
+	}
+	attempt := summary.Attempts[0]
+	if attempt.Status != attemptCompleted || attempt.Outcome != "finished" || !attempt.EndedAt.Equal(finished) ||
+		attempt.Sessions != 3 || attempt.Seconds != 9000 {
+		t.Fatalf("completed attempt = %+v", attempt)
+	}
+	// 100% over 2 hours; the post-completion session is excluded.
+	if summary.Progress != 1 || summary.TotalSeconds != 9000 || summary.Sessions != 3 ||
+		summary.PacePercentPerHour == nil || fmt.Sprintf("%.6f", *summary.PacePercentPerHour) != "50.000000" ||
+		summary.EstimatedSecondsLeft != nil {
+		t.Fatalf("summary = %+v pace = %v", summary, summary.PacePercentPerHour)
+	}
+}
+
+func TestReadingSummaryArchivedCompletedCycleKeepsEndDate(t *testing.T) {
+	fixture := newReadingFixture(t)
+	ctx := context.Background()
+	start := mustTime(t, "2026-01-01T10:00:00Z")
+	ended := start.Add(time.Hour)
+	restart := start.AddDate(0, 0, 10)
+	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO reading_cycles
+		(user_id, book_id, started_at, ended_at, status, percentage) VALUES (2, 101, ?, ?, 'finished', 1)`,
+		start.UnixMilli(), ended.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO user_books
+		(user_id, book_id, status, started_at, updated_at, rev) VALUES (2, 101, 'rereading', ?, ?, 1)`,
+		restart.UnixMilli(), restart.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	fixture.insertSession(t, 1, 2, 101, "web", start, 3600, percent(0), percent(1))
+	fixture.insertSession(t, 2, 2, 101, "web", start.AddDate(0, 0, 2), 600, percent(0.1), percent(0.9))
+	fixture.insertSession(t, 3, 2, 101, "web", restart.Add(time.Hour), 3600, percent(0), percent(0.2))
+	summary, err := fixture.service.GetReadingSummary(ctx, Viewer{UserID: 2}, 101, "UTC")
+	if err != nil || len(summary.Attempts) != 2 {
+		t.Fatalf("summary = %+v, %v", summary, err)
+	}
+	archived := summary.Attempts[1]
+	if archived.Status != attemptCompleted || archived.Sessions != 2 || archived.Seconds != 4200 ||
+		!archived.EndedAt.Equal(ended) {
+		t.Fatalf("archived attempt = %+v", archived)
+	}
+	// (100% + 20%) over 2 hours; the post-completion session is excluded.
+	if summary.TotalSeconds != 7800 || summary.PacePercentPerHour == nil ||
+		fmt.Sprintf("%.6f", *summary.PacePercentPerHour) != "60.000000" || summary.EstimatedSecondsLeft == nil {
+		t.Fatalf("summary = %+v pace = %v", summary, summary.PacePercentPerHour)
+	}
+}
+
+func TestReadingSummaryShowsManualTerminalCycleWithoutSessions(t *testing.T) {
+	for _, status := range []string{"finished", "skimmed", "abandoned"} {
+		t.Run(status, func(t *testing.T) {
+			fixture := newReadingFixture(t)
+			ctx := context.Background()
+			if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO user_books
+				(user_id, book_id, status, started_at, finished_at, updated_at, rev)
+				VALUES (2, 101, ?, 1000, 2000, 2000, 1)`, status); err != nil {
+				t.Fatal(err)
+			}
+			summary, err := fixture.service.GetReadingSummary(ctx, Viewer{UserID: 2}, 101, "UTC")
+			if err != nil || len(summary.Attempts) != 1 || summary.Attempts[0].Outcome != status ||
+				summary.Attempts[0].Number != 1 || summary.Attempts[0].Sessions != 0 {
+				t.Fatalf("manual terminal cycle = %+v, %v", summary, err)
+			}
+		})
 	}
 }
 
@@ -300,7 +454,7 @@ func TestListBookSessionsPagesRangesAndCursors(t *testing.T) {
 		}
 		if pages == 1 {
 			if page.Items[0].ID != sessionUUID(31) || page.Items[1].ID != sessionUUID(30) ||
-				page.Items[0].Attempt != 2 || page.Items[1].Attempt != 2 || page.Items[2].Attempt != 1 ||
+				page.Items[0].Attempt != 1 || page.Items[1].Attempt != 1 || page.Items[2].Attempt != 1 ||
 				page.Items[0].Change != nil || page.Items[1].Change == nil {
 				t.Fatalf("first page = %+v", page.Items[:3])
 			}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"time"
 
@@ -17,11 +18,9 @@ import (
 )
 
 const (
-	attemptCompleteThreshold = 0.95
-	attemptRestartThreshold  = 0.10
-	maxSummaryDays           = 3660
-	defaultSessionPageLimit  = 25
-	maxSessionPageLimit      = 100
+	maxSummaryDays          = 3660
+	defaultSessionPageLimit = 25
+	maxSessionPageLimit     = 100
 )
 
 // Session ranges accepted by ListBookSessions.
@@ -61,6 +60,7 @@ type SessionsPage struct {
 type Attempt struct {
 	Number        int       `json:"number"`
 	Status        string    `json:"status"`
+	Outcome       string    `json:"outcome,omitempty"`
 	StartedAt     time.Time `json:"started_at"`
 	EndedAt       time.Time `json:"ended_at"`
 	Sessions      int64     `json:"sessions"`
@@ -124,30 +124,19 @@ type sessionRecord struct {
 	Device string
 }
 
-// deriveAttempts splits chronologically ordered sessions into attempts (oldest first)
-// and returns each session's 1-based attempt number. A new attempt starts at a session
-// whose start position (end when the start is unknown) is at most 10% after the current
-// attempt reached 95%, or at the first session after finishedAt when the current
-// attempt began before it. An explicit restart also splits at restartAt, inclusively.
+// deriveAttempts handles history without archived cycles. Only an explicit restart
+// starts another cycle; page navigation and reading past a finish date do not.
 func deriveAttempts(sessions []attemptSession, finishedAt, restartAt *int64) ([]Attempt, []int) {
 	attempts := []Attempt{}
 	numbers := make([]int, len(sessions))
 	starts := []int64{}
 	sources := []map[string]struct{}{}
 	for index, session := range sessions {
-		position := session.Start
-		if position == nil {
-			position = session.End
-		}
 		if len(attempts) == 0 {
 			attempts, starts, sources = appendAttempt(attempts, starts, sources, session.StartedAt)
 		} else {
-			current := attempts[len(attempts)-1]
-			restarted := current.MaxPercentage != nil && *current.MaxPercentage >= attemptCompleteThreshold &&
-				position != nil && *position <= attemptRestartThreshold
-			afterFinish := finishedAt != nil && session.StartedAt > *finishedAt && starts[len(starts)-1] < *finishedAt
 			afterRestart := restartAt != nil && session.StartedAt >= *restartAt && starts[len(starts)-1] < *restartAt
-			if restarted || afterFinish || afterRestart {
+			if afterRestart {
 				attempts, starts, sources = appendAttempt(attempts, starts, sources, session.StartedAt)
 			}
 		}
@@ -175,8 +164,10 @@ func deriveAttempts(sessions []attemptSession, finishedAt, restartAt *int64) ([]
 		containsFinish := finishedAt != nil && starts[index] <= *finishedAt &&
 			(index == len(attempts)-1 || *finishedAt < starts[index+1])
 		switch {
-		case attempt.MaxPercentage != nil && *attempt.MaxPercentage >= attemptCompleteThreshold || containsFinish:
+		case containsFinish:
 			attempt.Status = attemptCompleted
+			// Reading after completion counts toward the attempt but does not move its finish date.
+			attempt.EndedAt = timestamp(*finishedAt)
 		case index == len(attempts)-1:
 			attempt.Status = attemptInProgress
 		default:
@@ -225,15 +216,15 @@ func dateNumber(date string) int64 {
 
 func (s *Service) loadBookSessions(
 	ctx context.Context, q *sqlc.Queries, viewer Viewer, bookID int64,
-) ([]sessionRecord, *int64, *int64, error) {
+) ([]sessionRecord, *int64, *int64, string, error) {
 	if err := s.requireVisibleBook(ctx, q, viewer, bookID); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, "", err
 	}
 	rows, err := q.ReadingListBookSessions(ctx, sqlc.ReadingListBookSessionsParams{
 		UserID: viewer.UserID, BookID: bookID,
 	})
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("list book sessions: %w", err)
+		return nil, nil, nil, "", fmt.Errorf("list book sessions: %w", err)
 	}
 	sessions := make([]sessionRecord, 0, len(rows))
 	for _, row := range rows {
@@ -246,16 +237,18 @@ func (s *Service) loadBookSessions(
 		})
 	}
 	var finishedAt, restartAt *int64
+	var status string
 	userBook, err := q.ReadingGetUserBook(ctx, sqlc.ReadingGetUserBookParams{
 		UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
 	})
 	if err == nil {
 		finishedAt = nullableInt(userBook.FinishedAt)
 		restartAt = nullableInt(userBook.StartedAt)
+		status = userBook.Status
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return nil, nil, nil, fmt.Errorf("get user book state: %w", err)
+		return nil, nil, nil, "", fmt.Errorf("get user book state: %w", err)
 	}
-	return sessions, finishedAt, restartAt, nil
+	return sessions, finishedAt, restartAt, status, nil
 }
 
 func attemptInputs(sessions []sessionRecord) []attemptSession {
@@ -264,6 +257,101 @@ func attemptInputs(sessions []sessionRecord) []attemptSession {
 		inputs[index] = session.attemptSession
 	}
 	return inputs
+}
+
+// Archived cycles are authoritative: moving around a book must not invent a reread.
+func loadCycleAttempts(
+	ctx context.Context, q *sqlc.Queries, viewer Viewer, bookID int64, sessions []sessionRecord,
+	finishedAt, restartAt *int64,
+) ([]Attempt, []int, error) {
+	cycles, err := q.ReadingListCycles(ctx, sqlc.ReadingListCyclesParams{UserID: viewer.UserID, BookID: bookID})
+	if err != nil {
+		return nil, nil, fmt.Errorf("list reading cycles: %w", err)
+	}
+	current, err := q.ReadingGetUserBook(ctx, sqlc.ReadingGetUserBookParams{
+		UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
+	})
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, fmt.Errorf("get current reading cycle: %w", err)
+	}
+	if len(cycles) == 0 && (errors.Is(err, sql.ErrNoRows) ||
+		current.Status == "unread" || current.Status == "want_to_read") {
+		attempts, numbers := deriveAttempts(attemptInputs(sessions), finishedAt, restartAt)
+		return attempts, numbers, nil
+	}
+	attempts := make([]Attempt, 0, len(cycles)+1)
+	for _, cycle := range cycles {
+		percentage := cycle.Percentage
+		status := attemptCompleted
+		if cycle.Status == "abandoned" {
+			status = attemptStopped
+		}
+		attempts = append(attempts, Attempt{
+			Number: len(attempts) + 1, Status: status, Outcome: cycle.Status,
+			StartedAt: timestamp(cycle.StartedAt), EndedAt: timestamp(cycle.EndedAt),
+			MaxPercentage: &percentage, Sources: []string{},
+		})
+	}
+	if err == nil {
+		start := current.UpdatedAt
+		if current.StartedAt.Valid {
+			start = current.StartedAt.Int64
+		} else if len(cycles) == 0 && len(sessions) > 0 {
+			start = sessions[0].StartedAt
+		}
+		end := current.UpdatedAt
+		status, outcome := attemptInProgress, ""
+		switch current.Status {
+		case "finished", "skimmed":
+			status, outcome = attemptCompleted, current.Status
+		case "abandoned":
+			status, outcome = attemptStopped, current.Status
+		}
+		if current.FinishedAt.Valid && outcome != "" {
+			end = current.FinishedAt.Int64
+		}
+		attempts = append(attempts, Attempt{
+			Number: len(attempts) + 1, Status: status, Outcome: outcome,
+			StartedAt: timestamp(start), EndedAt: timestamp(end), Sources: []string{},
+		})
+		progress, progressErr := q.ReadingGetProgress(ctx, sqlc.ReadingGetProgressParams{
+			UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
+		})
+		if progressErr == nil {
+			percentage := progress.Percentage
+			attempts[len(attempts)-1].MaxPercentage = &percentage
+		} else if !errors.Is(progressErr, sql.ErrNoRows) {
+			return nil, nil, fmt.Errorf("get current cycle progress: %w", progressErr)
+		}
+	}
+	numbers := make([]int, len(sessions))
+	for index, session := range sessions {
+		cycleIndex := sort.Search(len(attempts), func(i int) bool {
+			return attempts[i].StartedAt.UnixMilli() > session.StartedAt
+		}) - 1
+		if cycleIndex < 0 {
+			cycleIndex = 0
+		}
+		cycle := &attempts[cycleIndex]
+		numbers[index] = cycle.Number
+		cycle.Sessions++
+		cycle.Seconds += session.ActiveSeconds
+		// A completed cycle keeps its completion date even when reading continues afterwards.
+		if cycle.Status != attemptCompleted && session.EndedAt > cycle.EndedAt.UnixMilli() {
+			cycle.EndedAt = timestamp(session.EndedAt)
+		}
+		for _, value := range []*float64{session.Start, session.End} {
+			if value != nil && (cycle.MaxPercentage == nil || *value > *cycle.MaxPercentage) {
+				maximum := *value
+				cycle.MaxPercentage = &maximum
+			}
+		}
+		if !slices.Contains(cycle.Sources, session.Source) {
+			cycle.Sources = append(cycle.Sources, session.Source)
+			sort.Strings(cycle.Sources)
+		}
+	}
+	return attempts, numbers, nil
 }
 
 // GetReadingSummary returns the viewer's reading summary for a visible book.
@@ -282,12 +370,19 @@ func (s *Service) GetReadingSummary(ctx context.Context, viewer Viewer, bookID i
 		sessions   []sessionRecord
 		finishedAt *int64
 		restartAt  *int64
+		status     string
 		progress   float64
+		attempts   []Attempt
+		numbers    []int
 	)
 	err = readSnapshot(ctx, s.reader, func(tx *sql.Tx) error {
 		q := sqlc.New(tx)
 		var err error
-		sessions, finishedAt, restartAt, err = s.loadBookSessions(ctx, q, viewer, bookID)
+		sessions, finishedAt, restartAt, status, err = s.loadBookSessions(ctx, q, viewer, bookID)
+		if err != nil {
+			return err
+		}
+		attempts, numbers, err = loadCycleAttempts(ctx, q, viewer, bookID, sessions, finishedAt, restartAt)
 		if err != nil {
 			return err
 		}
@@ -304,30 +399,47 @@ func (s *Service) GetReadingSummary(ctx context.Context, viewer Viewer, bookID i
 	if err != nil {
 		return ReadingSummary{}, err
 	}
-	return summarize(sessions, finishedAt, restartAt, progress, location), nil
+	return summarize(sessions, numbers, attempts, progress, status, location), nil
 }
 
-func summarize(sessions []sessionRecord, finishedAt, restartAt *int64, progress float64, location *time.Location) ReadingSummary {
+// summarize is pure. numbers maps each session to its attempt number; status is the
+// current user_books status.
+func summarize(
+	sessions []sessionRecord, numbers []int, attempts []Attempt, progress float64, status string,
+	location *time.Location,
+) ReadingSummary {
+	read := status == "finished" || status == "skimmed"
+	if read {
+		progress = 1
+	}
 	summary := ReadingSummary{
 		Progress: math.Min(1, math.Max(0, progress)), Sessions: int64(len(sessions)),
 		Attempts: []Attempt{}, Days: []ReadingDay{},
 	}
-	if len(sessions) == 0 {
-		return summary
+	completedAt := map[int]int64{}
+	for _, attempt := range attempts {
+		if attempt.Status == attemptCompleted {
+			completedAt[attempt.Number] = attempt.EndedAt.UnixMilli()
+		}
 	}
-	attempts, _ := deriveAttempts(attemptInputs(sessions), finishedAt, restartAt)
 	for index := len(attempts) - 1; index >= 0; index-- {
 		summary.Attempts = append(summary.Attempts, attempts[index])
+	}
+	if len(sessions) == 0 {
+		return summary
 	}
 	first, last := sessions[0].StartedAt, sessions[0].EndedAt
 	var paceProgress float64
 	var paceSeconds int64
 	days := map[string]*ReadingDay{}
-	for _, session := range sessions {
+	for index, session := range sessions {
 		summary.TotalSeconds += session.ActiveSeconds
 		first = min(first, session.StartedAt)
 		last = max(last, session.EndedAt)
-		if session.Start != nil && session.End != nil {
+		// Browsing after an attempt was completed would skew the reading pace.
+		completed, isCompleted := completedAt[numbers[index]]
+		postCompletion := isCompleted && session.StartedAt > completed
+		if session.Start != nil && session.End != nil && !postCompletion {
 			paceProgress += math.Max(0, *session.End-*session.Start)
 			paceSeconds += session.ActiveSeconds
 		}
@@ -356,7 +468,7 @@ func summarize(sessions []sessionRecord, finishedAt, restartAt *int64, progress 
 	if paceSeconds > 0 {
 		pace := paceProgress * 100 / (float64(paceSeconds) / 3600)
 		summary.PacePercentPerHour = &pace
-		if pace > 0 {
+		if pace > 0 && !read {
 			left := int64(math.Round((1 - summary.Progress) * 100 / pace * 3600))
 			summary.EstimatedSecondsLeft = &left
 		}
@@ -481,11 +593,14 @@ func (s *Service) ListBookSessions(
 	page := SessionsPage{Items: []Session{}}
 	err = readSnapshot(ctx, s.reader, func(tx *sql.Tx) error {
 		q := sqlc.New(tx)
-		sessions, finishedAt, restartAt, err := s.loadBookSessions(ctx, q, viewer, bookID)
+		sessions, finishedAt, restartAt, _, err := s.loadBookSessions(ctx, q, viewer, bookID)
 		if err != nil {
 			return err
 		}
-		_, numbers := deriveAttempts(attemptInputs(sessions), finishedAt, restartAt)
+		_, numbers, err := loadCycleAttempts(ctx, q, viewer, bookID, sessions, finishedAt, restartAt)
+		if err != nil {
+			return err
+		}
 		attemptByID := make(map[string]int, len(sessions))
 		for index, session := range sessions {
 			attemptByID[session.ID] = numbers[index]

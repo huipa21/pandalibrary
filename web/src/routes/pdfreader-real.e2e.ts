@@ -792,6 +792,95 @@ test('migration from version 7 preserves highlights and progress without new rev
 	}
 });
 
+test('reconciles previously saved changes after lost sync acknowledgments', async ({ page }) => {
+	test.setTimeout(120_000);
+	const library = await createLibrary(page);
+	const { book } = await upload(page, library, 'PV11 Sync Replay', pdfFixture());
+	const accountResponse = await checked(await page.request.get('/api/v1/auth/me'));
+	const { user } = await accountResponse.json() as { user: { id: number } };
+	const now = Date.now() - 10_000;
+	const progress = {
+		entity: 'reading_progress', key: String(book.id), op: 'upsert', updated_at: now,
+		data: {
+			book_id: book.id, book_file_id: book.files[0].id, source: 'web',
+			locator: { type: 'pdf', page: 2 }, percentage: 0.5, device: 'PandaLibrary Web', device_id: 'replay-test'
+		}
+	};
+	const session = {
+		entity: 'reading_sessions', id: uuidv7(), op: 'upsert', updated_at: now,
+		data: {
+			book_id: book.id, source: 'web', device: 'PandaLibrary Web', started_at: now - 60_000,
+			ended_at: now, active_seconds: 60, start_percentage: 0.2, end_percentage: 0.5
+		}
+	};
+	const setting = {
+		entity: 'user_settings', key: `reader.book.${book.id}`, op: 'upsert', updated_at: now,
+		data: { value: { theme: 'dark' } }
+	};
+	await push(page.request, [progress, session, setting]);
+	const before = await state(page.request, book.id);
+	await page.evaluate(() => navigator.locks.request('pandalibrary-session-and-sync', () => undefined));
+	const replay = page.waitForResponse((response) => {
+		if (new URL(response.url()).pathname !== '/api/v1/sync/push' || response.request().method() !== 'POST') return false;
+		const payload = response.request().postDataJSON() as { mutations: Array<{ entity: string; key?: string }> };
+		return payload.mutations.some((item) => item.entity === 'reading_progress' && item.key === progress.key);
+	});
+	const sequences = await page.evaluate(({ account, mutations }) => new Promise<number[]>((resolve, reject) => {
+		const opening = indexedDB.open('pandalibrary-offline');
+		opening.onerror = () => reject(opening.error);
+		opening.onsuccess = () => {
+			const database = opening.result;
+			const transaction = database.transaction('outbox', 'readwrite');
+			const queue = transaction.objectStore('outbox');
+			const requests = mutations.map((mutation, index) =>
+				queue.add({ account, mutation, status: index === 2 ? 'stale' : 'pending' }));
+			transaction.oncomplete = () => {
+				database.close();
+				const ids: number[] = [];
+				for (const request of requests) {
+					if (typeof request.result !== 'number') {
+						reject(new Error('The queued change has no sequence.'));
+						return;
+					}
+					ids.push(request.result);
+				}
+				resolve(ids);
+			};
+			transaction.onabort = () => { database.close(); reject(transaction.error); };
+		};
+	}), { account: user.id, mutations: [progress, session, setting] });
+	await page.reload();
+	const response = await replay;
+	expect(response.ok()).toBe(true);
+	const body = response.request().postDataJSON() as { mutations: Array<{ entity: string; key?: string; id?: string }> };
+	const { results } = await response.json() as { results: Array<{ index: number; status: string }> };
+	for (const entity of ['reading_progress', 'reading_sessions']) {
+		const index = body.mutations.findIndex((mutation) => mutation.entity === entity);
+		expect(results.find((result) => result.index === index)?.status).toBe('stale');
+	}
+	await expect.poll(() => page.evaluate((ids) => new Promise<number[]>((resolve, reject) => {
+		const opening = indexedDB.open('pandalibrary-offline');
+		opening.onerror = () => reject(opening.error);
+		opening.onsuccess = () => {
+			const database = opening.result;
+			const transaction = database.transaction('outbox');
+			const store = transaction.objectStore('outbox');
+			const requests = ids.map((id) => store.get(id));
+			transaction.oncomplete = () => {
+				database.close();
+				resolve(ids.filter((_, index) => requests[index].result !== undefined));
+			};
+			transaction.onabort = () => { database.close(); reject(transaction.error); };
+		};
+	}), sequences), { timeout: 30_000 }).toEqual([]);
+	await expect(page.getByText('Some changes were rejected or conflicted. Review them in offline storage settings.')).toHaveCount(0);
+	const after = await state(page.request, book.id);
+	expect(after.progress).toEqual(before.progress);
+	const sessionResponse = await checked(await page.request.get(`/api/v1/me/books/${book.id}/sessions`));
+	const sessions = await sessionResponse.json() as { items: Array<{ id: string }> };
+	expect(sessions.items.filter((item) => item.id === session.id)).toHaveLength(1);
+});
+
 test('replays a committed PDF setting after a lost acknowledgement', async ({ page }) => {
 	const library = await createLibrary(page);
 	const { book } = await upload(page, library, 'PV11 Settings Replay', pdfFixture());
@@ -840,7 +929,10 @@ test('replays a committed PDF setting after a lost acknowledgement', async ({ pa
 				opening.onsuccess = () => {
 					const database = opening.result;
 					const read = database.transaction('outbox').objectStore('outbox').get(queued);
-					read.onsuccess = () => { database.close(); resolve(read.result === undefined); };
+					read.onsuccess = () => {
+						database.close();
+						resolve(read.result === undefined || read.result.status === 'applied');
+					};
 					read.onerror = () => { database.close(); reject(read.error ?? new Error('Could not read the outbox.')); };
 				};
 			}), sequence);

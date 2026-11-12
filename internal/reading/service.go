@@ -95,14 +95,16 @@ func jsonValue(value sql.NullString) json.RawMessage {
 func toUserBook(row sqlc.UserBook) UserBook {
 	return UserBook{
 		Status: row.Status, Rating: nullableInt(row.Rating), StartedAt: nullableTime(row.StartedAt),
-		FinishedAt: nullableTime(row.FinishedAt), UpdatedAt: timestamp(row.UpdatedAt), Rev: row.Rev,
+		ReadingCycle: row.ReadingCycle,
+		FinishedAt:   nullableTime(row.FinishedAt), UpdatedAt: timestamp(row.UpdatedAt), Rev: row.Rev,
 	}
 }
 
 func toUserBookRow(row sqlc.UserBook) UserBookRow {
 	return UserBookRow{
 		BookID: row.BookID, Status: row.Status, Rating: nullableInt(row.Rating),
-		StartedAt: nullableTime(row.StartedAt), FinishedAt: nullableTime(row.FinishedAt),
+		ReadingCycle: row.ReadingCycle,
+		StartedAt:    nullableTime(row.StartedAt), FinishedAt: nullableTime(row.FinishedAt),
 		UpdatedAt: timestamp(row.UpdatedAt), Rev: row.Rev,
 	}
 }
@@ -202,6 +204,7 @@ func (s *Service) GetBookState(ctx context.Context, viewer Viewer, bookID int64)
 		})
 		if err == nil {
 			value := toUserBook(userBook)
+			value.ResumeStatus = heldResumeStatus(userBook)
 			state.UserBook = &value
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("get user book state: %w", err)
@@ -540,12 +543,56 @@ func (s *Service) applyMutation(
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return "", "", fmt.Errorf("get previous reading status: %w", err)
 		}
-		restarting := data.Status == "rereading" && previous.Status != "rereading"
+		progress, err := q.ReadingGetProgress(ctx, sqlc.ReadingGetProgressParams{
+			UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
+		})
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", "", fmt.Errorf("get lifecycle progress: %w", err)
+		}
+		hasProgress := err == nil
+		latest, err := q.ReadingLatestCycleEnd(ctx, sqlc.ReadingLatestCycleEndParams{
+			UserID: viewer.UserID, BookID: bookID,
+		})
+		if err != nil {
+			return "", "", fmt.Errorf("get latest reading cycle: %w", err)
+		}
+		if reason := validateTransition(previous, data.Status, progress, latest); reason != "" {
+			return reject(reason)
+		}
+		restarting := data.Status == "rereading" && terminalStatus(previous.Status)
+		if data.StartedAt == nil {
+			data.StartedAt = nullableInt(previous.StartedAt)
+		}
+		if data.FinishedAt == nil {
+			data.FinishedAt = nullableInt(previous.FinishedAt)
+		}
 		if restarting {
+			endedAt, err := archiveCycle(ctx, q, viewer, previous, progress, latest, now)
+			if err != nil {
+				return "", "", err
+			}
+			startedAt := max(updatedAt, endedAt+1, latest+1)
+			data.StartedAt = &startedAt
+			data.FinishedAt = nil
+		} else if !initialStatus(data.Status) {
 			if data.StartedAt == nil {
 				data.StartedAt = &updatedAt
 			}
-			data.FinishedAt = nil
+			if terminalStatus(data.Status) {
+				if data.FinishedAt == nil {
+					data.FinishedAt = &updatedAt
+				}
+			} else {
+				data.FinishedAt = nil
+			}
+		}
+		if terminalStatus(previous.Status) && terminalStatus(data.Status) && previous.FinishedAt.Valid {
+			// Switching terminal labels does not create another completion event.
+			data.FinishedAt = nullableInt(previous.FinishedAt)
+		}
+		if initialStatus(data.Status) {
+			data.StartedAt = nullableInt(previous.StartedAt)
+			data.FinishedAt = nullableInt(previous.FinishedAt)
 		}
 		rev, err := db.NextRev(ctx, tx)
 		if err != nil {
@@ -556,9 +603,24 @@ func (s *Service) applyMutation(
 			Rating: nullableIntInput(data.Rating), StartedAt: nullableIntInput(data.StartedAt),
 			FinishedAt: nullableIntInput(data.FinishedAt), UpdatedAt: updatedAt, Rev: rev,
 		})
-		if err == nil && rows == 1 && restarting {
-			if err := resetProgress(ctx, q, tx, viewer, bookID, now); err != nil {
-				return "", "", err
+		if err == nil && rows == 1 {
+			if restarting {
+				if err := q.ReadingAdvanceCycle(ctx, sqlc.ReadingAdvanceCycleParams{
+					UserID: viewer.UserID, BookID: bookID,
+				}); err != nil {
+					return "", "", fmt.Errorf("advance reading cycle: %w", err)
+				}
+			}
+			completing := (data.Status == "finished" || data.Status == "skimmed") &&
+				(previous.Status != data.Status || !hasProgress)
+			if restarting || completing {
+				percentage := 1.0
+				if restarting {
+					percentage = 0
+				}
+				if err := setLifecycleProgress(ctx, q, tx, viewer, bookID, now, percentage); err != nil {
+					return "", "", err
+				}
 			}
 		}
 		return writeResult(rows, err)
@@ -612,6 +674,16 @@ func (s *Service) applyMutation(
 		if exists && updatedAt <= clock {
 			return stale()
 		}
+		previousProgress, err := q.ReadingGetProgress(ctx, sqlc.ReadingGetProgressParams{
+			UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
+		})
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", "", fmt.Errorf("get previous progress: %w", err)
+		}
+		percentage, err := storedProgressPercentage(ctx, q, viewer, bookID, data.Percentage)
+		if err != nil {
+			return "", "", err
+		}
 		rev, err := db.NextRev(ctx, tx)
 		if err != nil {
 			return "", "", err
@@ -619,11 +691,12 @@ func (s *Service) applyMutation(
 		rows, err := q.ReadingUpsertProgress(ctx, sqlc.ReadingUpsertProgressParams{
 			UserID: viewer.UserID, BookID: bookID, IsAdmin: adminFlag(viewer),
 			BookFileID: nullableIntInput(data.BookFileID), Source: data.Source,
-			Locator: nullableJSONInput(data.Locator), Percentage: data.Percentage,
+			Locator: nullableJSONInput(data.Locator), Percentage: percentage,
 			Device: data.Device, DeviceID: data.DeviceID, UpdatedAt: updatedAt, Rev: rev,
 		})
 		if err == nil && rows == 1 {
-			if err := updateAutoStatus(ctx, q, tx, viewer, bookID, data.Percentage, now); err != nil {
+			if err := updateAutoStatus(ctx, q, tx, viewer, bookID, percentage,
+				progressMoved(previousProgress, percentage, data.Locator), now); err != nil {
 				return "", "", err
 			}
 		}
@@ -1214,7 +1287,9 @@ func (s *Service) Pull(ctx context.Context, viewer Viewer, cursor int64) (PullRe
 			return fmt.Errorf("pull user books: %w", err)
 		}
 		for _, row := range userBooks {
-			result.UserBooks = append(result.UserBooks, toUserBookRow(row))
+			value := toUserBookRow(row)
+			value.ResumeStatus = heldResumeStatus(row)
+			result.UserBooks = append(result.UserBooks, value)
 		}
 		progress, err := q.ReadingPullProgress(ctx, sqlc.ReadingPullProgressParams{
 			UserID: viewer.UserID, Cursor: cursor, HighWater: highWater, IsAdmin: adminFlag(viewer),

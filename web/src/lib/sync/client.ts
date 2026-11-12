@@ -31,6 +31,8 @@ export const offlineStatus = writable<OfflineStatus>({
 let viewer: OfflineViewer | null = null;
 let available = true;
 let running: Promise<SyncReport> | null = null;
+let runningPulls = false;
+let lastPullAt = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let readerTimer: ReturnType<typeof setInterval> | null = null;
 let readers = 0;
@@ -38,6 +40,8 @@ let listenersInstalled = false;
 let channel: BroadcastChannel | null = null;
 const submitted = new WeakMap<Mutation, { account: number; sequence: number | null }>();
 const SIGNED_OUT = 'pandalibrary.offline.signed-out';
+const READER_PULL_MS = 60_000;
+const PUSH_ONLY = { pull: false } as const;
 
 function connected(): boolean {
 	return typeof navigator === 'undefined' || navigator.onLine;
@@ -69,8 +73,17 @@ function report(error: unknown): void {
 	}
 }
 
-function triggerSync(): void {
-	void syncNow().catch(report);
+function triggerSync(pull = false): void {
+	void syncNow(false, { pull }).catch(report);
+}
+
+function readerVisible(): boolean {
+	return readers > 0 && connected() && (typeof document === 'undefined' || !document.hidden);
+}
+
+/** Pushes queued writes and, while a visible reader is open, pulls if the last pull is old enough. */
+function resumeSync(): void {
+	triggerSync(readerVisible() && Date.now() - lastPullAt >= READER_PULL_MS);
 }
 
 function installListeners(): void {
@@ -78,11 +91,11 @@ function installListeners(): void {
 	listenersInstalled = true;
 	window.addEventListener('online', () => {
 		update({ online: true });
-		triggerSync();
+		resumeSync();
 	});
 	window.addEventListener('offline', () => update({ online: false }));
 	document.addEventListener('visibilitychange', () => {
-		if (!document.hidden) triggerSync();
+		if (!document.hidden) resumeSync();
 	});
 	navigator.serviceWorker?.addEventListener('message', (event: MessageEvent<unknown>) => {
 		if (event.data === 'pandalibrary-sync-complete') {
@@ -122,7 +135,7 @@ export async function activateOffline(next: OfflineViewer, offline = false): Pro
 		if (!navigator.locks) throw new OfflineStorageError('Safe offline synchronization requires the Web Locks API.');
 		update({ available: true });
 		await refreshStatus();
-		if (!offline) triggerSync();
+		if (!offline) resumeSync();
 	} catch (error) {
 		if (error instanceof AccountChangedError || error instanceof ApiError) throw error;
 		console.error('Offline storage is unavailable', error);
@@ -156,6 +169,7 @@ export async function deactivateOffline(): Promise<void> {
 	}
 	if (!locked) throw new OfflineStorageError('Could not lock the remembered offline session.');
 	viewer = null;
+	lastPullAt = 0;
 	channel?.postMessage(null);
 	update({ account: null, pending: 0, issues: 0, syncing: false, error: false });
 }
@@ -170,33 +184,43 @@ export async function refreshStatus(): Promise<void> {
 	});
 }
 
-export async function syncNow(retry = false): Promise<SyncReport> {
+/**
+ * Pushes queued writes and, unless `pull` is false, pulls server changes. Internal triggers
+ * push only; explicit user actions and open readers also pull.
+ */
+export async function syncNow(retry = false, options: { pull?: boolean } = {}): Promise<SyncReport> {
+	const pull = options.pull ?? true;
 	if (!viewer || !available) throw new OfflineStorageError('Offline synchronization is unavailable.');
 	if (!connected()) {
 		update({ online: false });
 		return { applied: 0, issues: 0 };
 	}
-	if (running) {
-		const result = await running;
-		if (!retry) return result;
+	while (running) {
+		const current = running;
+		// A push-only run cannot satisfy a request that needs fresh server changes.
+		if (!retry && (runningPulls || !pull)) return current;
+		await current.catch(() => undefined);
 	}
+	if (!viewer || !available) throw new OfflineStorageError('Offline synchronization is unavailable.');
 	const account = viewer.id;
 	update({ syncing: true, error: false, online: true });
-	const operation = (async () => {
+	const operation: Promise<SyncReport> = (async () => {
 		if (retry) await retryFailed(account);
-		const result = await synchronize(account);
+		const result = await synchronize(account, undefined, Date.now(), { pull });
+		if (pull) lastPullAt = Date.now();
 		await refreshStatus();
 		update({ syncing: false });
 		return result;
-	})();
+	})().finally(() => {
+		if (running === operation) running = null;
+	});
 	running = operation;
+	runningPulls = pull;
 	try {
 		return await operation;
 	} catch (error) {
 		update({ syncing: false, error: true });
 		throw error;
-	} finally {
-		if (running === operation) running = null;
 	}
 }
 
@@ -251,7 +275,7 @@ export async function saveMutation(mutation: Mutation): Promise<'applied' | 'que
 	if (sequence === null) return 'applied';
 	if (!connected()) return 'queued';
 	try {
-		await syncNow();
+		await syncNow(false, PUSH_ONLY);
 	} catch (error) {
 		report(error);
 	}
@@ -264,19 +288,29 @@ export async function saveMutation(mutation: Mutation): Promise<'applied' | 'que
 	return 'queued';
 }
 
+function readerPull(): void {
+	if (viewer && available && readerVisible()) triggerSync(true);
+}
+
+/**
+ * Pulls server changes while at least one reader is open: once on the first open, then every
+ * minute while online and visible. Returns an idempotent release callback.
+ */
 export function readerOpened(): () => void {
 	readers += 1;
 	if (readerTimer === null) {
-		readerTimer = setInterval(() => {
-			if (connected() && readers > 0) triggerSync();
-		}, 60_000);
+		readerPull();
+		readerTimer = setInterval(readerPull, READER_PULL_MS);
 	}
+	let released = false;
 	return () => {
+		if (released) return;
+		released = true;
 		readers -= 1;
-		if (readers <= 0 && readerTimer !== null) {
-			clearInterval(readerTimer);
-			readerTimer = null;
+		if (readers <= 0) {
 			readers = 0;
+			if (readerTimer !== null) clearInterval(readerTimer);
+			readerTimer = null;
 		}
 	};
 }
@@ -309,7 +343,7 @@ export class DurableProgressWriter {
 		}
 		await Promise.all([...this.writes.values()].filter((write): write is Promise<void> => write !== null));
 		if (connected() && available) {
-			await syncNow();
+			await syncNow(false, PUSH_ONLY);
 		}
 	}
 }

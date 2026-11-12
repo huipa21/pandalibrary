@@ -18,6 +18,9 @@ import (
 
 const maxReadingJSONBytes = 2 << 20
 
+// syncAccountHeader optionally names the user ID a sync request was prepared for.
+const syncAccountHeader = "X-PandaLibrary-Account"
+
 type readingHTTP struct {
 	service *reading.Service
 	logger  *slog.Logger
@@ -161,7 +164,7 @@ func (h *readingHTTP) listSettings(w http.ResponseWriter, r *http.Request) {
 
 func (h *readingHTTP) push(w http.ResponseWriter, r *http.Request) {
 	viewer, ok := h.viewer(w, r)
-	if !ok {
+	if !ok || !h.expectedAccount(w, r, viewer) {
 		return
 	}
 	var request reading.PushRequest
@@ -178,7 +181,7 @@ func (h *readingHTTP) push(w http.ResponseWriter, r *http.Request) {
 
 func (h *readingHTTP) pull(w http.ResponseWriter, r *http.Request) {
 	viewer, ok := h.viewer(w, r)
-	if !ok {
+	if !ok || !h.expectedAccount(w, r, viewer) {
 		return
 	}
 	values, valid := h.query(w, r, "cursor")
@@ -343,6 +346,30 @@ func (h *readingHTTP) viewer(w http.ResponseWriter, r *http.Request) (reading.Vi
 		return reading.Viewer{}, false
 	}
 	return reading.Viewer{UserID: user.ID, IsAdmin: user.Role == "admin"}, true
+}
+
+// expectedAccount enforces the optional account header so a client cannot sync
+// state queued for one account under another account's session.
+func (h *readingHTTP) expectedAccount(w http.ResponseWriter, r *http.Request, viewer reading.Viewer) bool {
+	values := r.Header.Values(syncAccountHeader)
+	if len(values) == 0 {
+		return true
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	if len(values) != 1 {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "The account header is invalid.")
+		return false
+	}
+	accountID, err := strconv.ParseInt(values[0], 10, 64)
+	if err != nil || accountID <= 0 || strconv.FormatInt(accountID, 10) != values[0] {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "The account header is invalid.")
+		return false
+	}
+	if accountID != viewer.UserID {
+		WriteProblem(w, h.logger, http.StatusConflict, "The signed-in account changed.")
+		return false
+	}
+	return true
 }
 
 func (h *readingHTTP) query(w http.ResponseWriter, r *http.Request, allowed ...string) (url.Values, bool) {

@@ -10,6 +10,7 @@ export type SessionSource = 'web' | 'koreader';
 export interface Attempt {
 	readonly number: number;
 	readonly status: AttemptStatus;
+	readonly outcome?: 'finished' | 'skimmed' | 'abandoned';
 	readonly started_at: string;
 	readonly ended_at: string;
 	readonly sessions: number;

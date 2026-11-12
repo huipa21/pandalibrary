@@ -1,10 +1,10 @@
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from '#lib/api/client.js';
+import { ApiError, api } from '#lib/api/client.js';
 import * as catalog from '#lib/catalog/api.js';
 import type { Book } from '#lib/catalog/types.js';
 import {
-	activeViewer, AccountChangedError, cursorState, downloadedBooks, downloadedFile,
+	activeViewer, AccountChangedError, cursorState, discardMutation, downloadedBooks, downloadedFile,
 	enqueue, outbox, persistPull, recordResults, removeAllBooks, removeBook,
 	retryFailed, rows, saveDownload, setActiveViewer
 } from './db.js';
@@ -55,11 +55,11 @@ function pull(cursor = 0): PullResponse {
 	return { cursor, user_books: [], reading_progress: [], highlights: [], bookmarks: [], page_annotations: [], notes: [], user_settings: [] };
 }
 
-function progress(percentage = 0.5): SyncMutation {
+function progress(percentage = 0.5, book = 21): SyncMutation {
 	return {
-		entity: 'reading_progress', key: '21', op: 'upsert', updated_at: Date.parse(timestamp),
+		entity: 'reading_progress', key: String(book), op: 'upsert', updated_at: Date.parse(timestamp),
 		data: {
-			book_id: 21, book_file_id: 31, source: 'web', locator: { type: 'epub', cfi: 'position' },
+			book_id: book, book_file_id: 31, source: 'web', locator: { type: 'epub', cfi: 'position' },
 			percentage, device: 'Web', device_id: 'device'
 		}
 	};
@@ -67,7 +67,6 @@ function progress(percentage = 0.5): SyncMutation {
 
 function transport(response = pull()): SyncTransport {
 	return {
-		viewer: vi.fn(async () => 1),
 		push: vi.fn(async (mutations: SyncMutation[]) => ({
 			results: mutations.map((_, index) => ({ index, status: 'applied' }))
 		})),
@@ -222,12 +221,12 @@ describe('durable R1 synchronization', () => {
 			return response;
 		}).mockResolvedValueOnce(pull(12));
 		await synchronize(1, client, 10_000);
-		expect(client.pull).toHaveBeenNthCalledWith(1, 0);
+		expect(client.pull).toHaveBeenNthCalledWith(1, 0, 1);
 		expect(await cursorState(1)).toMatchObject({ cursor: 11, schema: 2 });
 		expect((await readerState(1, 21)).state.page_annotations).toMatchObject([{ id: pageAnnotation.id }]);
 		expect(await outbox(1)).toMatchObject([{ status: 'pending', mutation: progress() }]);
 		await synchronize(1, client, 11_000);
-		expect(client.pull).toHaveBeenNthCalledWith(2, 11);
+		expect(client.pull).toHaveBeenNthCalledWith(2, 11, 1);
 		expect(client.push).toHaveBeenCalledOnce();
 		expect((await readerState(1, 21)).state.page_annotations).toMatchObject([{ id: pageAnnotation.id }]);
 	});
@@ -265,8 +264,58 @@ describe('durable R1 synchronization', () => {
 		expect(await outbox(1)).toEqual([]);
 	});
 
+	it('pushes without pulling, makes no requests for an empty outbox, and pulls to reconcile new stale results', async () => {
+		const client = transport();
+		await expect(synchronize(1, client, 1, { pull: false })).resolves.toEqual({ applied: 0, issues: 0 });
+		expect(client.push).not.toHaveBeenCalled();
+		await enqueue(1, progress(0.6));
+		await expect(synchronize(1, client, 2, { pull: false })).resolves.toEqual({ applied: 1, issues: 0 });
+		await synchronize(1, client, 3, { pull: false });
+		expect(client.push).toHaveBeenCalledOnce();
+		expect(client.pull).not.toHaveBeenCalled();
+		expect(await outbox(1)).toMatchObject([{ status: 'applied' }]);
+		expect((await readerState(1, 21)).state.progress?.percentage).toBe(0.6);
+		await synchronize(1, client, 4);
+		expect(client.pull).toHaveBeenCalledOnce();
+		expect(await outbox(1)).toEqual([]);
+
+		await enqueue(1, progress(0.7));
+		vi.mocked(client.push).mockResolvedValueOnce({ results: [{ index: 0, status: 'stale' }] });
+		await synchronize(1, client, 5, { pull: false });
+		expect(client.pull).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps only the latest pending position per book and tolerates a superseded in-flight one', async () => {
+		await enqueue(1, progress(0.1));
+		await enqueue(1, progress(0.2, 22));
+		await enqueue(1, progress(0.3));
+		expect((await outbox(1)).map((entry) => entry.mutation)).toEqual([progress(0.2, 22), progress(0.3)]);
+		const client = transport();
+		vi.mocked(client.push).mockImplementationOnce(async (mutations) => {
+			await enqueue(1, progress(0.4));
+			return { results: mutations.map((_, index) => ({ index, status: 'applied' })) };
+		});
+		await synchronize(1, client, 1, { pull: false });
+		expect(vi.mocked(client.push).mock.calls.map(([batch]) => batch))
+			.toEqual([[progress(0.2, 22), progress(0.3)], [progress(0.4)]]);
+		expect(await outbox(1)).toMatchObject([
+			{ mutation: progress(0.2, 22), status: 'applied' }, { mutation: progress(0.4), status: 'applied' }
+		]);
+
+		const otherFile = progress(0.5);
+		(otherFile.data as { book_file_id: number }).book_file_id = 32;
+		await enqueue(1, progress(0.45));
+		await enqueue(1, otherFile);
+		expect((await outbox(1)).slice(2).map((entry) => entry.mutation)).toEqual([progress(0.45), otherFile]);
+
+		await enqueue(1, { entity: 'notes', id: 'note', op: 'upsert', updated_at: 1, data: { body_md: 'x' } });
+		const entries = await outbox(1);
+		await discardMutation(1, entries[4].sequence);
+		await expect(recordResults(1, entries, [{ index: 4, status: 'applied' }])).rejects.toThrow('changed while synchronizing');
+	});
+
 	it('inspects mixed results and keeps rejected and stale writes for explicit retry', async () => {
-		for (let i = 0; i < 3; i++) await enqueue(1, progress(i / 10));
+		for (let i = 0; i < 3; i++) await enqueue(1, progress(i / 10, 21 + i));
 		const client = transport(pull(10));
 		vi.mocked(client.push).mockResolvedValue({
 			results: [{ index: 2, status: 'rejected', reason: 'denied' }, { index: 0, status: 'applied' }, { index: 1, status: 'stale' }]
@@ -278,9 +327,206 @@ describe('durable R1 synchronization', () => {
 		expect((await outbox(1)).map((entry) => entry.status)).toEqual(['pending', 'pending']);
 	});
 
+	it('reconciles lost acknowledgments against the saved state without reporting false conflicts', async () => {
+		const setting: SyncMutation = {
+			entity: 'user_settings', key: 'reader.pdf', op: 'upsert', updated_at: Date.parse(timestamp),
+			data: { value: { layout: ['single', 'split'], theme: 'dark' } }
+		};
+		const note: SyncMutation = {
+			entity: 'notes', id: '019a4d48-cc00-7000-8000-000000000001',
+			op: 'upsert', updated_at: Date.parse(timestamp),
+			data: { book_id: 21, highlight_id: null, body_md: 'Saved note' }
+		};
+		const session: SyncMutation = {
+			entity: 'reading_sessions', id: '019a4d48-cc00-7000-8000-000000000002',
+			op: 'upsert', updated_at: Date.parse(timestamp),
+			data: { book_id: 21, source: 'web', started_at: 1, ended_at: 2, active_seconds: 1 }
+		};
+		for (const mutation of [progress(), setting, note, session]) await enqueue(1, mutation);
+		const response = pull(3);
+		response.reading_progress.push({
+			book_id: 21, book_file_id: 31, source: 'web', locator: { cfi: 'position', type: 'epub' },
+			percentage: 0.5, device: 'Web', device_id: 'device', updated_at: timestamp, rev: 1
+		});
+		response.user_settings.push({
+			key: 'reader.pdf', value: { theme: 'dark', layout: ['single', 'split'] }, updated_at: timestamp, rev: 2
+		});
+		response.notes.push({
+			id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, highlight_id: null,
+			body_md: 'Saved note', created_at: timestamp, updated_at: timestamp, deleted_at: null, rev: 3
+		});
+		const client = transport(response);
+		vi.mocked(client.push).mockResolvedValue({
+			results: [0, 1, 2, 3].map((index) => ({ index, status: 'stale' }))
+		});
+
+		await expect(synchronize(1, client)).resolves.toEqual({ applied: 0, issues: 0 });
+		expect(await outbox(1)).toEqual([]);
+	});
+
+	it('clears previously recorded false conflicts but retains different or rejected changes', async () => {
+		const setting: SyncMutation = {
+			entity: 'user_settings', key: 'reader.pdf', op: 'upsert', updated_at: Date.parse(timestamp),
+			data: { value: { theme: 'dark' } }
+		};
+		const rejected: SyncMutation = {
+			entity: 'notes', id: '019a4d48-cc00-7000-8000-000000000001',
+			op: 'upsert', updated_at: Date.parse(timestamp),
+			data: { book_id: 21, highlight_id: null, body_md: 'Unsent' }
+		};
+		for (const mutation of [setting, progress(0.7), rejected]) await enqueue(1, mutation);
+		await recordResults(1, await outbox(1), [
+			{ index: 0, status: 'stale' }, { index: 1, status: 'stale' },
+			{ index: 2, status: 'rejected', reason: 'book is unavailable' }
+		]);
+		const response = pull(3);
+		response.user_settings.push({ key: 'reader.pdf', value: { theme: 'dark' }, updated_at: timestamp, rev: 1 });
+		response.reading_progress.push({
+			book_id: 21, book_file_id: 31, source: 'web', locator: { type: 'epub', cfi: 'position' },
+			percentage: 0.5, device: 'Web', device_id: 'device', updated_at: timestamp, rev: 2
+		});
+		response.notes.push({
+			id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, highlight_id: null,
+			body_md: 'Unsent', created_at: timestamp, updated_at: timestamp, deleted_at: null, rev: 3
+		});
+		const client = transport(response);
+		vi.mocked(client.pull).mockRejectedValueOnce(new TypeError('Interrupted pull')).mockResolvedValueOnce(response);
+
+		await expect(synchronize(1, client)).rejects.toThrow('Interrupted pull');
+		expect(await outbox(1)).toHaveLength(3);
+		await expect(synchronize(1, client)).resolves.toEqual({ applied: 0, issues: 2 });
+		expect(client.push).not.toHaveBeenCalled();
+		expect(await outbox(1)).toMatchObject([
+			{ mutation: progress(0.7), status: 'stale' },
+			{ mutation: rejected, status: 'rejected', reason: 'book is unavailable' }
+		]);
+	});
+
+	it('reconciles a stale delete only when the pulled row is already deleted', async () => {
+		const id = '019a4d48-cc00-7000-8000-000000000001';
+		const deletion: SyncMutation = { entity: 'notes', id, op: 'delete', data: {}, updated_at: 123 };
+		const edit: SyncMutation = {
+			entity: 'notes', id, op: 'upsert', updated_at: 124,
+			data: { book_id: 21, highlight_id: null, body_md: 'Keep this edit' }
+		};
+		await enqueue(1, deletion);
+		await enqueue(1, edit);
+		await recordResults(1, await outbox(1), [{ index: 0, status: 'stale' }, { index: 1, status: 'stale' }]);
+		const response = pull(1);
+		response.notes.push({
+			id, book_id: 21, highlight_id: null, body_md: 'Old note', created_at: timestamp,
+			updated_at: timestamp, deleted_at: timestamp, rev: 1
+		});
+		await expect(synchronize(1, transport(response))).resolves.toEqual({ applied: 0, issues: 1 });
+		expect(await outbox(1)).toMatchObject([{ mutation: edit, status: 'stale' }]);
+	});
+
+	it('reconciles matching book and annotation writes without discarding a different edit', async () => {
+		const highlightId = '019a4d48-cc00-7000-8000-000000000001';
+		const bookmarkId = '019a4d48-cc00-7000-8000-000000000002';
+		const locator = { type: 'pdf', page: 1 };
+		const changes: SyncMutation[] = [
+			{
+				entity: 'user_books', key: '21', op: 'upsert', updated_at: 123,
+				data: { book_id: 21, status: 'reading', rating: null, started_at: Date.parse(timestamp), finished_at: null }
+			},
+			{
+				entity: 'highlights', id: highlightId, op: 'upsert', updated_at: 123,
+				data: {
+					book_id: 21, book_file_id: 31, locator, position: 0.3,
+					text: 'Marked', color: 'yellow', style: 'underline', chapter: null
+				}
+			},
+			{
+				entity: 'bookmarks', id: bookmarkId, op: 'upsert', updated_at: 123,
+				data: { book_id: 21, book_file_id: 31, locator, position: 0.3, label: 'Saved', chapter: null }
+			},
+			{
+				entity: 'page_annotations', id: pageAnnotation.id, op: 'upsert', updated_at: 123,
+				data: {
+					book_id: 21, book_file_id: 31, kind: 'text', locator: pageAnnotation.locator,
+					position: 0.3, data: pageAnnotation.data
+				}
+			}
+		];
+		const different: SyncMutation = {
+			...changes[3], data: { ...changes[3].data, data: { text: 'Unsaved', color: '#123abc', size: 0.02 } }
+		};
+		for (const change of [...changes, different]) await enqueue(1, change);
+		await recordResults(1, await outbox(1), [0, 1, 2, 3, 4].map((index) => ({ index, status: 'stale' })));
+		const response = pull(4);
+		response.user_books.push({
+			book_id: 21, status: 'reading', rating: null, started_at: timestamp, finished_at: null,
+			updated_at: timestamp, rev: 1
+		});
+		response.highlights.push({
+			id: highlightId, book_id: 21, book_file_id: 31, locator, position: 0.3,
+			text: 'Marked', color: 'yellow', style: 'underline', chapter: null, created_at: timestamp,
+			updated_at: timestamp, deleted_at: null, rev: 2
+		});
+		response.bookmarks.push({
+			id: bookmarkId, book_id: 21, book_file_id: 31, locator, position: 0.3, label: 'Saved',
+			chapter: null, created_at: timestamp, updated_at: timestamp, deleted_at: null, rev: 3
+		});
+		response.page_annotations.push({ ...pageAnnotation, rev: 4 });
+
+		await expect(synchronize(1, transport(response))).resolves.toEqual({ applied: 0, issues: 1 });
+		expect(await outbox(1)).toMatchObject([{ mutation: different, status: 'stale' }]);
+	});
+
+	it('checks a fresh snapshot once and does not mistake an old cached row for confirmation', async () => {
+		const initial = pull(10);
+		initial.reading_progress.push({
+			book_id: 21, book_file_id: 31, source: 'web', locator: { type: 'epub', cfi: 'position' },
+			percentage: 0.5, device: 'Web', device_id: 'device', updated_at: timestamp, rev: 1
+		});
+		const now = Date.parse(timestamp);
+		await persistPull(1, 0, initial, true, now);
+		await enqueue(1, progress());
+		await recordResults(1, await outbox(1), [{ index: 0, status: 'stale' }]);
+		const later = pull(11);
+		later.reading_progress.push({ ...initial.reading_progress[0], rev: 11 });
+		const client = transport();
+		vi.mocked(client.pull).mockResolvedValueOnce(pull(10)).mockResolvedValueOnce(pull(10))
+			.mockResolvedValueOnce(pull(10)).mockResolvedValueOnce(later);
+
+		await expect(synchronize(1, client, now + 1)).resolves.toEqual({ applied: 0, issues: 1 });
+		expect(client.pull).toHaveBeenNthCalledWith(1, 0, 1);
+		expect(await outbox(1)).toMatchObject([{ status: 'stale', conflictChecked: true }]);
+		await expect(synchronize(1, client, now + 2)).resolves.toEqual({ applied: 0, issues: 1 });
+		expect(client.pull).toHaveBeenNthCalledWith(2, 10, 1);
+		await retryFailed(1);
+		vi.mocked(client.push).mockResolvedValueOnce({ results: [{ index: 0, status: 'stale' }] });
+		await expect(synchronize(1, client, now + 3)).resolves.toEqual({ applied: 0, issues: 1 });
+		expect(client.pull).toHaveBeenNthCalledWith(3, 0, 1);
+		await expect(synchronize(1, client, now + 4)).resolves.toEqual({ applied: 0, issues: 0 });
+		expect(client.pull).toHaveBeenNthCalledWith(4, 10, 1);
+		expect(await outbox(1)).toEqual([]);
+	});
+
+	it('retains stale mutations with unrecognized or missing fields', async () => {
+		const id = '019a4d48-cc00-7000-8000-000000000001';
+		const changes: SyncMutation[] = [
+			{ entity: 'notes', id, op: 'upsert', updated_at: 123, data: { book_id: 21, body_md: 'Saved' } },
+			{
+				entity: 'notes', id, op: 'upsert', updated_at: 124,
+				data: { book_id: 21, highlight_id: null, body_md: 'Saved', future_field: true }
+			}
+		];
+		for (const change of changes) await enqueue(1, change);
+		await recordResults(1, await outbox(1), [{ index: 0, status: 'stale' }, { index: 1, status: 'stale' }]);
+		const response = pull(1);
+		response.notes.push({
+			id, book_id: 21, highlight_id: null, body_md: 'Saved', created_at: timestamp,
+			updated_at: timestamp, deleted_at: null, rev: 1
+		});
+		await expect(synchronize(1, transport(response))).resolves.toEqual({ applied: 0, issues: 2 });
+		expect((await outbox(1)).map((entry) => entry.mutation)).toEqual(changes);
+	});
+
 	it('retains all unsent or unacknowledged writes on malformed partial results', async () => {
 		await enqueue(1, progress());
-		await enqueue(1, progress(0.7));
+		await enqueue(1, progress(0.7, 22));
 		const client = transport();
 		vi.mocked(client.push).mockResolvedValue({ results: [{ index: 0, status: 'applied' }] });
 		await expect(synchronize(1, client)).rejects.toThrow('invalid push response');
@@ -309,7 +555,7 @@ describe('durable R1 synchronization', () => {
 	});
 
 	it('bounds pushes to 500 mutations and pushes before pulling', async () => {
-		for (let i = 0; i < 501; i++) await enqueue(1, progress(i / 501));
+		for (let i = 0; i < 501; i++) await enqueue(1, progress(i / 501, i + 1));
 		const client = transport();
 		await synchronize(1, client);
 		expect(vi.mocked(client.push).mock.calls.map(([batch]) => batch.length)).toEqual([500, 1]);
@@ -380,7 +626,7 @@ describe('durable R1 synchronization', () => {
 		await expect(persistPull(1, 0, pull(8), false)).rejects.toThrow('cursor changed');
 		const client = transport(pull(10));
 		await synchronize(1, client, 181 * 24 * 60 * 60 * 1000);
-		expect(client.pull).toHaveBeenCalledWith(0);
+		expect(client.pull).toHaveBeenCalledWith(0, 1);
 	});
 });
 
@@ -398,14 +644,30 @@ describe('account-scoped explicit downloads', () => {
 		expect(await cursorState(2)).toMatchObject({ cursor: 0 });
 		await expect(outbox(1)).rejects.toBeInstanceOf(AccountChangedError);
 		const client = transport();
-		vi.mocked(client.viewer).mockResolvedValue(2);
 		await expect(synchronize(1, client)).rejects.toBeInstanceOf(AccountChangedError);
 		expect(client.push).not.toHaveBeenCalled();
+		expect(client.pull).not.toHaveBeenCalled();
 		await setActiveViewer(viewer);
-		await expect(synchronize(1, client)).rejects.toBeInstanceOf(AccountChangedError);
-		expect(client.push).not.toHaveBeenCalled();
 		expect(await outbox(1)).toHaveLength(1);
 		expect(await downloadedBooks(1)).toHaveLength(1);
+	});
+
+	it('scopes push and pull to the expected account without /auth/me and maps 409 to an account change', async () => {
+		await enqueue(1, progress());
+		const request = vi.spyOn(api, 'request')
+			.mockResolvedValueOnce({ results: [{ index: 0, status: 'applied' }] })
+			.mockResolvedValueOnce(pull(1));
+		await synchronize(1);
+		expect(request.mock.calls.map(([path, init]) => [path, new Headers(init?.headers).get('X-PandaLibrary-Account')]))
+			.toEqual([['/sync/push', '1'], ['/sync/pull?cursor=0', '1']]);
+		request.mockRejectedValueOnce(new ApiError(409, 'Conflict', ''));
+		await expect(synchronize(1)).rejects.toBeInstanceOf(AccountChangedError);
+		expect(request).toHaveBeenLastCalledWith('/sync/pull?cursor=1', expect.anything());
+		await enqueue(1, progress(0.6));
+		request.mockRejectedValueOnce(new ApiError(409, 'Conflict', ''));
+		await expect(synchronize(1, undefined, Date.now(), { pull: false })).rejects.toBeInstanceOf(AccountChangedError);
+		expect(request).toHaveBeenLastCalledWith('/sync/push', expect.anything());
+		expect(await outbox(1)).toMatchObject([{ mutation: progress(0.6), status: 'pending' }]);
 	});
 
 	it('evicts files, book detail and cover without discarding queued edits', async () => {

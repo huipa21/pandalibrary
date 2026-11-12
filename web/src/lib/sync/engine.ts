@@ -1,4 +1,4 @@
-import { api } from '#lib/api/client.js';
+import { ApiError, api } from '#lib/api/client.js';
 import type { JsonValue } from '#lib/api/client.js';
 import type { Bookmark, Highlight, Note, Setting } from '#lib/reader/types.js';
 import { isHighlightStyle } from '#lib/reader/annotations.js';
@@ -32,21 +32,32 @@ export class SyncProtocolError extends Error {
 }
 
 export interface SyncTransport {
-	viewer(): Promise<number>;
-	push(mutations: SyncMutation[]): Promise<unknown>;
-	pull(cursor: number): Promise<unknown>;
+	push(mutations: SyncMutation[], account: number): Promise<unknown>;
+	pull(cursor: number, account: number): Promise<unknown>;
+}
+
+export const ACCOUNT_HEADER = 'X-PandaLibrary-Account';
+
+async function accountScoped<T>(request: Promise<T>): Promise<T> {
+	try {
+		return await request;
+	} catch (error) {
+		// The server answers 409 when the signed-in session no longer belongs to the expected account.
+		if (error instanceof ApiError && error.status === 409) throw new AccountChangedError();
+		throw error;
+	}
 }
 
 const transport: SyncTransport = {
-	async viewer() {
-		const response = await api.request<{ user: { id: number } }>('/auth/me', { cache: 'no-store' });
-		return response.user.id;
+	push(mutations, account) {
+		return accountScoped(api.request('/sync/push', {
+			method: 'POST', body: { mutations }, cache: 'no-store', headers: { [ACCOUNT_HEADER]: String(account) }
+		}));
 	},
-	push(mutations) {
-		return api.request('/sync/push', { method: 'POST', body: { mutations }, cache: 'no-store' });
-	},
-	pull(cursor) {
-		return api.request(`/sync/pull?cursor=${cursor}`, { cache: 'no-store' });
+	pull(cursor, account) {
+		return accountScoped(api.request(`/sync/pull?cursor=${cursor}`, {
+			cache: 'no-store', headers: { [ACCOUNT_HEADER]: String(account) }
+		}));
 	}
 };
 
@@ -215,11 +226,9 @@ function nextBatch(entries: OutboxEntry[]): OutboxEntry[] {
 	return batch;
 }
 
-async function verifyAccount(account: number, client: SyncTransport): Promise<void> {
+async function verifyAccount(account: number): Promise<void> {
 	const active = await activeViewer();
-	if (!active || active.id !== account || await client.viewer() !== account) {
-		throw new AccountChangedError();
-	}
+	if (!active || active.id !== account) throw new AccountChangedError();
 }
 
 export interface SyncReport {
@@ -227,30 +236,49 @@ export interface SyncReport {
 	issues: number;
 }
 
+export interface SyncOptions {
+	/** Pull server changes after pushing (default). Push-only runs make no requests for an empty outbox. */
+	pull?: boolean;
+}
+
+function issueCount(entries: OutboxEntry[]): number {
+	return entries.filter((entry) => entry.status === 'stale' || entry.status === 'rejected').length;
+}
+
 export async function synchronize(
 	account: number,
 	client: SyncTransport = transport,
-	now = Date.now()
+	now = Date.now(),
+	options: SyncOptions = {}
 ): Promise<SyncReport> {
 	return withSessionLock(async () => {
 		let applied = 0;
+		let reconcile = false;
+		let entries: OutboxEntry[];
 		for (;;) {
-			await verifyAccount(account, client);
-			const batch = nextBatch(await outbox(account));
+			await verifyAccount(account);
+			entries = await outbox(account);
+			const batch = nextBatch(entries);
 			if (!batch.length) break;
-			const response = parsePushResponse(await client.push(batch.map((entry) => entry.mutation)), batch.length);
+			const response = parsePushResponse(await client.push(batch.map((entry) => entry.mutation), account), batch.length);
 			await recordResults(account, batch, response);
 			applied += response.filter((item) => item.status === 'applied').length;
+			reconcile ||= response.some((item) => item.status === 'stale');
 		}
+		// Applied entries stay queued for offline replay until a later pull reconciles them. New stale
+		// results still pull so lost acknowledgments are not reported as conflicts.
+		if (options.pull === false && !reconcile) return { applied, issues: issueCount(entries) };
 
-		await verifyAccount(account, client);
+		await verifyAccount(account);
 		const previous = await cursorState(account);
+		const uncheckedConflicts = (await outbox(account)).some((entry) =>
+			entry.status === 'stale' && entry.mutation.entity !== 'reading_sessions' && !entry.conflictChecked
+		);
 		const full = previous.cursor === 0 || (previous.schema ?? 1) < SYNC_SCHEMA ||
-			(previous.pulledAt > 0 && now - previous.pulledAt >= FULL_RESYNC_MS);
+			(previous.pulledAt > 0 && now - previous.pulledAt >= FULL_RESYNC_MS) || uncheckedConflicts;
 		const requestedCursor = full ? 0 : previous.cursor;
-		const response = parsePullResponse(await client.pull(requestedCursor), requestedCursor);
+		const response = parsePullResponse(await client.pull(requestedCursor, account), requestedCursor);
 		await persistPull(account, previous.cursor, response, full, now);
-		const remaining = await outbox(account);
-		return { applied, issues: remaining.filter((entry) => entry.status === 'stale' || entry.status === 'rejected').length };
+		return { applied, issues: issueCount(await outbox(account)) };
 	}, true);
 }

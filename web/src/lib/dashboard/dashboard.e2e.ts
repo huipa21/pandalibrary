@@ -488,6 +488,12 @@ test('opens a cover status menu beyond the dashboard scroller', async ({ page })
 	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
 	const scroller = continuing.getByRole('region');
 	const badge = continuing.getByRole('button', { name: 'Reading status: Reading. Change' });
+	const badgeBox = await badge.boundingBox();
+	const initialScrollerBox = await scroller.boundingBox();
+	if (!badgeBox || !initialScrollerBox) throw new Error('Missing dashboard status badge or scroller.');
+	await scroller.evaluate((node, height) => {
+		node.style.maxHeight = `${height}px`;
+	}, badgeBox.y + badgeBox.height - initialScrollerBox.y + 8);
 	await badge.click();
 	const menu = continuing.getByRole('menu', { name: 'Reading status' });
 	const menuBox = await menu.boundingBox();

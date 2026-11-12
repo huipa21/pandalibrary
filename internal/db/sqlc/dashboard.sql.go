@@ -10,15 +10,11 @@ import (
 )
 
 const dashboardContinueReadingBooks = `-- name: DashboardContinueReadingBooks :many
-SELECT b.id, rp.updated_at AS sort_time FROM books b
-JOIN reading_progress rp ON rp.book_id = b.id
-WHERE rp.user_id = ?1
-AND rp.percentage > 0 AND rp.percentage < 1
-AND NOT EXISTS (
-    SELECT 1 FROM user_books ub
-    WHERE ub.user_id = ?1 AND ub.book_id = b.id
-      AND ub.status IN ('finished', 'skimmed', 'abandoned')
-)
+SELECT b.id, CAST(COALESCE(rp.updated_at, ub.updated_at) AS INTEGER) AS sort_time FROM books b
+LEFT JOIN reading_progress rp ON rp.book_id = b.id AND rp.user_id = ?1
+LEFT JOIN user_books ub ON ub.book_id = b.id AND ub.user_id = ?1
+WHERE ((rp.percentage > 0 AND rp.percentage < 1) OR ub.status IN ('reading', 'rereading', 'on_hold'))
+AND (ub.status IS NULL OR ub.status NOT IN ('finished', 'skimmed', 'abandoned'))
 AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -28,9 +24,9 @@ AND NOT EXISTS (
     WHERE h.book_id = b.id AND h.user_id = ?1
 )
 AND (CAST(?3 AS INTEGER) = 0
-    OR rp.updated_at < CAST(?4 AS INTEGER)
-    OR (rp.updated_at = CAST(?4 AS INTEGER) AND b.id < ?3))
-ORDER BY rp.updated_at DESC, b.id DESC
+    OR COALESCE(rp.updated_at, ub.updated_at) < CAST(?4 AS INTEGER)
+    OR (COALESCE(rp.updated_at, ub.updated_at) = CAST(?4 AS INTEGER) AND b.id < ?3))
+ORDER BY COALESCE(rp.updated_at, ub.updated_at) DESC, b.id DESC
 LIMIT CAST(?5 AS INTEGER)
 `
 
@@ -77,26 +73,35 @@ func (q *Queries) DashboardContinueReadingBooks(ctx context.Context, arg Dashboa
 }
 
 const dashboardReadBooks = `-- name: DashboardReadBooks :many
-SELECT b.id, CAST(COALESCE(ub.finished_at, ub.updated_at) AS INTEGER) AS sort_time FROM books b
-JOIN user_books ub ON ub.user_id = ?1 AND ub.book_id = b.id AND ub.status IN ('finished', 'skimmed')
-WHERE (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+WITH completed_cycles AS (
+    SELECT book_id, ended_at FROM reading_cycles
+    WHERE user_id = ?2 AND status IN ('finished', 'skimmed')
+    UNION ALL
+    SELECT book_id, COALESCE(finished_at, updated_at) AS ended_at FROM user_books
+    WHERE user_id = ?2 AND status IN ('finished', 'skimmed')
+), completed_books AS (
+    SELECT book_id, MAX(ended_at) AS ended_at FROM completed_cycles GROUP BY book_id
+)
+SELECT b.id, CAST(c.ended_at AS INTEGER) AS sort_time FROM books b
+JOIN completed_books c ON c.book_id = b.id
+WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?1
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
 ))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
-    WHERE h.book_id = b.id AND h.user_id = ?1
+    WHERE h.book_id = b.id AND h.user_id = ?2
 )
 AND (CAST(?3 AS INTEGER) = 0
-    OR COALESCE(ub.finished_at, ub.updated_at) < CAST(?4 AS INTEGER)
-    OR (COALESCE(ub.finished_at, ub.updated_at) = CAST(?4 AS INTEGER) AND b.id < ?3))
-ORDER BY COALESCE(ub.finished_at, ub.updated_at) DESC, b.id DESC
+    OR c.ended_at < CAST(?4 AS INTEGER)
+    OR (c.ended_at = CAST(?4 AS INTEGER) AND b.id < ?3))
+ORDER BY c.ended_at DESC, b.id DESC
 LIMIT CAST(?5 AS INTEGER)
 `
 
 type DashboardReadBooksParams struct {
-	UserID    int64
 	IsAdmin   int64
+	UserID    int64
 	AfterID   int64
 	AfterTime int64
 	PageSize  int64
@@ -109,8 +114,8 @@ type DashboardReadBooksRow struct {
 
 func (q *Queries) DashboardReadBooks(ctx context.Context, arg DashboardReadBooksParams) ([]DashboardReadBooksRow, error) {
 	rows, err := q.db.QueryContext(ctx, dashboardReadBooks,
-		arg.UserID,
 		arg.IsAdmin,
+		arg.UserID,
 		arg.AfterID,
 		arg.AfterTime,
 		arg.PageSize,

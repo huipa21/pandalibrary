@@ -64,7 +64,7 @@ function summary(items: readonly BookSession[]): ReadingSummary {
 			{ number: 2, status: 'in_progress', started_at: '2026-10-25T10:00:00Z',
 				ended_at: '2026-11-06T10:05:00Z', sessions: 12, seconds: 3600,
 				max_percentage: 0.21, sources: ['web', 'koreader'] },
-			{ number: 1, status: 'completed', started_at: '2026-03-07T10:00:00Z',
+			{ number: 1, status: 'completed', outcome: 'finished', started_at: '2026-03-07T10:00:00Z',
 				ended_at: '2026-10-24T10:05:00Z', sessions: 19, seconds: 7200,
 				max_percentage: 1, sources: ['web'] }
 		],
@@ -181,6 +181,14 @@ async function openLog(page: Page, query = '') {
 	await page.goto(`/books/21/activities${query}`);
 	await expect(page.getByRole('heading', { name: 'Reading summary' })).toBeVisible();
 }
+
+test('shows the ended cycle as read once alongside the new active cycle', async ({ page }) => {
+	await mockApi(page);
+	await openLog(page);
+	await expect(page.getByText('Read once · Read', { exact: true })).toBeVisible();
+	await expect(page.getByText('Cycle 2 · In progress', { exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Reading cycles 2', exact: true })).toBeVisible();
+});
 
 test('renders summary, timezone-aware sessions, filters and cursor pagination', async ({ page }) => {
 	const state = await mockApi(page);

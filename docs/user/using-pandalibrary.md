@@ -47,6 +47,30 @@ Opening a book shows four tabs:
 Reading statuses: Unread, Want to read, Reading, Re-reading, On hold, Read,
 Skimmed and Abandoned.
 
+- **Unread** and **Want to read** are only for books you have not started.
+  Saving positive reading progress automatically starts **Reading**. After
+  starting, a book cannot return to either untouched status.
+- **Reading** and **Re-reading** can be paused with **On hold**. Saving reading
+  progress resumes the paused cycle. Active reading reaches **Read** automatically
+  at 99% progress.
+- **Read**, **Skimmed** and **Abandoned** end the current cycle and can switch
+  directly between one another without adding another cycle. Marking **Read** or
+  **Skimmed** sets progress to 100%; **Abandoned** keeps the saved position.
+  Reading an ended cycle does not change its status automatically. Opening a
+  **Read** or **Skimmed** book again saves your position so you can resume, but
+  its progress stays at 100%. That reading time still counts toward your total
+  time, sessions, active days and streaks. It doesn't change the finish date,
+  the number of finished books or the reading pace, and the remaining-time
+  estimate shows **Completed**. To resume an
+  abandoned cycle and allow automatic completion, manually choose **Reading**.
+- From any ended status, **Re-reading** archives that cycle and resets progress
+  and the saved reading position to zero. Activities retains the previous
+  cycle as **Read once**, including its final status, and starts the next cycle
+  even before a reading session is recorded. Monthly stats count ended cycles
+  (Read, Skimmed and Abandoned), not just unique books. Re-reading does not erase
+  earlier cycles. The dashboard keeps previous Read/Skimmed cycles in **Read**
+  and shows the new cycle in **Continue reading**, including at 0%.
+
 **Reviews are public; notes and comments are private.** Anyone who can see a
 book can read its reviews. Your passage comments, book notes and highlights
 are only visible to you.
@@ -85,6 +109,11 @@ number in the counter to jump there. Use Zoom, Page display, Format and Rotate t
 adjust the view; below 640 px these menus are inside **More view options**.
 New books start in continuous mode with Automatic zoom unless you have saved
 a different PDF default.
+
+Some PDFs contain invalid embedded TrueType font hinting (`TT: undefined
+function`). The PDF renderer discards these invalid instructions automatically.
+The reader and cover generator quiet recoverable PDF diagnostics while still
+reporting load and rendering failures; the original PDF is not modified.
 
 **Page display** contains four layouts and the scanned-text recognition switch.
 Split layouts pair pages 1–2, 3–4, and so on; there is no separate-cover option.
@@ -199,6 +228,10 @@ Install PandaLibrary as an app (PWA) from a supported browser. On a book's
 While offline you can read saved books. Your progress, highlights, notes and
 bookmarks are kept and synced when you reconnect. If the same item changed on
 two devices, the latest change wins. Manage offline storage in Settings.
+Previously saved changes that match the server are reconciled automatically.
+If a conflict or rejection remains, choose **Review changes** to see the
+affected book when available and any server reason; retry or discard a change
+only after reviewing it.
 For PDFs, text and drawings can also be added offline. Adding a new image needs
 a connection; an existing image is available offline only after it has been
 viewed and cached on that device. Scanned-page recognition needs the relevant
@@ -280,7 +313,7 @@ short queries such as two-character titles.
 
 ## Stats
 
-**Stats** shows daily reading time, a calendar heatmap, streaks, books finished
+**Stats** shows daily reading time, a calendar heatmap, streaks, reading cycles ended
 per month and time per book for a date range. Days follow your time zone.
 
 ## Settings

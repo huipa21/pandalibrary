@@ -206,6 +206,11 @@
 						{m['offline.status.pending']()}
 					{/if}
 				</p>
+				{#if $offlineStatus.issues}
+					<a class="font-medium underline focus-visible:outline-2" href="/settings#offline-storage-heading">
+						{m['offline.outbox.review']()}
+					</a>
+				{/if}
 				{#if $offlineStatus.available && $offlineStatus.online}
 					<button class="font-medium underline focus-visible:outline-2" onclick={retryOfflineSync}>
 						{m['offline.retry_sync']()}

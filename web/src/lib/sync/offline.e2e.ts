@@ -21,6 +21,7 @@ async function setup(page: Page) {
 	};
 	const state = {
 		online: true, denial: 0, fileDenial: 0, account: 1, authenticated: true, rev: 0,
+		rejection: null as string | null,
 		progress: null as Record<string, unknown> | null,
 		notes: [] as Record<string, unknown>[],
 		mutations: [] as Mutation[], calls: [] as string[]
@@ -35,6 +36,7 @@ async function setup(page: Page) {
 		const path = url.pathname.slice('/api/v1'.length);
 		if (path === '/setup') return route.fulfill({ json: { required: false } });
 		if (path === '/auth/me') {
+			state.calls.push('me');
 			return route.fulfill({
 				status: state.authenticated ? 200 : 401,
 				json: { user: { id: state.account, username: 'reader', display_name: '', role: 'user', locale: 'en' } }
@@ -44,6 +46,10 @@ async function setup(page: Page) {
 			state.authenticated = false;
 			return route.fulfill({ json: { logged_out: true } });
 		}
+		if (path === '/me/profile') {
+			return route.fulfill({ json: { user: { id: state.account, username: 'reader', display_name: '', role: 'user', locale: 'en' } } });
+		}
+		if (path === '/me/app-passwords') return route.fulfill({ json: { app_passwords: [] } });
 		if (path === '/books') return route.fulfill({ json: { items: [book], next_cursor: null } });
 		if (path.startsWith('/books/21') && state.denial) {
 			return route.fulfill({ status: state.denial, json: { title: 'Denied', status: state.denial } });
@@ -72,6 +78,12 @@ async function setup(page: Page) {
 		if (path === '/sync/push') {
 			state.calls.push('push');
 			const { mutations } = route.request().postDataJSON() as { mutations: Mutation[] };
+			if (state.rejection) {
+				state.mutations.push(...mutations);
+				return route.fulfill({ json: {
+					results: mutations.map((_, index) => ({ index, status: 'rejected', reason: state.rejection }))
+				} });
+			}
 			for (const mutation of mutations) {
 				state.mutations.push(mutation);
 				const now = new Date(mutation.updated_at).toISOString();
@@ -115,6 +127,86 @@ async function databaseRows(page: Page, store: string): Promise<Array<Record<str
 		};
 	}), store);
 }
+
+async function queueFixture(page: Page, mutation: Mutation, status: 'pending' | 'stale') {
+	await page.evaluate(({ mutation, status }) => new Promise<void>((resolve, reject) => {
+		const opening = indexedDB.open('pandalibrary-offline');
+		opening.onerror = () => reject(opening.error);
+		opening.onsuccess = () => {
+			const database = opening.result;
+			const transaction = database.transaction('outbox', 'readwrite');
+			transaction.objectStore('outbox').add({ account: 1, status, mutation });
+			transaction.oncomplete = () => { database.close(); resolve(); };
+			transaction.onabort = () => { database.close(); reject(transaction.error); };
+		};
+	}), { mutation, status });
+}
+
+test('a genuine rejection links to its reason and can be discarded explicitly', async ({ page }) => {
+	const state = await setup(page);
+	await page.goto('/books/21');
+	await expect(page.getByRole('heading', { name: 'Offline Fixture' })).toBeVisible();
+	// The layout and activateOffline() each confirm the session; listeners exist after the second.
+	await expect.poll(() => state.calls.filter((call) => call === 'me').length).toBeGreaterThanOrEqual(2);
+	await page.evaluate(() => navigator.locks.request('pandalibrary-session-and-sync', () => undefined));
+	expect(state.calls).not.toContain('pull');
+	state.rejection = 'book is unavailable';
+	await queueFixture(page, {
+		entity: 'notes', id: '019a4d48-cc00-7000-8000-000000000001', op: 'upsert',
+		data: { book_id: 21, highlight_id: null, body_md: 'Unsynced note' }, updated_at: Date.now()
+	}, 'pending');
+	await page.evaluate(() => window.dispatchEvent(new Event('online')));
+	await expect(page.getByText('Some changes were rejected or conflicted. Review them in offline storage settings.')).toBeVisible();
+	await page.getByRole('link', { name: 'Review changes' }).click();
+	await expect(page).toHaveURL('/settings#offline-storage-heading');
+	const storage = page.getByRole('region', { name: 'Offline storage' });
+	await expect(storage.getByText('Rejected by the server')).toBeVisible();
+	await expect(storage.getByText('Server reason: book is unavailable')).toBeVisible();
+	await expect(storage.getByRole('link', { name: 'Book #21' })).toHaveAttribute('href', '/books/21');
+	page.once('dialog', (dialog) => void dialog.accept());
+	await storage.getByRole('button', { name: 'Discard change' }).click();
+	await expect(storage.getByText('No queued changes.')).toBeVisible();
+	await expect(page.getByText('Some changes were rejected or conflicted. Review them in offline storage settings.')).toHaveCount(0);
+});
+
+test('storage settings refresh when an explicit sync reconciles an existing conflict', async ({ page }) => {
+	const state = await setup(page);
+	await page.goto('/settings');
+	const storage = page.getByRole('region', { name: 'Offline storage' });
+	await expect(storage.getByText('No queued changes.')).toBeVisible();
+	// The layout and activateOffline() each confirm the session; listeners exist after the second.
+	await expect.poll(() => state.calls.filter((call) => call === 'me').length).toBeGreaterThanOrEqual(2);
+	await page.evaluate(() => navigator.locks.request('pandalibrary-session-and-sync', () => undefined));
+	await queueFixture(page, {
+		entity: 'user_settings', key: 'reader.pdf', op: 'upsert',
+		data: { value: { theme: 'dark' } }, updated_at: Date.now()
+	}, 'stale');
+
+	let releasePull = () => {};
+	const held = new Promise<void>((resolve) => { releasePull = resolve; });
+	let pullStarted = false;
+	await page.route('**/api/v1/sync/pull?*', async (route) => {
+		pullStarted = true;
+		await held;
+		await route.fulfill({ json: {
+			cursor: 1, user_books: [], reading_progress: [], highlights: [], bookmarks: [],
+			page_annotations: [], notes: [],
+			user_settings: [{ key: 'reader.pdf', value: { theme: 'dark' }, updated_at: '2026-11-03T00:00:00Z', rev: 1 }]
+		} });
+	});
+	try {
+		await page.reload();
+		await expect(storage.getByText('Conflicts with a newer server change')).toBeVisible();
+		// Without an open reader, loading a page only pushes; pulling needs an explicit sync.
+		expect(pullStarted).toBe(false);
+		await storage.getByRole('button', { name: 'Retry sync' }).click();
+		await expect.poll(() => pullStarted).toBe(true);
+	} finally {
+		releasePull();
+	}
+	await expect(storage.getByText('No queued changes.')).toBeVisible();
+	await expect(page.getByText('Some changes were rejected or conflicted. Review them in offline storage settings.')).toHaveCount(0);
+});
 
 async function download(page: Page) {
 	await page.goto('/books/21/files');
@@ -161,7 +253,8 @@ test('offline progress survives reload and reconnect without a standalone book n
 	await page.goto('/read/21/31');
 	const pageBox = page.getByRole('textbox', { name: /^Page \d+ of \d+$/ });
 	await expect(pageBox).toBeEnabled();
-	await expect.poll(async () => (await databaseRows(page, 'outbox')).length).toBe(0);
+	// Push-only syncs keep confirmed writes until the next reader pull reconciles them.
+	await expect.poll(async () => (await databaseRows(page, 'outbox')).filter((row) => row.status !== 'applied').length).toBe(0);
 
 	state.online = false;
 	await context.setOffline(true);
@@ -171,7 +264,8 @@ test('offline progress survives reload and reconnect without a standalone book n
 	const annotationsPanel = await openAnnotationsPanel(page);
 	await expect(annotationsPanel.getByRole('region', { name: 'Book notes' })).toHaveCount(0);
 	await expect(annotationsPanel.getByRole('button', { name: 'Add book note' })).toHaveCount(0);
-	await expect.poll(async () => (await databaseRows(page, 'outbox')).filter((row) => row.status === 'pending').length).toBeGreaterThanOrEqual(1);
+	// The reader saves a changed position at most every 10 seconds.
+	await expect.poll(async () => (await databaseRows(page, 'outbox')).filter((row) => row.status === 'pending').length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
 
 	await page.reload();
 	await expect(page.locator('.reader-pdf-page[data-page="2"] .reader-pdf-text')).toContainText('Second PDF page text');

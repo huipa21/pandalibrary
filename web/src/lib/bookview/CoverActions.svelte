@@ -123,7 +123,7 @@
 		{#if coverState && !coverState.loading && !coverState.error}
 			<div class="cover-status absolute top-2 right-2 z-10" class:unread={coverState.status === 'unread'}>
 				{#if $offlineStatus.online}
-					<ReadStatusMenu bookId={book.id} {userBook} variant="badge" {loadCurrentUserBook} />
+					<ReadStatusMenu bookId={book.id} {userBook} percentage={coverState.percentage} variant="badge" {loadCurrentUserBook} />
 				{:else}
 					<span
 						class="inline-flex size-7 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/5"

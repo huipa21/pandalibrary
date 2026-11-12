@@ -236,7 +236,7 @@ export function azw3Fixture(): Buffer {
 	return Buffer.concat([pdb, ...records]);
 }
 
-export function pdfFixture(pageCount = 2, withInternalLink = false): Buffer {
+export function pdfFixture(pageCount = 2, withInternalLink = false, embeddedFont?: Buffer): Buffer {
 	if (withInternalLink && pageCount < 2) throw new Error('An internal link requires at least two pages.');
 	const fontId = 3 + pageCount * 2;
 	const linkId = fontId + 1;
@@ -254,8 +254,18 @@ export function pdfFixture(pageCount = 2, withInternalLink = false): Buffer {
 		);
 	}
 
-	objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+	const descriptorId = linkId + (withInternalLink ? 1 : 0);
+	objects.push(embeddedFont
+		? `<< /Type /Font /Subtype /TrueType /BaseFont /LiberationSans /Encoding /WinAnsiEncoding /FontDescriptor ${descriptorId} 0 R /FirstChar 32 /LastChar 126 /Widths [${Array(95).fill(600).join(' ')}] >>`
+		: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
 	if (withInternalLink) objects.push('<< /Type /Annot /Subtype /Link /Rect [72 615 200 635] /Border [0 0 0] /Dest [5 0 R /Fit] >>');
+	if (embeddedFont) {
+		const compressed = deflateSync(embeddedFont).toString('hex');
+		objects.push(
+			`<< /Type /FontDescriptor /FontName /LiberationSans /Flags 32 /FontBBox [-600 -400 2100 1100] /ItalicAngle 0 /Ascent 900 /Descent -200 /CapHeight 700 /StemV 80 /FontFile2 ${descriptorId + 1} 0 R >>`,
+			`<< /Length ${compressed.length + 1} /Length1 ${embeddedFont.length} /Filter [/ASCIIHexDecode /FlateDecode] >>\nstream\n${compressed}>\nendstream`
+		);
+	}
 	let output = '%PDF-1.7\n';
 	const offsets = [0];
 	for (const [index, object] of objects.entries()) {

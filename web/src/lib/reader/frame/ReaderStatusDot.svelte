@@ -59,6 +59,9 @@
 			<div bind:this={panel} id="reader-sync-status" class="absolute right-0 top-full z-30 w-64 max-w-[calc(100vw-1rem)] space-y-3 rounded-md border border-[var(--shell-border)] bg-[var(--pv-chrome)] p-3 text-sm shadow-lg">
 				<p>{message}</p>
 				{#if retryError}<p role="alert">{m['offline.status.failed']()}</p>{/if}
+				{#if $offlineStatus.issues}
+					<a class="block underline focus-visible:outline-2 focus-visible:outline-emerald-500" href="/settings#offline-storage-heading">{m['offline.outbox.review']()}</a>
+				{/if}
 				{#if $offlineStatus.available && $offlineStatus.online}
 					<button class="underline focus-visible:outline-2 focus-visible:outline-emerald-500" disabled={$offlineStatus.syncing} onclick={retry}>{m['offline.retry_sync']()}</button>
 				{/if}

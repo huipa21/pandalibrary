@@ -1,10 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { pdfFixture } from '../fixtures';
 
 type Mutation = { entity: string; key?: string; data: { value?: Record<string, unknown> } };
 
-async function setup(page: Page, saved: Record<string, unknown> = {}) {
-	const bytes = pdfFixture(3);
+async function setup(page: Page, saved: Record<string, unknown> = {}, bytes = pdfFixture(3)) {
 	const file = { id: 31, format: 'pdf', size_bytes: bytes.length, download_url: `/api/v1/books/21/files/31?v=${'b'.repeat(64)}` };
 	const book = {
 		id: 21, library_id: 1, title: 'Toolbar wiring', sort_title: 'Toolbar wiring', subtitle: null,
@@ -41,6 +42,42 @@ async function open(page: Page) {
 	await page.goto('/read/21/31');
 	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
 }
+
+test('invalid TrueType hints recover without console warnings and text still renders', async ({ page }) => {
+	const font = await readFile(resolve('node_modules', 'pdfjs-dist', 'standard_fonts', 'LiberationSans-Regular.ttf'));
+	let patched = false;
+	for (let index = 0; index < font.readUInt16BE(4); index++) {
+		const entry = 12 + index * 16;
+		if (font.toString('ascii', entry, entry + 4) !== 'fpgm') continue;
+		const offset = font.readUInt32BE(entry + 8);
+		const length = font.readUInt32BE(entry + 12);
+		// Replace definitions with PUSHB 32; CALL to exercise PDF.js's undefined-function recovery.
+		font.fill(0x22, offset, offset + length);
+		font.set([0xb0, 32, 0x2b], offset);
+		patched = true;
+		break;
+	}
+	expect(patched).toBe(true);
+	const warnings: string[] = [];
+	const errors: string[] = [];
+	page.on('console', (message) => {
+		if (message.type() === 'warning') warnings.push(message.text());
+	});
+	page.on('pageerror', (error) => errors.push(error.message));
+	await setup(page, {}, pdfFixture(1, false, font));
+	await open(page);
+	const canvas = page.locator('.pdfViewer .page canvas').first();
+	await expect(canvas).toBeVisible();
+	await expect(page.locator('.pdfViewer .page').first()).toHaveAttribute('data-loaded', 'true');
+	expect(await canvas.evaluate((element: HTMLCanvasElement) => {
+		const context = element.getContext('2d');
+		if (!context) throw new Error('Canvas is unavailable.');
+		const pixels = context.getImageData(0, 0, element.width, element.height).data;
+		return pixels.some((channel, index) => index % 4 !== 3 && channel < 128);
+	})).toBe(true);
+	expect(warnings.filter((message) => message.includes('TT:'))).toEqual([]);
+	expect(errors).toEqual([]);
+});
 
 test('toolbar drives the engine and view changes autosave to the book', async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });

@@ -72,7 +72,8 @@ self.addEventListener('sync', (event) => {
 		const viewer = await activeViewer();
 		if (!viewer) return;
 		try {
-			await synchronize(viewer.id);
+			// Background Sync only flushes the outbox; open readers pull on their own schedule.
+			await synchronize(viewer.id, undefined, Date.now(), { pull: false });
 			for (const client of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
 				client.postMessage('pandalibrary-sync-complete');
 			}

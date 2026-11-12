@@ -573,7 +573,7 @@ test('changes the badge outside a clipped scroller without losing reading metada
 		entity: 'user_books', key: '2', data: {
 			book_id: 2, status: 'on_hold', rating: 7,
 			started_at: Date.parse('2026-01-02T03:04:05Z'),
-			finished_at: Date.parse('2026-02-01T00:00:00Z')
+			finished_at: null
 		}
 	});
 	await expect(generated.getByRole('button', { name: 'Reading status: On hold. Change' })
@@ -660,7 +660,7 @@ test('preserves queued reading metadata when changing the badge', async ({ page 
 	expect(state.pushes[0].data).toMatchObject({
 		status: 'on_hold', rating: 9,
 		started_at: Date.parse('2026-03-04T00:00:00Z'),
-		finished_at: Date.parse('2026-05-06T00:00:00Z')
+		finished_at: null
 	});
 });
 
@@ -829,7 +829,7 @@ test('localizes cover actions and badges', async ({ page }) => {
 	await expect(page.locator('[data-test="duration"]')).toHaveText('2小时 56分钟');
 	const status = page.locator('[data-test="reading-status"]');
 	await status.getByRole('button', { name: '阅读状态：阅读中' }).click();
-	await expect(status.getByRole('menuitemradio')).toHaveText(['未读', '想读', '阅读中', '暂搁', '重读中', '已读', '已略读', '已放弃']);
+	await expect(status.getByRole('menuitemradio')).toHaveText(['阅读中', '暂搁', '已读', '已略读', '已放弃']);
 	await expect(status.getByRole('menuitemradio', { name: '阅读中' })).toHaveAttribute('aria-checked', 'true');
 	await page.keyboard.press('Escape');
 	await expect(page.locator('[data-test="badge-reading-status"]').getByRole('button',
@@ -895,13 +895,13 @@ test('exercises interactive kit primitives, safe links, and optimistic status ro
 	await expect(trigger.locator('svg[data-status-icon="reading"]')).toHaveClass(/text-blue-600/);
 	await trigger.click();
 	await expect(status.getByRole('menuitemradio')).toHaveText([
-		'Unread', 'Want to read', 'Reading', 'On hold', 'Re-reading', 'Read', 'Skimmed', 'Abandoned'
+		'Reading', 'On hold', 'Read', 'Skimmed', 'Abandoned'
 	]);
 	await expect(status.getByRole('menuitemradio', { name: 'Reading', exact: true })).toBeFocused();
 	await page.keyboard.press('ArrowDown');
 	await expect(status.getByRole('menuitemradio', { name: 'On hold' })).toBeFocused();
 	await page.keyboard.press('Home');
-	await expect(status.getByRole('menuitemradio', { name: 'Unread' })).toBeFocused();
+	await expect(status.getByRole('menuitemradio', { name: 'Reading', exact: true })).toBeFocused();
 	await page.keyboard.press('End');
 	await expect(status.getByRole('menuitemradio', { name: 'Abandoned' })).toBeFocused();
 	await page.keyboard.press('Escape');
@@ -925,7 +925,8 @@ test('exercises interactive kit primitives, safe links, and optimistic status ro
 
 	state.pushStatus = 'rejected';
 	await trigger.click();
-	await status.getByRole('menuitemradio', { name: 'Want to read' }).click();
+	await expect(status.getByRole('menuitemradio', { name: 'Want to read' })).toHaveCount(0);
+	await status.getByRole('menuitemradio', { name: 'Skimmed' }).click();
 	await expect(status.getByRole('alert')).toContainText('Could not update reading status');
 	await expect(status.getByRole('button', { name: 'Reading status: Read' })).toBeEnabled();
 
@@ -967,9 +968,8 @@ test('positions the status badge menu at viewport edges and supports keyboard se
 	expect(box!.y + box!.height).toBeLessThanOrEqual(badgeBox!.y);
 
 	const statuses = [
-		['Unread', 'unread', 'text-slate-500'], ['Want to read', 'want_to_read', 'text-violet-600'],
 		['Reading', 'reading', 'text-blue-600'], ['On hold', 'on_hold', 'text-amber-500'],
-		['Re-reading', 'rereading', 'text-fuchsia-600'], ['Read', 'finished', 'text-green-600'],
+		['Read', 'finished', 'text-green-600'],
 		['Skimmed', 'skimmed', 'text-sky-500'], ['Abandoned', 'abandoned', 'text-rose-600']
 	] as const;
 	const colors: string[] = [];
@@ -997,7 +997,7 @@ test('positions the status badge menu at viewport edges and supports keyboard se
 		return matches;
 	})).toBe(true);
 	await page.keyboard.press('Home');
-	await expect(menu.getByRole('menuitemradio', { name: 'Unread' })).toBeFocused();
+	await expect(menu.getByRole('menuitemradio', { name: 'Reading', exact: true })).toBeFocused();
 	await page.keyboard.press('Escape');
 	await expect(badge).toBeFocused();
 

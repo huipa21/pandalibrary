@@ -255,6 +255,80 @@ func TestDashboardExtendedReadingStatuses(t *testing.T) {
 	}
 }
 
+func TestDashboardContinueReadingIncludesResetCycles(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	viewer := Viewer{UserID: 2}
+	setProgress(t, fixture, 2, 101, 0)
+	setUserBookStatus(t, fixture, 2, 101, "rereading")
+	setProgress(t, fixture, 2, 104, 0.4)
+	for _, status := range []string{"reading", "rereading", "on_hold"} {
+		setUserBookStatus(t, fixture, 2, 104, status)
+		setProgress(t, fixture, 2, 104, 0)
+		if got := dashboardBookIDs(t, fixture.service, viewer, "continue_reading", 1); !reflect.DeepEqual(got, []int64{104, 101}) {
+			t.Fatalf("zero %s = %v, want [104 101]", status, got)
+		}
+	}
+	if _, err := fixture.db.Writer.ExecContext(context.Background(), `DELETE FROM reading_progress WHERE user_id = 2 AND book_id = 104`); err != nil {
+		t.Fatal(err)
+	}
+	if got := dashboardBookIDs(t, fixture.service, viewer, "continue_reading", 1); !reflect.DeepEqual(got, []int64{104, 101}) {
+		t.Fatalf("explicit status without progress = %v, want [104 101]", got)
+	}
+	for _, status := range []string{"finished", "skimmed", "abandoned"} {
+		setUserBookStatus(t, fixture, 2, 104, status)
+		setProgress(t, fixture, 2, 104, 0.6)
+		if got := dashboardBookIDs(t, fixture.service, viewer, "continue_reading", 1); !reflect.DeepEqual(got, []int64{101}) {
+			t.Fatalf("terminal %s with moved progress = %v, want [101]", status, got)
+		}
+	}
+}
+
+func TestDashboardReadRetainsLatestCompletedCycles(t *testing.T) {
+	ctx := context.Background()
+	fixture := newCatalogFixture(t)
+	for _, statement := range []string{
+		`INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at)
+			VALUES (105, 10, 'Abandoned', 'abandoned', 1, 1)`,
+		`INSERT INTO reading_cycles (user_id, book_id, started_at, ended_at, status, percentage) VALUES
+			(2, 101, 1, 100, 'finished', 1),
+			(2, 101, 101, 300, 'skimmed', 0.5),
+			(2, 102, 1, 500, 'finished', 1),
+			(2, 103, 1, 500, 'finished', 1),
+			(2, 104, 1, 200, 'finished', 1),
+			(2, 105, 1, 500, 'abandoned', 0.2),
+			(3, 105, 1, 600, 'finished', 1)`,
+	} {
+		if _, err := fixture.db.Writer.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setUserBookStatus(t, fixture, 2, 101, "rereading")
+	setProgress(t, fixture, 2, 101, 0)
+	setUserBookStatus(t, fixture, 2, 104, "skimmed")
+	setUserBookStatus(t, fixture, 2, 105, "abandoned")
+	if _, err := fixture.db.Writer.ExecContext(ctx, `UPDATE user_books SET finished_at = 250 WHERE user_id = 2 AND book_id = 104`); err != nil {
+		t.Fatal(err)
+	}
+	if got := dashboardBookIDs(t, fixture.service, Viewer{UserID: 2}, "read", 1); !reflect.DeepEqual(got, []int64{101, 104}) {
+		t.Fatalf("latest completed cycles = %v, want [101 104]", got)
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `UPDATE user_books SET finished_at = 400 WHERE user_id = 2 AND book_id = 104`); err != nil {
+		t.Fatal(err)
+	}
+	if got := dashboardBookIDs(t, fixture.service, Viewer{UserID: 2}, "read", 1); !reflect.DeepEqual(got, []int64{104, 101}) {
+		t.Fatalf("latest live completion = %v, want [104 101]", got)
+	}
+	if got := dashboardBookIDs(t, fixture.service, Viewer{UserID: 4}, "read", 1); len(got) != 0 {
+		t.Fatalf("ungranted read = %v, want empty", got)
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `DELETE FROM library_access WHERE user_id = 2`); err != nil {
+		t.Fatal(err)
+	}
+	if got := dashboardBookIDs(t, fixture.service, Viewer{UserID: 2}, "read", 1); len(got) != 0 {
+		t.Fatalf("revoked read = %v, want empty", got)
+	}
+}
+
 func TestDashboardUnread(t *testing.T) {
 	ctx := context.Background()
 	fixture := newCatalogFixture(t)
