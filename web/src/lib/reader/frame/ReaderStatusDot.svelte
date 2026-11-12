@@ -12,10 +12,24 @@
 		: !$offlineStatus.online ? m['offline.status.offline']()
 		: $offlineStatus.issues ? m['offline.status.conflict']()
 		: $offlineStatus.error ? m['offline.status.failed']()
+		: !$offlineStatus.pending ? m['offline.status.synced']()
 		: m['offline.status.pending']()
 	);
 	let button = $state<HTMLButtonElement>();
 	let panel = $state<HTMLDivElement>();
+	let panelLeft = $state(8);
+	let panelTop = $state(44);
+
+	$effect(() => {
+		if (!visible) open = false;
+	});
+
+	function positionPanel() {
+		if (!open || !button) return;
+		const rect = button.getBoundingClientRect();
+		panelLeft = Math.max(8, Math.min(rect.left, window.innerWidth - 264));
+		panelTop = rect.bottom + 4;
+	}
 
 	function outside(event: PointerEvent) {
 		if (event.target instanceof Node && !panel?.contains(event.target) && !button?.contains(event.target)) open = false;
@@ -38,7 +52,7 @@
 	}
 </script>
 
-<svelte:window onpointerdown={outside} onkeydown={keydown} />
+<svelte:window onpointerdown={outside} onkeydown={keydown} onresize={positionPanel} />
 
 {#if visible}
 	<div class="relative">
@@ -50,14 +64,18 @@
 			title={message}
 			aria-expanded={open}
 			aria-controls="reader-sync-status"
-			onclick={() => open = !open}
+			onclick={() => { open = !open; positionPanel(); }}
 		>
 			<span class={['size-2 rounded-full', failed ? 'bg-red-500' : 'bg-amber-500']} aria-hidden="true"></span>
 			<span class="sr-only" role="status">{message}</span>
 		</button>
 		{#if open}
-			<div bind:this={panel} id="reader-sync-status" class="absolute right-0 top-full z-30 w-64 max-w-[calc(100vw-1rem)] space-y-3 rounded-md border border-[var(--shell-border)] bg-[var(--pv-chrome)] p-3 text-sm shadow-lg">
+			<div bind:this={panel} id="reader-sync-status"
+				style:left={`${panelLeft}px`} style:top={`${panelTop}px`}
+				style:max-height={`calc(100dvh - ${panelTop + 8}px)`}
+				class="fixed z-30 w-64 max-w-[calc(100vw-1rem)] space-y-3 overflow-auto rounded-md border border-[var(--shell-border)] bg-[var(--pv-chrome)] p-3 text-sm shadow-lg">
 				<p>{message}</p>
+				{#if $offlineStatus.errorDetail}<p role="alert">{$offlineStatus.errorDetail}</p>{/if}
 				{#if retryError}<p role="alert">{m['offline.status.failed']()}</p>{/if}
 				{#if $offlineStatus.issues}
 					<a class="block underline focus-visible:outline-2 focus-visible:outline-emerald-500" href="/settings#offline-storage-heading">{m['offline.outbox.review']()}</a>

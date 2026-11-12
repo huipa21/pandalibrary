@@ -67,8 +67,14 @@ async function setup(page: Page, format: 'pdf' | 'epub', initialHighlights: Row[
 			return route.fulfill({ json: { user: { id: 1, username: 'reader', display_name: 'Reader', role: 'user', locale: 'en' } } });
 		}
 		if (path === '/api/v1/books/21') return route.fulfill({ json: { book } });
-		if (path === '/api/v1/books/21/files/31') return route.fulfill({ contentType: 'application/octet-stream', body: bytes });
-		if (path === '/api/v1/me/books/21') return route.fulfill({ json: {
+		if (path === '/api/v1/books/22') return route.fulfill({ json: { book: {
+			...book, id: 22, title: 'Another Book', sort_title: 'Another Book',
+			files: [{ ...file, id: 32, download_url: `/api/v1/books/22/files/32?v=${fileHash}` }]
+		} } });
+		if (path === '/api/v1/books/21/files/31' || path === '/api/v1/books/22/files/32') {
+			return route.fulfill({ contentType: 'application/octet-stream', body: bytes });
+		}
+		if (path === '/api/v1/me/books/21' || path === '/api/v1/me/books/22') return route.fulfill({ json: {
 			user_book: null, progress: state.progress, highlights: state.highlights, notes: state.notes,
 			bookmarks: state.bookmarks, page_annotations: state.pageAnnotations
 		} });
@@ -274,7 +280,7 @@ test('mobile sidebar overlays, navigates and persists its selected tab', async (
 	await expect(tab(page, 'Bookmarks')).toBeFocused();
 });
 
-test('EPUB Format changes typography and background and persists both settings scopes', async ({ page }) => {
+test('EPUB appearance saves automatically per book and restores when reopened without changing format defaults', async ({ page }) => {
 	const state = await setup(page, 'epub');
 	let frame = await bookFrame(page);
 	const initialSize = await frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize));
@@ -288,16 +294,67 @@ test('EPUB Format changes typography and background and persists both settings s
 	await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(220, 194, 155)');
 	await expect.poll(() => frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize)))
 		.toBeCloseTo(initialSize * 1.1, 2);
-	await page.getByRole('button', { name: 'Save settings', exact: true }).click();
-	await page.getByRole('button', { name: 'Save as format default', exact: true }).click();
-	for (const key of ['reader.book.21', 'reader.epub']) {
-		await expect.poll(() => state.settings.find((setting) => setting.key === key)?.value)
-			.toMatchObject({ font: 'system', size: 110, spacing: 1.6, background: 'wood' });
-	}
+	await expect(format.getByRole('button', { name: /Save settings|Save as format default/ })).toHaveCount(0);
+	await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value)
+		.toMatchObject({ font: 'system', size: 110, spacing: 1.6, background: 'wood' });
+	expect(state.settings.find((setting) => setting.key === 'reader.epub')?.value).toEqual({});
+	expect(state.mutations.filter((mutation) => mutation.entity === 'user_settings')
+		.every((mutation) => mutation.key === 'reader.book.21')).toBe(true);
 	await page.reload();
 	frame = await bookFrame(page);
 	await expect(frame.locator('body')).toHaveCSS('font-family', 'system-ui');
 	await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(220, 194, 155)');
+	await page.getByRole('button', { name: 'Format', exact: true }).click();
+	await expect(page.getByRole('dialog', { name: 'Format' }).getByRole('status', { name: 'Size', exact: true })).toHaveText('110%');
+	await expect(page.getByRole('dialog', { name: 'Format' }).getByRole('status', { name: 'Spacing', exact: true })).toHaveText('1.6');
+
+	await page.goto('/read/22/32');
+	frame = await bookFrame(page);
+	await expect(frame.locator('body')).not.toHaveCSS('font-family', 'system-ui');
+	await expect(frame.locator('body')).not.toHaveCSS('background-color', 'rgb(220, 194, 155)');
+	await page.getByRole('button', { name: 'Format', exact: true }).click();
+	await expect(page.getByRole('dialog', { name: 'Format' }).getByRole('status', { name: 'Size', exact: true })).toHaveText('100%');
+	await page.goto('/read/21/31');
+	frame = await bookFrame(page);
+	await expect(frame.locator('body')).toHaveCSS('font-family', 'system-ui');
+	await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(220, 194, 155)');
+});
+
+test('EPUB zoom offers four modes and manual adjustments remain Automatic independently of typography', async ({ page }) => {
+	const state = await setup(page, 'epub');
+	let frame = await bookFrame(page);
+	const fontSize = await frame.locator('body').evaluate((body) => getComputedStyle(body).fontSize);
+	const zoomButton = page.getByRole('button', { name: /^Zoom \d+%$/ });
+	await zoomButton.click();
+	const zoom = page.getByRole('menu', { name: 'Zoom', exact: true });
+	await expect(zoom.getByRole('menuitemradio')).toHaveText(['Automatic', 'Actual size', 'Fit page', 'Page width']);
+	await expect(zoom.getByRole('menuitemradio', { name: /^\d+%$/ })).toHaveCount(0);
+	for (const [label, mode] of [
+		['Actual size', 'page-actual'], ['Fit page', 'page-fit'], ['Page width', 'page-width'], ['Automatic', 'auto']
+	]) {
+		await zoom.getByRole('menuitemradio', { name: label, exact: true }).click();
+		await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value)
+			.toMatchObject({ reflowZoom: mode, size: 100 });
+		await zoomButton.click();
+		await expect(zoom.getByRole('menuitemradio', { name: label, exact: true })).toHaveAttribute('aria-checked', 'true');
+	}
+	await zoom.getByRole('menuitem', { name: 'Zoom in', exact: true }).click();
+	await expect(zoom.getByRole('menuitemradio', { name: 'Automatic', exact: true })).toHaveAttribute('aria-checked', 'true');
+	await expect.poll(() => {
+		const value = state.settings.find((setting) => setting.key === 'reader.book.21')?.value as { reflowZoom?: unknown } | undefined;
+		return typeof value?.reflowZoom;
+	}).toBe('number');
+	const increased = (state.settings.find((setting) => setting.key === 'reader.book.21')?.value as { reflowZoom: number }).reflowZoom;
+	await expect(zoomButton).toContainText(`${Math.round(increased * 100)}%`);
+	await zoom.getByRole('menuitem', { name: 'Zoom out', exact: true }).click();
+	await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value)
+		.toMatchObject({ reflowZoom: Math.max(0.1, Math.round((increased - 0.1) * 100) / 100), size: 100 });
+	await expect(frame.locator('body')).toHaveCSS('font-size', fontSize);
+	await page.reload();
+	frame = await bookFrame(page);
+	await expect(frame.locator('body')).toHaveCSS('font-size', fontSize);
+	await zoomButton.click();
+	await expect(zoom.getByRole('menuitemradio', { name: 'Automatic', exact: true })).toHaveAttribute('aria-checked', 'true');
 });
 
 for (const width of [1280, 375]) {

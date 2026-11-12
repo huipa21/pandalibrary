@@ -90,8 +90,9 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 		selection?.addRange(range);
 		document.dispatchEvent(new Event('selectionchange'));
 	});
+	await page.getByRole('toolbar', { name: 'Selection actions', exact: true })
+		.getByRole('button', { name: 'Highlight', exact: true }).click();
 	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
-	await page.getByRole('button', { name: 'Highlight selection' }).click();
 	await page.locator('.rp7-entry .rp7-edit').click();
 	await page.getByRole('button', { name: 'Add note to highlight' }).click();
 	await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Release validation note');

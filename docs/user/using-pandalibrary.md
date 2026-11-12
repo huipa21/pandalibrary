@@ -111,12 +111,13 @@ In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:
 
 - use **Contents** to jump to a chapter when the book provides a contents list;
 - use **Zoom** to choose **Automatic**, **Actual size**, **Fit page**,
-  **Page width** or a percentage, just as in the PDF reader;
+  or **Page width**. Use the minus/plus controls for manual zoom adjustments
+  under **Automatic**, without choosing a preset percentage;
 - open **Page display** to choose **Single page**, **Single page continuous**,
   **Split** or **Split continuous**;
-- open **Format** to change ebook fonts, spacing and backgrounds. Use **Save
-  settings** for this book or **Save as format default** for other books of that
-  format. In CBZ comics, **Format** offers backgrounds without text controls;
+- open **Format** to change ebook fonts, spacing and backgrounds. Changes save
+  automatically for your account and this book, without affecting other books
+  or readers. In CBZ comics, **Format** offers backgrounds without text controls;
 - use **Rotate** to turn the view left or right. In these non-PDF formats,
   rotation lasts only for the current reader session and is not saved;
 - open the **+** button to choose **Text**, **Draw** or **Image**, then click
@@ -127,7 +128,7 @@ In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:
   the passage. Use the colour arrows to choose highlight and line colours;
 - open **Annotations** to review saved marks, change their colours, attach or
   edit notes, or delete them. In CBZ comics, use **Highlight current page** to mark
-  the current page instead of selecting text;
+  the current page from the top toolbar instead of selecting text;
 - use the bookmark icon in the top toolbar to add or remove a bookmark for the
   current page, and open **Bookmarks** to review saved positions;
 - use the previous/next buttons, arrow keys or position slider to navigate.
@@ -209,7 +210,10 @@ The borderless **X** saves progress and reading time before returning to the
 book's details. If saving fails, retry the unsaved changes or explicitly
 choose to leave without saving. A coloured status dot indicates offline,
 pending or failed sync, or a settings-save warning; open it for details and a
-retry action when synchronization is available.
+retry action when synchronization is available. Non-PDF save notifications use
+a separate footer instead of covering the book or sidebar. If a change is saved
+on this device but cannot sync, it remains queued and the status details explain
+the failure.
 
 The PDF reader's left rail has five tabs. Select an active tab again, or use
 **Collapse sidebar**, to close the panel. Its open state and selected tab are
@@ -229,9 +233,10 @@ the sidebar, or with a page click.
   The Delete button asks
   for confirmation; a deleted item can be restored with **Undo** for eight
   seconds. Entries from other files are listed separately and are read-only.
-  Add or edit a comment by expanding a mark. In non-PDF readers, create standalone
-  private book notes from the **Annotations** sidebar. Existing private book
-  notes remain on the book's **Annotations** page.
+  Add or edit a comment by expanding a mark. Create passage marks and comments
+  with the floating selection toolbar; the sidebar reflects those changes
+  without duplicating creation controls. Existing private book notes remain
+  on the book's **Annotations** page.
 - **Bookmarks** lists saved positions. Click an entry to jump there, or use its
   Edit and Delete icons. The bookmark icon in the top toolbar adds or removes a
   bookmark for the current page.
