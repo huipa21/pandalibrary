@@ -12,6 +12,7 @@ import {
 } from './db.js';
 import { synchronize, withSessionLock, type SyncReport } from './engine.js';
 import { clearLocalCaches } from './local-caches.js';
+import { syncFailureMessage } from './errors.js';
 import type { OfflineViewer } from './types.js';
 
 export interface OfflineStatus {
@@ -22,6 +23,7 @@ export interface OfflineStatus {
 	issues: number;
 	syncing: boolean;
 	error: boolean;
+	errorDetail?: string;
 }
 
 export const offlineStatus = writable<OfflineStatus>({
@@ -67,7 +69,7 @@ export async function rememberedViewer(): Promise<OfflineViewer | null> {
 
 function report(error: unknown): void {
 	console.error('Offline synchronization failed', error);
-	update({ error: true, syncing: false });
+	update({ error: true, errorDetail: syncFailureMessage(error), syncing: false });
 	if (error instanceof AccountChangedError || (error instanceof ApiError && error.status === 401)) {
 		window.dispatchEvent(new Event('pandalibrary-account-invalid'));
 	}
@@ -117,7 +119,7 @@ function installListeners(): void {
 export async function activateOffline(next: OfflineViewer, offline = false): Promise<void> {
 	viewer = next;
 	installListeners();
-	update({ account: next.id, online: !offline && connected(), error: false });
+	update({ account: next.id, online: !offline && connected(), error: false, errorDetail: undefined });
 	try {
 		if (offline) {
 			const active = await activeViewer();
@@ -140,7 +142,7 @@ export async function activateOffline(next: OfflineViewer, offline = false): Pro
 		if (error instanceof AccountChangedError || error instanceof ApiError) throw error;
 		console.error('Offline storage is unavailable', error);
 		available = false;
-		update({ available: false, error: true });
+		update({ available: false, error: true, errorDetail: syncFailureMessage(error) });
 	}
 }
 
@@ -171,7 +173,7 @@ export async function deactivateOffline(): Promise<void> {
 	viewer = null;
 	lastPullAt = 0;
 	channel?.postMessage(null);
-	update({ account: null, pending: 0, issues: 0, syncing: false, error: false });
+	update({ account: null, pending: 0, issues: 0, syncing: false, error: false, errorDetail: undefined });
 }
 
 export async function refreshStatus(): Promise<void> {
@@ -203,7 +205,7 @@ export async function syncNow(retry = false, options: { pull?: boolean } = {}): 
 	}
 	if (!viewer || !available) throw new OfflineStorageError('Offline synchronization is unavailable.');
 	const account = viewer.id;
-	update({ syncing: true, error: false, online: true });
+	update({ syncing: true, error: false, errorDetail: undefined, online: true });
 	const operation: Promise<SyncReport> = (async () => {
 		if (retry) await retryFailed(account);
 		const result = await synchronize(account, undefined, Date.now(), { pull });
@@ -219,7 +221,7 @@ export async function syncNow(retry = false, options: { pull?: boolean } = {}): 
 	try {
 		return await operation;
 	} catch (error) {
-		update({ syncing: false, error: true });
+		update({ syncing: false, error: true, errorDetail: syncFailureMessage(error) });
 		throw error;
 	}
 }

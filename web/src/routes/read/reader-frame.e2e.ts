@@ -14,6 +14,7 @@ async function setup(page: Page, format = 'pdf', locale = 'en') {
 	const pushes: Array<{ entity: string; data: { book_file_id?: number } }> = [];
 	const bookmarks: Record<string, unknown>[] = [];
 	let fail = false;
+	let rejection: string | null = null;
 	await page.route('**/api/v1/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
 		if (path === '/api/v1/setup') return route.fulfill({ json: { required: false } });
@@ -29,12 +30,20 @@ async function setup(page: Page, format = 'pdf', locale = 'en') {
 			if (fail) return route.fulfill({ status: 503, json: { status: 503, title: 'Unavailable' } });
 			const { mutations } = route.request().postDataJSON();
 			pushes.push(...mutations);
-			return route.fulfill({ json: { results: mutations.map((_: unknown, index: number) => ({ index, status: 'applied' })) } });
+			return route.fulfill({ json: { results: mutations.map((mutation: { entity: string }, index: number) =>
+				rejection && mutation.entity === 'bookmarks'
+					? { index, status: 'rejected', reason: rejection }
+					: { index, status: 'applied' }
+			) } });
 		}
 		if (path.endsWith('/reading-summary')) return route.fulfill({ json: { reading_summary: { total_active_seconds: 0, session_count: 0, first_read_at: null, last_read_at: null } } });
 		return route.fulfill({ json: { items: [], next_cursor: null } });
 	});
-	return { pushes, bookmarks, failPushes: (value: boolean) => { fail = value; } };
+	return {
+		pushes, bookmarks,
+		failPushes: (value: boolean) => { fail = value; },
+		rejectBookmarks: (reason: string) => { rejection = reason; }
+	};
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 740 }]) {
@@ -148,6 +157,66 @@ test('pending writes appear in the status dot and can be retried', async ({ page
 	state.failPushes(false);
 	await retry.click();
 	await expect.poll(() => state.pushes.filter((mutation) => mutation.entity === 'reading_progress').length).toBe(1);
+});
+
+for (const width of [1440, 360]) {
+	test(`EPUB queued bookmark diagnostics and retry never cover content or sidebar at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 800 });
+		const state = await setup(page, 'epub');
+		await page.goto('/read/21/31');
+		await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+		state.failPushes(true);
+		const toggle = page.getByTestId('reflow-bookmark-toggle');
+		await toggle.click();
+		await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+		const notifications = page.locator('.reader-notifications');
+		await expect(notifications).toContainText('Bookmark change saved on this device and waiting to sync.');
+		await expect(notifications.getByRole('alert')).toContainText('Sync failed. Your queued changes remain on this device.');
+		await expect(notifications.getByRole('alert')).toContainText('HTTP 503');
+		await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+		await expect(page.locator('[data-bookmark-id]')).toHaveCount(1);
+		const footer = await notifications.boundingBox();
+		const surface = await page.locator('#reader-surface').boundingBox();
+		const sidebar = await page.getByRole('tabpanel', { name: 'Bookmarks', exact: true }).boundingBox();
+		if (!footer || !surface || !sidebar) throw new Error('Reader layout is missing.');
+		expect(surface.y + surface.height).toBeLessThanOrEqual(footer.y + 1);
+		expect(sidebar.y + sidebar.height).toBeLessThanOrEqual(footer.y + 1);
+		expect(footer.height).toBeLessThanOrEqual(200);
+		expect(footer.x).toBeGreaterThanOrEqual(0);
+		expect(footer.x + footer.width).toBeLessThanOrEqual(width);
+
+		const status = page.getByRole('button', { name: 'Reader sync status' });
+		await status.click();
+		const panel = page.locator('#reader-sync-status');
+		await expect(panel).toContainText('HTTP 503');
+		const panelBounds = await panel.boundingBox();
+		if (!panelBounds) throw new Error('Sync diagnostics are missing.');
+		expect(panelBounds.x).toBeGreaterThanOrEqual(0);
+		expect(panelBounds.x + panelBounds.width).toBeLessThanOrEqual(width);
+		await page.keyboard.press('Escape');
+		await expect(status).toBeFocused();
+		state.failPushes(false);
+		await notifications.getByRole('button', { name: 'Retry unsaved changes' }).click();
+		await expect(notifications.getByRole('alert')).toHaveCount(0);
+		await expect(notifications).toContainText('Bookmark saved.');
+		await expect(notifications).not.toContainText('waiting to sync');
+		expect(state.pushes.filter((mutation) => mutation.entity === 'bookmarks')).toHaveLength(1);
+	});
+}
+
+test('EPUB bookmark rejection remains an accessible error instead of a queued success', async ({ page }) => {
+	const state = await setup(page, 'epub');
+	await page.goto('/read/21/31');
+	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+	state.rejectBookmarks('bookmark book is unavailable');
+	const toggle = page.getByTestId('reflow-bookmark-toggle');
+	await toggle.click();
+	await expect(page.locator('.reader-notifications').getByRole('alert')).toContainText('A change could not be saved.');
+	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+	await expect(page.locator('.reader-notifications')).not.toContainText('Bookmark saved.');
+	await page.getByRole('button', { name: 'Reader sync status' }).click();
+	await expect(page.locator('#reader-sync-status')).toContainText('Some changes were rejected or conflicted.');
+	await expect(page.locator('#reader-sync-status').getByRole('link', { name: 'Review changes' })).toBeVisible();
 });
 
 test('PDF keyboard navigation updates page and two-decimal progress', async ({ page }) => {

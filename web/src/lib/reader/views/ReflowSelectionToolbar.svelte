@@ -9,13 +9,12 @@
 	import { markColors } from '../pdf/marks/mark-colors.svelte.js';
 	import '../pdf/marks/marks.css';
 
-	let { engine, controller, surface, cancomment, oncomment, onclear, onerror }: {
+	let { engine, controller, surface, cancomment, oncomment, onerror }: {
 		engine: FoliateReader;
 		controller: ReaderController;
 		surface: HTMLElement;
 		cancomment: () => boolean;
 		oncomment: (highlightId: string) => void;
-		onclear: () => void;
 		onerror: (message: string) => void;
 	} = $props();
 
@@ -34,10 +33,7 @@
 		dismissedSelection = controller.selection;
 		chosen = null;
 		anchor = null;
-		if (clear) {
-			onclear();
-			engine.clearSelection();
-		}
+		if (clear) engine.clearSelection();
 		if (focus) surface.focus({ preventScroll: true });
 	}
 
@@ -81,11 +77,6 @@
 			if (!event.composedPath().includes(viewport)) dismiss();
 		};
 		const keydown = (event: KeyboardEvent) => {
-			const target = event.target as HTMLElement | null;
-			if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight')
-				&& !event.defaultPrevented && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
-				&& !target?.isContentEditable && !['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(target?.tagName ?? '')
-				&& !toolbarFocused()) onclear();
 			if (!chosen || event.defaultPrevented) return;
 			if (event.key === 'Escape') {
 				event.preventDefault();

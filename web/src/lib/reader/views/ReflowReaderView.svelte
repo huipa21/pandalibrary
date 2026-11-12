@@ -21,6 +21,7 @@
 	import InsertMenu, { type InsertType } from '#lib/reader/toolbar/InsertMenu.svelte';
 	import ReflowInsertLayer from './ReflowInsertLayer.svelte';
 	import ReaderFrame from '#lib/reader/frame/ReaderFrame.svelte';
+	import ReaderNotifications from '#lib/reader/frame/ReaderNotifications.svelte';
 	import ReaderCloseButton from '#lib/reader/frame/ReaderCloseButton.svelte';
 	import ReaderStatusDot from '#lib/reader/frame/ReaderStatusDot.svelte';
 	import ReaderSidebar from '#lib/reader/frame/ReaderSidebar.svelte';
@@ -32,7 +33,7 @@
 	import type { FoliateTocItem } from 'foliate-js/view.js';
 	import { createSidebarState, PANEL_WIDTH, RAIL_WIDTH, type SidebarTab } from '#lib/reader/pdf/sidebar/sidebar-state.svelte.js';
 	import { backgroundFor, withBackground } from '#lib/reader/appearance.js';
-	import type { Bookmark, Note, ReaderSelection } from '#lib/reader/types.js';
+	import type { Bookmark, Note } from '#lib/reader/types.js';
 	import type { ReaderController, NoteDraft, BookmarkDraft } from '#lib/reader/session/reader-controller.svelte.js';
 	let { controller }: { controller: ReaderController } = $props();
 	let surface = $state<HTMLDivElement>();
@@ -45,13 +46,11 @@
 	let query = $state('');
 	let scrollRoot = $state<HTMLElement>();
 	let bookmarkDraft = $state<BookmarkDraft | null>(null);
-	let selectedColor = $state<HighlightColor>('yellow');
 	let engine = $state<FoliateReader | null>(null);
 	let announcement = $state('');
 	let insertMode = $state<InsertType | null>(null);
 	let insertMenuOpen = $state(false);
 	let offline = $state(false);
-	let sidebarSelection = $state.raw<ReaderSelection | null>(null);
 	const tabs: readonly SidebarTab[] = untrack(() => controller.format === 'cbz'
 		? ['toc', 'annotations', 'bookmarks']
 		: ['toc', 'annotations', 'bookmarks', 'search']);
@@ -79,15 +78,6 @@
 		if (draft?.highlightId && !controller.highlights.some((highlight) => highlight.id === draft?.highlightId)) draft = null;
 		if (draft?.editing && !controller.notes.some((note) => note.id === draft?.id)) draft = null;
 		if (bookmarkDraft?.editing && !controller.bookmarks.some((bookmark) => bookmark.id === bookmarkDraft?.id)) bookmarkDraft = null;
-	});
-	$effect(() => {
-		const reader = engine;
-		if (!reader) return;
-		return reader.subscribeSelection((reason) => {
-			// Opening a docked sidebar reflows the book and emits a relocation, which clears
-			// controller.selection. Keep the actual user selection for the sidebar action.
-			if (!reason && reader.getSelectionBounds() && controller.selection) sidebarSelection = controller.selection;
-		});
 	});
 	$effect(() => {
 		if (!engine) return;
@@ -155,12 +145,7 @@
 		createdCommentMark = highlightId;
 		draft = { id: uuidv7(), highlightId, body: '', original: '', editing: false };
 	}
-	async function addSidebarHighlight() {
-		const created = await controller.addHighlight(sidebarSelection, selectedColor);
-		if (created) clearSelection();
-	}
 	function clearSelection() {
-		sidebarSelection = null;
 		engine?.clearSelection();
 	}
 	function navigate(action: () => unknown) {
@@ -285,6 +270,7 @@
 					<ZoomMenu zoom={reflowZoom(controller.settings, controller.format === 'cbz')}
 						scale={controller.location && engine ? engine.zoomScale : 1}
 						includeValueInLabel
+						presets={false}
 						showHint={false}
 						disabled={!controller.ready}
 						onzoom={(reflowZoom) => controller.applySettings({ reflowZoom })}
@@ -301,18 +287,18 @@
 						onfont={(font) => controller.applySettings({ font })}
 						onsize={(size) => controller.applySettings({ size })}
 						onspacing={(spacing) => controller.applySettings({ spacing })}
-						onbackground={(id) => controller.applySettings(withBackground(controller.settings, id))}>
-						<div class="mt-4 space-y-3">
-							<p class="text-xs opacity-75">{m['reader.settings.scope']()}</p>
-							<button class="reader-action" disabled={!controller.ready || controller.busy || !controller.canSaveSettings} onclick={() => controller.saveSettings()}>{m['reader.settings.save']()}</button>
-							<button class="reader-action" disabled={!controller.ready || controller.busy} onclick={() => controller.saveSettings({}, 'format')}>{m['rp9.save_format']()}</button>
-						</div>
-					</FormatMenu>
+						onbackground={(id) => controller.applySettings(withBackground(controller.settings, id))} />
 					<RotateMenu onrotate={rotate} disabled={!engine} />
 				{/snippet}
 				{#snippet right()}
 					<InsertMenu bind:open={insertMenuOpen} disabled={!controller.ready || controller.busy} {offline}
 						onselect={(type) => { insertMode = type; clearSelection(); }} />
+					{#if controller.format === 'cbz'}
+						<button class="pv4-button" aria-label={m['reader.annotations.add_page']()} title={m['reader.annotations.add_page']()}
+							disabled={!controller.ready || controller.busy} onclick={() => void controller.addHighlight(null)}>
+							<Icon name="highlighter" />
+						</button>
+					{/if}
 					<button class="pv4-button" data-testid="reflow-bookmark-toggle"
 						aria-label={m['rp8.add_page']()} aria-pressed={currentBookmarks.length > 0}
 						title={currentBookmarks.length ? m['rp8.remove_page']() : m['rp8.add_page']()}
@@ -338,7 +324,7 @@
 		</div>
 		{#if engine && surface && controller.format !== 'cbz'}
 			<ReflowSelectionToolbar {engine} {controller} {surface} cancomment={canOpenNote}
-				oncomment={commentOnSelection} onclear={() => sidebarSelection = null} onerror={(message) => announcement = message} />
+				oncomment={commentOnSelection} onerror={(message) => announcement = message} />
 		{/if}
 		{#if engine && surface}
 			<ReflowInsertLayer {engine} {controller} {surface} bind:mode={insertMode} announce={(message) => announcement = message} />
@@ -371,28 +357,6 @@
 				<span class="rp7-count">{m['rp7.count']({ count: annotationList.count })}</span>
 			</header>
 			<div class="rp7-content" bind:this={scrollRoot}>
-			<div class="p-3">
-				<button class="reader-action" disabled={!controller.ready || controller.busy} onclick={() => openNote(null)}>{m['reader.annotations.add_note']()}</button>
-			</div>
-			{#if sidebarSelection}
-				<div class="reader-selection p-3">
-					<p class="font-medium">{m['reader.annotations.selected']()}</p>
-					<p class="mt-1 whitespace-pre-wrap break-words">{sidebarSelection.text}</p>
-				</div>
-			{/if}
-			{#if sidebarSelection || controller.format === 'cbz'}
-			<div class="flex flex-wrap items-end gap-3 p-3">
-				<label class="space-y-1 text-sm font-medium">
-					<span>{m['reader.annotations.color']()}</span>
-					<select class="block rounded-md border border-slate-300 bg-white p-2 focus-visible:outline-2" bind:value={selectedColor}>
-						{#each HIGHLIGHT_COLORS as color}<option value={color}>{colorLabel(color)}</option>{/each}
-					</select>
-				</label>
-				<button class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={!controller.ready || controller.busy || (!sidebarSelection && controller.format !== 'cbz')} onclick={addSidebarHighlight}>
-					{controller.format === 'cbz' && !sidebarSelection ? m['reader.annotations.add_page']() : m['reader.annotations.add_highlight']()}
-				</button>
-			</div>
-			{/if}
 			{#if !entries.length && (!query.trim() || !otherEntries.length)}
 				<p class="rp7-empty">{query.trim() ? m['rp7.no_match']() : m['rp7.empty']()}</p>
 			{/if}
@@ -508,21 +472,11 @@
 				{/key}
 			</div>
 		{/if}
-		{#if controller.pendingError || controller.actionError || controller.opening || controller.savedMessage || announcement}
-			<div class="reader-alert absolute inset-x-2 top-2 z-20 max-h-[50%] overflow-auto rounded-md p-3 text-sm shadow-md">
-				{#if controller.pendingError}
-					<div role="alert" class="space-y-2">
-						<p>{controller.pendingError}</p>
-						<button class="underline focus-visible:outline-2" onclick={() => controller.retryWrites()}>{m['reader.retry_saves']()}</button>
-						<a class="ml-4 underline focus-visible:outline-2" href={`/books/${controller.book.id}`}>{m['reader.leave_unsaved']()}</a>
-					</div>
-				{/if}
-				{#if controller.actionError}<p role="alert">{controller.actionError}</p>{/if}
-				{#if announcement}<p role="alert">{announcement}</p>{/if}
-				{#if controller.savedMessage}<p role="status">{controller.savedMessage}</p>{/if}
-				{#if controller.opening}<p role="status">{m['reader.loading']()}</p>{/if}
-			</div>
-		{/if}
+		{#snippet notifications()}
+			<ReaderNotifications pendingError={controller.pendingError} errors={[controller.actionError, announcement]}
+				message={controller.savedMessage} loading={controller.opening} bookHref={`/books/${controller.book!.id}`}
+				onretry={() => controller.retryWrites()} />
+		{/snippet}
 	</ReaderFrame>
 {/if}
 
@@ -542,7 +496,7 @@
 <style>
 	.reader-title { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 400; }
 	.reader-divider { width: 1px; height: 20px; margin: 0 2px; background: var(--shell-border, #94a3b8); flex: none; }
-	.reader-position, .reader-alert { background: var(--pv-chrome); color: var(--shell-text); }
+	.reader-position { background: var(--pv-chrome); color: var(--shell-text); }
 	.reader-action { border: 1px solid var(--shell-border); border-radius: 6px; padding: 6px 10px; }
 	.reader-action:disabled { opacity: .5; }
 	.reflow-bookmark { position: relative; border: 1px solid var(--shell-border); border-radius: 6px; background: var(--shell-surface); }
@@ -561,7 +515,6 @@
 	.reader-panel :global(.text-slate-600) { color: var(--shell-muted); }
 	.reader-panel :global(select), .reader-panel :global(input) { background: var(--shell-surface); color: var(--shell-text); }
 	.reader-annotations-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-	.reader-selection { background: var(--shell-surface); color: var(--shell-text); }
 	.reader-sticky-popup, .reader-annotation-detail { position: absolute; z-index: 30; top: 16px; right: 16px; max-width: calc(100% - 32px); }
 	.reader-annotation-detail { width: 360px; max-height: calc(100% - 32px); overflow: auto; padding: 16px; border: 1px solid var(--shell-border); border-radius: 8px; background: var(--shell-surface); color: var(--shell-text); box-shadow: 0 8px 24px #0003; }
 	.reader-annotation-detail > :global(*) + :global(*) { margin-top: 12px; }
