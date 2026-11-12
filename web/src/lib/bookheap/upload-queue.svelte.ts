@@ -1,5 +1,5 @@
 import { ApiError } from '#lib/api/client.js';
-import { uploadHeapFile } from './api.js';
+import { assignHeapItems, uploadHeapFile } from './api.js';
 import { notifyBookheapChanged } from './events.js';
 import type { HeapItem } from './types.js';
 
@@ -37,6 +37,8 @@ export interface UploadRow {
 	error: UploadErrorKind | null;
 	/** Book or Bookheap item id for duplicate errors. */
 	duplicateOf: number | null;
+	/** Destination captured for this row; retained when an assignment needs retrying. */
+	libraryId: number | null;
 }
 
 export interface UploadNotice {
@@ -60,6 +62,7 @@ export type Uploader = (
 
 export interface UploadQueueOptions {
 	readonly upload?: Uploader;
+	readonly assign?: typeof assignHeapItems;
 	readonly notify?: () => void;
 	readonly concurrency?: number;
 	readonly maxBytes?: number;
@@ -170,7 +173,8 @@ interface Run {
 	readonly done: Promise<void>;
 	readonly finish: () => void;
 	halted: boolean;
-	uploaded: number;
+	changed: boolean;
+	readonly libraryId: number | null;
 }
 
 /**
@@ -183,8 +187,10 @@ export class UploadQueue {
 	notice = $state<UploadNotice | null>(null);
 	/** Set when a 401/403 halted the last run; pending rows are kept. */
 	stopped = $state<'unauthorized' | 'forbidden' | null>(null);
+	libraryId = $state<number | null>(null);
 
 	readonly #upload: Uploader;
+	readonly #assign: typeof assignHeapItems;
 	readonly #notify: () => void;
 	readonly #concurrency: number;
 	readonly #maxBytes: number;
@@ -192,8 +198,9 @@ export class UploadQueue {
 	#active = 0;
 	#run: Run | null = null;
 
-	constructor({ upload = uploadHeapFile, notify = notifyBookheapChanged, concurrency = UPLOAD_CONCURRENCY, maxBytes = MAX_UPLOAD_BYTES }: UploadQueueOptions = {}) {
+	constructor({ upload = uploadHeapFile, assign = assignHeapItems, notify = notifyBookheapChanged, concurrency = UPLOAD_CONCURRENCY, maxBytes = MAX_UPLOAD_BYTES }: UploadQueueOptions = {}) {
 		this.#upload = upload;
+		this.#assign = assign;
 		this.#notify = () => notify();
 		this.#concurrency = Math.max(1, concurrency);
 		this.#maxBytes = maxBytes;
@@ -244,7 +251,7 @@ export class UploadQueue {
 				continue;
 			}
 			known.add(key);
-			this.rows.push({ id: this.#nextId++, key, file, status: 'pending', loaded: 0, total: file.size, item: null, error: null, duplicateOf: null });
+			this.rows.push({ id: this.#nextId++, key, file, status: 'pending', loaded: 0, total: file.size, item: null, error: null, duplicateOf: null, libraryId: null });
 			added += 1;
 		}
 		if (unsupported.length > 0 || tooLarge.length > 0 || ignored > 0) this.notice = { unsupported, tooLarge, ignored };
@@ -286,7 +293,7 @@ export class UploadQueue {
 		}
 		let finish!: () => void;
 		const done = new Promise<void>((resolve) => (finish = resolve));
-		this.#run = { controller: new AbortController(), done, finish, halted: false, uploaded: 0 };
+		this.#run = { controller: new AbortController(), done, finish, halted: false, changed: false, libraryId: this.libraryId };
 		this.running = true;
 		this.stopped = null;
 		this.#pump();
@@ -335,24 +342,35 @@ export class UploadQueue {
 		row.loaded = 0;
 		row.error = null;
 		try {
-			const item = await this.#upload(row.file, {
-				signal: run.controller.signal,
-				onprogress: (loaded, total) => {
-					row.total = total ?? row.file.size;
-					row.loaded = Math.min(loaded, row.total);
+			if (!row.item) {
+				row.libraryId = run.libraryId;
+				row.item = await this.#upload(row.file, {
+					signal: run.controller.signal,
+					onprogress: (loaded, total) => {
+						row.total = total ?? row.file.size;
+						row.loaded = Math.min(loaded, row.total);
+					}
+				});
+				run.changed = true;
+			}
+			if (row.libraryId !== null) {
+				const id = row.item.id;
+				const results = await this.#assign({ ids: [id], library_id: row.libraryId, shelf_ids: [] });
+				if (!results.some((result) => result.id === id && result.ok)) {
+					throw new Error('Bookheap assignment was not accepted');
 				}
-			});
+				// Assignment-only retries must also refresh Bookheap consumers.
+				run.changed = true;
+			}
 			row.status = 'done';
 			row.loaded = row.total;
-			row.item = item;
-			run.uploaded += 1;
 		} catch (error) {
 			if (run.controller.signal.aborted && isAbortError(error)) {
 				this.#reset(row);
 			} else {
 				const failure = classifyUploadError(error);
 				row.status = 'error';
-				row.error = failure.kind;
+				row.error = row.item && !failure.stop ? 'unknown' : failure.kind;
 				row.duplicateOf = failure.duplicateOf;
 				if (failure.stop) {
 					run.halted = true;
@@ -369,7 +387,7 @@ export class UploadQueue {
 		if (this.#run !== run) return;
 		this.#run = null;
 		this.running = false;
-		if (run.uploaded > 0) this.#notify();
+		if (run.changed) this.#notify();
 		run.finish();
 	}
 }

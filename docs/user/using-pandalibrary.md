@@ -42,7 +42,7 @@ Opening a book shows four tabs:
 | **Details** | Description and metadata, your reading status and rating, shelves, and reviews |
 | **Files** | The book's files. Read, download or save a file for offline reading |
 | **Activities** | Your reading progress, reading sessions and summary. You can add a session by hand |
-| **Highlights** | Your highlights for this book; each one opens the reader at that place |
+| **Annotations** | Your reviews, comments, private notes, highlights, underlines, strikeouts, inserted text, drawings and images for this book only |
 
 Reading statuses: Unread, Want to read, Reading, Re-reading, On hold, Read,
 Skimmed and Abandoned.
@@ -59,13 +59,22 @@ The back button returns to the list you came from. The **‹ ›** buttons, or t
 Choose **Read** or **Resume** on a book to open it in the browser. Your
 position is saved automatically and syncs across your devices.
 
-In non-PDF readers you can:
+All supported formats share a full-screen reader with a compact toolbar, reading
+progress, sync status, close button and left sidebar. The app header and library
+sidebar are hidden while reading. The reader sidebar docks on wide screens and
+overlays the book on smaller screens.
 
-- open **Reader settings → Format** to change font, size, spacing and
-  background live; page flow stays in Reader settings. Use **Save settings**
+In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:
+
+- use **Contents** to jump to a chapter when the book provides a contents list;
+- open **Format** in the toolbar to change font, size, spacing, background and
+  page flow live (comics offer size and background controls). Use **Save settings**
   for this book or **Save as format default** for other books of that format;
-- select text to highlight it and attach a note;
-- add bookmarks at exact positions.
+- select text, then open **Annotations** to highlight it and attach a note;
+- open **Bookmarks** to save, edit or jump to exact positions;
+- use the previous/next buttons, arrow keys or position slider to navigate.
+
+On narrow screens, **Format** is inside **More view options**, like PDF view menus.
 
 Reading time is recorded as sessions for your stats; idle time is not counted.
 
@@ -236,11 +245,13 @@ drawings and images jump to their position in the reader.
 Existing standalone private book notes open book details.
 If the annotations API is unavailable after updating the frontend, restart or update the
 backend too.
-There is no export panel on the Annotations page. Use the book's **Highlights**
+There is no export panel on the Annotations page. Use the book's **Annotations**
 tab to export that book's annotations.
-The book's **Highlights** tab labels underline and strikeout marks and can
-filter by style; older highlights retain the normal highlight style. It also
-shows inserted text. Exports label underline and strikeout marks and include
+The book's **Annotations** tab offers the same annotation types as the sidebar
+page, scoped to this book. Filter by type or search text and notes; highlights
+and their attached comments retain the chapter view and colour/style filters.
+Reviews require a connection; saved reader annotations remain available offline.
+Older highlights retain the normal highlight style. Exports label underline and strikeout marks and include
 inserted text, drawings and images with their page numbers (images are listed,
 not embedded). Oversized exports fail rather than silently dropping items.
 

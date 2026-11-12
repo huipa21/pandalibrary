@@ -9,6 +9,9 @@ async function authenticate(page: Page, role = 'admin', locale = 'en') {
 		route.fulfill({ json: { user: { id: 1, username: 'admin', display_name: 'Admin', role, locale } } })
 	);
 	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/admin/libraries?*', (route) => route.fulfill({ json: { items: [
+		{ id: 2, name: 'Main', slug: 'main', created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z' }
+	], next_cursor: null } }));
 	for (const [key, id] of [['unshelved', 8], ['favorites', 9]] as const) {
 		await page.route(`**/api/v1/shelves/system/${key}`, (route) => route.fulfill({ json: { shelf: {
 			id, kind: 'private', mode: 'system', system_key: key, owner_id: 1, name: key,
@@ -88,6 +91,7 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(dialog.getByRole('button', { name: 'Select files' })).toBeFocused();
 	await expect(dialog.getByText('No files yet.', { exact: false })).toBeVisible();
 	await expect(dialog.getByRole('button', { name: 'Clear' })).toBeDisabled();
+	await expect(dialog.getByLabel('Library (optional)')).toHaveValue('');
 	const upload = dialog.getByRole('button', { name: /^(Upload|Uploading…)$/ });
 	await expect(upload).toBeDisabled();
 	await expect(dialog.getByTestId('bh3-file-input')).toHaveAttribute('accept', '.epub,.pdf,.mobi,.azw3,.fb2,.fbz,.cbz');
@@ -130,6 +134,8 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(dialog.getByTestId('bh3-result')).toHaveText('1 uploaded, 2 duplicate, 1 failed');
 	const statuses = list.getByTestId('bh3-row-status');
 	await expect(statuses).toHaveText(['Added as “Dune”', 'Already in your library', 'Already in Bookheap', 'Server error. You can retry.']);
+	await expect(list.getByTestId('bh3-success-mark')).toHaveCount(1);
+	await expect(list.locator('[data-status="done"]')).toHaveClass(/bg-emerald-50/);
 	await expect(list.getByRole('link', { name: 'Already in your library' })).toHaveAttribute('href', '/books/4');
 	await expect(dialog.getByRole('link', { name: 'View Bookheap' })).toHaveAttribute('href', '/bookheap');
 	await expect(dialog.locator('[aria-live="polite"]')).toHaveText('1 uploaded, 2 duplicate, 1 failed');
@@ -154,6 +160,38 @@ test('administrators upload many files from the header dialog with per-file resu
 	await dialog.getByRole('button', { name: 'Close' }).last().click();
 	await expect(dialog).toBeHidden();
 	await expect(trigger).toBeFocused();
+});
+
+test('uploads optionally assign a library and retry assignment failures without re-uploading', async ({ page }) => {
+	await authenticate(page);
+	let uploads = 0;
+	const assignments: unknown[] = [];
+	await page.route('**/api/v1/admin/bookheap/files', (route) => {
+		uploads += 1;
+		return route.fulfill({ status: 201, json: { item: heapItem(12, 'Dune.epub', 'Dune') } });
+	});
+	await page.route('**/api/v1/admin/bookheap/assign', (route) => {
+		assignments.push(route.request().postDataJSON());
+		if (assignments.length === 1) return problem(route, 503);
+		return route.fulfill({ status: 202, json: { results: [{ id: 12, ok: true, error: null, import_job_id: 42 }] } });
+	});
+	await page.goto('/');
+	await page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Upload books' });
+	await dialog.getByLabel('Library (optional)').selectOption({ label: 'Main' });
+	await dialog.getByTestId('bh3-file-input').setInputFiles(book('Dune.epub'));
+	await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
+	await expect(dialog.getByTestId('bh3-row-status')).toHaveText('Uploaded, but library assignment failed. Retry or assign from Bookheap.');
+	await expect(dialog.getByTestId('bh3-success-mark')).toHaveCount(0);
+	await dialog.getByRole('button', { name: 'Retry failed' }).click();
+	await expect(dialog.getByTestId('bh3-row-status')).toHaveText('Uploaded “Dune” — queued for library import');
+	await expect(dialog.getByTestId('bh3-success-mark')).toBeVisible();
+	await expect(dialog.getByTestId('bh3-result')).toHaveText('1 uploaded, 0 duplicate, 0 failed');
+	expect(uploads).toBe(1);
+	expect(assignments).toEqual([
+		{ ids: [12], library_id: 2, shelf_ids: [] },
+		{ ids: [12], library_id: 2, shelf_ids: [] }
+	]);
 });
 
 test('closing during an upload asks for confirmation and aborts in-flight files', async ({ page }) => {

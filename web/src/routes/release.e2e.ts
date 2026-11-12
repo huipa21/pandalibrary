@@ -90,6 +90,7 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 		selection?.addRange(range);
 		document.dispatchEvent(new Event('selectionchange'));
 	});
+	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 	await page.getByRole('button', { name: 'Highlight selection' }).click();
 	await page.getByRole('button', { name: 'Add note to highlight' }).click();
 	await page.getByRole('textbox', { name: 'Note in Markdown' }).fill('Release validation note');

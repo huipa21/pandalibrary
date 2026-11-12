@@ -5,7 +5,6 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { translate } from '#lib/paging/translate.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
-	import { BoundedPoller } from '#lib/admin/poller.js';
 	import { focusRing, primaryButton, dangerButton, linkClass } from '#lib/admin/ui.js';
 	import ClearFiltersButton from '#lib/catalog/ClearFiltersButton.svelte';
 	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
@@ -17,7 +16,7 @@
 	import HeapItemTile from './HeapItemTile.svelte';
 	import ScanControl from './ScanControl.svelte';
 	import ScanStatus from './ScanStatus.svelte';
-	import { BOOKHEAP_CHANGED_EVENT, notifyBookheapChanged } from './events.js';
+	import { BOOKHEAP_CHANGED_EVENT, BOOKHEAP_PROGRESS_EVENT, notifyBookheapChanged } from './events.js';
 	import { HeapList } from './heap-list.svelte.js';
 	import {
 		EMPTY_HEAP_QUERY,
@@ -33,24 +32,15 @@
 	} from './query.js';
 	import { heapErrorKey, type BulkOutcome } from './results.js';
 	import { ScanController } from './scan.svelte.js';
-	import { HeapSelection, isActive, MAX_SELECTION } from './selection.svelte.js';
+	import { HeapSelection, MAX_SELECTION } from './selection.svelte.js';
 	import type { HeapItem } from './types.js';
 
 	const SEARCH_DEBOUNCE_MS = 300;
-	const SHELVES_CHANGED_EVENT = 'pandalibrary-shelves-changed';
 	const VIEW_KEY = 'pandalibrary.bookheap.view';
 
 	const list = new HeapList();
 	const selection = new HeapSelection();
 	const scan = new ScanController({ onfinish: () => notifyBookheapChanged() });
-	// Follows queued/importing items until they settle; ~10 minutes per start.
-	const livePoller = new BoundedPoller(
-		async () => {
-			await refreshList();
-			return list.hasActive;
-		},
-		{ intervalMs: 3000, maxTicks: 200 }
-	);
 
 	const query = $derived(heapQueryFromSearch(page.url.searchParams));
 	const queryKey = $derived(heapQueryKey(query));
@@ -95,10 +85,6 @@
 		if (pageCheckbox) pageCheckbox.indeterminate = pageState === 'some';
 	});
 
-	$effect(() => {
-		if (list.status === 'ready' && list.hasActive && !livePoller.active) livePoller.start();
-	});
-
 	onMount(() => {
 		try {
 			const saved = localStorage.getItem(VIEW_KEY);
@@ -110,10 +96,11 @@
 		void scan.attach();
 		const changed = () => void refreshList();
 		window.addEventListener(BOOKHEAP_CHANGED_EVENT, changed);
+		window.addEventListener(BOOKHEAP_PROGRESS_EVENT, changed);
 		return () => {
 			window.removeEventListener(BOOKHEAP_CHANGED_EVENT, changed);
+			window.removeEventListener(BOOKHEAP_PROGRESS_EVENT, changed);
 			if (searchTimer !== null) clearTimeout(searchTimer);
-			livePoller.stop();
 			scan.dispose();
 			list.dispose();
 		};
@@ -130,14 +117,11 @@
 		}
 	}
 
-	/** Re-reads the shown pages, keeps the selection in step, and reports imported shelf members. */
+	/** Re-reads the shown pages and keeps the selection in step with background imports. */
 	async function refreshList() {
-		const shelved = list.items.filter((item) => isActive(item) && item.target_shelf_ids.length > 0).map((item) => item.id);
 		const complete = await list.refresh();
 		if (list.status !== 'ready') return;
 		selection.sync(list.items, complete);
-		const listed = new Set(list.items.map((item) => item.id));
-		if (shelved.some((id) => !listed.has(id))) window.dispatchEvent(new CustomEvent(SHELVES_CHANGED_EVENT));
 	}
 
 	async function changeQuery(next: HeapQuery) {

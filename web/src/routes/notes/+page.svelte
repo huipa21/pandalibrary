@@ -9,7 +9,7 @@
 	import PersonalActivityFeed from '#lib/notes/PersonalActivityFeed.svelte';
 	import AnnotationEntry from '#lib/notes/AnnotationEntry.svelte';
 	import SearchField from '#lib/search/SearchField.svelte';
-	import { filterControlClass } from '#lib/catalog/filter-styles.js';
+	import KindFilter from '#lib/notes/KindFilter.svelte';
 	import { annotationKindFilter } from '#lib/notes/entry.js';
 	import {
 		annotationErrorKey, annotationQueryIssue, isShortQuery,
@@ -20,18 +20,6 @@
 	const search = new AnnotationSearch();
 	const query = $derived(normalizeAnnotationQuery(page.url.searchParams.get(NOTES_QUERY_PARAM)));
 	const kind = $derived(annotationKindFilter(page.url.searchParams.get('kind')));
-	const kindOptions = [
-		{ value: '', label: m['notes.filter.all'] },
-		{ value: 'review', label: m['notes.activity.review'] },
-		{ value: 'comment', label: m['notes.activity.comment'] },
-		{ value: 'book_note', label: m['notes.activity.private_note'] },
-		{ value: 'highlight', label: m['notes.kind.highlight'] },
-		{ value: 'underline', label: m['pv10.underline'] },
-		{ value: 'strikeout', label: m['pv10.strikeout'] },
-		{ value: 'text', label: m['pv10.text'] },
-		{ value: 'ink', label: m['pv10.drawing'] },
-		{ value: 'image', label: m['pv10.image'] }
-	];
 	const queryIssue = $derived(annotationQueryIssue(query));
 	let draft = $state('');
 	let validation = $state('');
@@ -85,16 +73,7 @@
 <section class="space-y-8" aria-labelledby="notes-heading">
 	<h1 id="notes-heading" class="sr-only">{m['notes.title']()}</h1>
 	<form role="search" aria-label={m['notes.landmark']()} class="flex min-w-0 flex-wrap items-center gap-3" onsubmit={submit} novalidate>
-		<select
-			aria-label={m['notes.filter.label']()}
-			class="{filterControlClass} min-w-40 max-w-full"
-			value={kind}
-			onchange={(event) => goto(notesPageHref(draft, annotationKindFilter(event.currentTarget.value)), { reset: false })}
-		>
-			{#each kindOptions as option (option.value)}
-				<option value={option.value}>{option.label()}</option>
-			{/each}
-		</select>
+		<KindFilter value={kind} onchange={(next) => goto(notesPageHref(draft, next), { reset: false })} />
 		<SearchField
 			class="min-w-52 flex-1 sm:max-w-sm"
 			id="notes-query"

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, tick } from 'svelte';
+	import { getContext, tick, type Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { BACKGROUNDS, type BackgroundId } from '../appearance.js';
@@ -17,9 +17,10 @@
 		onsize: (size: number) => void;
 		onspacing: (spacing: number) => void;
 		onbackground: (background: BackgroundId) => void;
+		children?: Snippet;
 	}
 
-	let { typography, font, size, spacing, background, onfont, onsize, onspacing, onbackground }: Props = $props();
+	let { typography, font, size, spacing, background, onfont, onsize, onspacing, onbackground, children }: Props = $props();
 	const id = $props.id();
 	const nested = getContext<boolean>('pv4-menu') ?? false;
 	const fonts: { value: Font; label: () => string }[] = [
@@ -253,6 +254,7 @@
 				</div>
 			</section>
 			{#if !typography}<p class="pv4-hint rp2-hint">{m['rp2.font_hint']()}</p>{/if}
+			{@render children?.()}
 		</div>
 	{/if}
 </div>

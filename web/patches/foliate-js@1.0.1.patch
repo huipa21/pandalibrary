@@ -1,0 +1,22 @@
+diff --git a/paginator.js b/paginator.js
+index 95c4d0dae16bd96c3ace91bbd87fd1bea1c9f571..e894bdd37cd87169a318f1e98f7be2bda1ba1cf4 100644
+--- a/paginator.js
++++ b/paginator.js
+@@ -408,7 +408,7 @@ class View {
+         return this.#overlayer
+     }
+     destroy() {
+-        if (this.document) this.#observer.unobserve(this.document.body)
++        this.#observer.disconnect()
+     }
+ }
+ 
+@@ -1155,7 +1155,7 @@ export class Paginator extends HTMLElement {
+         this.#view.document.defaultView.focus()
+     }
+     destroy() {
+-        this.#observer.unobserve(this)
++        this.#observer.disconnect()
+         this.#view.destroy()
+         this.#view = null
+         this.sections[this.#index]?.unload?.()

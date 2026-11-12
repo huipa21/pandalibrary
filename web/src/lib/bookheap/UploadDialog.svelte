@@ -4,6 +4,10 @@
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { translate } from '#lib/paging/translate.js';
 	import { focusableWithin, nextTrappedFocus } from '#lib/shell/focus.js';
+	import { listAllAdminLibraries } from '#lib/admin/api.js';
+	import type { Library } from '#lib/admin/types.js';
+	import { inputClass } from '#lib/admin/ui.js';
+	import { heapErrorKey } from './results.js';
 	import {
 		UPLOAD_ACCEPT,
 		filesFromDataTransfer,
@@ -30,6 +34,10 @@
 	let uploadButton = $state<HTMLButtonElement | null>(null);
 	let dragDepth = $state(0);
 	let confirming = $state(false);
+	let libraries = $state<Library[]>([]);
+	let librariesError = $state('');
+	let librariesLoading = $state(false);
+	let librariesController: AbortController | null = null;
 
 	const counts = $derived(queue.counts);
 	const finished = $derived(counts.uploaded + counts.duplicates + counts.failed);
@@ -63,6 +71,28 @@
 	$effect(() => {
 		if (!queue.running) confirming = false;
 	});
+
+	$effect(() => {
+		if (!open) return;
+		void loadLibraries();
+		return () => librariesController?.abort();
+	});
+
+	async function loadLibraries() {
+		librariesController?.abort();
+		const controller = new AbortController();
+		librariesController = controller;
+		librariesLoading = true;
+		librariesError = '';
+		try {
+			const result = await listAllAdminLibraries(controller.signal);
+			if (!controller.signal.aborted) libraries = result;
+		} catch (cause) {
+			if (!controller.signal.aborted) librariesError = translate(heapErrorKey(cause, 'load_targets'));
+		} finally {
+			if (!controller.signal.aborted) librariesLoading = false;
+		}
+	}
 
 	function finishClose() {
 		queue.dropDone();
@@ -168,10 +198,13 @@
 			case 'pending':
 				return m['bh3.status_pending']();
 			case 'uploading':
+				if (row.item) return m['bh3.status_assigning']();
 				return m['bh3.status_uploading']({ percent: uploadPercent(row) });
 			case 'done':
+				if (row.libraryId !== null) return m['bh3.assigned_title']({ title: row.item?.title ?? row.file.name });
 				return row.item ? m['bh3.done_title']({ title: row.item.title }) : m['bh3.status_done']();
 			case 'error':
+				if (row.item) return m['bh3.assignment_failed']();
 				return translate(`bh3.error_${row.error ?? 'unknown'}`);
 		}
 	}
@@ -205,6 +238,31 @@
 		</div>
 
 		<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+			<div class="space-y-2">
+				<label for="bh3-library" class="block text-sm font-medium">{m['bh3.library']()}</label>
+				<select
+					id="bh3-library"
+					class={`w-full ${inputClass}`}
+					value={queue.libraryId === null ? '' : String(queue.libraryId)}
+					disabled={queue.running || librariesLoading}
+					aria-describedby="bh3-library-help"
+					onchange={(event) => {
+						queue.libraryId = event.currentTarget.value ? Number(event.currentTarget.value) : null;
+					}}
+				>
+					<option value="">{m['bh3.library_none']()}</option>
+					{#each libraries as library (library.id)}
+						<option value={String(library.id)}>{library.name}</option>
+					{/each}
+				</select>
+				<p id="bh3-library-help" class="text-xs text-slate-600">{m['bh3.library_help']()}</p>
+				{#if librariesError}
+					<div class="flex items-center gap-2 text-sm text-red-800" role="alert">
+						<p>{librariesError}</p>
+						<button type="button" class="underline" onclick={() => void loadLibraries()}>{m['admin.retry']()}</button>
+					</div>
+				{/if}
+			</div>
 			<div
 				role="group"
 				aria-labelledby="bh3-drop-label"
@@ -289,13 +347,16 @@
 				<ul class="max-h-80 divide-y divide-slate-200 overflow-y-auto rounded-md border border-slate-200" aria-label={m['bh3.list_label']()}>
 					{#each queue.rows as row (row.id)}
 						{@const percent = uploadPercent(row)}
-						<li class="flex items-center gap-3 px-3 py-2" data-status={row.status}>
+						<li class={['flex items-center gap-3 px-3 py-2', row.status === 'done' ? 'bg-emerald-50' : '']} data-status={row.status}>
+							{#if row.status === 'done'}
+								<svg data-testid="bh3-success-mark" aria-hidden="true" viewBox="0 0 24 24" class="size-7 shrink-0 rounded-full bg-emerald-700 p-1 text-white" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6" /></svg>
+							{/if}
 							<div class="min-w-0 flex-1">
 								<p class="truncate text-sm font-medium" title={row.file.name}>{row.file.name}</p>
 								<p class="flex flex-wrap gap-x-2 text-xs text-slate-600">
 									<span>{formatBytes(row.file.size, getLocale())}</span>
 									<span
-										class={row.status === 'error' ? 'text-red-700' : row.status === 'done' ? 'text-emerald-700' : ''}
+										class={row.status === 'error' ? 'text-red-700' : row.status === 'done' ? 'font-semibold text-emerald-800' : ''}
 										data-testid="bh3-row-status"
 									>
 										{#if row.status === 'error' && row.error === 'duplicate_book' && row.duplicateOf !== null && !queue.running}
@@ -362,7 +423,7 @@
 							</p>
 						{/if}
 						{#if hasResults}
-							<p class="font-medium" data-testid="bh3-result">
+							<p class={['mt-2 rounded-md border px-3 py-2 font-semibold', counts.failed > 0 ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-300 bg-emerald-50 text-emerald-900']} data-testid="bh3-result">
 								{m['bh3.result']({ uploaded: counts.uploaded, duplicates: counts.duplicates, failed: counts.failed })}
 							</p>
 						{/if}

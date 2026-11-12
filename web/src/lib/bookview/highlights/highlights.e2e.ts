@@ -58,7 +58,7 @@ const highlights = [
 const notes = [
 	note('n1', 'h1', 'A **strong** opening<script>window.__noteAttack = true</script>'),
 	note('n4', 'h4', 'Compare with *Proust*'),
-	note('book', null, 'Book-level review that belongs to Details')
+	note('book', null, 'Private book note')
 ];
 const textInsert = {
 	id: 'text', book_id: BOOK_ID, book_file_id: 51, kind: 'text',
@@ -81,6 +81,9 @@ async function mockApi(page: Page, state: { highlights: unknown[]; notes: unknow
 	);
 	await page.route('**/api/v1/shelves**', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route(`**/api/v1/books/${BOOK_ID}`, (route) => route.fulfill({ json: { book } }));
+	await page.route(`**/api/v1/books/${BOOK_ID}/reviews?*`, (route) => route.fulfill({ json: {
+		mine: null, items: [], next_cursor: null, total: 0
+	} }));
 	await page.route(`**/api/v1/me/books/${BOOK_ID}`, (route) => route.fulfill({ json: {
 		user_book: null, progress: null, bookmarks: [], highlights: state.highlights, notes: state.notes, page_annotations: state.page_annotations ?? []
 	} }));
@@ -117,7 +120,7 @@ test('style badges and filters distinguish legacy, underline and strikeout marks
 	await open(page);
 	await expect(items(page).nth(1).getByText('Underline', { exact: true })).toBeVisible();
 	await expect(items(page).nth(2).getByText('Strikeout', { exact: true })).toBeVisible();
-	await expect(page.getByRole('region', { name: 'Inserted text' })).toContainText('Inserted 中文');
+	await expect(page.getByRole('list', { name: 'Annotations', exact: true })).toContainText('Inserted 中文');
 	await page.getByRole('button', { name: 'Filters', exact: true }).click();
 	await page.getByRole('checkbox', { name: 'Underline', exact: true }).check();
 	await expect(items(page)).toHaveCount(1);
@@ -164,14 +167,14 @@ test('invalid stored colours use the yellow display fallback without changing th
 test('inserted text remains visible and exportable without any highlights', async ({ page }) => {
 	const { exports } = await mockApi(page, { highlights: [], notes: [], page_annotations: [textInsert] });
 	await page.goto(`/books/${BOOK_ID}/highlights`);
-	await expect(page.getByRole('region', { name: 'Inserted text' })).toContainText('Inserted 中文');
+	await expect(page.getByRole('list', { name: 'Annotations', exact: true })).toContainText('Inserted 中文');
 	await page.getByRole('button', { name: 'Export', exact: true }).click();
 	await expect.poll(() => exports.length).toBe(1);
 });
 test('groups highlights by chapter with counts, notes and a summary', async ({ page }) => {
 	await mockApi(page);
 	await open(page);
-	await expect(overview(page).getByRole('heading', { name: '7 marks · 6 chapters' })).toBeVisible();
+	await expect(overview(page).getByRole('heading', { name: '8 marks · 6 chapters' })).toBeVisible();
 	const headings = list(page).getByRole('heading', { level: 2 });
 	await expect(headings).toHaveCount(6);
 	await expect(headings.first()).toHaveAccessibleName('Chapter One (2 highlights)');
@@ -179,7 +182,7 @@ test('groups highlights by chapter with counts, notes and a summary', async ({ p
 	await expect(items(page)).toHaveCount(7);
 	await expect(items(page).first()).toContainText('It was a bright cold day in April');
 	await expect(page.getByText('Deleted highlight text')).toHaveCount(0);
-	await expect(page.getByText('Book-level review')).toHaveCount(0);
+	await expect(page.getByText('Private book note')).toBeVisible();
 	const firstNote = items(page).first().locator('.reader-markdown');
 	await expect(firstNote.locator('strong')).toHaveText('strong');
 	await expect(firstNote.locator('script')).toHaveCount(0);
@@ -188,32 +191,32 @@ test('groups highlights by chapter with counts, notes and a summary', async ({ p
 	await expect(overview(page).getByText('EPUB')).toBeVisible();
 	await expect(overview(page).getByText('PDF')).toBeVisible();
 	await expect(overview(page).getByText('Unknown')).toBeVisible();
-	await expect(overview(page).getByRole('img', { name: /Highlights per week/ }).locator('rect')).toHaveCount(52);
+	await expect(overview(page).getByRole('img', { name: /Annotations per week/ }).locator('rect')).toHaveCount(52);
 });
 
 test('search narrows the list, marks matches and syncs ?q=', async ({ page }) => {
 	await mockApi(page);
 	await open(page);
-	await page.getByRole('searchbox', { name: 'Search highlights' }).fill('cafe');
+	await page.getByRole('searchbox', { name: 'Search annotations' }).fill('cafe');
 	await expect(page).toHaveURL(/[?&]q=cafe/);
 	await expect(items(page)).toHaveCount(1);
 	await expect(items(page).first().locator('mark')).toHaveText('Café');
-	await expect(page.getByText('Showing 1 of 7')).toBeVisible();
-	await page.getByRole('searchbox', { name: 'Search highlights' }).fill('proust');
+	await expect(page.getByText('Showing 1 of 8')).toBeVisible();
+	await page.getByRole('searchbox', { name: 'Search annotations' }).fill('proust');
 	await expect(items(page)).toHaveCount(1);
 	await expect(items(page).first()).toContainText('Memory is a strange garden');
-	await page.getByRole('searchbox', { name: 'Search highlights' }).fill('zzz');
-	await expect(page.getByText('No highlights match these filters')).toBeVisible();
+	await page.getByRole('searchbox', { name: 'Search annotations' }).fill('zzz');
+	await expect(page.getByText('No annotations match these filters')).toBeVisible();
 	await page.getByRole('button', { name: 'Clear filters' }).click();
 	await expect(items(page)).toHaveCount(7);
 	await expect(page).not.toHaveURL(/[?&]q=/);
-	await expect(page.getByRole('searchbox', { name: 'Search highlights' })).toHaveValue('');
+	await expect(page.getByRole('searchbox', { name: 'Search annotations' })).toHaveValue('');
 });
 
 test('the Notes toggle shows only highlights with notes', async ({ page }) => {
 	await mockApi(page);
 	await open(page);
-	const toggle = page.getByRole('button', { name: 'Notes 2' });
+	const toggle = page.getByRole('button', { name: 'Notes 3' });
 	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 	await toggle.click();
 	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
@@ -242,13 +245,13 @@ test('colour chips in the sidebar and the filters popover filter by colour', asy
 test('changing the sort reorders highlights and syncs ?sort=', async ({ page }) => {
 	await mockApi(page);
 	await open(page);
-	await page.getByRole('combobox', { name: 'Sort highlights' }).selectOption('newest');
+	await page.getByRole('combobox', { name: 'Sort annotations' }).selectOption('newest');
 	await expect(page).toHaveURL(/[?&]sort=newest/);
 	await expect(items(page).first()).toContainText('Epilogue words linger');
-	await page.getByRole('combobox', { name: 'Sort highlights' }).selectOption('oldest');
+	await page.getByRole('combobox', { name: 'Sort annotations' }).selectOption('oldest');
 	await expect(items(page).first()).toContainText('It was a bright cold day in April');
 	await page.reload();
-	await expect(page.getByRole('combobox', { name: 'Sort highlights' })).toHaveValue('oldest');
+	await expect(page.getByRole('combobox', { name: 'Sort annotations' })).toHaveValue('oldest');
 });
 
 test('the compact toggle clamps text and persists after reload', async ({ page }) => {
@@ -298,9 +301,89 @@ test('Open links to the reader with ?highlight= and is hidden for missing files'
 	await expect(page).toHaveURL(new RegExp(`/read/${BOOK_ID}/50\\?highlight=h1$`));
 });
 
-test('a book without highlights shows the empty state', async ({ page }) => {
-	await mockApi(page, { highlights: [], notes: [note('book', null, 'Only a review')] });
+test('a book without annotations shows the empty state', async ({ page }) => {
+	await mockApi(page, { highlights: [], notes: [] });
 	await page.goto(`/books/${BOOK_ID}/highlights`);
-	await expect(page.getByText('No highlights yet – highlights you make while reading appear here')).toBeVisible();
-	await expect(page.getByRole('searchbox', { name: 'Search highlights' })).toHaveCount(0);
+	await expect(page.getByText('No annotations yet – your annotations for this book appear here')).toBeVisible();
+	await expect(page.getByRole('searchbox', { name: 'Search annotations' })).toHaveCount(0);
+});
+
+test('Annotations includes every type for this book and shares the sidebar type filter', async ({ page }) => {
+	const inserted = (id: string, kind: string, data: unknown, extra = {}) => ({ ...textInsert, id, kind, data, ...extra });
+	await mockApi(page, {
+		highlights: [
+			highlights[0], { ...highlights[1], style: 'underline' }, { ...highlights[2], style: 'strikeout' },
+			{ ...highlights[3], book_id: 999, text: 'Other book highlight' }, highlights[7]
+		],
+		notes,
+		page_annotations: [
+			textInsert,
+			inserted('ink', 'ink', { color: '#112233', width: 0.01, strokes: [[0.1, 0.1, 0.2, 0.2]] }),
+			inserted('image', 'image', { asset: hash, media_type: 'image/png', width: 100, height: 100 }),
+			inserted('deleted', 'text', { ...textInsert.data, text: 'Deleted insert' }, { deleted_at: '2026-11-02T00:00:00Z' }),
+			inserted('foreign', 'text', { ...textInsert.data, text: 'Other book insert' }, { book_id: 999 })
+		]
+	});
+	await page.route(`**/api/v1/books/${BOOK_ID}/reviews?*`, (route) => route.fulfill({ json: {
+		mine: { id: 1, book_id: BOOK_ID, body: 'My review', created_at: textInsert.created_at },
+		items: [{ id: 2, book_id: BOOK_ID, body: 'Another reader review' }], next_cursor: null, total: 2
+	} }));
+	await open(page);
+	await expect(page.getByRole('navigation', { name: 'Book sections' }).getByRole('link', { name: 'Annotations', exact: true })).toHaveAttribute('aria-current', 'page');
+	await expect(page.getByText('Private book note')).toBeVisible();
+	await expect(page.getByText('My review', { exact: true })).toBeVisible();
+	await expect(page.getByText('Another reader review')).toHaveCount(0);
+	await expect(page.getByText('Other book insert')).toHaveCount(0);
+	await expect(page.getByText('Other book highlight')).toHaveCount(0);
+	await expect(page.getByText('Deleted highlight text')).toHaveCount(0);
+	await expect(page.getByText('Deleted insert')).toHaveCount(0);
+	const type = page.getByRole('combobox', { name: 'Annotation type' });
+	await expect(type.locator('option')).toHaveCount(10);
+	for (const kind of ['review', 'book_note', 'text', 'ink', 'image']) {
+		await type.selectOption(kind);
+		await expect(page).toHaveURL(new RegExp(`kind=${kind}`));
+		await expect(items(page)).toHaveCount(0);
+		await expect(page.getByRole('list', { name: 'Annotations', exact: true }).getByRole('listitem')).toHaveCount(1);
+	}
+	await expect(page.getByRole('list', { name: 'Annotations', exact: true }).getByRole('link')).toHaveAttribute('href', `/read/${BOOK_ID}/51?annotation=image`);
+	await type.selectOption('comment');
+	await expect(items(page)).toHaveCount(1);
+	await expect(items(page).first()).toContainText('strong');
+	await expect(page.getByRole('list', { name: 'Annotations', exact: true })).toContainText('Compare with');
+	await type.selectOption('text');
+	await page.getByRole('searchbox', { name: 'Search annotations' }).fill('absent');
+	await expect(page.getByText('No annotations match these filters')).toBeVisible();
+	await page.getByRole('button', { name: 'Clear filters' }).click();
+	await expect(type).toHaveValue('');
+	await expect(page.getByText('My review', { exact: true })).toBeVisible();
+});
+
+test('review failures do not hide reader annotations and can be retried', async ({ page }) => {
+	await mockApi(page);
+	let failed = true;
+	await page.route(`**/api/v1/books/${BOOK_ID}/reviews?*`, (route) => failed
+		? route.fulfill({ status: 503, json: { title: 'Unavailable', status: 503 } })
+		: route.fulfill({ json: { mine: null, items: [], next_cursor: null, total: 0 } }));
+	await open(page);
+	await expect(items(page)).toHaveCount(7);
+	await expect(page.getByRole('alert')).toContainText('Could not load your review');
+	failed = false;
+	await page.getByRole('button', { name: 'Try again', exact: true }).click();
+	await expect(page.getByRole('alert')).toHaveCount(0);
+	await expect(items(page)).toHaveCount(7);
+});
+
+test('non-highlight annotations are visible on their own with accurate totals', async ({ page }) => {
+	await mockApi(page, {
+		highlights: [], notes: [note('book', null, 'A private note without highlights')],
+		page_annotations: [{
+			...textInsert, id: 'only-drawing', kind: 'ink',
+			data: { color: '#112233', width: 0.01, strokes: [[0.1, 0.1, 0.2, 0.2]] }
+		}]
+	});
+	await page.goto(`/books/${BOOK_ID}/highlights`);
+	await expect(page.getByText('A private note without highlights')).toBeVisible();
+	await expect(page.getByRole('img', { name: 'Drawing', exact: true })).toBeVisible();
+	await expect(overview(page).getByRole('heading', { name: '2 marks · 0 chapters' })).toBeVisible();
+	await expect(page.getByText('No annotations yet', { exact: false })).toHaveCount(0);
 });

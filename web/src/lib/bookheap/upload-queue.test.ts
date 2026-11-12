@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import type { HeapItem } from './types.js';
+import type { assignHeapItems } from './api.js';
 import {
 	MAX_UPLOAD_BYTES,
 	UploadQueue,
@@ -99,6 +100,50 @@ describe('UploadQueue adding files', () => {
 });
 
 describe('UploadQueue uploading', () => {
+	it('assigns uploads to the library captured for the run, including files added during it', async () => {
+		const { calls, upload } = controlledUploader();
+		const assign = vi.fn<typeof assignHeapItems>().mockImplementation(async ({ ids }) =>
+			ids.map((id) => ({ id, ok: true, error: null, import_job_id: 100 + id }))
+		);
+		const queue = new UploadQueue({ upload, assign, notify: vi.fn(), concurrency: 1 });
+		queue.libraryId = 2;
+		queue.add([file('a.epub')]);
+		const run = queue.start();
+		queue.libraryId = 3;
+		queue.add([file('b.epub')]);
+		calls[0].resolve(item(1, 'A'));
+		await flush();
+		calls[1].resolve(item(2, 'B'));
+		await run;
+		expect(assign.mock.calls.map(([input]) => input)).toEqual([
+			{ ids: [1], library_id: 2, shelf_ids: [] },
+			{ ids: [2], library_id: 2, shelf_ids: [] }
+		]);
+		expect(queue.rows.map((row) => row.status)).toEqual(['done', 'done']);
+	});
+
+	it.each(['http', 'rejected', 'missing'] as const)('retries %s assignment failures without uploading the file again', async (failure) => {
+		const upload = vi.fn<Uploader>().mockResolvedValue(item(1, 'A'));
+		const assign = vi.fn<typeof assignHeapItems>();
+		if (failure === 'http') assign.mockRejectedValueOnce(problem(503));
+		else assign.mockResolvedValueOnce(failure === 'missing' ? [] : [{ id: 1, ok: false, error: 'failed', import_job_id: null }]);
+		assign.mockResolvedValueOnce([{ id: 1, ok: true, error: null, import_job_id: 101 }]);
+		const notify = vi.fn();
+		const queue = new UploadQueue({ upload, assign, notify });
+		queue.libraryId = 2;
+		queue.add([file('a.epub')]);
+		await queue.start();
+		expect(queue.rows[0]).toMatchObject({ status: 'error', item: { id: 1 }, libraryId: 2 });
+		expect(queue.counts).toMatchObject({ failed: 1, retryable: 1, duplicates: 0 });
+		expect(notify).toHaveBeenCalledTimes(1);
+		queue.libraryId = 3;
+		await queue.retryFailed();
+		expect(upload).toHaveBeenCalledTimes(1);
+		expect(assign).toHaveBeenLastCalledWith({ ids: [1], library_id: 2, shelf_ids: [] });
+		expect(queue.counts).toMatchObject({ uploaded: 1, failed: 0 });
+		expect(notify).toHaveBeenCalledTimes(2);
+	});
+
 	it('uploads at most two files at a time and moves rows through every status', async () => {
 		const { calls, upload } = controlledUploader();
 		const notify = vi.fn();

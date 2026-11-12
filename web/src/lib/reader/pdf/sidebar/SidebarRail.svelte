@@ -16,26 +16,27 @@
 <script lang="ts">
 	import Icon from '#lib/bookview/Icon.svelte';
 
-	let { tab, open, count, onselect }: {
+	let { tab, open, count, tabs = SIDEBAR_TABS, onselect }: {
 		tab: SidebarTab;
 		open: boolean;
 		count: number;
+		tabs?: readonly SidebarTab[];
 		onselect: (tab: SidebarTab) => void;
 	} = $props();
 
 	function onkeydown(event: KeyboardEvent) {
-		const index = SIDEBAR_TABS.indexOf((event.target as HTMLElement).dataset.tab as SidebarTab);
+		const index = tabs.indexOf((event.target as HTMLElement).dataset.tab as SidebarTab);
 		if (index < 0) return;
-		const last = SIDEBAR_TABS.length - 1;
+		const last = tabs.length - 1;
 		const next = { ArrowUp: index ? index - 1 : last, ArrowDown: index === last ? 0 : index + 1, Home: 0, End: last }[event.key];
 		if (next === undefined || event.altKey || event.ctrlKey || event.metaKey) return;
 		event.preventDefault();
-		document.getElementById(tabId(SIDEBAR_TABS[next]))?.focus();
+		document.getElementById(tabId(tabs[next]))?.focus();
 	}
 </script>
 
 <div class="pv-sidebar-rail" role="tablist" aria-orientation="vertical" aria-label={m['rp4.sidebar']()} tabindex="-1" {onkeydown}>
-	{#each SIDEBAR_TABS as item (item)}
+	{#each tabs as item (item)}
 		{@const meta = TAB_META[item]}
 		{@const selected = open && tab === item}
 		<button

@@ -7,6 +7,17 @@
 	import { renderMarkdown } from '#lib/reader/markdown.js';
 	import NoteEditor from '#lib/reader/NoteEditor.svelte';
 	import FormatMenu from '#lib/reader/toolbar/FormatMenu.svelte';
+	import ReaderFrame from '#lib/reader/frame/ReaderFrame.svelte';
+	import ReaderCloseButton from '#lib/reader/frame/ReaderCloseButton.svelte';
+	import ReaderStatusDot from '#lib/reader/frame/ReaderStatusDot.svelte';
+	import ReaderSidebar from '#lib/reader/frame/ReaderSidebar.svelte';
+	import ReaderToolbar from '#lib/reader/toolbar/ReaderToolbar.svelte';
+	import ProgressLabel from '#lib/reader/toolbar/ProgressLabel.svelte';
+	import Icon from '#lib/bookview/Icon.svelte';
+	import { readerChrome } from '#lib/shell/reader-chrome.js';
+	import { FoliateReader } from '#lib/reader/foliate.js';
+	import type { FoliateTocItem } from 'foliate-js/view.js';
+	import { createSidebarState, PANEL_WIDTH, RAIL_WIDTH, type SidebarTab } from '#lib/reader/pdf/sidebar/sidebar-state.svelte.js';
 	import { backgroundFor, withBackground } from '#lib/reader/appearance.js';
 	import type { Bookmark, Note } from '#lib/reader/types.js';
 	import type { ReaderController, NoteDraft, BookmarkDraft } from '#lib/reader/session/reader-controller.svelte.js';
@@ -15,7 +26,12 @@
 	let draft = $state<NoteDraft | null>(null);
 	let bookmarkDraft = $state<BookmarkDraft | null>(null);
 	let selectedColor = $state<HighlightColor>('yellow');
-	let showBookmarks = $state(false);
+	let engine = $state<FoliateReader | null>(null);
+	let announcement = $state('');
+	const tabs: readonly SidebarTab[] = ['toc', 'annotations', 'bookmarks'];
+	const sidebar = createSidebarState({ tabs });
+	const sidebarInset = $derived(RAIL_WIDTH + (sidebar.open && sidebar.docked ? PANEL_WIDTH : 0));
+	const background = $derived(backgroundFor(controller.settings));
 	const progressPercent = $derived(Math.round((controller.location?.fraction ?? 0) * 100));
 	$effect(() => {
 		if (draft?.highlightId && !controller.highlights.some((highlight) => highlight.id === draft?.highlightId)) draft = null;
@@ -24,14 +40,39 @@
 	});
 	onMount(() => {
 		if (!surface) throw new Error('The reader surface is unavailable.');
+		readerChrome.set('full');
 		controller.setDraftGuard(() => {
 			if (draft && draft.body !== draft.original && !window.confirm(m['reader.note.discard_confirm']())) return false;
 			if (bookmarkDraft && bookmarkDraft.label !== bookmarkDraft.original && !window.confirm(m['ux6.discard_confirm']())) return false;
 			return true;
 		});
-		void controller.attach(surface).catch((error) => console.error('Could not open the legacy reader view', error));
-		return () => controller.setDraftGuard(() => true);
+		let destroyed = false;
+		void controller.attach(surface).then((reader) => {
+			if (destroyed) return;
+			if (!(reader instanceof FoliateReader)) throw new Error('The attached reader does not support reflowable view controls.');
+			engine = reader;
+		}).catch((error) => {
+			console.error('Could not open the reader view', error);
+			if (!destroyed) readerChrome.set('default');
+		});
+		return () => {
+			destroyed = true;
+			controller.setDraftGuard(() => true);
+			sidebar.dispose();
+			readerChrome.set('default');
+		};
 	});
+	async function goToContents(href: string) {
+		try {
+			if (!engine) throw new Error('The reader is not ready.');
+			announcement = '';
+			await engine.goToContents(href);
+			if (!sidebar.docked) sidebar.collapse();
+		} catch (error) {
+			console.error('Could not navigate to the book contents destination', error);
+			announcement = m['reader.error.render']();
+		}
+	}
 	function openNote(highlightId: string | null, note?: Note) {
 		if (draft && draft.body !== draft.original && !window.confirm(m['reader.note.discard_confirm']())) return;
 		draft = { id: note?.id ?? uuidv7(), highlightId, body: note?.body_md ?? '', original: note?.body_md ?? '', editing: !!note };
@@ -67,75 +108,74 @@
 </script>
 
 {#if controller.book && controller.file && controller.format}
-	<article class="space-y-6">
-		<header class="flex flex-wrap items-start justify-between gap-4">
-			<div class="min-w-0 space-y-2">
-				<a class="text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href={`/books/${controller.book.id}`}>{m['reader.back']()}</a>
-				<h1 class="break-words text-2xl font-semibold tracking-tight">{controller.book.title}</h1>
-				<p class="text-sm text-slate-600">{controller.file.format.toUpperCase()}</p>
-			</div>
-			<button class="rounded-md border border-slate-300 bg-white px-4 py-2 font-medium focus-visible:outline-2 focus-visible:outline-offset-2" disabled={controller.closing} onclick={() => controller.close()}>
-				{controller.closing ? m['reader.closing']() : m['reader.close']()}
-			</button>
-		</header>
-
-		{#if controller.pendingError}
-			<div role="alert" class="space-y-2 rounded-md border border-red-200 bg-red-50 p-4 text-red-800">
-				<p>{controller.pendingError}</p>
-				<button class="underline focus-visible:outline-2" onclick={controller.retryWrites}>{m['reader.retry_saves']()}</button>
-				<a class="ml-4 underline focus-visible:outline-2" href={`/books/${controller.book.id}`}>{m['reader.leave_unsaved']()}</a>
-			</div>
-		{/if}
-		{#if controller.actionError}<p role="alert" class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800">{controller.actionError}</p>{/if}
-		{#if controller.savedMessage}<p role="status" class="text-sm text-green-700">{controller.savedMessage}</p>{/if}
-		{#if controller.opening}<p role="status" class="text-slate-600">{m['reader.loading']()}</p>{/if}
-
-		<section aria-label={m['reader.surface']()} class="space-y-3">
-			<!-- svelte-ignore a11y_no_noninteractive_tabindex: the book surface must be keyboard-scrollable -->
-			<div bind:this={surface} role="region" aria-label={m['reader.surface']()} tabindex="0" class="h-[65vh] min-h-[24rem] overflow-hidden rounded-md border border-slate-300 bg-white focus-visible:outline-2 focus-visible:outline-offset-2"></div>
-			<div class="flex flex-wrap items-center gap-3">
-				<button class="rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2" disabled={!controller.ready} onclick={() => controller.turnPage('previous')}>{m['reader.previous']()}</button>
-				<label for="reader-position" class="text-sm font-medium">{m['reader.position']()}</label>
-				<input id="reader-position" class="min-w-28 flex-1 accent-slate-900 focus-visible:outline-2" type="range" min="0" max="1000" value={Math.round((controller.location?.fraction ?? 0) * 1000)} aria-valuetext={`${progressPercent}%`} disabled={!controller.ready} onchange={(event) => controller.goToFraction(Number(event.currentTarget.value) / 1000)} />
-				<output for="reader-position" class="text-sm tabular-nums">{progressPercent}%</output>
-				<button class="rounded-md border border-slate-300 bg-white px-3 py-2 focus-visible:outline-2" disabled={!controller.ready} onclick={() => controller.turnPage('next')}>{m['reader.next']()}</button>
-			</div>
-			<p class="text-sm text-slate-600">{m['reader.keyboard_hint']()}</p>
-		</section>
-
-		<details class="rounded-md border border-slate-200 bg-white p-4">
-			<summary class="cursor-pointer text-lg font-semibold focus-visible:outline-2">{m['reader.settings.title']()}</summary>
-			<div class="mt-4 space-y-4">
-				<p class="text-sm text-slate-600">{m['reader.settings.scope']()}</p>
-				{#if controller.settingsWarning}<p role="alert" class="text-sm text-amber-800">{controller.settingsWarning}</p>{/if}
-				<div class="grid gap-4 sm:grid-cols-2">
-					<FormatMenu typography={true}
+	<ReaderFrame title={controller.book.title}>
+		{#snippet toolbar()}
+			<ReaderToolbar>
+				{#snippet left()}
+					<button class="pv4-button" aria-label={m['reader.previous']()} title={m['reader.previous']()} disabled={!controller.ready} onclick={() => controller.turnPage('previous')}><Icon name="chevron-left" /></button>
+					<ProgressLabel fraction={controller.location?.fraction ?? 0} />
+					<button class="pv4-button" aria-label={m['reader.next']()} title={m['reader.next']()} disabled={!controller.ready} onclick={() => controller.turnPage('next')}><Icon name="chevron-right" /></button>
+				{/snippet}
+				{#snippet status()}<ReaderStatusDot warning={controller.settingsWarning} onretry={() => controller.retryWrites()} />{/snippet}
+				{#snippet centre()}<h1 class="reader-title">{controller.book?.title}</h1>{/snippet}
+				{#snippet overflow()}
+					<FormatMenu typography={controller.format !== 'cbz'}
 						font={controller.settings.font} size={controller.settings.size} spacing={controller.settings.spacing}
-						background={backgroundFor(controller.settings).id}
+						background={background.id}
 						onfont={(font) => controller.applySettings({ font })}
 						onsize={(size) => controller.applySettings({ size })}
 						onspacing={(spacing) => controller.applySettings({ spacing })}
-						onbackground={(id) => controller.applySettings(withBackground(controller.settings, id))} />
-					{#if controller.format !== 'pdf' && controller.format !== 'cbz'}
-						<label class="space-y-1 text-sm font-medium">
-							<span>{m['reader.settings.flow']()}</span>
-							<select class="block w-full rounded-md border border-slate-300 p-2 focus-visible:outline-2" bind:value={controller.settings.flow} onchange={() => controller.applySettings()} disabled={!controller.ready}>
-								<option value="paginated">{m['reader.settings.paginated']()}</option>
-								<option value="scrolled">{m['reader.settings.scrolled']()}</option>
-							</select>
-						</label>
-					{/if}
-				</div>
-				<button class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={!controller.ready || controller.busy || !controller.canSaveSettings} onclick={() => controller.saveSettings()}>{m['reader.settings.save']()}</button>
-				<button class="rounded-md border border-slate-300 px-4 py-2 font-medium focus-visible:outline-2" disabled={!controller.ready || controller.busy} onclick={() => controller.saveSettings({}, 'format')}>{m['rp9.save_format']()}</button>
+						onbackground={(id) => controller.applySettings(withBackground(controller.settings, id))}>
+						<div class="mt-4 space-y-3">
+							{#if controller.format !== 'cbz'}
+								<label class="block space-y-1 text-sm">
+									<span>{m['reader.settings.flow']()}</span>
+									<select class="block w-full rounded-md border border-[var(--shell-border)] bg-[var(--shell-surface)] p-2" value={controller.settings.flow} onchange={(event) => controller.applySettings({ flow: event.currentTarget.value === 'scrolled' ? 'scrolled' : 'paginated' })} disabled={!controller.ready}>
+										<option value="paginated">{m['reader.settings.paginated']()}</option>
+										<option value="scrolled">{m['reader.settings.scrolled']()}</option>
+									</select>
+								</label>
+							{:else}
+								<label class="block text-sm">{m['rp2.size']()} <input aria-label={m['rp2.size']()} type="range" min="50" max="200" step="10" value={controller.settings.size} oninput={(event) => controller.applySettings({ size: Number(event.currentTarget.value) })} /></label>
+							{/if}
+							<p class="text-xs opacity-75">{m['reader.settings.scope']()}</p>
+							<button class="reader-action" disabled={!controller.ready || controller.busy || !controller.canSaveSettings} onclick={() => controller.saveSettings()}>{m['reader.settings.save']()}</button>
+							<button class="reader-action" disabled={!controller.ready || controller.busy} onclick={() => controller.saveSettings({}, 'format')}>{m['rp9.save_format']()}</button>
+						</div>
+					</FormatMenu>
+				{/snippet}
+				{#snippet right()}<ReaderCloseButton closing={controller.closing} onclose={() => controller.close()} />{/snippet}
+			</ReaderToolbar>
+		{/snippet}
+		<div class="absolute inset-y-0 right-0 flex min-w-0 flex-col" style:left="{sidebarInset}px">
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex: the book surface must be keyboard-scrollable -->
+			<div bind:this={surface} id="reader-surface" role="region" aria-label={m['reader.surface']()} tabindex="0"
+				data-background={background.id} data-tone={background.tone}
+				class="min-h-0 flex-1 overflow-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-500"></div>
+			<div class="reader-position flex items-center gap-3 px-4 py-2">
+				<label for="reader-position" class="sr-only">{m['reader.position']()}</label>
+				<input id="reader-position" class="min-w-0 flex-1 accent-emerald-700" type="range" min="0" max="1000" value={Math.round((controller.location?.fraction ?? 0) * 1000)} aria-valuetext={`${progressPercent}%`} disabled={!controller.ready} onchange={(event) => controller.goToFraction(Number(event.currentTarget.value) / 1000)} />
+				<p class="sr-only">{m['reader.keyboard_hint']()}</p>
 			</div>
-		</details>
-
+		</div>
+		<ReaderSidebar {sidebar} {tabs} count={controller.highlights.length}>
+			{#snippet children(tab)}
+				{#if controller.file && controller.format}
+				<div class="reader-panel space-y-4 p-4 text-sm">
+				{#if tab === 'toc'}
+					{#if !engine}
+						<p role="status">{m['reader.loading']()}</p>
+					{:else if engine.contents.length}
+						{@render contents(engine.contents)}
+					{:else}
+						<p class="opacity-75">{m['reader.contents.empty']()}</p>
+					{/if}
+				{:else if tab === 'annotations'}
 		<section aria-labelledby="annotations-heading" class="space-y-4">
 			<h2 id="annotations-heading" class="text-xl font-semibold">{m['reader.annotations.title']()}</h2>
 			<p class="text-sm text-slate-600">{m['reader.annotations.description']()}</p>
 			{#if controller.selection}
-				<div class="rounded-md border-l-4 border-yellow-400 bg-yellow-50 p-3 text-sm">
+				<div class="rounded-md border-l-4 border-yellow-400 bg-yellow-50 p-3 text-sm text-slate-900">
 					<p class="font-medium">{m['reader.annotations.selected']()}</p>
 					<p class="mt-1 whitespace-pre-wrap break-words">{controller.selection.text}</p>
 				</div>
@@ -199,12 +239,10 @@
 			{/each}
 		</section>
 
+				{:else if tab === 'bookmarks'}
 		<section aria-labelledby="bookmarks-heading" class="space-y-4">
 			<div class="flex items-center justify-between">
 				<h2 id="bookmarks-heading" class="text-xl font-semibold">{m['ux6.title']()}</h2>
-				<button class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus-visible:outline-2" aria-expanded={showBookmarks} disabled={!controller.ready || controller.busy} onclick={() => showBookmarks = !showBookmarks}>
-					{showBookmarks ? m['ux6.hide']() : m['ux6.show']()} ({controller.bookmarks.length})
-				</button>
 			</div>
 			<div class="flex flex-wrap gap-3">
 				<button class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={!controller.ready || controller.busy} onclick={() => bookmarkDraft = { id: uuidv7(), label: '', original: '', editing: false }}>{m['ux6.save_position']()}</button>
@@ -244,7 +282,7 @@
 
 			{#if !controller.bookmarks.length}
 				<p class="text-slate-600">{m['ux6.empty']()}</p>
-			{:else if showBookmarks}
+			{:else}
 				<div class="space-y-3">
 					{#each controller.bookmarks as bookmark (bookmark.id)}
 						<div class="space-y-2 rounded-md border border-slate-200 bg-white p-4">
@@ -268,9 +306,50 @@
 				</div>
 			{/if}
 		</section>
-	</article>
+				{/if}
+				</div>
+				{/if}
+			{/snippet}
+		</ReaderSidebar>
+		{#if controller.pendingError || controller.actionError || controller.opening || controller.savedMessage || announcement}
+			<div class="reader-alert absolute inset-x-2 top-2 z-20 max-h-[50%] overflow-auto rounded-md p-3 text-sm shadow-md">
+				{#if controller.pendingError}
+					<div role="alert" class="space-y-2">
+						<p>{controller.pendingError}</p>
+						<button class="underline focus-visible:outline-2" onclick={() => controller.retryWrites()}>{m['reader.retry_saves']()}</button>
+						<a class="ml-4 underline focus-visible:outline-2" href={`/books/${controller.book.id}`}>{m['reader.leave_unsaved']()}</a>
+					</div>
+				{/if}
+				{#if controller.actionError}<p role="alert">{controller.actionError}</p>{/if}
+				{#if announcement}<p role="alert">{announcement}</p>{/if}
+				{#if controller.savedMessage}<p role="status">{controller.savedMessage}</p>{/if}
+				{#if controller.opening}<p role="status">{m['reader.loading']()}</p>{/if}
+			</div>
+		{/if}
+	</ReaderFrame>
 {/if}
+
+{#snippet contents(items: FoliateTocItem[])}
+	<ul class="space-y-2">
+		{#each items as item}
+			{@const href = item.href}
+			<li>
+				{#if href}
+					<button class="w-full rounded-md px-2 py-1 text-left hover:bg-black/5 focus-visible:outline-2" onclick={() => goToContents(href)}>{item.label}</button>
+				{:else}<span>{item.label}</span>{/if}
+				{#if item.subitems?.length}<div class="mt-2 border-l border-[var(--shell-border)] pl-3">{@render contents(item.subitems)}</div>{/if}
+			</li>
+		{/each}
+	</ul>
+{/snippet}
 <style>
+	.reader-title { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 400; }
+	.reader-position, .reader-alert { background: var(--pv-chrome); color: var(--shell-text); }
+	.reader-action { border: 1px solid var(--shell-border); border-radius: 6px; padding: 6px 10px; }
+	.reader-action:disabled { opacity: .5; }
+	.reader-panel :global(.bg-white), .reader-panel :global(.bg-slate-50) { background: var(--shell-surface); color: var(--shell-text); }
+	.reader-panel :global(.text-slate-600) { color: var(--shell-muted); }
+	.reader-panel :global(select), .reader-panel :global(input) { background: var(--shell-surface); color: var(--shell-text); }
 	.reader-markdown :global(p),
 	.reader-markdown :global(ul),
 	.reader-markdown :global(ol),

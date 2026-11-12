@@ -172,12 +172,14 @@ export const WEEK_COUNT = 52;
 export function markStats(
 	marks: readonly Mark[],
 	now: Date = new Date(),
-	files: readonly Pick<BookFile, 'id' | 'format'>[] = []
+	files: readonly Pick<BookFile, 'id' | 'format'>[] = [],
+	other: readonly { created_at: string; book_file_id?: number }[] = []
 ): MarkStats {
+	const annotations = [...marks, ...other];
 	const formats = new Map(files.map((file) => [file.id, file.format.toLowerCase()]));
 	const formatCounts = new Map<string, number>();
-	for (const mark of marks) {
-		const format = (mark.book_file_id !== null && formats.get(mark.book_file_id)) || UNKNOWN_FORMAT;
+	for (const mark of annotations) {
+		const format = (mark.book_file_id != null && formats.get(mark.book_file_id)) || UNKNOWN_FORMAT;
 		formatCounts.set(format, (formatCounts.get(format) ?? 0) + 1);
 	}
 	const byFormat = [...formatCounts]
@@ -189,7 +191,7 @@ export function markStats(
 		const start = new Date(current.getFullYear(), current.getMonth(), current.getDate() - 7 * (WEEK_COUNT - 1 - index));
 		return { start: dayKey(start), count: 0 };
 	});
-	for (const mark of marks) {
+	for (const mark of annotations) {
 		const created = new Date(mark.created_at);
 		if (!Number.isFinite(created.getTime())) continue;
 		// Rounding absorbs the hour gained or lost when a DST change falls between the weeks.
@@ -202,7 +204,7 @@ export function markStats(
 	}
 
 	return {
-		total: marks.length,
+		total: annotations.length,
 		chapters: groupByChapter(marks).length,
 		byColor: colorCounts(marks),
 		byFormat,

@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import { createReaderController } from '#lib/reader/session/reader-controller.svelte.js';
-	import LegacyReaderView from '#lib/reader/views/LegacyReaderView.svelte';
+	import ReflowReaderView from '#lib/reader/views/ReflowReaderView.svelte';
 	import PdfReaderView from '#lib/reader/views/PdfReaderView.svelte';
 	const controller = createReaderController(() => ({
 		bookId: page.params.bookId ?? '', fileId: page.params.fileId ?? '',
@@ -27,5 +27,5 @@
 {:else if controller.format === 'pdf'}
 	<PdfReaderView {controller} />
 {:else}
-	<LegacyReaderView {controller} />
+	<ReflowReaderView {controller} />
 {/if}

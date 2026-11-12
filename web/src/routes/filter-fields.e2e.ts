@@ -47,6 +47,9 @@ async function mockApi(page: Page) {
 		if (path === '/me/books/21') return route.fulfill({ json: {
 			user_book: null, progress: null, bookmarks: [], highlights: [highlight], notes: [], page_annotations: []
 		} });
+		if (path === '/books/21/reviews') return route.fulfill({ json: {
+			mine: null, items: [], next_cursor: null, total: 0
+		} });
 		if (path === '/stats') return route.fulfill({ json: {
 			from: url.searchParams.get('from'), to: url.searchParams.get('to'),
 			timezone: url.searchParams.get('timezone'), daily: [], finished_per_month: [],
@@ -113,7 +116,7 @@ for (const theme of ['light', 'dark']) {
 			{ path: '/bookheap', label: 'Search', button: 'Search' },
 			{ path: '/notes', label: 'Search annotations', button: 'Search' },
 			{ path: '/shelves/7', label: 'Find a book to add', button: 'Find' },
-			{ path: '/books/21/highlights', label: 'Search highlights', button: 'Search' }
+			{ path: '/books/21/highlights', label: 'Search annotations', button: 'Search' }
 		]) {
 			await page.goto(destination.path);
 			const main = page.getByRole('main');
@@ -222,8 +225,8 @@ for (const theme of ['light', 'dark']) {
 		await expect(fileSort).toHaveValue('name');
 
 		await page.goto('/books/21/highlights');
-		const highlightsSearch = page.getByRole('searchbox', { name: 'Search highlights' });
-		const highlightsSort = page.getByRole('combobox', { name: 'Sort highlights', exact: true });
+		const highlightsSearch = page.getByRole('searchbox', { name: 'Search annotations' });
+		const highlightsSort = page.getByRole('combobox', { name: 'Sort annotations', exact: true });
 		expect.soft(await fieldStyle(highlightsSearch), 'Highlights search').toEqual(standardSearch);
 		expect.soft(await fieldStyle(highlightsSort), 'Highlights sort').toEqual(standard);
 		await checkNarrowLayout(page, highlightsSearch);

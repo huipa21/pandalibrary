@@ -24,6 +24,18 @@ function media(matches: boolean) {
 }
 
 describe('sidebar state', () => {
+	it('restores a supported tab when moving from PDF to a reflowable reader', () => {
+		const sidebar = createSidebarState({
+			storage: memory('{"open":true,"tab":"pages"}'), matchMedia: null,
+			tabs: ['toc', 'annotations', 'bookmarks']
+		});
+		expect([sidebar.open, sidebar.tab]).toEqual([true, 'toc']);
+		sidebar.show('pages');
+		expect(sidebar.tab).toBe('toc');
+		sidebar.toggle('bookmarks');
+		expect([sidebar.open, sidebar.tab]).toEqual([true, 'bookmarks']);
+	});
+
 	it('parses stored values and falls back to collapsed on toc', () => {
 		expect(parseSidebar(null)).toEqual({ open: false, tab: 'toc' });
 		expect(parseSidebar('{"open":true,"tab":"pages"}')).toEqual({ open: true, tab: 'pages' });

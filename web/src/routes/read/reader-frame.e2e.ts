@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { epubFixture, pdfFixture } from '../../lib/reader/fixtures';
 
 async function setup(page: Page, format = 'pdf', locale = 'en') {
@@ -37,11 +38,13 @@ async function setup(page: Page, format = 'pdf', locale = 'en') {
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 740 }]) {
-	test(`PDF owns the viewport at ${viewport.width}px and X saves before closing`, async ({ page }) => {
+	for (const format of ['pdf', 'epub']) {
+	test(`${format.toUpperCase()} owns the viewport at ${viewport.width}px and X saves before closing`, async ({ page }) => {
 		await page.setViewportSize(viewport);
-		const state = await setup(page);
+		const state = await setup(page, format);
 		await page.goto('/read/21/31');
-		await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+		if (format === 'pdf') await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+		else await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 		await expect(page.locator('.shell-header-band')).toHaveCount(0);
 		await expect(page.getByRole('link', { name: 'Back to book details' })).toHaveCount(0);
 		await expect(page).toHaveTitle('Frame fixture · PandaLibrary');
@@ -49,7 +52,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 740 
 		const bounds = await surface.boundingBox();
 		if (!bounds) throw new Error('The reader surface is missing.');
 		expect(bounds.y).toBeLessThanOrEqual(48);
-		expect(bounds.height).toBeGreaterThanOrEqual(viewport.height - 48);
+		expect(bounds.height).toBeGreaterThanOrEqual(viewport.height - (format === 'pdf' ? 48 : 84));
 		expect(await page.evaluate(() => ({
 			height: document.documentElement.scrollHeight,
 			width: document.documentElement.scrollWidth
@@ -61,22 +64,62 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 740 
 		await close.click();
 		await expect(page).toHaveURL('/books/21');
 		await expect(page.locator('.shell-header-band')).toBeVisible();
-		expect(state.pushes.filter((mutation) => mutation.entity === 'reading_progress')).toHaveLength(1);
+		const progress = state.pushes.filter((mutation) => mutation.entity === 'reading_progress');
+		if (format === 'pdf') expect(progress).toHaveLength(1);
+		else expect(progress.length).toBeGreaterThan(0);
 		expect(state.pushes.find((mutation) => mutation.entity === 'reading_progress')?.data.book_file_id).toBe(31);
+	});
+	}
+}
+
+for (const width of [1440, 360]) {
+	test(`EPUB contents, bookmarks and responsive sidebar work at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 800 });
+		const state = await setup(page, 'epub');
+		await page.goto('/read/21/31');
+		await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+		const surface = page.locator('#reader-surface');
+		const originalX = (await surface.boundingBox())?.x;
+		await page.getByRole('tab', { name: 'Contents', exact: true }).click();
+		const contents = page.getByRole('tabpanel', { name: 'Contents', exact: true });
+		await expect(contents).toBeVisible();
+		expect((await surface.boundingBox())?.x).toBe(originalX! + (width >= 1024 ? 300 : 0));
+		await contents.getByRole('button', { name: 'Second', exact: true }).click();
+		await expect.poll(() => page.frames().some((frame) => frame.url().startsWith('blob:'))).toBe(true);
+		await expect(async () => {
+			const frames = page.frames().filter((frame) => frame.url().startsWith('blob:'));
+			expect((await Promise.all(frames.map((frame) => frame.getByText('Second section', { exact: true }).isVisible()))).some(Boolean)).toBe(true);
+		}).toPass();
+		if (width < 1024) await expect(contents).toHaveCount(0);
+		else await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+		await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+		const bookmarks = page.getByRole('tabpanel', { name: 'Bookmarks', exact: true });
+		await bookmarks.getByRole('button', { name: 'Save position', exact: true }).click();
+		await bookmarks.getByRole('textbox', { name: 'Label (optional)' }).fill('Chapter two');
+		await bookmarks.getByRole('button', { name: 'Save', exact: true }).click();
+		await expect(bookmarks.locator('p').filter({ hasText: /^Chapter two$/ })).toBeVisible();
+		expect(state.pushes.some((mutation) => mutation.entity === 'bookmarks')).toBe(true);
+		await bookmarks.focus();
+		await page.keyboard.press('Escape');
+		await expect(bookmarks).toHaveCount(0);
+		await expect(page.getByRole('tab', { name: 'Bookmarks', exact: true })).toBeFocused();
 	});
 }
 
-test('EPUB retains its header, navigation and legacy close button', async ({ page }) => {
-	await setup(page, 'epub');
-	await page.goto('/read/21/31');
-	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
-	await expect(page.locator('.shell-header-band')).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Back to book details' })).toBeVisible();
-	const close = page.getByRole('button', { name: 'Close reader' });
-	await expect(close).toHaveText('Close reader');
-	await expect(close).toHaveCSS('border-top-width', '1px');
-	await expect(page.locator('#reader-surface')).toHaveCount(0);
-});
+for (const theme of ['light', 'dark']) {
+	test(`EPUB shared chrome and sidebar are accessible in ${theme} mode`, async ({ page }) => {
+		await page.addInitScript((value) => localStorage.setItem('pandalibrary.theme', value), theme);
+		await setup(page, 'epub');
+		await page.goto('/read/21/31');
+		await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+		for (const name of ['Contents', 'Annotations', 'Bookmarks']) {
+			await page.getByRole('tab', { name, exact: true }).click();
+			await expect(page.getByRole('tabpanel', { name, exact: true })).toBeVisible();
+			const result = await new AxeBuilder({ page }).include('.pv-frame-toolbar').include('.pv-sidebar').analyze();
+			expect(result.violations).toEqual([]);
+		}
+	});
+}
 
 test('pending writes appear in the status dot and can be retried', async ({ page }) => {
 	const state = await setup(page);

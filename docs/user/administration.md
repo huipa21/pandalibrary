@@ -20,7 +20,11 @@ There are four ways to add books:
 
 - **Upload to a library:** upload books on **Admin → Uploads & imports**.
 - **Upload to the Bookheap:** the **Upload** button in the header sends books to
-  the Bookheap, where you assign them to a library later.
+  the Bookheap. Optionally choose a library in the upload dialog to queue each
+  uploaded book for import automatically; leave it blank to assign later.
+  Completed uploads have a green checkmark and a results summary. If library
+  assignment fails after upload, retry it without uploading the file again,
+  or assign it from the Bookheap.
 - **Bookheap folder:** copy files into the Bookheap folder (subfolders are
   fine), then select **Scan** on the Bookheap page.
 - **Drop folder:** files copied into the drop folder are imported automatically
@@ -47,7 +51,8 @@ Select items (across pages if needed), then:
 - **Delete…** them.
 
 Duplicates and failures stay in the heap with a reason. Failed items can be
-assigned again.
+assigned again. Bookheap and shelf counters refresh automatically while queued
+imports finish, including when a status filter hides those books.
 
 ## Admin pages
 

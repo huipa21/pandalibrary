@@ -6,11 +6,16 @@
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { requestNotesExport, saveBlob } from '#lib/notes/export.js';
 	import { getBookState } from '#lib/reader/api.js';
-	import type { BookState, Highlight, HighlightStyle, Note, PageAnnotation } from '#lib/reader/types.js';
+	import type { BookState, Highlight, HighlightStyle, Note } from '#lib/reader/types.js';
+	import AnnotationEntry from '#lib/notes/AnnotationEntry.svelte';
+	import KindFilter from '#lib/notes/KindFilter.svelte';
+	import { annotationKindFilter } from '#lib/notes/entry.js';
 	import { currentAccount, offlineAvailable } from '#lib/sync/client.js';
 	import { readerState } from '#lib/sync/state.js';
 	import { getBookContext } from '../book-context.svelte.js';
 	import { BOOK_STATE_CHANGED_EVENT, type BookStateChangedDetail } from '../events.js';
+	import { listReviews } from '../reviews-api.js';
+	import { filterBookAnnotations, otherBookAnnotations, type BookAnnotation } from '../highlights/book-annotations.js';
 	import HighlightList from '../highlights/HighlightList.svelte';
 	import HighlightsSidebar from '../highlights/HighlightsSidebar.svelte';
 	import HighlightsToolbar from '../highlights/HighlightsToolbar.svelte';
@@ -19,7 +24,6 @@
 		chapterKey,
 		colorCounts,
 		filterMarks,
-		foldText,
 		groupByChapter,
 		markStats,
 		parseMarkSort,
@@ -33,7 +37,9 @@
 
 	let highlights = $state<Highlight[]>([]);
 	let notes = $state<Note[]>([]);
-	let pageAnnotations = $state<PageAnnotation[]>([]);
+	let otherAnnotations = $state<BookAnnotation[]>([]);
+	let reviewsOffline = $state(false);
+	let reviewsError = $state(false);
 	let status = $state<'loading' | 'ready' | 'error'>('loading');
 	let notesOnly = $state(false);
 	let colors = $state<ReadonlySet<string>>(new Set());
@@ -52,22 +58,25 @@
 	const files = $derived(book?.files ?? []);
 	const query = $derived((page.url.searchParams.get('q') ?? '').trim());
 	const sort = $derived(parseMarkSort(page.url.searchParams.get('sort')));
+	const kind = $derived(annotationKindFilter(page.url.searchParams.get('kind')));
 	const untitled = $derived(m['bv9.untitled']());
 
 	const marks = $derived(buildMarks(highlights, notes));
 	const readingOrder = $derived(sortMarks(marks, 'reading'));
 	const allChapters = $derived(groupByChapter(readingOrder, untitled));
 	const chapterIds = $derived(new Map(allChapters.map((group, index) => [chapterKey(group), `highlights-chapter-${index}`])));
-	const stats = $derived(markStats(marks, now, files));
-	const notesCount = $derived(marks.filter((mark) => mark.notes.length > 0).length);
+	const stats = $derived(markStats(marks, now, files, otherAnnotations));
+	const total = $derived(marks.length + otherAnnotations.length);
+	const notesCount = $derived(marks.filter((mark) => mark.notes.length > 0).length + otherAnnotations.filter((item) => item.kind === 'book_note' || item.kind === 'comment').length);
 	const colorOptions = $derived(colorCounts(marks));
-	const visible = $derived(sortMarks(filterMarks(marks, { query, colors, styles, notesOnly }), sort));
+	const visible = $derived(sortMarks(filterMarks(marks, { query, colors, styles, notesOnly }).filter((mark) =>
+		!kind || (kind === 'comment' ? mark.notes.length > 0 : kind === (mark.style ?? 'highlight'))
+	), sort));
+	const visibleOther = $derived(filterBookAnnotations(otherAnnotations, { query, kind, colors, styles, notesOnly, sort }));
+	const shown = $derived(visible.length + visibleOther.length);
 	const groups = $derived(groupByChapter(visible, untitled));
-	const filtered = $derived(query !== '' || colors.size > 0 || styles.size > 0 || notesOnly);
+	const filtered = $derived(query !== '' || colors.size > 0 || styles.size > 0 || notesOnly || kind !== '');
 	const offline = $derived(context.offline || !online);
-	const insertedText = $derived(pageAnnotations.filter((row) =>
-		!row.deleted_at && row.kind === 'text' && foldText(row.data.text).includes(foldText(query))
-	));
 
 	async function fetchState(id: number): Promise<BookState> {
 		if (!offlineAvailable()) return getBookState(id);
@@ -84,20 +93,31 @@
 
 	async function load(quiet = false) {
 		const id = bookId;
-		if (id === null) return;
+		const currentBook = book;
+		if (id === null || !currentBook) return;
 		const version = ++requestVersion;
 		if (!quiet) status = 'loading';
 		try {
-			const state = await fetchState(id);
+			const unavailable = context.offline || !navigator.onLine;
+			const [state, reviews] = await Promise.all([
+				fetchState(id),
+				unavailable ? null : listReviews(id, { limit: 1 }).then(
+					(result) => ({ status: 'ready' as const, result }),
+					(cause: unknown) => ({ status: 'error' as const, cause })
+				)
+			]);
 			if (version !== requestVersion) return;
-			highlights = state.highlights;
-			notes = state.notes;
-			pageAnnotations = state.page_annotations ?? [];
+			highlights = state.highlights.filter((row) => row.book_id === id);
+			notes = state.notes.filter((row) => row.book_id === id);
+			otherAnnotations = otherBookAnnotations(currentBook, state, reviews?.status === 'ready' ? reviews.result.mine : null);
+			reviewsOffline = unavailable;
+			reviewsError = reviews?.status === 'error';
+			if (reviews?.status === 'error') console.error('Could not load book review', reviews.cause);
 			now = new Date();
 			status = 'ready';
 		} catch (cause) {
 			if (version !== requestVersion) return;
-			console.error('Could not load highlights', cause);
+			console.error('Could not load book annotations', cause);
 			// A failed background refresh keeps the list that is already shown.
 			if (!quiet || status !== 'ready') status = 'error';
 		}
@@ -105,6 +125,7 @@
 
 	$effect(() => {
 		void bookId;
+		void book;
 		untrack(() => void load());
 	});
 
@@ -121,7 +142,10 @@
 			if (detail?.bookId === bookId) void load(true);
 		};
 		const onFocus = () => void load(true);
-		const onConnection = () => (online = navigator.onLine);
+		const onConnection = () => {
+			online = navigator.onLine;
+			void load(true);
+		};
 		window.addEventListener(BOOK_STATE_CHANGED_EVENT, onState);
 		window.addEventListener('focus', onFocus);
 		window.addEventListener('online', onConnection);
@@ -173,7 +197,7 @@
 		colors = new Set();
 		styles = new Set();
 		notesOnly = false;
-		await updateUrl({ q: null });
+		await updateUrl({ q: null, kind: null });
 	}
 
 	async function jumpToChapter(key: string) {
@@ -219,7 +243,7 @@
 				<p>{m['bv9.error']()}</p>
 				<button type="button" class="underline underline-offset-4 focus-visible:outline-2" onclick={() => load()}>{m['bv9.retry']()}</button>
 			</div>
-		{:else if marks.length === 0 && !pageAnnotations.some((row) => !row.deleted_at && row.kind === 'text')}
+		{:else if total === 0}
 			<p class="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600" role="status">{m['bv9.empty']()}</p>
 		{:else}
 			<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
@@ -234,6 +258,7 @@
 					/>
 				</div>
 				<div class="min-w-0 space-y-4 lg:order-1">
+					<KindFilter value={kind} onchange={(next) => updateUrl({ kind: next || null })} />
 					<HighlightsToolbar
 						{query}
 						onQuery={setQuery}
@@ -263,9 +288,9 @@
 						<p class="text-sm text-red-700" role="alert">{exportError}</p>
 					{/if}
 					{#if filtered}
-						<p class="text-sm text-slate-600" role="status">{m['bv9.showing']({ shown: visible.length, total: marks.length })}</p>
+						<p class="text-sm text-slate-600" role="status">{m['bv9.showing']({ shown, total })}</p>
 					{/if}
-					{#if visible.length === 0 && marks.length > 0}
+					{#if shown === 0}
 						<div class="space-y-3 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
 							<p>{m['bv9.no_match']()}</p>
 							<button
@@ -281,21 +306,24 @@
 							<HighlightList {groups} {chapterIds} {bookId} {files} {query} {compact} {locale} />
 						</div>
 					{/if}
+					{#if visibleOther.length > 0}
+						<ol class="card divide-y divide-slate-200 px-4 sm:px-6" aria-label={m['notes.title']()}>
+							{#each visibleOther as item (`${item.kind}:${item.id}`)}
+								<li><AnnotationEntry {item} /></li>
+							{/each}
+						</ol>
+					{/if}
 				</div>
 			</div>
 		{/if}
-		{#if status === 'ready' && insertedText.length > 0}
-			<section class="card space-y-3 p-4" aria-label={m['pv10.text']()}>
-				<h2 class="font-semibold">{m['pv10.text']()}</h2>
-				{#each insertedText as row (row.id)}
-					{#if row.kind === 'text'}
-						<div class="border-t border-slate-200 pt-3" data-insert-id={row.id}>
-							<p class="text-sm text-slate-500">{m['pv10.page']({ page: row.locator.page })}</p>
-							<p class="mt-1 break-words whitespace-pre-line">{row.data.text}</p>
-						</div>
-					{/if}
-				{/each}
-			</section>
+		{#if status === 'ready' && reviewsOffline}
+			<p class="text-sm text-slate-600" role="status">{m['bv9.reviews_offline']()}</p>
+		{/if}
+		{#if status === 'ready' && reviewsError}
+			<div class="flex flex-wrap items-center gap-3 text-sm text-red-700" role="alert">
+				<p>{m['bv9.reviews_error']()}</p>
+				<button type="button" class="underline underline-offset-4 focus-visible:outline-2" onclick={() => load(true)}>{m['bv9.retry']()}</button>
+			</div>
 		{/if}
 	</section>
 {/if}

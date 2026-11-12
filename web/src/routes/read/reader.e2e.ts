@@ -179,7 +179,7 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	page.on('dialog', (dialog) => dialog.accept());
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/read/21/31');
-	await expect(page.getByRole('heading', { name: 'Fixture Book' })).toBeVisible();
+	await expect(page).toHaveTitle('Fixture Book · PandaLibrary');
 	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 	let frame = await bookFrame(page);
 	await expect(frame.locator('#passage')).toBeVisible();
@@ -219,6 +219,7 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 		selected?.addRange(range);
 		document.dispatchEvent(new Event('selectionchange'));
 	});
+	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 	await expect(page.getByText('A passage worth highlighting.')).toBeVisible();
 	await page.getByRole('button', { name: 'Highlight selection' }).click();
 	await expect.poll(() => state.highlights.length).toBe(1);
@@ -233,15 +234,17 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	await highlight.getByLabel('Highlight color').selectOption('blue');
 	await expect.poll(() => state.highlights[0]?.color).toBe('blue');
 
-	await page.getByText('Reader settings', { exact: true }).click();
-	await page.getByRole('button', { name: 'Format', exact: true }).click();
+	await page.getByRole('button', { name: 'More view options' }).click();
+	await page.getByRole('menuitem', { name: 'Format', exact: true }).click();
 	await page.getByRole('radio', { name: 'Sans', exact: true }).click();
 	await page.getByRole('radio', { name: 'Night', exact: true }).click();
-	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Save settings' }).click();
 	await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value).toMatchObject({
 		font: 'sans-serif', theme: 'dark', background: 'night', futureOption: { keep: true }
 	});
+	await page.keyboard.press('Escape');
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: 'Collapse sidebar' }).click();
 
 	await page.getByRole('button', { name: 'Next page' }).click();
 	await page.getByRole('slider', { name: 'Reading position' }).evaluate((element: HTMLInputElement) => {
@@ -250,6 +253,7 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	});
 	frame = await bookFrame(page, 'Second section');
 	await expect(frame.getByText('Second section')).toBeVisible();
+	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 	await expect.poll(() => state.progress?.book_file_id).toBe(31);
 	await expect.poll(() => state.progress?.source).toBe('web');
 	await expect.poll(() => state.progress?.percentage).toBeGreaterThan(0.9);
@@ -497,7 +501,6 @@ test('RP9 EPUB Format changes live typography and background and saves both scop
 	await page.goto('/read/21/31');
 	let frame = await bookFrame(page, 'First section');
 	const initialSize = await frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize));
-	await page.getByText('Reader settings', { exact: true }).click();
 	await page.getByRole('button', { name: 'Format', exact: true }).click();
 	const dialog = page.getByRole('dialog', { name: 'Format', exact: true });
 	await dialog.getByRole('radio', { name: 'System', exact: true }).click();
@@ -512,18 +515,18 @@ test('RP9 EPUB Format changes live typography and background and saves both scop
 	}))).toMatchObject({ font: 'system-ui', color: 'rgb(62, 44, 28)', background: 'rgb(220, 194, 155)', spacing: 1.6 });
 	await expect.poll(() => frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize)))
 		.toBeCloseTo(initialSize * 1.1, 2);
-	await expect(page.locator('section[aria-label="Book content"] > [role="region"]')).toHaveCSS('background-image', /repeating-linear-gradient/);
+	await expect(page.locator('#reader-surface')).toHaveCSS('background-image', /repeating-linear-gradient/);
 	await dialog.getByRole('radio', { name: 'Night', exact: true }).click();
 	await expect(frame.locator('html')).toHaveCSS('color-scheme', 'dark');
 	await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(28, 28, 30)');
-	await expect(page.locator('section[aria-label="Book content"] > [role="region"]')).toHaveCSS('background-image', 'none');
-	await page.keyboard.press('Escape');
+	await expect(page.locator('#reader-surface')).toHaveCSS('background-image', 'none');
 	await page.getByRole('button', { name: 'Save settings', exact: true }).click();
 	await page.getByRole('button', { name: 'Save as format default', exact: true }).click();
 	for (const key of ['reader.book.21', 'reader.epub']) {
 		await expect.poll(() => state.settings.find((setting) => setting.key === key)?.value)
 			.toMatchObject({ font: 'system', size: 110, spacing: 1.6, background: 'night', theme: 'dark' });
 	}
+	await page.keyboard.press('Escape');
 	await page.reload();
 	frame = await bookFrame(page, 'First section');
 	await expect(frame.locator('body')).toHaveCSS('font-family', 'system-ui');
@@ -604,7 +607,7 @@ for (const { format, fixture, locator, target, start } of [
 	{ format: 'pdf', fixture: pdfFixture, locator: { type: 'pdf', page: 2 }, target: 'Second PDF page text', start: 'First PDF page text' },
 	{ format: 'epub', fixture: epubFixture, locator: { type: 'cfi', value: 'epubcfi(/6/4!/4/2/1:0)' }, target: 'Another page of the fixture.', start: 'A passage worth highlighting.' }
 ]) {
-	test(`opens ${format.toUpperCase()} at a ?highlight= target and ignores unknown IDs`, async ({ page }) => {
+	test(`opens ${format.toUpperCase()} at a ?highlight= target and reports unknown IDs`, async ({ page }) => {
 		const state = await setupReader(page, format, fixture());
 		state.highlights = [{
 			id: 'hl-target', book_id: 21, book_file_id: 31, locator, position: 0.75, text: target, color: 'blue',
@@ -617,8 +620,7 @@ for (const { format, fixture, locator, target, start } of [
 		await page.goto('/read/21/31?highlight=missing-highlight');
 		if (format !== 'pdf') await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 		await visibleText(start);
-		// Background Sync can be unavailable in headless Chromium, which may surface the unrelated save banner.
-		await expect(page.getByRole('alert').filter({ hasNotText: 'A change could not be saved' })).toHaveCount(0);
+		await expect(page.getByRole('alert').filter({ hasText: "This bookmark's file or position is unavailable on this device." })).toBeVisible();
 		await page.goto('/read/21/31?highlight=hl-target');
 		if (format !== 'pdf') await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 		await visibleText(target);
@@ -642,9 +644,15 @@ for (const [format, fixture] of [
 		await useProductionCsp(page);
 		await page.goto('/read/21/31');
 		await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+		await expect(page.locator('.pv-frame')).toBeVisible();
+		await expect(page.locator('.shell-header-band')).toHaveCount(0);
+		await expect(page.getByRole('tab', { name: 'Contents', exact: true })).toBeVisible();
+		await expect(page.getByRole('tab', { name: 'Bookmarks', exact: true })).toBeVisible();
+		await expect(page.getByRole('tab', { name: 'Pages', exact: true })).toHaveCount(0);
 		const frame = await bookFrame(page);
 		if (format === 'cbz') {
 			await expect(frame.locator('img')).toBeVisible();
+			await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 			await page.getByRole('button', { name: 'Highlight current page' }).click();
 			await expect.poll(() => state.highlights.length).toBe(1);
 			await page.reload();

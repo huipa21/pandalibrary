@@ -46,6 +46,7 @@ export function parseSidebar(raw: string | null): Persisted {
 
 type MediaList = Pick<MediaQueryList, 'matches' | 'addEventListener' | 'removeEventListener'>;
 export interface SidebarOptions {
+	tabs?: readonly SidebarTab[];
 	storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
 	matchMedia?: ((query: string) => MediaList) | null;
 }
@@ -69,6 +70,8 @@ export function createSidebarState(options: SidebarOptions = {}): SidebarState {
 	} catch (error) {
 		console.error('Could not restore the reader sidebar', error);
 	}
+	const tabs = options.tabs ?? SIDEBAR_TABS;
+	if (!tabs.includes(initial.tab)) initial.tab = tabs[0] ?? 'toc';
 	let open = $state(initial.open);
 	let tab = $state<SidebarTab>(initial.tab);
 	let target = $state<SidebarTarget | null>(null);
@@ -100,7 +103,7 @@ export function createSidebarState(options: SidebarOptions = {}): SidebarState {
 	}
 
 	function show(next: SidebarTab) {
-		if (!isSidebarTab(next) || !canSwitch(next)) return;
+		if (!tabs.includes(next) || !canSwitch(next)) return;
 		set(true, next);
 	}
 

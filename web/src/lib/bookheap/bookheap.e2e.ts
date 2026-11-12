@@ -68,7 +68,7 @@ const problem = (route: Route, status: number) =>
 	route.fulfill({ status, contentType: 'application/problem+json', body: JSON.stringify({ title: 'Error', status }) });
 
 /** In-memory Bookheap API: list with offset cursors, scan, assign (queued items import after a few polls), delete. */
-async function mockBookheap(page: Page, initial: Item[], { scanAdds = [] as Item[] } = {}) {
+async function mockBookheap(page: Page, initial: Item[], { scanAdds = [] as Item[], importAfterPolls = 2 } = {}) {
 	let items = [...initial];
 	let scan: ReturnType<typeof scanDto> | null = null;
 	let pending: Item[] = [];
@@ -85,7 +85,7 @@ async function mockBookheap(page: Page, initial: Item[], { scanAdds = [] as Item
 		const offset = Number(url.searchParams.get('cursor') ?? 0);
 		if (limit !== 1) listQueries.push(url.search);
 		// Queued items import after a few list reads.
-		if (items.some((item) => item.status === 'queued') && ++queuedPolls > 2) {
+		if (items.some((item) => item.status === 'queued') && ++queuedPolls > importAfterPolls) {
 			items = items.filter((item) => item.status !== 'queued');
 		}
 		const matched = items
@@ -139,7 +139,9 @@ async function mockBookheap(page: Page, initial: Item[], { scanAdds = [] as Item
 		});
 		return route.fulfill({ json: { results } });
 	});
-	return { listQueries, assignBodies, deleteBodies };
+	return { listQueries, assignBodies, deleteBodies, finishImports: () => {
+		items = items.filter((item) => item.status !== 'queued');
+	} };
 }
 
 const readyItems = (from: number, to: number): Item[] =>
@@ -147,6 +149,35 @@ const readyItems = (from: number, to: number): Item[] =>
 		const id = from + index;
 		return { id, title: `Ready ${id}`, file_name: `ready-${id}.epub`, status: 'ready' as const };
 	});
+
+test('Bookheap, All Books and shelf counters follow imports hidden by a ready filter', async ({ page }) => {
+	await authenticate(page);
+	const heap = await mockBookheap(page, readyItems(1, 2), { importAfterPolls: Infinity });
+	let imported = false;
+	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [
+		shelf(21, { name: 'Classics', kind: 'shared', owner_id: null, visible_book_count: imported ? 1 : 0 })
+	], next_cursor: null } }));
+	await page.route('**/api/v1/books/count*', (route) => route.fulfill({ json: { count: imported ? 1 : 0 } }));
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await page.goto('/bookheap?status=ready');
+	await expect(page.getByTestId('bh4-nav-count')).toHaveAttribute('title', 'Total Bookheap items: 2');
+	await page.getByRole('checkbox', { name: 'Select Ready 2', exact: true }).check();
+	await page.getByRole('button', { name: 'Assign…' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Assign to a library' });
+	await dialog.getByLabel('Library', { exact: true }).selectOption({ label: 'Main' });
+	await dialog.getByLabel(/Classics/).check();
+	await dialog.getByRole('button', { name: 'Assign (1)' }).click();
+	await expect(dialog).toBeHidden();
+	await expect(page.getByTestId('bh4-total')).toContainText('Files: 1');
+	await expect(page.getByTestId('bh4-nav-count')).toHaveAttribute('title', 'Total Bookheap items: 2');
+	// The active item is no longer in the filtered page, but the counters must keep following it.
+	imported = true;
+	heap.finishImports();
+	await expect(page.getByTestId('bh4-nav-count')).toHaveAttribute('title', 'Total Bookheap items: 1', { timeout: 10_000 });
+	await expect(page.getByTestId('all-books-count').locator('[aria-hidden="true"]')).toHaveText('1');
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await expect(sidebar.getByRole('link', { name: /^Classics/ }).locator('.shell-count')).toHaveText('1');
+});
 
 test('administrators see Bookheap in HOME, an empty heap, and a scan that refreshes the list', async ({ page }) => {
 	await authenticate(page);

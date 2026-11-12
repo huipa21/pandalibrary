@@ -1,4 +1,10 @@
 declare module 'foliate-js/view.js' {
+	export interface FoliateTocItem {
+		label: string;
+		href?: string;
+		subitems?: FoliateTocItem[];
+	}
+
 	export interface FoliateSection {
 		load?(): string | Promise<string>;
 		unload?(): void;
@@ -7,6 +13,7 @@ declare module 'foliate-js/view.js' {
 
 	export interface FoliateBook {
 		sections: FoliateSection[];
+		toc?: FoliateTocItem[];
 		rendition?: { layout?: string };
 		destroy?(): void;
 	}

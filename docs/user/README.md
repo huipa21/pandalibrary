@@ -24,7 +24,7 @@ Installation, configuration, backups and upgrades are in the
 | Dashboard | Sidebar → **Dashboard** | Your home page: reading feeds and the shelves you choose to show |
 | All Books | Sidebar → **All Books** | Every book you can see, in a grid or list, with filters and sorting |
 | Libraries, Authors, Series, Tags | Sidebar → **Browse** | Browse the catalog by collection |
-| Book page | Open any book | Details, reading status, rating, reviews, shelves, files, activity and highlights |
+| Book page | Open any book | Details, reading status, rating, reviews, shelves, files, activity and book-scoped annotations |
 | Reader | **Read** on a book | Read in the browser and add highlights, passage comments and bookmarks |
 | Bookmarks | Open a book in the reader | Saved reading positions for that book |
 | Annotations | Sidebar → **Annotations** | Reviews, comments, highlights, inserted text and drawings in date order; consistent search results and direct navigation |

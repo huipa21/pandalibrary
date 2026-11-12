@@ -64,6 +64,19 @@ export class FoliateReader implements Reader {
 		private readonly events: ReaderEvents
 	) {}
 
+	get contents() {
+		return this.book?.toc ?? [];
+	}
+
+	async goToContents(href: string): Promise<void> {
+		const view = this.requireView();
+		if (!this.isValidResolved(view.resolveNavigation(href))) throw new Error('Book contents destination is unavailable.');
+		this.lastLoadError = null;
+		const result = await view.goTo(href);
+		if (this.lastLoadError) throw this.lastLoadError;
+		if (!this.isValidResolved(result)) throw new Error('Book contents destination could not be opened.');
+	}
+
 	async open(blob: Blob): Promise<void> {
 		const [{ makeBook, View }, { Overlayer }] = await Promise.all([
 			import('foliate-js/view.js'),

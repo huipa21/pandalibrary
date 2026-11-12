@@ -73,6 +73,9 @@ async function mockApi(page: Page, role = 'user') {
 	await page.route((url) => /^\/api\/v1\/me\/books\/\d+$/.test(url.pathname), (route) =>
 		route.fulfill({ json: { user_book: null, progress: null, highlights: [], bookmarks: [], notes: [] } })
 	);
+	await page.route('**/api/v1/books/*/reviews?*', (route) =>
+		route.fulfill({ json: { mine: null, items: [], next_cursor: null, total: 0 } })
+	);
 	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: books, next_cursor: null } }));
 	await page.route((url) => /^\/api\/v1\/books\/\d+\/files\/\d+$/.test(url.pathname), (route) =>
 		route.fulfill({ status: 200, contentType: 'application/octet-stream', body: epubFixture() })
@@ -112,7 +115,7 @@ test('tabs navigate, mark the current tab, and share one book request', async ({
 	const tabs = tabBar(page);
 	await expect(tabs.getByRole('link', { name: 'Details' })).toHaveAttribute('aria-current', 'page');
 
-	for (const [name, path] of [['Files', '/books/2/files'], ['Activities', '/books/2/activities'], ['Highlights', '/books/2/highlights']] as const) {
+	for (const [name, path] of [['Files', '/books/2/files'], ['Activities', '/books/2/activities'], ['Annotations', '/books/2/highlights']] as const) {
 		await tabs.getByRole('link', { name }).click();
 		await expect(page).toHaveURL(path);
 		await expect(tabs.getByRole('link', { name })).toHaveAttribute('aria-current', 'page');
@@ -124,8 +127,8 @@ test('tabs navigate, mark the current tab, and share one book request', async ({
 			await expect(page.getByRole('heading', { name, level: 1 })).toHaveCount(1);
 			await expect(page.getByRole('heading', { name: 'Reading summary' })).toBeVisible();
 		} else {
-			await expect(page.getByRole('heading', { name: 'Highlights in Shell Book 2', level: 1 })).toBeAttached();
-			await expect(page.getByText('No highlights yet – highlights you make while reading appear here')).toBeVisible();
+			await expect(page.getByRole('heading', { name: 'Annotations in Shell Book 2', level: 1 })).toBeAttached();
+			await expect(page.getByText('No annotations yet – your annotations for this book appear here')).toBeVisible();
 		}
 		await expect(page).toHaveTitle(`Shell Book 2 · ${name}`);
 	}

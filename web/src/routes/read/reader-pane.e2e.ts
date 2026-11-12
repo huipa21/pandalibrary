@@ -229,6 +229,8 @@ test('PDF navigation, sidebar, marks, appearance and bookmarks work together', a
 	await expect(paintedLine).toHaveAttribute('data-mark-color', '#000000');
 	await expect.poll(() => paintedLine.evaluate((element) => getComputedStyle(element).getPropertyValue('--pv-mark').trim())).toBe('#e5e7eb');
 	await page.keyboard.press('Escape');
+	await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value)
+		.toMatchObject({ background: 'night' });
 
 	await page.reload();
 	await openedPdf(page);
@@ -245,7 +247,7 @@ test('PDF navigation, sidebar, marks, appearance and bookmarks work together', a
 
 test('mobile sidebar overlays, navigates and persists its selected tab', async ({ page }) => {
 	await page.setViewportSize({ width: 375, height: 812 });
-	await setup(page, 'pdf');
+	const state = await setup(page, 'pdf');
 	await openedPdf(page, 1, 'First PDF page text');
 	const surface = page.locator('#reader-surface');
 	const original = await surface.boundingBox();
@@ -263,6 +265,7 @@ test('mobile sidebar overlays, navigates and persists its selected tab', async (
 	await expect(panel(page, 'Pages')).toHaveCount(0);
 	await tab(page, 'Bookmarks').click();
 	await panel(page, 'Bookmarks').getByRole('button', { name: 'Bookmark this page', exact: true }).click();
+	await expect.poll(() => state.bookmarks.length).toBe(1);
 	await page.reload();
 	await openedPdf(page);
 	await expect(panel(page, 'Bookmarks').getByRole('button', { name: 'Remove page bookmark', exact: true })).toBeVisible();
@@ -276,7 +279,6 @@ test('EPUB Format changes typography and background and persists both settings s
 	const state = await setup(page, 'epub');
 	let frame = await bookFrame(page);
 	const initialSize = await frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize));
-	await page.getByText('Reader settings', { exact: true }).click();
 	await page.getByRole('button', { name: 'Format', exact: true }).click();
 	const format = page.getByRole('dialog', { name: 'Format', exact: true });
 	await format.getByRole('radio', { name: 'System', exact: true }).click();
@@ -287,7 +289,6 @@ test('EPUB Format changes typography and background and persists both settings s
 	await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(220, 194, 155)');
 	await expect.poll(() => frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize)))
 		.toBeCloseTo(initialSize * 1.1, 2);
-	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Save settings', exact: true }).click();
 	await page.getByRole('button', { name: 'Save as format default', exact: true }).click();
 	for (const key of ['reader.book.21', 'reader.epub']) {
