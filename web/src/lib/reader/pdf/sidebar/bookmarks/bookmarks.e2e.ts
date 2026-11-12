@@ -73,6 +73,7 @@ async function setup(page: Page, bookmarks: Bookmark[] = [], width = 1280, local
 	});
 	await page.goto('/read/21/31');
 	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
+	await expect(page.locator('.pv-frame-surface')).toBeVisible();
 	await expect(page.locator('.rp8-bookmarks')).toBeVisible();
 	return pushes;
 }
@@ -91,6 +92,7 @@ test(`header toggle adds and removes a page bookmark at ${width}px without confi
 	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 	await expect(panel(page).locator('[data-bookmark-id]')).toHaveCount(1);
 	await expect.poll(() => pushes.filter((row) => row.entity === 'bookmarks').length).toBe(1);
+	await expect(page.locator('.pv-frame-surface').getByRole('status')).toHaveCount(0);
 	expect(pushes.find((row) => row.entity === 'bookmarks')?.data).toMatchObject({
 		locator: { type: 'pdf', page: 1 }, label: 'First PDF page text', position: 0
 	});
@@ -104,6 +106,7 @@ test(`header toggle adds and removes a page bookmark at ${width}px without confi
 	await toggle.click();
 	await expect(panel(page)).toContainText('No bookmarks yet.');
 	await expect.poll(() => pushes.filter((row) => row.entity === 'bookmarks' && row.op === 'delete').length).toBe(1);
+	await expect(page.locator('.pv-frame-surface').getByRole('status')).toHaveCount(0);
 	expect(dialogs).toEqual([]);
 });
 }
@@ -223,6 +226,13 @@ for (const width of [1280, 375]) {
 		expect(labelBounds!.y).toBeGreaterThan(timeBounds!.y);
 		expect(editBounds!.x).toBeGreaterThan(timeBounds!.x + timeBounds!.width);
 		expect(deleteBounds!.x).toBeGreaterThan(editBounds!.x);
+		expect(editBounds!.width).toBe(deleteBounds!.width);
+		expect(editBounds!.height).toBe(deleteBounds!.height);
+		await edit.hover();
+		const editBackground = await edit.evaluate((element) => getComputedStyle(element).backgroundColor);
+		expect(editBackground).not.toBe('rgba(0, 0, 0, 0)');
+		await deleteButton.hover();
+		await expect(deleteButton).toHaveCSS('background-color', editBackground);
 		await pageBox(page).fill('2');
 		await pageBox(page).press('Enter');
 		await edit.click();

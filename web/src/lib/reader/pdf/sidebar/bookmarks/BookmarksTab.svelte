@@ -127,7 +127,7 @@
 	{#if !rows.current.length}<p class="rp8-empty">{m['rp8.empty']()}</p>{/if}
 	<ul aria-label={m['rp4.bookmarks']()}>
 		{#each rows.current as bookmark (bookmark.id)}
-			<li class="rp8-row" class:rp8-flash={flashed === bookmark.id} data-bookmark-id={bookmark.id}>
+			<li class="rp8-row" class:rp8-flash={flashed === bookmark.id} class:rp8-confirming={confirming === bookmark.id} data-bookmark-id={bookmark.id}>
 					{#if editing === bookmark.id}
 						<div class="rp8-editing">
 							<div class="rp8-meta">
@@ -191,9 +191,10 @@
 	.rp8-header { padding: 4px 0 12px; }
 	.rp8-header p { margin: 0; font-size: 12px; }
 	ul { list-style: none; margin: 0; padding: 0; }
-	.rp8-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px 48px; grid-template-rows: 28px auto; min-width: 0; margin-bottom: 4px; }
+	.rp8-row { --rp8-delete-width: 28px; display: grid; grid-template-columns: minmax(0, 1fr) 28px var(--rp8-delete-width); grid-template-rows: 28px auto; min-width: 0; margin-bottom: 4px; }
+	.rp8-confirming { --rp8-delete-width: 48px; }
 	.rp8-jump, .rp8-editing { display: grid; grid-template-rows: 28px minmax(24px, auto); grid-column: 1 / -1; grid-row: 1 / 3; min-width: 0; padding: 0 4px 4px; text-align: left; border-radius: 4px; }
-	.rp8-meta { display: flex; align-items: center; min-width: 0; gap: 4px; padding-right: 76px; font-size: 11px; font-variant-numeric: tabular-nums; }
+	.rp8-meta { display: flex; align-items: center; min-width: 0; gap: 4px; padding-right: calc(28px + var(--rp8-delete-width)); font-size: 11px; font-variant-numeric: tabular-nums; }
 	time { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 	.rp8-progress { flex-shrink: 0; margin-left: auto; }
 	.rp8-label { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; align-self: center; }

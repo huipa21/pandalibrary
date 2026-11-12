@@ -133,6 +133,21 @@ for (const theme of ['light', 'dark']) {
 		expect(await scan()).toEqual([]);
 		await tab(page, 'Annotations').click();
 		await expect(tabpanel(page, 'Annotations').locator(`[data-panel-entry="${id(1)}"]`)).toBeVisible();
+		const selected = tab(page, 'Annotations');
+		await expect(selected).toHaveCSS('box-shadow', 'none');
+		await expect(selected).toHaveCSS('border-left-width', '0px');
+		await expect(selected).toHaveCSS('color', theme === 'light' ? 'rgb(4, 120, 87)' : 'rgb(167, 243, 208)');
+		const selectedBackground = await selected.evaluate((element) => getComputedStyle(element).backgroundColor);
+		expect(selectedBackground).not.toBe('rgba(0, 0, 0, 0)');
+		const marker = await selected.evaluate((element) => {
+			const style = getComputedStyle(element, '::before');
+			return { width: style.width, top: style.top, bottom: style.bottom, radius: style.borderRadius };
+		});
+		expect(marker).toEqual({ width: '3px', top: '8px', bottom: '8px', radius: '9999px' });
+		await tab(page, 'Pages').hover();
+		await expect(tab(page, 'Pages')).toHaveCSS('background-color', theme === 'light' ? 'rgb(233, 237, 241)' : 'rgb(42, 46, 51)');
+		await selected.hover();
+		await expect(selected).toHaveCSS('background-color', selectedBackground);
 		expect(await scan()).toEqual([]);
 		await tab(page, 'Contents').click();
 		await expect(tabpanel(page, 'Contents')).toContainText('This PDF has no table of contents.');

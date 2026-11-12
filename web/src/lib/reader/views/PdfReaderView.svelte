@@ -348,6 +348,7 @@
 			{/snippet}
 			{#snippet status()}
 				<ReaderStatusDot warning={controller.settingsWarning} onretry={() => controller.retryWrites()} />
+				<p class="sr-only" role="status">{savedMessage}</p>
 				{#each Object.keys(statuses).sort() as owner (owner)}{@render statuses[owner]()}{/each}
 			{/snippet}
 			{#snippet centre()}<h1 class="pv-title">{controller.book?.title}</h1>{/snippet}
@@ -408,7 +409,7 @@
 		{/if}
 	</div>
 	<p class="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
-	{#if controller.pendingError || controller.actionError || controller.opening || savedMessage}
+	{#if controller.pendingError || controller.actionError || controller.opening}
 		<div class="absolute inset-x-2 top-2 z-20 max-h-[50%] overflow-auto rounded-md bg-[var(--pv-chrome)] p-3 text-sm shadow-md">
 			{#if controller.pendingError}
 				<div role="alert" class="space-y-2">
@@ -419,7 +420,6 @@
 			{/if}
 			{#if controller.actionError}<p role="alert">{controller.actionError}</p>{/if}
 			{#if controller.opening}<p role="status">{m['reader.loading']()}</p>{/if}
-			{#if savedMessage}<p role="status">{savedMessage}</p>{/if}
 		</div>
 	{/if}
 </ReaderFrame>
