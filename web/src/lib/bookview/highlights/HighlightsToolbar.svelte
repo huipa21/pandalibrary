@@ -5,7 +5,7 @@
 	import { colorTone, MARK_SORTS, type ColorCount, type MarkSort } from './highlights-model.js';
 	import { colorName } from './labels.js';
 	import type { HighlightStyle } from '#lib/reader/types.js';
-	import { styleLabel } from '#lib/reader/pdf/panel/labels.js';
+	import { styleLabel } from '#lib/reader/pdf/sidebar/annotations/labels.js';
 
 	let {
 		query,

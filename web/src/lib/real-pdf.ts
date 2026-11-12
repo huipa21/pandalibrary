@@ -45,25 +45,29 @@ export async function openAnnotationsPanel(page: Page) {
 	return annotationsPanel(page);
 }
 
-/** Bookmarks the selected text, then renames the bookmark in the Annotations panel. */
+/** Bookmarks the selected text, then renames it in the book-wide bookmarks list. */
 export async function bookmarkPdfSelection(page: Page, text: string, label: string) {
+	const readerUrl = page.url();
 	await selectPdfText(page, text);
 	await selectionToolbar(page).getByRole('button', { name: 'Bookmark', exact: true }).click();
 	await expect(selectionToolbar(page)).toHaveCount(0);
-	const panel = await openAnnotationsPanel(page);
-	const match = panel.locator('[data-panel-entry]').filter({ hasText: text })
-		.filter({ has: page.getByRole('button', { name: 'Edit Bookmarks' }) }).first();
-	const id = await match.getAttribute('data-panel-entry');
-	if (!id) throw new Error('The saved PDF bookmark has no panel entry ID.');
-	await renamePdfBookmark(panel.locator(`[data-panel-entry="${id}"]`), label);
+	await page.goto('/bookmarks');
+	const match = page.getByRole('listitem').filter({ hasText: text }).first();
+	await expect(match).toBeVisible();
+	const href = await match.getByRole('link', { name: 'Open bookmark' }).getAttribute('href');
+	const id = href ? new URL(href, readerUrl).searchParams.get('bookmark') : null;
+	if (!id) throw new Error('The saved PDF bookmark has no ID in its link.');
+	await renamePdfBookmark(match, label);
+	await page.goto(readerUrl);
+	await openedPdf(page);
 	return id;
 }
 
 export async function renamePdfBookmark(entry: Locator, label: string) {
-	const id = await entry.getAttribute('data-panel-entry');
-	if (!id) throw new Error('The PDF bookmark has no panel entry ID.');
-	const saved = entry.page().locator(`[data-panel-entry="${id}"]`);
-	await saved.getByRole('button', { name: 'Edit Bookmarks' }).click();
+	const index = await entry.evaluate((element) => [...(element.parentElement?.children ?? [])].indexOf(element));
+	if (index < 0) throw new Error('The PDF bookmark is not in the bookmarks list.');
+	const saved = entry.page().locator('section[aria-labelledby="bookmarks-heading"] > ul > li').nth(index);
+	await saved.getByRole('button', { name: 'Edit', exact: true }).click();
 	await saved.getByRole('textbox').fill(label);
 	await saved.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(saved).toContainText(label);

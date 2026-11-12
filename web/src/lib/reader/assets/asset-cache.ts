@@ -126,6 +126,10 @@ export async function annotationAssetUrl(sha256: string, signal?: AbortSignal): 
 	});
 }
 
+export function releaseAnnotationAssetUrl(url: string): void {
+	if (urls.delete(url)) URL.revokeObjectURL(url);
+}
+
 export function revokeAssetUrls(): void {
 	generation++;
 	for (const url of urls) URL.revokeObjectURL(url);

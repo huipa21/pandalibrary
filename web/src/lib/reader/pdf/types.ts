@@ -44,6 +44,7 @@ export interface PageLayerPainter {
 	name: string;
 	z: number;
 	paint(context: PageLayerContext): void;
+	dispose?(): void;
 }
 
 export interface PageEnhancerContext {

@@ -95,7 +95,7 @@ text across pages creates a separate mark on each page. Click a mark to change
 its colour or style, add or edit its comment, copy its text, or delete it.
 Comment editors show a live Markdown preview.
 Bookmarks made from selected text use that text as their initial label; you can
-rename them in the Annotations tab.
+rename them on the **Bookmarks** page.
 
 The borderless **X** saves progress and reading time before returning to the
 book's details. If saving fails, retry the unsaved changes or explicitly
@@ -112,12 +112,21 @@ a click on the page closes it. This device remembers whether the sidebar is
 open and which tab was last used. Clicking a comment marker on the page shows
 that entry in the Annotations tab.
 
-The **Annotations** tab groups items by page. Search marks, comments,
-bookmarks and inserted items. Open an entry to jump to its
-position; edit comments, bookmark labels and inserted text there, or delete an
-item and choose **Undo** within eight seconds. Entries from another file are
-listed separately and cannot be changed from the current file. Book-level
-Markdown notes can be added, edited and deleted at the bottom of the tab.
+The **Annotations** tab shows highlights, underlines, strikeouts and inserted
+text, drawings and images in one list ordered by page and position. Search the
+full text of marks, comments and text boxes; bookmarks are not listed here.
+Select an entry to jump to its position, or use its expand button to view the
+full content and all comments. In the detail dialog you can add or edit
+comments and preview drawings and images. Escape or the close button returns
+you to the entry. An image that is not cached cannot be viewed offline; retry
+after reconnecting.
+
+To delete a mark or insert, select its delete button twice within three
+seconds. Deleting a mark also deletes its comments. Choose **Undo** within
+eight seconds to restore it. Entries from another file appear in a separate
+read-only group; their details can be expanded, but they cannot be changed or
+jumped to from the current file. Book-level Markdown notes can be added, edited
+and deleted at the bottom of the tab.
 Escape closes the sidebar and returns focus to its tab. Collapsing keeps an
 unsaved note; switching to another tab asks first. Changes are saved on this
 device while offline and sync when connected.

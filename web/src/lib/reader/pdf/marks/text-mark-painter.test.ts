@@ -36,9 +36,10 @@ describe('textMarks', () => {
 		expect(marks[1]).toMatchObject({ page: 1, color: 'blue', style: 'underline', hasNote: false, rects: [rect] });
 	});
 
-	it('falls back to yellow highlights for unknown values', () => {
+	it('keeps stored colours and falls back to the highlight style for unknown styles', () => {
 		const [mark] = textMarks([highlight('a', { color: 'teal', style: 'wavy' as never })], [], 31);
-		expect(mark).toMatchObject({ color: 'yellow', style: 'highlight' });
+		expect(mark).toMatchObject({ color: 'teal', style: 'highlight' });
+		expect(textMarks([highlight('hex', { color: '#AABBCC' })], [], 31)[0].color).toBe('#AABBCC');
 	});
 
 	it('flags marks with a live, non-empty note', () => {
@@ -95,6 +96,7 @@ describe('textMarkPainter', () => {
 			constructor(readonly tag: string) {}
 			append(child: Element) { this.children.push(child); }
 			setAttribute(key: string, value: string) { this.attributes[key] = value; }
+			closest() { return null; }
 		}
 		const layer = new Element('layer');
 		vi.stubGlobal('document', {
@@ -112,9 +114,11 @@ describe('textMarkPainter', () => {
 		expect(layer.children).toHaveLength(1);
 		const [mark, comment] = layer.children[0].children;
 		expect(mark).toMatchObject({
-			className: 'reader-pdf-highlight', dataset: { annotationId: 'a', style: 'underline' },
-			attributes: { style: 'left:10%;top:20%;width:30%;height:2%;--pv-mark:#facc15' }
+			className: 'reader-pdf-highlight', dataset: { annotationId: 'a', style: 'underline', markColor: '#facc15' },
+			attributes: { style: 'left:10%;top:20%;width:30%;height:2%' }
 		});
+		expect(mark.style.setProperty).toHaveBeenCalledWith('--pv-mark', '#facc15');
+		expect(mark.style).toMatchObject({ opacity: '1', mixBlendMode: 'normal' });
 		expect(comment).toMatchObject({
 			className: 'pv-mark-comment', dataset: { annotationId: 'a' }, attributes: { 'aria-label': 'Open comment' },
 			type: 'button', tabIndex: -1, title: 'Open comment', style: { left: '40%', top: '20%' }

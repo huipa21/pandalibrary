@@ -1,5 +1,5 @@
 import type { FoliateBook, FoliateResolved, View } from 'foliate-js/view.js';
-import { HIGHLIGHT_HEX, highlightColor } from './annotations.js';
+import { resolveMarkColor } from './annotations.js';
 import { fraction } from './progress.js';
 import { captureBookBlobs, isolateBookSections } from './safe-content.js';
 import {
@@ -103,7 +103,7 @@ export class FoliateReader implements Reader {
 		});
 		view.addEventListener('draw-annotation', (event) => {
 			const { draw, annotation } = (event as CustomEvent<DrawAnnotation>).detail;
-			draw(Overlayer.highlight, { color: HIGHLIGHT_HEX[highlightColor(annotation.color)] });
+			draw(Overlayer.highlight, { color: resolveMarkColor(annotation.color) });
 		});
 		this.container.replaceChildren(view);
 		await view.open(book);
@@ -250,7 +250,7 @@ export class FoliateReader implements Reader {
 			return view.resolveNavigation(annotation.locator.value)?.index === index;
 		});
 		doc.documentElement.style.outline = match
-			? `4px solid ${HIGHLIGHT_HEX[highlightColor(match.color)]}`
+			? `4px solid ${resolveMarkColor(match.color)}`
 			: '';
 		doc.documentElement.style.outlineOffset = '-4px';
 	}

@@ -257,11 +257,13 @@ exports `prepareAnnotationImage(file: Blob)`, returning
 [assets-api.ts](web/src/lib/reader/assets/assets-api.ts) exports
 `uploadAnnotationAsset(prepared)` and typed, localized errors.
 [asset-cache.ts](web/src/lib/reader/assets/asset-cache.ts) exports
-`annotationAssetUrl(sha256, signal?)`, `revokeAssetUrls()` and `clearAssetCache()`.
+`annotationAssetUrl(sha256, signal?)`, `releaseAnnotationAssetUrl(url)`,
+`revokeAssetUrls()` and `clearAssetCache()`.
 URLs come from an account-keyed IndexedDB cache with a 200 MiB per-account LRU
 budget. Uploads and uncached downloads require a connection; cached images work
-offline. Revoke URLs when the reader is destroyed; sign-out also revokes them
-and clears the cache. These helpers use the active offline viewer and the
+offline. Release individual URLs when no longer displayed and revoke the
+remaining URLs when the reader is destroyed; sign-out also revokes them and
+clears the cache. These helpers use the active offline viewer and the
 existing Web Locks session guard.
 
 ### Release verification

@@ -180,7 +180,9 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 	await openedPdf(page, 1, 'First PDF page text');
 	await jumpToPdfPage(page, 2);
 	const panel = await openAnnotationsPanel(page);
-	await renamePdfBookmark(panel.locator('[data-panel-entry]').filter({ hasText: 'PDF saved page' }).first(), 'PDF renamed');
+	await expect(panel.getByText('PDF saved page', { exact: true })).toHaveCount(0);
+	await page.goto('/bookmarks');
+	await renamePdfBookmark(page.getByRole('listitem').filter({ hasText: 'PDF saved page' }).first(), 'PDF renamed');
 	// Renaming must not move the saved position to page two.
 	await page.goto('/bookmarks');
 	await page.getByRole('listitem').filter({ hasText: 'PDF renamed' }).getByRole('link', { name: 'Open bookmark' }).click();
@@ -217,7 +219,7 @@ test('real PDF and CFI bookmarks jump, rename, survive offline reload and propag
 	}), offlineBookmark)).toBe(true);
 	await page.reload();
 	await openedPdf(page);
-	await expect((await openAnnotationsPanel(page)).getByText('Offline page two', { exact: true })).toBeVisible();
+	await expect((await openAnnotationsPanel(page)).getByText('Offline page two', { exact: true })).toHaveCount(0);
 	await page.goto('/bookmarks');
 	await expect(page.getByText('Offline page two', { exact: true })).toBeVisible();
 	await context.setOffline(false);

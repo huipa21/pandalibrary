@@ -62,12 +62,15 @@ export class PageLayers {
 	constructor(private readonly pages: () => Iterable<PageBox>, private readonly box: (page: number) => PageBox | null) {}
 
 	register(painter: PageLayerPainter): () => void {
+		const previous = this.painters.get(painter.name);
+		if (previous && previous !== painter) previous.dispose?.();
 		this.removeLayers(painter.name);
 		this.painters.set(painter.name, painter);
 		this.repaint();
 		return () => {
 			if (this.painters.get(painter.name) !== painter) return;
 			this.painters.delete(painter.name);
+			painter.dispose?.();
 			this.removeLayers(painter.name);
 		};
 	}
@@ -101,6 +104,7 @@ export class PageLayers {
 	}
 
 	clear(): void {
+		for (const painter of this.painters.values()) painter.dispose?.();
 		this.painters.clear();
 	}
 

@@ -7,7 +7,7 @@ import { getBook } from '#lib/catalog/api.js';
 import type { Book, BookFile } from '#lib/catalog/types.js';
 import { createReader, readerFormat } from '#lib/reader/index.js';
 import { deviceId, downloadBookFile, getBookState, getSettings, SyncError } from '#lib/reader/api.js';
-import { annotationForReader, deleteAnnotation, highlightColor, makeHighlight, makeNote, type HighlightColor } from '#lib/reader/annotations.js';
+import { annotationForReader, deleteAnnotation, highlightColor, isMarkColor, makeHighlight, makeNote, type MarkColor } from '#lib/reader/annotations.js';
 import { bookmarkForPosition, deleteBookmark, makeBookmark, updateBookmarkLabel } from '#lib/reader/bookmarks.js';
 import { fraction, progressMutation, restorePosition } from '#lib/reader/progress.js';
 import { ReadingSessions, SessionWriter } from '#lib/reader/sessions.js';
@@ -60,6 +60,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let bookmarks = $state<Bookmark[]>([]);
 	let notes = $state<Note[]>([]);
 	let pageAnnotations = $state<PageAnnotation[]>([]);
+	let otherPageAnnotations = $state<PageAnnotation[]>([]);
 	let location = $state<Relocation | null>(null);
 	let selection = $state<ReaderSelection | null>(null);
 	let reader: Reader | null = null;
@@ -150,6 +151,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			const { state } = await cachedReaderState(currentAccount(), book.id);
 			if (mounted && version === requestVersion && revision === annotationVersion && !busy) {
 				pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
+				otherPageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id !== fileId);
 			}
 		} catch (error) {
 			if (version === requestVersion) reportActionError(error);
@@ -235,6 +237,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		bookmarks = [];
 		notes = [];
 		pageAnnotations = [];
+		otherPageAnnotations = [];
 		opening = true;
 		loadError = '';
 		actionError = '';
@@ -300,6 +303,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			bookmarks = state.bookmarks.filter((bookmark) => !bookmark.deleted_at);
 			notes = state.notes.filter((note) => !note.deleted_at);
 			pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
+			otherPageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id !== fileId);
 			progressWriter = new DurableProgressWriter(reportPendingError);
 			loaded = { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId };
 		} catch (cause) {
@@ -449,7 +453,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	/** Creates a highlight and returns the new row, or null when nothing was saved. */
 	async function addHighlight(
 		chosenSelection: ReaderSelection | null = selection,
-		color: HighlightColor = 'yellow',
+		color: MarkColor = 'yellow',
 		style: HighlightStyle = 'highlight'
 	): Promise<Highlight | null> {
 		if (!book || !file || !format || !reader || busy) return null;
@@ -467,7 +471,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			const now = new Date(mutation.updated_at).toISOString();
 			const highlight: Highlight = {
 				id: mutation.id, book_id: book.id, book_file_id: file.id, locator: chosen.locator,
-				position: chosen.fraction, text: chosen.text, color, style, chapter: null,
+				position: chosen.fraction, text: chosen.text, color: highlightColor(color), style, chapter: null,
 				created_at: now, updated_at: now, deleted_at: null, rev: 0
 			};
 			highlights = [...highlights, highlight];
@@ -486,12 +490,13 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	async function changeHighlight(highlight: Highlight, patch: { color?: string; style?: HighlightStyle }) {
-		if (!reader || !file || !format || busy) return;
-		const nextColor = highlightColor(patch.color ?? highlight.color);
-		const style = patch.style ?? highlight.style ?? 'highlight';
+		if (!reader || !file || !format || busy) return false;
 		busy = true;
 		actionError = '';
 		try {
+			if (patch.color !== undefined && !isMarkColor(patch.color)) throw new Error('Invalid highlight color.');
+			const nextColor = patch.color === undefined ? highlight.color : highlightColor(patch.color);
+			const style = patch.style ?? highlight.style ?? 'highlight';
 			await saveMutation({
 				entity: 'highlights', id: highlight.id, op: 'upsert', updated_at: Date.now(),
 				data: {
@@ -508,8 +513,10 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				const next = annotationForReader(updated, file.id, format);
 				if (next) await reader.addAnnotation(next);
 			}
+			return true;
 		} catch (error) {
 			reportActionError(error);
+			return false;
 		} finally {
 			busy = false;
 		}
@@ -865,6 +872,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		get highlights() { return highlights; },
 		get notes() { return notes; },
 		get pageAnnotations() { return pageAnnotations; },
+		get otherPageAnnotations() { return otherPageAnnotations; },
 		get bookmarks() { return bookmarks; },
 		get location() { return location; },
 		get selection() { return selection; },

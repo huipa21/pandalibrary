@@ -187,16 +187,24 @@ describe('reader controller PDF extensions', () => {
 		controller.dispose();
 	});
 
-	it('loads only live page annotations for the current file', async () => {
+	it('separates live current-file and other-file page annotations when opening files', async () => {
 		const row = { ...input, id: '019a501b-2c3d-7e4f-8a5b-6c7d8e9f0011', book_id: 21, book_file_id: 31, created_at: '', updated_at: '', deleted_at: null, rev: 1 };
-		vi.mocked(getBookState).mockResolvedValue({ ...empty, page_annotations: [row, { ...row, id: 'other', book_file_id: 32 }, { ...row, id: 'deleted', deleted_at: 'today' }] });
-		const controller = createReaderController(params);
+		const other = { ...row, id: 'other', book_file_id: 32 };
+		vi.mocked(getBook).mockResolvedValue({ ...book, files: [...book.files, { ...book.files[0], id: 32 }] });
+		vi.mocked(getBookState).mockResolvedValue({ ...empty, page_annotations: [row, other, { ...row, id: 'deleted', deleted_at: 'today' }] });
+		let fileId = '31';
+		const controller = createReaderController(() => ({ ...params(), fileId }));
 		await controller.retry();
 		expect(controller.pageAnnotations).toEqual([row]);
+		expect(controller.otherPageAnnotations).toEqual([other]);
+		fileId = '32';
+		await controller.retry();
+		expect(controller.pageAnnotations).toEqual([other]);
+		expect(controller.otherPageAnnotations).toEqual([row]);
 		controller.dispose();
 	});
 
-	it('refreshes current-file annotations after sync without replacing an in-flight local edit', async () => {
+	it('refreshes both files after sync without replacing an in-flight local edit', async () => {
 		const controller = createReaderController(params);
 		await controller.retry();
 		vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
@@ -207,7 +215,10 @@ describe('reader controller PDF extensions', () => {
 		vi.mocked(saveMutation).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
 		const saving = controller.addPageAnnotation(input);
 		const row = controller.pageAnnotations[0];
-		vi.mocked(readerState).mockResolvedValue({ state: { ...empty, page_annotations: [row] }, settings: [] });
+		const other = { ...row, id: 'other', book_file_id: 32 };
+		vi.mocked(readerState).mockResolvedValue({
+			state: { ...empty, page_annotations: [row, other, { ...other, id: 'deleted', deleted_at: 'today' }] }, settings: []
+		});
 		offlineStatus.update((status) => ({ ...status, syncing: true }));
 		offlineStatus.update((status) => ({ ...status, syncing: false }));
 		expect(readerState).not.toHaveBeenCalled();
@@ -216,6 +227,7 @@ describe('reader controller PDF extensions', () => {
 		await saving;
 		await expect.poll(() => vi.mocked(readerState).mock.calls.length).toBe(1);
 		expect(controller.pageAnnotations).toEqual([row]);
+		await expect.poll(() => controller.otherPageAnnotations).toEqual([other]);
 		release();
 		controller.dispose();
 	});
