@@ -151,6 +151,50 @@ it('does not report a sync failure when Background Sync registration is refused'
 	expect(pulls(synchronize)).toEqual([false, false]);
 });
 
+it('retains a failed bookmark save once, exposes its cause and clears it after delivery', async () => {
+	const { client, synchronize } = await setup();
+	const { ApiError } = await import('#lib/api/client.js');
+	const { makeBookmark } = await import('#lib/reader/bookmarks.js');
+	const { outbox, recordResults } = await import('./db.js');
+	const bookmark = makeBookmark(21, 31, {
+		fraction: 0.3, locator: { type: 'cfi', value: 'epubcfi(/6/2)' }
+	}, 'My position', mutation.id);
+	vi.spyOn(console, 'error').mockImplementation(() => undefined);
+	synchronize.mockRejectedValueOnce(new ApiError(503, 'Unavailable', ''));
+	await expect(client.saveMutation(bookmark)).resolves.toBe('queued');
+	expect(get(client.offlineStatus)).toMatchObject({
+		pending: 1, error: true, errorDetail: expect.stringContaining('HTTP 503')
+	});
+	expect(await outbox(1)).toMatchObject([{ mutation: bookmark, status: 'pending' }]);
+
+	// Retrying the same submission must not create another bookmark/outbox entry.
+	await expect(client.saveMutation(bookmark)).resolves.toBe('queued');
+	expect(await outbox(1)).toHaveLength(1);
+	synchronize.mockImplementationOnce(async () => {
+		const entries = await outbox(1);
+		await recordResults(1, entries, [{ index: 0, status: 'applied' }]);
+		return { applied: 1, issues: 0 };
+	});
+	await client.syncNow(true, { pull: false });
+	expect(get(client.offlineStatus)).toMatchObject({ pending: 0, issues: 0, error: false });
+	expect(get(client.offlineStatus).errorDetail).toBeUndefined();
+	expect(await outbox(1)).toMatchObject([{ mutation: bookmark, status: 'applied' }]);
+});
+
+it('does not silently treat server rejection as a queued success', async () => {
+	const { client, synchronize } = await setup();
+	const { outbox, recordResults } = await import('./db.js');
+	synchronize.mockImplementationOnce(async () => {
+		await recordResults(1, await outbox(1), [{ index: 0, status: 'rejected', reason: 'book is unavailable' }]);
+		return { applied: 0, issues: 1 };
+	});
+	await expect(client.saveMutation(mutation)).rejects.toMatchObject({
+		name: 'SyncError', status: 'rejected', reason: 'book is unavailable'
+	});
+	expect(get(client.offlineStatus)).toMatchObject({ pending: 0, issues: 1 });
+	expect(await outbox(1)).toMatchObject([{ status: 'rejected', reason: 'book is unavailable' }]);
+});
+
 it('keeps an explicit online retry path when Background Sync is absent', async () => {
 	const { client, synchronize, network, window, register } = await setup(false);
 	network.onLine = false;

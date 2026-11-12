@@ -204,6 +204,10 @@ test('visibility confirms before requests, supports cancellation and updates aft
 	const state = await setup(page);
 	await page.goto('/books/21');
 	const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
+	await expect(makePrivate).toContainText('Public — all signed-in users');
+	await expect(makePrivate).toContainText('Make private');
+	await expect(makePrivate).toHaveAccessibleDescription('Public — all signed-in users');
+	await expect(makePrivate.locator('svg ellipse')).toHaveCount(1);
 	await expect(makePrivate).toHaveAttribute('title', 'Make private: only you');
 	page.once('dialog', async (dialog) => {
 		expect(dialog.message()).toContain('only you');
@@ -221,6 +225,10 @@ test('visibility confirms before requests, supports cancellation and updates aft
 	await makePrivate.click();
 	const makePublic = page.getByRole('button', { name: 'Make public', exact: true });
 	await expect(makePublic).toBeVisible();
+	await expect(makePublic).toContainText('Private — only you (the uploader)');
+	await expect(makePublic).toContainText('Make public');
+	await expect(makePublic).toHaveAccessibleDescription('Private — only you (the uploader)');
+	await expect(makePublic.locator('svg rect')).toHaveCount(1);
 	await expect(makePublic).toHaveAttribute('title', 'Make public: visible to all signed-in users');
 	expect(state.visibilityRequests).toEqual(['private']);
 	await expect(page.getByRole('status').filter({ hasText: 'This book is now private: only you can see it.' })).toBeAttached();
@@ -237,6 +245,15 @@ for (const role of ['user', 'admin']) {
 	test(`visibility control is hidden from non-owner ${role}`, async ({ page }) => {
 		const state = await setup(page, role);
 		state.book = { ...book, owner_id: 2, can_manage_visibility: false };
+		await page.goto('/books/21');
+		await expect(page.getByRole('heading', { name: book.title, exact: true })).toBeVisible();
+		await expect(page.getByRole('button', { name: /^Make (private|public)$/ })).toHaveCount(0);
+		expect(state.visibilityRequests).toEqual([]);
+	});
+
+	test(`ownerless legacy books have no visibility toggle for ${role}`, async ({ page }) => {
+		const state = await setup(page, role);
+		state.book = { ...book, owner_id: null, visibility: 'library', can_manage_visibility: false };
 		await page.goto('/books/21');
 		await expect(page.getByRole('heading', { name: book.title, exact: true })).toBeVisible();
 		await expect(page.getByRole('button', { name: /^Make (private|public)$/ })).toHaveCount(0);
@@ -268,18 +285,21 @@ test('visibility is disabled while saving or offline and preserves state on fail
 	release();
 	await expect(page.getByRole('alert').filter({ hasText: 'Could not change visibility. Please try again.' })).toBeVisible();
 	await expect(makePrivate).toBeEnabled();
+	await expect(makePrivate).toContainText('Public — all signed-in users');
 	expect(state.visibilityRequests).toEqual(['private']);
 
 	await context.setOffline(true);
 	await expect(makePrivate).toBeDisabled();
 	await expect(makePrivate).toHaveAttribute('title', 'Connect to the internet to change visibility.');
+	await expect(makePrivate).toHaveAccessibleDescription('Public — all signed-in users Connect to the internet to change visibility.');
+	await expect(page.getByText('Connect to the internet to change visibility.', { exact: true })).toBeVisible();
 	expect(state.visibilityRequests).toEqual(['private']);
 	await context.setOffline(false);
 	await expect(makePrivate).toBeEnabled();
 });
 
 for (const label of ['Read', 'Resume']) {
-	test(`cover actions are icon-only, ordered and keep ${label} full cover width`, async ({ page }) => {
+	test(`visibility is discoverable directly below ${label}, before the icon-only cover actions`, async ({ page }) => {
 		const state = await setup(page);
 		if (label === 'Read') state.progress = { ...state.progress, percentage: 0 };
 		await page.goto('/books/21');
@@ -292,13 +312,21 @@ for (const label of ['Read', 'Resume']) {
 			const read = await readButton.boundingBox();
 			expect(Math.abs(read!.width - cover!.width)).toBeLessThanOrEqual(1);
 			expect(Math.abs(read!.x - cover!.x)).toBeLessThanOrEqual(1);
-			const actions = ['Download', 'Add to shelf', 'Make private'].map((name) =>
+			const visibility = page.getByRole('button', { name: 'Make private', exact: true });
+			await expect(visibility).toContainText('Public — all signed-in users');
+			await expect(visibility).toContainText('Make private');
+			const visibilityBox = await visibility.boundingBox();
+			expect(Math.abs(visibilityBox!.width - read!.width)).toBeLessThanOrEqual(1);
+			expect(Math.abs(visibilityBox!.x - read!.x)).toBeLessThanOrEqual(1);
+			expect(visibilityBox!.y).toBeGreaterThanOrEqual(read!.y + read!.height);
+			const actions = ['Download', 'Add to shelf'].map((name) =>
 				page.getByRole('button', { name, exact: true }));
 			let previousX = -1;
 			for (const action of actions) {
 				await expect(action).toHaveText('');
 				await expect(action).toHaveAttribute('title', /.+/);
 				const bounds = await action.boundingBox();
+				expect(bounds!.y).toBeGreaterThanOrEqual(visibilityBox!.y + visibilityBox!.height);
 				expect(bounds!.x).toBeGreaterThan(previousX);
 				previousX = bounds!.x;
 			}

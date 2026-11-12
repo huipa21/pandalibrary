@@ -3,10 +3,11 @@ import { writable } from 'svelte/store';
 import { getBook } from '#lib/catalog/api.js';
 import { downloadBookFile, getBookState, getSettings } from '../api.js';
 import { createReader } from '../index.js';
-import { offlineAvailable, offlineStatus, saveMutation } from '#lib/sync/client.js';
+import { currentAccount, offlineAvailable, offlineStatus, saveMutation } from '#lib/sync/client.js';
 import { readerState } from '#lib/sync/state.js';
 import type { Book } from '#lib/catalog/types.js';
-import type { BookState, PageAnnotationInput, ReaderEvents } from '../types.js';
+import type { BookState, PageAnnotationInput, ReaderEvents, Setting } from '../types.js';
+import * as m from '#lib/paraglide/messages.js';
 import { createReaderController } from './reader-controller.svelte.js';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
@@ -23,7 +24,7 @@ vi.mock('../index.js', async () => ({
 	readerFormat: (await import('../types.js')).readerFormat
 }));
 vi.mock('#lib/sync/client.js', () => ({
-	currentAccount: () => 1,
+	currentAccount: vi.fn(() => 1),
 	offlineAvailable: vi.fn(() => false),
 	offlineStatus: writable({ online: true, error: false, pending: 0, syncing: false }),
 	readerOpened: () => () => {},
@@ -59,12 +60,139 @@ beforeEach(() => {
 	vi.mocked(downloadBookFile).mockResolvedValue(new Blob());
 	vi.mocked(saveMutation).mockResolvedValue('applied');
 	vi.mocked(offlineAvailable).mockReturnValue(false);
+	vi.mocked(currentAccount).mockReturnValue(1);
 	offlineStatus.set({ account: 1, available: true, online: true, pending: 0, issues: 0, syncing: false, error: false });
 });
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('reader controller PDF extensions', () => {
+	it('automatically saves rapid non-PDF appearance edits and restores only the current user/book preferences', async () => {
+		const stored = new Map<number, Setting[]>([[1, [
+			{ key: 'reader.epub', value: { spacing: 1.7 }, updated_at: '', rev: 1 },
+			{ key: 'reader.book.21', value: { futureOption: true }, updated_at: '', rev: 1 }
+		]]]);
+		vi.mocked(getSettings).mockImplementation(async () => stored.get(currentAccount()) ?? []);
+		vi.mocked(getBook).mockImplementation(async (id) => ({
+			...book, id, files: [{ ...book.files[0], format: 'epub' }]
+		}));
+		let release!: (outcome: 'applied') => void;
+		const first = new Promise<'applied'>((resolve) => { release = resolve; });
+		vi.mocked(saveMutation).mockImplementation(async (mutation) => {
+			const account = currentAccount();
+			if (vi.mocked(saveMutation).mock.calls.length === 1) await first;
+			const key = 'key' in mutation ? mutation.key : mutation.id;
+			stored.set(account, [
+				...(stored.get(account) ?? []).filter((row) => row.key !== key),
+				{ key, value: mutation.data.value, updated_at: new Date(mutation.updated_at).toISOString(), rev: 2 }
+			]);
+			return 'applied';
+		});
+		let bookId = '21';
+		const controller = createReaderController(() => ({ ...params(), bookId }));
+		await controller.retry();
+		const changing = [
+			controller.applySettings({ font: 'system' }),
+			controller.applySettings({ size: 130 }),
+			controller.applySettings({ spacing: 1.8 }),
+			controller.applySettings({ background: 'wood' })
+		];
+		await Promise.resolve();
+		expect(controller.busy).toBe(false);
+		expect(saveMutation).toHaveBeenCalledTimes(1);
+		release('applied');
+		await Promise.all(changing);
+		expect(saveMutation).toHaveBeenCalledTimes(4);
+		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({
+			key: 'reader.book.21', data: { value: expect.objectContaining({
+				font: 'system', size: 130, spacing: 1.8, background: 'wood', futureOption: true
+			}) }
+		}));
+		const times = vi.mocked(saveMutation).mock.calls.map(([mutation]) => mutation.updated_at);
+		expect(times.every((time, index) => !index || time > times[index - 1])).toBe(true);
+		expect(stored.get(1)?.find((row) => row.key === 'reader.epub')?.value).toEqual({ spacing: 1.7 });
+		await controller.retry();
+		expect(controller.settings).toMatchObject({ font: 'system', size: 130, spacing: 1.8, background: 'wood' });
+		bookId = '22';
+		await controller.retry();
+		expect(controller.settings).toMatchObject({ font: 'serif', size: 100, spacing: 1.7 });
+		expect(controller.settings.background).toBeUndefined();
+		await controller.applySettings({ font: 'sans-serif' });
+		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({ key: 'reader.book.22' }));
+		bookId = '21';
+		vi.mocked(currentAccount).mockReturnValue(2);
+		await controller.retry();
+		expect(controller.settings).toMatchObject({ font: 'serif', size: 100, spacing: 1.5 });
+		expect(controller.settings.background).toBeUndefined();
+		await controller.applySettings({ background: 'green' });
+		expect(stored.get(1)?.find((row) => row.key === 'reader.book.21')?.value).toMatchObject({ background: 'wood' });
+		vi.mocked(currentAccount).mockReturnValue(1);
+		await controller.retry();
+		expect(controller.settings).toMatchObject({ font: 'system', background: 'wood' });
+		controller.dispose();
+	});
+
+	it('persists manual non-PDF zoom and named modes without changing font size', async () => {
+		vi.mocked(getBook).mockResolvedValue({ ...book, files: [{ ...book.files[0], format: 'epub' }] });
+		const controller = createReaderController(params);
+		await controller.retry();
+		for (const reflowZoom of [1.4, 'page-actual', 'page-fit', 'page-width', 'auto'] as const) {
+			await controller.applySettings({ reflowZoom });
+			expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({
+				key: 'reader.book.21', data: { value: expect.objectContaining({ reflowZoom, size: 100 }) }
+			}));
+		}
+		controller.dispose();
+	});
+
+	it('retries failed automatic settings saves and does not send queued edits to a different account', async () => {
+		vi.mocked(getBook).mockResolvedValue({ ...book, files: [{ ...book.files[0], format: 'epub' }] });
+		const controller = createReaderController(params);
+		await controller.retry();
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.mocked(saveMutation).mockRejectedValueOnce(new Error('Storage unavailable'));
+		await controller.applySettings({ size: 120 });
+		expect(controller.settingsWarning).not.toBe('');
+		expect(controller.pendingError).not.toBe('');
+		await controller.retryWrites();
+		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({
+			key: 'reader.book.21', data: { value: expect.objectContaining({ size: 120 }) }
+		}));
+		expect(controller.settingsWarning).toBe('');
+		expect(controller.pendingError).toBe('');
+		vi.mocked(saveMutation).mockClear();
+		const pending = controller.applySettings({ background: 'green' });
+		vi.mocked(currentAccount).mockReturnValue(2);
+		await pending;
+		expect(saveMutation).not.toHaveBeenCalled();
+		expect(controller.pendingError).not.toBe('');
+		log.mockRestore();
+		controller.dispose();
+	});
+
+	it('leaves PDF automatic persistence to the PDF view', async () => {
+		const controller = createReaderController(params);
+		await controller.retry();
+		await controller.applySettings({ background: 'night' });
+		expect(saveMutation).not.toHaveBeenCalled();
+		controller.dispose();
+	});
+
+	it('does not overwrite malformed book settings or block leaving after an unsavable appearance edit', async () => {
+		vi.mocked(getBook).mockResolvedValue({ ...book, files: [{ ...book.files[0], format: 'epub' }] });
+		vi.mocked(getSettings).mockResolvedValue([
+			{ key: 'reader.book.21', value: 'future-format', updated_at: '', rev: 1 }
+		]);
+		const controller = createReaderController(params);
+		await controller.retry();
+		await controller.applySettings({ size: 140 });
+		expect(saveMutation).not.toHaveBeenCalled();
+		expect(controller.settings.size).toBe(140);
+		expect(controller.settingsWarning).toBe(m['reader.error.settings_locked']());
+		await controller.close();
+		expect(controller.pendingError).toBe('');
+		controller.dispose();
+	});
 	it.each(['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz'])('persists CFI inserts for %s and rolls back failed offline writes', async (format) => {
 		vi.mocked(getBook).mockResolvedValue({
 			...book, files: [{ ...book.files[0], format }]
@@ -317,18 +445,31 @@ describe('reader controller PDF extensions', () => {
 		controller.dispose();
 	});
 
-	it('clears a sync-status save alert once the outbox drains', async () => {
+	it('shows durable sync failures accurately and clears queued bookmark status once the outbox drains', async () => {
+		const bookmark = {
+			id: 'bookmark', book_id: 21, book_file_id: 31, locator: { type: 'pdf', page: 1 },
+			position: 0, label: '', chapter: null, created_at: '', updated_at: '', deleted_at: null, rev: 1
+		};
+		vi.mocked(getBookState).mockResolvedValue({ ...empty, bookmarks: [bookmark] });
 		const controller = createReaderController(params);
 		await controller.retry();
 		vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
 		vi.stubGlobal('document', { hidden: true, addEventListener: vi.fn(), removeEventListener: vi.fn() });
 		const release = controller.mount();
-		offlineStatus.update((status) => ({ ...status, error: true, pending: 1 }));
-		expect(controller.pendingError).not.toBe('');
+		vi.mocked(saveMutation).mockResolvedValueOnce('queued');
+		await controller.removeBookmark(bookmark, { confirm: false });
+		expect(controller.savedMessage).toBe(m['ux6.queued']());
+		offlineStatus.update((status) => ({ ...status, error: true, errorDetail: 'HTTP 503', pending: 1 }));
+		expect(controller.pendingError).toBe(`${m['offline.status.failed']()} HTTP 503`);
 		offlineStatus.update((status) => ({ ...status, syncing: true, error: false }));
 		expect(controller.pendingError).not.toBe('');
-		offlineStatus.update((status) => ({ ...status, syncing: false, pending: 0 }));
+		expect(controller.savedMessage).toBe(m['ux6.queued']());
+		offlineStatus.update((status) => ({ ...status, syncing: false, pending: 0, issues: 1 }));
+		expect(controller.savedMessage).toBe(m['ux6.queued']());
+		expect(controller.pendingError).not.toBe('');
+		offlineStatus.update((status) => ({ ...status, issues: 0 }));
 		expect(controller.pendingError).toBe('');
+		expect(controller.savedMessage).toBe(m['ux6.saved']());
 		release();
 		controller.dispose();
 	});

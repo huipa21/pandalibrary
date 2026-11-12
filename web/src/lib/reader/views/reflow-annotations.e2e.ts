@@ -196,6 +196,30 @@ async function openAnnotations(page: Page) {
 	await expect(page.getByRole('tabpanel', { name: 'Annotations', exact: true })).toBeVisible();
 }
 
+async function expectNoAnnotationCreationControls(page: Page) {
+	const panel = page.getByRole('tabpanel', { name: 'Annotations', exact: true });
+	await expect(panel.getByRole('button', { name: /^(Add book note|Highlight selection|Highlight current page)$/ })).toHaveCount(0);
+	await expect(panel.getByText('Selected text', { exact: true })).toHaveCount(0);
+	await expect(panel.getByRole('combobox')).toHaveCount(0);
+}
+
+for (const width of [1280, 360]) {
+	test(`EPUB annotation pane only lists annotations while selection toolbar creates them at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 900 });
+		const state = await setup(page);
+		await openAnnotations(page);
+		await expectNoAnnotationCreationControls(page);
+		await expect(page.getByText('No annotations yet. Select text to highlight, or use Insert.', { exact: true })).toBeVisible();
+		await selectPassage(page);
+		await expectNoAnnotationCreationControls(page);
+		await selectionToolbar(page).getByRole('button', { name: 'Highlight', exact: true }).click();
+		await expect.poll(() => state.highlights.length).toBe(1);
+		await openAnnotations(page);
+		await expect(page.locator('.rp7-excerpt')).toHaveText(passage);
+		await expectNoAnnotationCreationControls(page);
+	});
+}
+
 for (const viewport of [{ width: 1280, height: 900 }, { width: 360, height: 740 }]) {
 	test(`EPUB mouse selection opens the shared toolbar inside the reader at ${viewport.width}px`, async ({ page }) => {
 		await page.setViewportSize(viewport);
@@ -333,7 +357,7 @@ test('EPUB toolbar saves three CFI mark styles and remembers independent palette
 	await expect(page.locator('.rp7-excerpt')).toHaveText([passage, 'worth', 'highlighting.']);
 });
 
-test('EPUB comment links a note to its selection and the sidebar highlight workflow still works', async ({ page }) => {
+test('EPUB annotation pane reflects toolbar comments and highlight edits and deletions', async ({ page }) => {
 	const state = await setup(page);
 	await selectPassage(page);
 	await selectionToolbar(page).getByRole('button', { name: 'Comment', exact: true }).click();
@@ -348,6 +372,7 @@ test('EPUB comment links a note to its selection and the sidebar highlight workf
 	expect(state.notes[0]).toMatchObject({ highlight_id: state.highlights[0].id, body_md: 'A **linked** EPUB comment' });
 	expect(state.highlights[0]).toMatchObject({ text: passage, locator: { type: 'cfi', value: expect.stringContaining('epubcfi(') } });
 	await openAnnotations(page);
+	await expectNoAnnotationCreationControls(page);
 	const row = page.locator('.rp7-entry');
 	await expect(row).toHaveCount(1);
 	await expect(row.locator('.rp7-comment')).toHaveText('A **linked** EPUB comment');
@@ -363,6 +388,7 @@ test('EPUB comment links a note to its selection and the sidebar highlight workf
 	const details = page.getByRole('dialog');
 	await details.getByRole('combobox', { name: 'Highlight color', exact: true }).selectOption('green');
 	await expect.poll(() => state.highlights[0].color).toBe('green');
+	await expect(row.locator('.rp7-swatch')).toHaveCSS('background-color', 'rgb(74, 222, 128)');
 	await details.getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByRole('dialog').locator('textarea').fill('Edited **plain** comment');
 	await page.getByRole('dialog').getByRole('button', { name: 'Save note', exact: true }).click();
@@ -387,11 +413,23 @@ test('EPUB comment links a note to its selection and the sidebar highlight workf
 	await expect(page.getByRole('dialog').locator('textarea')).toHaveValue('Edited **plain** comment');
 	await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
 
-	await selectPassage(page);
 	await openAnnotations(page);
-	await page.getByRole('button', { name: 'Highlight selection', exact: true }).click();
-	await expect.poll(() => state.highlights.length).toBe(2);
-	await expect(page.locator('.rp7-excerpt').filter({ hasText: passage })).toHaveCount(2);
+	await row.locator('.rp7-edit').click();
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+	await expect.poll(() => state.notes.length).toBe(0);
+	await page.getByRole('button', { name: 'Close annotation details', exact: true }).click();
+	await expect(row.locator('.rp7-comment')).toHaveText('');
+	await row.locator('[data-rp7-delete]').click();
+	await row.locator('[data-rp7-delete]').click();
+	await expect.poll(() => state.highlights.length).toBe(0);
+	await expect(row).toHaveCount(0);
+	await selectPassage(page);
+	await selectionToolbar(page).getByRole('button', { name: 'Highlight', exact: true }).click();
+	await expect.poll(() => state.highlights.length).toBe(1);
+	await openAnnotations(page);
+	await expect(page.locator('.rp7-excerpt')).toHaveText(passage);
+	await expectNoAnnotationCreationControls(page);
 });
 
 test('EPUB cancelling an empty toolbar comment removes its new mark but preserves existing highlights', async ({ page }) => {
@@ -410,7 +448,7 @@ test('EPUB cancelling an empty toolbar comment removes its new mark but preserve
 	await expect.poll(() => state.mutations.filter((mutation) => mutation.entity === 'highlights' && mutation.op === 'delete').length).toBe(1);
 });
 
-test('EPUB copy preserves selection, native collapse retains sidebar highlight, and Escape dismisses', async ({ page, context }) => {
+test('EPUB copy preserves selection, native collapse exposes no sidebar creation controls, and Escape dismisses', async ({ page, context }) => {
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	const state = await setup(page);
 	const frame = await selectPassage(page);
@@ -423,7 +461,10 @@ test('EPUB copy preserves selection, native collapse retains sidebar highlight, 
 	});
 	await expect(selectionToolbar(page)).toHaveCount(0);
 	await openAnnotations(page);
-	await page.getByRole('button', { name: 'Highlight selection', exact: true }).click();
+	await expectNoAnnotationCreationControls(page);
+	expect(highlights(state)).toHaveLength(0);
+	await selectPassage(page);
+	await selectionToolbar(page).getByRole('button', { name: 'Highlight', exact: true }).click();
 	await expect.poll(() => state.highlights.length).toBe(1);
 	expect(state.highlights[0]).toMatchObject({ text: passage, style: 'highlight' });
 	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
@@ -523,10 +564,13 @@ for (const [format, fixture] of [
 	});
 }
 
-test('CBZ retains the sidebar page-mark action without a text-selection toolbar', async ({ page }) => {
+test('CBZ creates page highlights from the header toolbar, not the annotation pane', async ({ page }) => {
 	const state = await setup(page, 'cbz', cbzFixture());
 	await openAnnotations(page);
-	await page.getByRole('button', { name: 'Highlight current page', exact: true }).click();
+	await expectNoAnnotationCreationControls(page);
+	expect(highlights(state)).toHaveLength(0);
+	await page.getByRole('toolbar', { name: 'Reader controls', exact: true })
+		.getByRole('button', { name: 'Highlight current page', exact: true }).click();
 	await expect.poll(() => state.highlights.length).toBe(1);
 	expect(state.highlights[0]).toMatchObject({
 		book_file_id: 31, style: 'highlight', locator: { type: 'cfi', value: expect.stringContaining('epubcfi(') }
@@ -534,6 +578,7 @@ test('CBZ retains the sidebar page-mark action without a text-selection toolbar'
 	await expect(selectionToolbar(page)).toHaveCount(0);
 	await page.reload();
 	await openAnnotations(page);
+	await expectNoAnnotationCreationControls(page);
 	await expect(page.locator('.rp7-excerpt')).toHaveText('Highlight');
 	const bookmark = page.getByTestId('reflow-bookmark-toggle');
 	await bookmark.click();

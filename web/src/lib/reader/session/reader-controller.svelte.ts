@@ -74,6 +74,11 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let canSaveSettings = $state(true);
 	let browserDeviceId = '';
 	let requestVersion = 0;
+	let personalSettingsWrites = Promise.resolve();
+	let personalSettingsDirty = false;
+	let personalSettingsError = '';
+	let personalSettingsRevision = 0;
+	let settingsClock = 0;
 	let annotationVersion = 0;
 	let mounted = true;
 	const sessionWriter = new SessionWriter(reportPendingError, async (mutation) => {
@@ -105,11 +110,14 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		let syncing = false;
 		const unsubscribe = offlineStatus.subscribe((status) => {
 			if (status.online && status.error && status.pending && (!pendingError || statusAlert)) {
-				pendingError = m['reader.error.save']();
+				pendingError = [m['offline.status.failed'](), status.errorDetail].filter(Boolean).join(' ');
 				statusAlert = true;
 			} else if (statusAlert && !status.error && !status.pending && !status.issues) {
 				pendingError = '';
 				statusAlert = false;
+			}
+			if (savedMessage === m['ux6.queued']() && !status.pending && !status.issues && !status.error && !status.syncing) {
+				savedMessage = m['ux6.saved']();
 			}
 			if (syncing && !status.syncing && !status.error && offlineAvailable()) void refreshPageAnnotations();
 			syncing = status.syncing;
@@ -208,11 +216,15 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 
 	async function flushForClose() {
 		await saveView();
+		await personalSettingsWrites;
+		if (personalSettingsDirty) throw new Error('Personal reader settings have not been saved.');
 		await flushReaderWrites(progressWriter, retiredProgressWriters, sessionWriter);
 	}
 
 	async function openBook(rawBookId: string, rawFileId: string, bookmarkId: string | null, highlightId: string | null = null, annotationId: string | null = null) {
 		const version = ++requestVersion;
+		personalSettingsDirty = false;
+		personalSettingsError = '';
 		loaded = null;
 		ready = false;
 		sessionClock?.stop();
@@ -232,6 +244,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				console.error('Could not close the previous reader', error);
 			}
 		}
+		await personalSettingsWrites;
 		if (version !== requestVersion) return;
 		book = null;
 		file = null;
@@ -375,6 +388,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 
 	async function retryWrites() {
 		try {
+			if (personalSettingsDirty) await persistPersonalSettings(settings);
 			await flushForClose();
 			if (navigator.onLine && offlineAvailable()) {
 				const result = await syncNow(true);
@@ -396,13 +410,57 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			return;
 		}
 		settings = next;
-		if (!reader) return;
+		const saving = format && format !== 'pdf' ? persistPersonalSettings(next) : Promise.resolve();
 		try {
-			await reader.applySettings(settings);
+			await reader?.applySettings(next);
 		} catch (error) {
 			console.error('Could not apply reader settings', error);
 			actionError = m['reader.error.render']();
 		}
+		await saving;
+	}
+
+	function persistPersonalSettings(next: ReaderSettings): Promise<void> {
+		if (!book || !format || format === 'pdf') return Promise.resolve();
+		const version = requestVersion;
+		const bookId = book.id;
+		const account = currentAccount();
+		let value: { [key: string]: JsonValue };
+		try {
+			if (!canSaveSettings) throw new Error('Reader settings are locked.');
+			value = mergeBookSettings(savedBookSettings, next);
+		} catch (error) {
+			actionError = !canSaveSettings ? m['reader.error.settings_locked']() : m['reader.error.settings']();
+			settingsWarning = actionError;
+			return Promise.resolve();
+		}
+		personalSettingsDirty = true;
+		const revision = ++personalSettingsRevision;
+		// Serialize snapshots without sharing the annotation busy flag or dropping rapid edits.
+		const updatedAt = settingsClock = Math.max(Date.now(), settingsClock + 1);
+		personalSettingsWrites = personalSettingsWrites.then(async () => {
+			if (currentAccount() !== account) throw new Error('The active reader account has changed.');
+			await saveMutation({
+				entity: 'user_settings', key: `reader.book.${bookId}`, op: 'upsert',
+				data: { value }, updated_at: updatedAt
+			});
+			if (version === requestVersion) {
+				savedBookSettings = value;
+				if (revision === personalSettingsRevision) {
+					personalSettingsDirty = false;
+					settingsWarning = '';
+					if (personalSettingsError && pendingError === personalSettingsError) pendingError = '';
+					personalSettingsError = '';
+				}
+			}
+		}).catch((error) => {
+			if (version === requestVersion) {
+				reportPendingError(error);
+				personalSettingsError = pendingError;
+				settingsWarning = pendingError;
+			}
+		});
+		return personalSettingsWrites;
 	}
 
 	async function saveSettings(partial: Partial<ReaderSettings> = {}, options: 'book' | 'format' | { scope: 'book' | 'format' | 'both' } = 'book') {

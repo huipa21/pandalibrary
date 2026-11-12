@@ -262,10 +262,16 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 		selected?.addRange(range);
 		document.dispatchEvent(new Event('selectionchange'));
 	});
-	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
-	await expect(page.getByText('A passage worth highlighting.')).toBeVisible();
-	await page.getByRole('button', { name: 'Highlight selection' }).click();
+	const selectionToolbar = page.getByRole('toolbar', { name: 'Selection actions', exact: true });
+	await expect(selectionToolbar).toBeVisible();
+	await selectionToolbar.getByRole('button', { name: 'Highlight', exact: true }).click();
 	await expect.poll(() => state.highlights.length).toBe(1);
+	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
+	const annotations = page.getByRole('tabpanel', { name: 'Annotations', exact: true });
+	await expect(annotations.getByRole('button', { name: 'Add book note', exact: true })).toHaveCount(0);
+	await expect(annotations.getByRole('button', { name: 'Highlight selection', exact: true })).toHaveCount(0);
+	await expect(annotations.getByText('Selected text', { exact: true })).toHaveCount(0);
+	await expect(annotations.getByRole('combobox')).toHaveCount(0);
 	const highlight = page.locator('.rp7-entry').filter({ hasText: 'A passage worth highlighting.' });
 	await highlight.locator('.rp7-edit').click();
 	await page.getByRole('dialog').getByRole('button', { name: 'Add note to highlight' }).click();
@@ -283,7 +289,7 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	await page.getByRole('menuitem', { name: 'Format', exact: true }).click();
 	await page.getByRole('radio', { name: 'Sans', exact: true }).click();
 	await page.getByRole('radio', { name: 'Night', exact: true }).click();
-	await page.getByRole('button', { name: 'Save settings' }).click();
+	await expect(page.getByRole('button', { name: 'Save settings', exact: true })).toHaveCount(0);
 	await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value).toMatchObject({
 		font: 'sans-serif', theme: 'dark', background: 'night', futureOption: { keep: true }
 	});
@@ -291,21 +297,37 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Collapse sidebar' }).click();
 
-	await page.getByRole('button', { name: 'Next page' }).click();
-	await page.getByRole('slider', { name: 'Reading position' }).evaluate((element: HTMLInputElement) => {
+	const readingPosition = page.getByRole('slider', { name: 'Reading position' });
+	await readingPosition.evaluate((element: HTMLInputElement) => {
 		element.value = '1000';
 		element.dispatchEvent(new Event('change', { bubbles: true }));
 	});
 	frame = await bookFrame(page, 'Second section');
 	await expect(frame.getByText('Second section')).toBeVisible();
+	const livePosition = () => page.locator('foliate-view').evaluate((element) => {
+		const view = element as View & {
+			lastLocation: { cfi: string; fraction: number };
+			renderer: View['renderer'] & { atEnd: boolean };
+		};
+		return {
+			atEnd: view.renderer.atEnd,
+			locator: { type: 'cfi', value: view.lastLocation.cfi },
+			percentage: view.lastLocation.fraction
+		};
+	});
+	await expect.poll(async () => (await livePosition()).atEnd).toBe(true);
+	const finalPosition = await livePosition();
 	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 	await expect.poll(() => state.progress?.book_file_id).toBe(31);
 	await expect.poll(() => state.progress?.source).toBe('web');
-	await expect.poll(() => state.progress?.percentage, PROGRESS_SAVE).toBeGreaterThan(0.9);
+	await expect.poll(() => state.progress, PROGRESS_SAVE).toMatchObject({
+		locator: finalPosition.locator, percentage: finalPosition.percentage
+	});
 	await page.reload();
 	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 	frame = await bookFrame(page, 'Second section');
 	await expect(frame.getByText('Second section')).toBeVisible();
+	await expect.poll(livePosition).toEqual(finalPosition);
 	const annotationsTab = page.getByRole('tab', { name: 'Annotations', exact: true });
 	if (await annotationsTab.getAttribute('aria-selected') !== 'true') await annotationsTab.click();
 	await expect(highlight.locator('.rp7-comment')).toContainText('**Keep this**');
@@ -547,7 +569,7 @@ test('RP9 PDF Format applies all backgrounds, persists, and folds into mobile ov
 	await page.keyboard.press('Escape');
 });
 
-test('RP9 EPUB Format changes live typography and background and saves both scopes', async ({ page }) => {
+test('RP9 EPUB Format changes live typography and background and automatically saves book preferences', async ({ page }) => {
 	const state = await setupReader(page, 'epub', epubFixture());
 	await page.goto('/read/21/31');
 	let frame = await bookFrame(page, 'First section');
@@ -571,12 +593,11 @@ test('RP9 EPUB Format changes live typography and background and saves both scop
 	await expect(frame.locator('html')).toHaveCSS('color-scheme', 'dark');
 	await expect(frame.locator('body')).toHaveCSS('background-color', 'rgb(28, 28, 30)');
 	await expect(page.locator('#reader-surface')).toHaveCSS('background-image', 'none');
-	await page.getByRole('button', { name: 'Save settings', exact: true }).click();
-	await page.getByRole('button', { name: 'Save as format default', exact: true }).click();
-	for (const key of ['reader.book.21', 'reader.epub']) {
-		await expect.poll(() => state.settings.find((setting) => setting.key === key)?.value)
-			.toMatchObject({ font: 'system', size: 110, spacing: 1.6, background: 'night', theme: 'dark' });
-	}
+	await expect(dialog.getByRole('button', { name: 'Save settings', exact: true })).toHaveCount(0);
+	await expect(dialog.getByRole('button', { name: 'Save as format default', exact: true })).toHaveCount(0);
+	await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value)
+		.toMatchObject({ font: 'system', size: 110, spacing: 1.6, background: 'night', theme: 'dark' });
+	expect(state.mutations.filter((mutation) => mutation.entity === 'user_settings').every((mutation) => mutation.key === 'reader.book.21')).toBe(true);
 	await page.keyboard.press('Escape');
 	await page.reload();
 	frame = await bookFrame(page, 'First section');
@@ -613,14 +634,15 @@ test('EPUB shares PDF zoom, display and insertion menus on desktop and mobile', 
 
 	const zoom = page.getByRole('button', { name: /^Zoom(?: |$)/ });
 	await zoom.press('ArrowDown');
-	for (const label of ['Automatic', 'Actual size', 'Fit page', 'Page width']) {
-		await expect(page.getByRole('menuitemradio', { name: label, exact: true })).toBeVisible();
-	}
-	await page.getByRole('menuitemradio', { name: '150%', exact: true }).click();
-	await expect(zoom).toHaveText('150%');
+	await expect(page.getByRole('menuitemradio')).toHaveText(['Automatic', 'Actual size', 'Fit page', 'Page width']);
+	await page.getByRole('menuitemradio', { name: 'Actual size', exact: true }).click();
 	await zoom.click();
 	await expect(page.getByRole('menuitem', { name: 'Zoom in', exact: true })).toBeEnabled();
 	await expect(page.getByRole('menuitem', { name: 'Zoom out', exact: true })).toBeEnabled();
+	await page.getByRole('menuitem', { name: 'Zoom in', exact: true }).click();
+	await expect(zoom).toHaveText('110%');
+	await expect(zoom).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByRole('menuitemradio', { name: 'Automatic', exact: true })).toHaveAttribute('aria-checked', 'true');
 	await page.getByRole('menuitemradio', { name: 'Actual size', exact: true }).click();
 	await page.getByRole('button', { name: 'Page display', exact: true }).click();
 	await expect(page.getByRole('menuitemradio')).toHaveText(['Single page', 'Single page continuous', 'Split', 'Split continuous']);
@@ -650,7 +672,7 @@ test('EPUB shares PDF zoom, display and insertion menus on desktop and mobile', 
 		} else if (label === 'Format') {
 			const dialog = page.getByRole('dialog', { name: 'Format', exact: true });
 			await expect(dialog.getByRole('radio', { name: 'Serif', exact: true })).toBeVisible();
-			await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
+			await expect(dialog.getByRole('button', { name: 'Save settings', exact: true })).toHaveCount(0);
 			await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value)
 				.toMatchObject({ size: 100, reflowZoom: 'page-actual', reflowLayout: 'split-continuous', futureOption: { keep: true } });
 			await dialog.press('Escape');
@@ -678,13 +700,13 @@ test('CBZ shares zoom, page display and insertion without exposing typography or
 	}
 	await page.getByRole('button', { name: /^Zoom(?: |$)/ }).click();
 	await expect(page.getByRole('menuitem', { name: 'Zoom in', exact: true })).toBeVisible();
-	for (const label of ['Automatic', 'Actual size', 'Fit page', 'Page width']) {
-		await expect(page.getByRole('menuitemradio', { name: label, exact: true })).toBeVisible();
-	}
-	await page.getByRole('menuitemradio', { name: '150%', exact: true }).click();
-	await expect(page.getByRole('button', { name: /^Zoom(?: |$)/ })).toHaveText('150%');
+	await expect(page.getByRole('menuitemradio')).toHaveText(['Automatic', 'Actual size', 'Fit page', 'Page width']);
+	await page.getByRole('menuitemradio', { name: 'Actual size', exact: true }).click();
 	await page.getByRole('button', { name: /^Zoom(?: |$)/ }).click();
-	await expect(page.getByRole('menuitemradio', { name: '150%', exact: true })).toHaveAttribute('aria-checked', 'true');
+	await page.getByRole('menuitem', { name: 'Zoom in', exact: true }).click();
+	await expect(page.getByRole('button', { name: /^Zoom(?: |$)/ })).toHaveText('110%');
+	await expect(page.getByRole('button', { name: /^Zoom(?: |$)/ })).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByRole('menuitemradio', { name: 'Automatic', exact: true })).toHaveAttribute('aria-checked', 'true');
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Page display', exact: true }).click();
 	await expect(page.getByRole('menuitemradio')).toHaveText(['Single page', 'Single page continuous', 'Split', 'Split continuous']);
@@ -697,8 +719,8 @@ test('CBZ shares zoom, page display and insertion without exposing typography or
 	await expect(dialog.getByRole('menuitemradio', { name: 'Scroll', exact: true })).toHaveCount(0);
 	await dialog.getByRole('radio', { name: 'Sepia', exact: true }).click();
 	await expect(page.locator('#reader-surface')).toHaveAttribute('data-background', 'sepia');
-	await expect(dialog.getByRole('button', { name: 'Save settings', exact: true })).toBeVisible();
-	await expect(dialog.getByRole('button', { name: 'Save as format default', exact: true })).toBeVisible();
+	await expect(dialog.getByRole('button', { name: 'Save settings', exact: true })).toHaveCount(0);
+	await expect(dialog.getByRole('button', { name: 'Save as format default', exact: true })).toHaveCount(0);
 	await page.keyboard.press('Escape');
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expectReaderToolbarFits(page);

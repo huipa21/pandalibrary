@@ -37,8 +37,9 @@ export interface UploadRow {
 	error: UploadErrorKind | null;
 	/** Book or Bookheap item id for duplicate errors. */
 	duplicateOf: number | null;
-	/** Destination captured for this row; retained when an assignment needs retrying. */
+	/** Destination captured on the first attempt and retained for all retries. */
 	libraryId: number | null;
+	shelfIds: number[];
 	/** Captured on the first attempt and retained for retries, including aborted uploads. */
 	visibility: UploadVisibility | null;
 }
@@ -176,7 +177,8 @@ interface Run {
 	readonly finish: () => void;
 	halted: boolean;
 	changed: boolean;
-	readonly libraryId: number | null;
+	readonly libraryId: number;
+	readonly shelfIds: number[];
 	readonly visibility: UploadVisibility;
 }
 
@@ -191,6 +193,7 @@ export class UploadQueue {
 	/** Set when a 401/403 halted the last run; pending rows are kept. */
 	stopped = $state<'unauthorized' | 'forbidden' | null>(null);
 	libraryId = $state<number | null>(null);
+	shelfIds = $state<number[]>([]);
 	visibility = $state<UploadVisibility>('public');
 
 	readonly #upload: Uploader;
@@ -255,7 +258,7 @@ export class UploadQueue {
 				continue;
 			}
 			known.add(key);
-			this.rows.push({ id: this.#nextId++, key, file, status: 'pending', loaded: 0, total: file.size, item: null, error: null, duplicateOf: null, libraryId: null, visibility: null });
+			this.rows.push({ id: this.#nextId++, key, file, status: 'pending', loaded: 0, total: file.size, item: null, error: null, duplicateOf: null, libraryId: null, shelfIds: [], visibility: null });
 			added += 1;
 		}
 		if (unsupported.length > 0 || tooLarge.length > 0 || ignored > 0) this.notice = { unsupported, tooLarge, ignored };
@@ -290,6 +293,7 @@ export class UploadQueue {
 
 	/** Uploads every pending row; resolves when the run ends. Files added meanwhile join the run. */
 	start(): Promise<void> {
+		const libraryId = this.#requireLibraryId();
 		const current = this.#run;
 		if (current) {
 			this.#pump();
@@ -297,7 +301,7 @@ export class UploadQueue {
 		}
 		let finish!: () => void;
 		const done = new Promise<void>((resolve) => (finish = resolve));
-		this.#run = { controller: new AbortController(), done, finish, halted: false, changed: false, libraryId: this.libraryId, visibility: this.visibility };
+		this.#run = { controller: new AbortController(), done, finish, halted: false, changed: false, libraryId, shelfIds: [...this.shelfIds], visibility: this.visibility };
 		this.running = true;
 		this.stopped = null;
 		this.#pump();
@@ -306,6 +310,7 @@ export class UploadQueue {
 
 	/** Re-queues retryable failures and starts uploading them. */
 	retryFailed(): Promise<void> {
+		this.#requireLibraryId();
 		for (const row of this.rows) {
 			if (row.status === 'error' && isRetryableError(row.error)) this.#reset(row);
 		}
@@ -319,6 +324,12 @@ export class UploadQueue {
 		run.halted = true;
 		run.controller.abort();
 		return run.done;
+	}
+
+	#requireLibraryId(): number {
+		const libraryId = positiveId(this.libraryId);
+		if (libraryId === null) throw new Error('A valid library is required before uploading');
+		return libraryId;
 	}
 
 	#reset(row: UploadRow): void {
@@ -346,9 +357,12 @@ export class UploadQueue {
 		row.loaded = 0;
 		row.error = null;
 		try {
-			if (!row.item) {
+			if (row.libraryId === null) {
 				row.libraryId = run.libraryId;
-				row.visibility ??= run.visibility;
+				row.shelfIds = [...run.shelfIds];
+			}
+			row.visibility ??= run.visibility;
+			if (!row.item) {
 				row.item = await this.#upload(row.file, {
 					visibility: row.visibility,
 					signal: run.controller.signal,
@@ -359,15 +373,13 @@ export class UploadQueue {
 				});
 				run.changed = true;
 			}
-			if (row.libraryId !== null) {
-				const id = row.item.id;
-				const results = await this.#assign({ ids: [id], library_id: row.libraryId, shelf_ids: [] });
-				if (!results.some((result) => result.id === id && result.ok)) {
-					throw new Error('Bookheap assignment was not accepted');
-				}
-				// Assignment-only retries must also refresh Bookheap consumers.
-				run.changed = true;
+			const id = row.item.id;
+			const results = await this.#assign({ ids: [id], library_id: row.libraryId, shelf_ids: [...row.shelfIds] });
+			if (!results.some((result) => result.id === id && result.ok)) {
+				throw new Error('Bookheap assignment was not accepted');
 			}
+			// Assignment-only retries must also refresh Bookheap consumers.
+			run.changed = true;
 			row.status = 'done';
 			row.loaded = row.total;
 		} catch (error) {

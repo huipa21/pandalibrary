@@ -12,6 +12,11 @@ async function authenticate(page: Page, role = 'admin', locale = 'en') {
 	await page.route('**/api/v1/admin/libraries?*', (route) => route.fulfill({ json: { items: [
 		{ id: 2, name: 'Main', slug: 'main', created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z' }
 	], next_cursor: null } }));
+	await page.route('**/api/v1/admin/bookheap/assign', (route) =>
+		route.fulfill({ status: 202, json: { results: route.request().postDataJSON().ids.map((id: number) => ({
+			id, ok: true, error: null, import_job_id: 42
+		})) } })
+	);
 	for (const [key, id] of [['unshelved', 8], ['favorites', 9]] as const) {
 		await page.route(`**/api/v1/shelves/system/${key}`, (route) => route.fulfill({ json: { shelf: {
 			id, kind: 'private', mode: 'system', system_key: key, owner_id: 1, name: key,
@@ -93,13 +98,16 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(dialog.getByRole('button', { name: 'Select files' })).toBeFocused();
 	await expect(dialog.getByText('No files yet.', { exact: false })).toBeVisible();
 	await expect(dialog.getByRole('button', { name: 'Clear' })).toBeDisabled();
-	await expect(dialog.getByLabel('Library (optional)')).toHaveValue('');
+	const library = dialog.getByLabel('Library (required)', { exact: true });
+	await expect(library).toBeEnabled();
+	await expect(library).toHaveValue('');
 	const visibility = dialog.getByLabel('Book visibility');
 	await expect(visibility).toHaveValue('public');
 	await expect(dialog.getByText('Public books are visible to all signed-in users', { exact: false })).toBeVisible();
 	await visibility.selectOption('private');
 	const upload = dialog.getByRole('button', { name: /^(Upload|Uploading…)$/ });
 	await expect(upload).toBeDisabled();
+	await library.selectOption({ label: 'Main' });
 	await expect(dialog.getByTestId('bh3-file-input')).toHaveAttribute('accept', '.epub,.pdf,.mobi,.azw3,.fb2,.fbz,.cbz');
 
 	const zone = dialog.getByTestId('bh3-drop-zone');
@@ -140,7 +148,7 @@ test('administrators upload many files from the header dialog with per-file resu
 	uploads.release();
 	await expect(dialog.getByTestId('bh3-result')).toHaveText('1 uploaded, 2 duplicate, 1 failed');
 	const statuses = list.getByTestId('bh3-row-status');
-	await expect(statuses).toHaveText(['Added as “Dune”', 'Already in your library', 'Already in Bookheap', 'Server error. You can retry.']);
+	await expect(statuses).toHaveText(['Uploaded “Dune” — queued for library import', 'Already in your library', 'Already in Bookheap', 'Server error. You can retry.']);
 	await expect(list.getByTestId('bh3-success-mark')).toHaveCount(1);
 	await expect(list.locator('[data-status="done"]')).toHaveClass(/bg-emerald-50/);
 	await expect(list.getByRole('link', { name: 'Already in your library' })).toHaveAttribute('href', '/books/4');
@@ -173,7 +181,7 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(trigger).toBeFocused();
 });
 
-test('uploads optionally assign a library and retry assignment failures without re-uploading', async ({ page }) => {
+test('uploads assign optional shelves and retry assignment failures without re-uploading', async ({ page }) => {
 	await authenticate(page);
 	let uploads = 0;
 	let multipart = '';
@@ -191,12 +199,20 @@ test('uploads optionally assign a library and retry assignment failures without 
 	await page.goto('/');
 	await page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true }).click();
 	const dialog = page.getByRole('dialog', { name: 'Upload books' });
-	await dialog.getByLabel('Library (optional)').selectOption({ label: 'Main' });
+	await dialog.getByLabel('Library (required)', { exact: true }).selectOption({ label: 'Main' });
+	await dialog.locator('#bh3-shelf').selectOption({ label: 'Favorites' });
 	await dialog.getByLabel('Book visibility').selectOption('private');
 	await dialog.getByTestId('bh3-file-input').setInputFiles(book('Dune.epub'));
 	await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(dialog.getByTestId('bh3-row-status')).toHaveText('Uploaded, but library assignment failed. Retry or assign from Bookheap.');
 	await expect(dialog.getByTestId('bh3-success-mark')).toHaveCount(0);
+	const retry = dialog.getByRole('button', { name: 'Retry failed' });
+	await dialog.getByLabel('Library (required)', { exact: true }).selectOption('');
+	await expect(retry).toBeDisabled();
+	await expect(dialog.getByText('Choose a library.', { exact: true })).toBeVisible();
+	await retry.dispatchEvent('click');
+	expect(assignments).toHaveLength(1);
+	await dialog.getByLabel('Library (required)', { exact: true }).selectOption('2');
 	await dialog.getByRole('button', { name: 'Retry failed' }).click();
 	await expect(dialog.getByTestId('bh3-row-status')).toHaveText('Uploaded “Dune” — queued for library import');
 	await expect(dialog.getByTestId('bh3-success-mark')).toBeVisible();
@@ -204,9 +220,97 @@ test('uploads optionally assign a library and retry assignment failures without 
 	expect(uploads).toBe(1);
 	expect(multipart).toContain('name="visibility"\r\n\r\nprivate');
 	expect(assignments).toEqual([
-		{ ids: [12], library_id: 2, shelf_ids: [] },
-		{ ids: [12], library_id: 2, shelf_ids: [] }
+		{ ids: [12], library_id: 2, shelf_ids: [9] },
+		{ ids: [12], library_id: 2, shelf_ids: [9] }
 	]);
+});
+
+test('uploads require a loaded library, omit optional shelves and default to public', async ({ page }) => {
+	await authenticate(page);
+	let release!: () => void;
+	const loading = new Promise<void>((resolve) => (release = resolve));
+	await page.route('**/api/v1/admin/libraries?*', async (route) => {
+		await loading;
+		await route.fulfill({ json: { items: [{ id: 2, name: 'Main' }], next_cursor: null } });
+	});
+	const multipart: string[] = [];
+	const assignments: unknown[] = [];
+	await page.route('**/api/v1/admin/bookheap/files', (route) => {
+		multipart.push(route.request().postDataBuffer()?.toString('latin1') ?? '');
+		return route.fulfill({ status: 201, json: { item: heapItem(12, 'Dune.epub', 'Dune') } });
+	});
+	await page.route('**/api/v1/admin/bookheap/assign', (route) => {
+		assignments.push(route.request().postDataJSON());
+		return route.fulfill({ status: 202, json: { results: [{ id: 12, ok: true, error: null, import_job_id: 42 }] } });
+	});
+	await page.goto('/');
+	await page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Upload books' });
+	const upload = dialog.getByRole('button', { name: 'Upload', exact: true });
+	const library = dialog.getByLabel('Library (required)', { exact: true });
+	await dialog.getByTestId('bh3-file-input').setInputFiles(book('Dune.epub'));
+	await expect(dialog.getByText('Loading libraries and shelves…')).toBeVisible();
+	await expect(library).toBeDisabled();
+	await expect(upload).toBeDisabled();
+	await upload.dispatchEvent('click');
+	expect(multipart).toHaveLength(0);
+	release();
+	await expect(library).toBeEnabled();
+	await expect(upload).toBeDisabled();
+	await expect(dialog.getByText('Choose a library.', { exact: true })).toBeVisible();
+	await upload.dispatchEvent('click');
+	await expect(library).toBeFocused();
+	await expect(library).toHaveAttribute('aria-invalid', 'true');
+	expect(multipart).toHaveLength(0);
+	await library.selectOption('2');
+	await expect(dialog.getByLabel('Book visibility')).toHaveValue('public');
+	await expect(dialog.locator('#bh3-shelf')).toHaveValue('');
+	await upload.click();
+	await expect(dialog.getByTestId('bh3-row-status')).toHaveText('Uploaded “Dune” — queued for library import');
+	expect(multipart).toHaveLength(1);
+	expect(multipart[0]).toContain('name="visibility"\r\n\r\npublic');
+	expect(assignments).toEqual([{ ids: [12], library_id: 2, shelf_ids: [] }]);
+});
+
+test('failed target reloads clear stale selections and provide retry and no-library guidance', async ({ page }) => {
+	await authenticate(page);
+	let state: 'ready' | 'error' | 'empty' = 'ready';
+	await page.route('**/api/v1/admin/libraries?*', (route) => {
+		if (state === 'error') return problem(route, 503);
+		return route.fulfill({ json: { items: state === 'empty' ? [] : [{ id: 2, name: 'Main' }], next_cursor: null } });
+	});
+	const uploads = await mockUploads(page);
+	await page.goto('/');
+	const trigger = page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true });
+	await trigger.click();
+	const dialog = page.getByRole('dialog', { name: 'Upload books' });
+	const library = dialog.getByLabel('Library (required)', { exact: true });
+	await library.selectOption('2');
+	await dialog.locator('#bh3-shelf').selectOption({ label: 'Favorites' });
+	await dialog.getByTestId('bh3-file-input').setInputFiles(book('Dune.epub'));
+	await page.keyboard.press('Escape');
+	state = 'error';
+	await trigger.click();
+	await expect(dialog.getByRole('alert')).toBeVisible();
+	await expect(library).toBeDisabled();
+	const upload = dialog.getByRole('button', { name: 'Upload', exact: true });
+	await expect(upload).toBeDisabled();
+	await upload.dispatchEvent('click');
+	expect(uploads.names).toEqual([]);
+	state = 'empty';
+	await dialog.getByRole('button', { name: 'Try again', exact: true }).click();
+	await expect(dialog.getByText('There are no libraries yet.')).toBeVisible();
+	await expect(dialog.getByRole('link', { name: 'Create a library' })).toHaveAttribute('href', '/admin/libraries');
+	await expect(library).toHaveValue('');
+	await expect(dialog.locator('#bh3-shelf')).toHaveValue('');
+	await expect(upload).toBeDisabled();
+	await page.keyboard.press('Escape');
+	state = 'ready';
+	await trigger.click();
+	await expect(library).toBeEnabled();
+	await expect(library).toHaveValue('');
+	await expect(upload).toBeDisabled();
+	uploads.release();
 });
 
 test('closing during an upload asks for confirmation and aborts in-flight files', async ({ page }) => {
@@ -216,6 +320,7 @@ test('closing during an upload asks for confirmation and aborts in-flight files'
 	const trigger = page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true });
 	await trigger.click();
 	const dialog = page.getByRole('dialog', { name: 'Upload books' });
+	await dialog.getByLabel('Library (required)', { exact: true }).selectOption({ label: 'Main' });
 	await dialog.getByTestId('bh3-file-input').setInputFiles([book('One.epub'), book('Two.epub'), book('Three.epub')]);
 	await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(dialog.getByRole('progressbar')).toHaveCount(2);
