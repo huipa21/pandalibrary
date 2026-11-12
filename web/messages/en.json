@@ -1617,5 +1617,18 @@
 	"rp4.annotations": "Annotations",
 	"rp4.bookmarks": "Bookmarks",
 	"rp4.collapse": "Collapse sidebar",
-	"rp4.coming_soon": "Coming soon."
+	"rp4.coming_soon": "Coming soon.",
+	"rp8.count": "{count} bookmarks",
+	"rp8.add_page": "Bookmark this page",
+	"rp8.remove_page": "Remove page bookmark",
+	"rp8.page": "Page {page}",
+	"rp8.page_short": "p. {page}",
+	"rp8.empty": "No bookmarks yet.",
+	"rp8.other_files": "Other files",
+	"rp8.label": "Bookmark label",
+	"rp8.label_invalid": "Enter a label of 1–200 characters.",
+	"rp8.rename": "Rename bookmark: {label}",
+	"rp8.delete": "Delete bookmark: {label}",
+	"rp8.confirm_delete": "Confirm delete bookmark: {label}",
+	"rp8.delete_question": "Delete?"
 }

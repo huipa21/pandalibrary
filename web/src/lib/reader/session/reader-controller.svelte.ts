@@ -620,8 +620,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
-	async function removeBookmark(bookmark: Bookmark) {
-		if (busy || !window.confirm(m['ux6.delete_confirm']())) return;
+	async function removeBookmark(bookmark: Bookmark, options: { confirm?: boolean } = {}) {
+		if (busy || (options.confirm !== false && !window.confirm(m['ux6.delete_confirm']()))) return;
 		busy = true;
 		actionError = '';
 		try {
@@ -643,6 +643,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 		try {
 			await reader.goTo(bookmark.locator);
+			return true;
 		} catch (error) {
 			console.error('Could not jump to the saved bookmark', error);
 			actionError = m['ux6.jump_failed']();

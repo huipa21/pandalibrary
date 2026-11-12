@@ -95,7 +95,7 @@ text across pages creates a separate mark on each page. Click a mark to change
 its colour or style, add or edit its comment, copy its text, or delete it.
 Comment editors show a live Markdown preview.
 Bookmarks made from selected text use that text as their initial label; you can
-rename them in the Annotations tab.
+rename them in the Bookmarks tab.
 
 The borderless **X** saves progress and reading time before returning to the
 book's details. If saving fails, retry the unsaved changes or explicitly
@@ -104,13 +104,22 @@ pending or failed sync, or a settings-save warning; open it for details and a
 retry action when synchronization is available.
 
 A narrow tab rail on the left edge opens the reader sidebar: **Contents**,
-**Pages**, **Annotations** and **Bookmarks** (Contents, Pages and Bookmarks are
+**Pages**, **Annotations** and **Bookmarks** (Contents and Pages are
 coming soon). Select a tab to open it and select it again, or use the collapse
 button, to close the sidebar. On wide screens the sidebar sits beside the page
 and keeps your place; on smaller screens it floats over the page, and Escape or
 a click on the page closes it. This device remembers whether the sidebar is
 open and which tab was last used. Clicking a comment marker on the page shows
 that entry in the Annotations tab.
+
+The **Bookmarks** tab lists saved positions for this file in page order.
+**Bookmark this page** adds a page bookmark; **Remove page bookmark** removes
+it without affecting bookmarks made from selected text. Open a row to jump;
+on smaller screens this also closes the sidebar. Rename a bookmark inline:
+Enter saves a trimmed label of 1–200 characters (up to 512 UTF-8 bytes), while
+Escape or leaving the field cancels. To delete a row, select Delete and then
+**Delete?** within three seconds. Bookmarks from other files appear in a
+read-only **Other files** group.
 
 The **Annotations** tab groups items by page. Search marks, comments,
 bookmarks and inserted items. Open an entry to jump to its

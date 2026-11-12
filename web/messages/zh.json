@@ -1617,5 +1617,18 @@
 	"rp4.annotations": "批注",
 	"rp4.bookmarks": "书签",
 	"rp4.collapse": "收起侧栏",
-	"rp4.coming_soon": "即将推出。"
+	"rp4.coming_soon": "即将推出。",
+	"rp8.count": "{count} 个书签",
+	"rp8.add_page": "为此页添加书签",
+	"rp8.remove_page": "移除此页书签",
+	"rp8.page": "第 {page} 页",
+	"rp8.page_short": "第 {page} 页",
+	"rp8.empty": "暂无书签。",
+	"rp8.other_files": "其他文件",
+	"rp8.label": "书签名称",
+	"rp8.label_invalid": "请输入 1–200 个字符的书签名称。",
+	"rp8.rename": "重命名书签：{label}",
+	"rp8.delete": "删除书签：{label}",
+	"rp8.confirm_delete": "确认删除书签：{label}",
+	"rp8.delete_question": "删除？"
 }
