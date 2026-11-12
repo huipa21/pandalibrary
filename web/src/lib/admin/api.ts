@@ -1,5 +1,6 @@
 import { api, ApiError, type JsonValue, type ProblemDetails } from '#lib/api/client.js';
 import { buildPagePath, MAX_PAGE_SIZE, type PageOptions } from '#lib/catalog/api.js';
+import type { UploadVisibility } from '#lib/bookheap/types.js';
 import type {
 	AccessEntry,
 	HiddenEntry,
@@ -152,18 +153,20 @@ async function problemFromResponse(response: Response): Promise<ApiError> {
 }
 
 export interface UploadOptions {
+	readonly visibility?: UploadVisibility;
 	readonly fetcher?: typeof fetch;
 	readonly signal?: AbortSignal;
 }
 
 /**
- * Uploads exactly one file with the I1 multipart contract. The body is a FormData so
+ * Uploads one file with its visibility (public by default). The body is a FormData so
  * the browser generates the multipart boundary; the JSON client is not used.
  */
-export async function uploadBook(libraryID: number, file: File, { fetcher = fetch, signal }: UploadOptions = {}): Promise<ImportJob> {
+export async function uploadBook(libraryID: number, file: File, { fetcher = fetch, signal, visibility = 'public' }: UploadOptions = {}): Promise<ImportJob> {
 	const form = new FormData();
 	form.append('library_id', String(libraryID));
 	form.append('file', file, file.name);
+	form.append('visibility', visibility);
 	const response = await fetcher('/api/v1/uploads', { method: 'POST', body: form, signal });
 	if (!response.ok) throw await problemFromResponse(response);
 	return ((await response.json()) as { job: ImportJob }).job;

@@ -280,11 +280,11 @@ func (q *Queries) ShelfNameTaken(ctx context.Context, arg ShelfNameTakenParams) 
 
 const shelfOrderedMembers = `-- name: ShelfOrderedMembers :many
 SELECT sb.book_id, sb.position,
-    CAST(CASE WHEN (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+    CAST(CASE WHEN (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
         SELECT 1 FROM library_access la
-        WHERE la.library_id = b.library_id AND la.user_id = ?2
-    )) AND NOT EXISTS (
-        SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+        WHERE la.library_id = b.library_id AND la.user_id = ?1
+    ))))) AND NOT EXISTS (
+        SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
     ) THEN 1 ELSE 0 END AS INTEGER) AS is_visible
 FROM shelf_books sb
 JOIN books b ON b.id = sb.book_id
@@ -293,8 +293,8 @@ ORDER BY sb.position, sb.book_id
 `
 
 type ShelfOrderedMembersParams struct {
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 	ShelfID int64
 }
 
@@ -305,7 +305,7 @@ type ShelfOrderedMembersRow struct {
 }
 
 func (q *Queries) ShelfOrderedMembers(ctx context.Context, arg ShelfOrderedMembersParams) ([]ShelfOrderedMembersRow, error) {
-	rows, err := q.db.QueryContext(ctx, shelfOrderedMembers, arg.IsAdmin, arg.UserID, arg.ShelfID)
+	rows, err := q.db.QueryContext(ctx, shelfOrderedMembers, arg.UserID, arg.IsAdmin, arg.ShelfID)
 	if err != nil {
 		return nil, err
 	}
@@ -415,23 +415,23 @@ const shelfVisibleBookCount = `-- name: ShelfVisibleBookCount :one
 SELECT count(*) FROM shelf_books sb
 JOIN books b ON b.id = sb.book_id
 WHERE sb.shelf_id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 `
 
 type ShelfVisibleBookCountParams struct {
 	ShelfID int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 func (q *Queries) ShelfVisibleBookCount(ctx context.Context, arg ShelfVisibleBookCountParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, shelfVisibleBookCount, arg.ShelfID, arg.IsAdmin, arg.UserID)
+	row := q.db.QueryRowContext(ctx, shelfVisibleBookCount, arg.ShelfID, arg.UserID, arg.IsAdmin)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -441,24 +441,24 @@ const shelfVisibleBookIDs = `-- name: ShelfVisibleBookIDs :many
 SELECT sb.book_id FROM shelf_books sb
 JOIN books b ON b.id = sb.book_id
 WHERE sb.shelf_id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 ORDER BY sb.position, sb.book_id
 `
 
 type ShelfVisibleBookIDsParams struct {
 	ShelfID int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 func (q *Queries) ShelfVisibleBookIDs(ctx context.Context, arg ShelfVisibleBookIDsParams) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, shelfVisibleBookIDs, arg.ShelfID, arg.IsAdmin, arg.UserID)
+	rows, err := q.db.QueryContext(ctx, shelfVisibleBookIDs, arg.ShelfID, arg.UserID, arg.IsAdmin)
 	if err != nil {
 		return nil, err
 	}

@@ -117,7 +117,11 @@ func (s *Service) List(ctx context.Context, viewer catalog.Viewer, options ListO
 		page.NextCursor = &token
 	}
 	for _, row := range rows {
-		page.Items = append(page.Items, itemDTO(row))
+		item, err := s.itemForViewer(ctx, viewer, row)
+		if err != nil {
+			return page, err
+		}
+		page.Items = append(page.Items, item)
 	}
 	page.Total, err = queries.BookheapCount(ctx, sqlc.BookheapCountParams{Status: options.Status, Query: query})
 	if err != nil {
@@ -156,7 +160,22 @@ func (s *Service) Get(ctx context.Context, viewer catalog.Viewer, itemID int64) 
 	if err != nil {
 		return Item{}, err
 	}
-	return itemDTO(row), nil
+	return s.itemForViewer(ctx, viewer, row)
+}
+
+func (s *Service) itemForViewer(ctx context.Context, viewer catalog.Viewer, row sqlc.BookheapItem) (Item, error) {
+	item := itemDTO(row)
+	if item.DuplicateOfBookID == nil {
+		return item, nil
+	}
+	_, err := sqlc.New(s.reader).CatalogGetBook(ctx, sqlc.CatalogGetBookParams{
+		BookID: *item.DuplicateOfBookID, UserID: viewer.UserID, IsAdmin: 1,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		item.DuplicateOfBookID = nil
+		return item, nil
+	}
+	return item, err
 }
 
 func (s *Service) row(ctx context.Context, itemID int64) (sqlc.BookheapItem, error) {

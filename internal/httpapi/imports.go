@@ -94,6 +94,8 @@ func (h *importHTTP) upload(attachment bool) catalogHandler {
 		}()
 		fileName := ""
 		seenLibrary := false
+		visibility := "public"
+		seenVisibility := false
 		for {
 			part, err := reader.NextPart()
 			if errors.Is(err, io.EOF) {
@@ -109,6 +111,13 @@ func (h *importHTTP) upload(attachment bool) catalogHandler {
 				return
 			}
 			switch params["name"] {
+			case "visibility":
+				value, err := io.ReadAll(io.LimitReader(part, 16))
+				if err != nil || attachment || seenVisibility || params["filename"] != "" || (string(value) != "public" && string(value) != "private") {
+					h.multipartError(w, r, catalog.ErrInvalid)
+					return
+				}
+				visibility, seenVisibility = string(value), true
 			case "library_id":
 				if attachment || seenLibrary || params["filename"] != "" {
 					h.multipartError(w, r, catalog.ErrInvalid)
@@ -157,7 +166,7 @@ func (h *importHTTP) upload(attachment bool) catalogHandler {
 			h.multipartError(w, r, err)
 			return
 		}
-		job, err := h.service.QueueUpload(r.Context(), viewer, libraryID, bookID, fileName, staged)
+		job, err := h.service.QueueUpload(r.Context(), viewer, libraryID, bookID, fileName, staged, visibility)
 		if err != nil {
 			h.writeError(w, r, err)
 			return

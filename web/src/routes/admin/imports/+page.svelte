@@ -12,6 +12,7 @@
 	import type { ImportJob, Library } from '#lib/admin/types.js';
 	import { errorBox, focusRing, inputClass, linkClass, panelClass, primaryButton, secondaryButton } from '#lib/admin/ui.js';
 	import { translate } from '#lib/paging/translate.js';
+	import type { UploadVisibility } from '#lib/bookheap/types.js';
 
 	const POLL_INTERVAL_MS = 3000;
 	const POLL_MAX_TICKS = 100;
@@ -34,6 +35,7 @@
 	let librariesStatus = $state<'loading' | 'ready' | 'error'>('loading');
 	let librariesError = $state<unknown>(null);
 	let libraryID = $state('');
+	let visibility = $state<UploadVisibility>('public');
 	let file = $state<File | null>(null);
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let libraryError = $state('');
@@ -95,7 +97,7 @@
 		uploading = true;
 		uploaded = null;
 		try {
-			const job = await uploadBook(id, file);
+			const job = await uploadBook(id, file, { visibility });
 			uploaded = job;
 			file = null;
 			if (fileInput) fileInput.value = '';
@@ -192,6 +194,20 @@
 						{/each}
 					</select>
 					{#if libraryError}<p id="upload-library-error" class="text-sm text-red-700">{libraryError}</p>{/if}
+				</div>
+				<div class="grid gap-1">
+					<label class="text-sm font-medium" for="upload-visibility">{m['bh.visibility.label']()}</label>
+					<select
+						id="upload-visibility"
+						class={`${inputClass} sm:max-w-sm`}
+						bind:value={visibility}
+						disabled={uploading}
+						aria-describedby="upload-visibility-help"
+					>
+						<option value="public">{m['bh.visibility.public']()}</option>
+						<option value="private">{m['bh.visibility.private']()}</option>
+					</select>
+					<p id="upload-visibility-help" class="text-xs text-slate-500">{m['bh.visibility.access_help']()}</p>
 				</div>
 				<div class="grid gap-1">
 					<label class="text-sm font-medium" for="upload-file">{m['admin.imports.file']()}</label>

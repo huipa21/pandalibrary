@@ -41,6 +41,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;
 
 -- name: ImportTarget :one
 SELECT id FROM books WHERE id = sqlc.arg(book_id) AND library_id = sqlc.arg(library_id)
+AND (visibility != 'private' OR owner_id = CAST(sqlc.arg(user_id) AS INTEGER))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = books.id
     AND h.user_id = CAST(sqlc.arg(user_id) AS INTEGER));
 

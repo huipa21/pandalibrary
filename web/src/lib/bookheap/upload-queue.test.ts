@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
-import type { HeapItem } from './types.js';
+import type { HeapItem, UploadVisibility } from './types.js';
 import type { assignHeapItems } from './api.js';
 import {
 	MAX_UPLOAD_BYTES,
@@ -35,6 +35,7 @@ function problem(status: number, extra: Record<string, unknown> = {}): ApiError 
 
 interface Call {
 	file: File;
+	visibility: UploadVisibility;
 	signal: AbortSignal;
 	onprogress: (loaded: number, total: number | null) => void;
 	resolve: (item: HeapItem) => void;
@@ -44,9 +45,9 @@ interface Call {
 /** Uploader whose requests stay in flight until the test settles them. */
 function controlledUploader() {
 	const calls: Call[] = [];
-	const upload: Uploader = (file, { signal, onprogress }) =>
+	const upload: Uploader = (file, { visibility, signal, onprogress }) =>
 		new Promise<HeapItem>((resolve, reject) => {
-			calls.push({ file, signal, onprogress, resolve, reject });
+			calls.push({ file, visibility, signal, onprogress, resolve, reject });
 			signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
 		});
 	return { calls, upload };
@@ -100,6 +101,58 @@ describe('UploadQueue adding files', () => {
 });
 
 describe('UploadQueue uploading', () => {
+	it.each([null, 2])('freezes visibility for a run and late-added files with destination %s', async (libraryId) => {
+		const { calls, upload } = controlledUploader();
+		const assign = vi.fn<typeof assignHeapItems>().mockImplementation(async ({ ids }) =>
+			ids.map((id) => ({ id, ok: true, error: null, import_job_id: 100 + id }))
+		);
+		const queue = new UploadQueue({ upload, assign, notify: vi.fn(), concurrency: 1 });
+		expect(queue.visibility).toBe('public');
+		queue.libraryId = libraryId;
+		queue.visibility = 'private';
+		queue.add([file('a.epub'), file('b.epub')]);
+		const run = queue.start();
+		queue.visibility = 'public';
+		queue.add([file('late.epub')]);
+		for (let index = 0; index < 3; index += 1) {
+			expect(calls[index].visibility).toBe('private');
+			calls[index].resolve(item(index + 1, calls[index].file.name));
+			await flush();
+		}
+		await run;
+		expect(queue.rows.map((row) => row.visibility)).toEqual(['private', 'private', 'private']);
+		expect(assign).toHaveBeenCalledTimes(libraryId === null ? 0 : 3);
+	});
+
+	it('keeps failed upload visibility when retrying alongside newly selected public files', async () => {
+		const upload = vi.fn<Uploader>().mockRejectedValueOnce(new TypeError('offline')).mockResolvedValue(item(1, 'A'));
+		const queue = new UploadQueue({ upload, notify: vi.fn(), concurrency: 1 });
+		queue.visibility = 'private';
+		queue.add([file('a.epub')]);
+		await queue.start();
+		queue.dropDone();
+		queue.visibility = 'public';
+		queue.add([file('b.epub')]);
+		await queue.retryFailed();
+		expect(upload.mock.calls.map(([, options]) => options.visibility)).toEqual(['private', 'private', 'public']);
+		expect(queue.rows.map((row) => row.visibility)).toEqual(['private', 'public']);
+	});
+
+	it('retains the visibility of aborted attempts when resuming', async () => {
+		const { calls, upload } = controlledUploader();
+		const queue = new UploadQueue({ upload, notify: vi.fn(), concurrency: 1 });
+		queue.visibility = 'private';
+		queue.add([file('a.epub')]);
+		const run = queue.start();
+		await queue.abort();
+		await run;
+		queue.visibility = 'public';
+		const resumed = queue.start();
+		expect(calls.map((call) => call.visibility)).toEqual(['private', 'private']);
+		calls[1].resolve(item(1, 'A'));
+		await resumed;
+	});
+
 	it('assigns uploads to the library captured for the run, including files added during it', async () => {
 		const { calls, upload } = controlledUploader();
 		const assign = vi.fn<typeof assignHeapItems>().mockImplementation(async ({ ids }) =>
@@ -131,14 +184,18 @@ describe('UploadQueue uploading', () => {
 		const notify = vi.fn();
 		const queue = new UploadQueue({ upload, assign, notify });
 		queue.libraryId = 2;
+		queue.visibility = 'private';
 		queue.add([file('a.epub')]);
 		await queue.start();
 		expect(queue.rows[0]).toMatchObject({ status: 'error', item: { id: 1 }, libraryId: 2 });
 		expect(queue.counts).toMatchObject({ failed: 1, retryable: 1, duplicates: 0 });
 		expect(notify).toHaveBeenCalledTimes(1);
 		queue.libraryId = 3;
+		queue.visibility = 'public';
 		await queue.retryFailed();
 		expect(upload).toHaveBeenCalledTimes(1);
+		expect(upload.mock.calls[0][1].visibility).toBe('private');
+		expect(queue.rows[0].visibility).toBe('private');
 		expect(assign).toHaveBeenLastCalledWith({ ids: [1], library_id: 2, shelf_ids: [] });
 		expect(queue.counts).toMatchObject({ uploaded: 1, failed: 0 });
 		expect(notify).toHaveBeenCalledTimes(2);

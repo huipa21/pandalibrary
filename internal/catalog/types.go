@@ -84,26 +84,29 @@ type FieldSource struct {
 // Language, Publisher, PublishedDate, PageCount, CoverURL, CoverSource, and Series
 // may be null; association and field-source collections are always arrays.
 type Book struct {
-	ID            int64         `json:"id"`
-	LibraryID     int64         `json:"library_id"`
-	Title         string        `json:"title"`
-	SortTitle     string        `json:"sort_title"`
-	Subtitle      *string       `json:"subtitle"`
-	Description   *string       `json:"description"`
-	Language      *string       `json:"language"`
-	Publisher     *string       `json:"publisher"`
-	PublishedDate *string       `json:"published_date"`
-	PageCount     *int64        `json:"page_count"`
-	CoverURL      *string       `json:"cover_url"`
-	CoverSource   *string       `json:"cover_source"`
-	Authors       []Author      `json:"authors"`
-	Series        *Series       `json:"series"`
-	Tags          []Tag         `json:"tags"`
-	Identifiers   []Identifier  `json:"identifiers"`
-	Files         []BookFile    `json:"files"`
-	FieldSources  []FieldSource `json:"field_sources"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
+	ID                  int64         `json:"id"`
+	OwnerID             *int64        `json:"owner_id"`
+	Visibility          string        `json:"visibility"`
+	CanManageVisibility bool          `json:"can_manage_visibility"`
+	LibraryID           int64         `json:"library_id"`
+	Title               string        `json:"title"`
+	SortTitle           string        `json:"sort_title"`
+	Subtitle            *string       `json:"subtitle"`
+	Description         *string       `json:"description"`
+	Language            *string       `json:"language"`
+	Publisher           *string       `json:"publisher"`
+	PublishedDate       *string       `json:"published_date"`
+	PageCount           *int64        `json:"page_count"`
+	CoverURL            *string       `json:"cover_url"`
+	CoverSource         *string       `json:"cover_source"`
+	Authors             []Author      `json:"authors"`
+	Series              *Series       `json:"series"`
+	Tags                []Tag         `json:"tags"`
+	Identifiers         []Identifier  `json:"identifiers"`
+	Files               []BookFile    `json:"files"`
+	FieldSources        []FieldSource `json:"field_sources"`
+	CreatedAt           time.Time     `json:"created_at"`
+	UpdatedAt           time.Time     `json:"updated_at"`
 }
 
 // Entity is an author, series, or tag with a viewer-filtered book count.

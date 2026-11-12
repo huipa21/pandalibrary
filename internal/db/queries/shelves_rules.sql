@@ -13,10 +13,10 @@ VALUES ('private', sqlc.arg(owner_id), sqlc.arg(name), NULL, sqlc.arg(owner_id),
 
 -- name: ShelfAutomaticBookCount :one
 SELECT count(*) FROM books b
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 )
@@ -55,10 +55,10 @@ AND (CASE json_extract(CAST(sqlc.arg(rules) AS TEXT), '$.match')
 
 -- name: ShelfAutomaticBooks :many
 SELECT b.* FROM books b
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 )
@@ -102,10 +102,10 @@ LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: ShelfUnshelvedBookCount :one
 SELECT count(*) FROM books b
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 )
@@ -117,10 +117,10 @@ AND NOT EXISTS (
 
 -- name: ShelfUnshelvedBooks :many
 SELECT b.* FROM books b
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 )

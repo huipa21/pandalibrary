@@ -4,10 +4,10 @@ LEFT JOIN reading_progress rp ON rp.book_id = b.id AND rp.user_id = sqlc.arg(use
 LEFT JOIN user_books ub ON ub.book_id = b.id AND ub.user_id = sqlc.arg(user_id)
 WHERE ((rp.percentage > 0 AND rp.percentage < 1) OR ub.status IN ('reading', 'rereading', 'on_hold'))
 AND (ub.status IS NULL OR ub.status NOT IN ('finished', 'skimmed', 'abandoned'))
-AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
@@ -20,10 +20,10 @@ LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: DashboardRecentlyAddedBooks :many
 SELECT b.id, b.created_at AS sort_time FROM books b
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
@@ -46,10 +46,10 @@ WITH completed_cycles AS (
 )
 SELECT b.id, CAST(c.ended_at AS INTEGER) AS sort_time FROM books b
 JOIN completed_books c ON c.book_id = b.id
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
@@ -64,10 +64,10 @@ LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 SELECT b.id, b.title AS sort_title FROM books b
 LEFT JOIN user_books ub ON ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id
 WHERE (ub.user_id IS NULL OR ub.status = 'unread')
-AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
@@ -82,10 +82,10 @@ LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 -- name: DashboardWantToReadBooks :many
 SELECT b.id, ub.updated_at AS sort_time FROM books b
 JOIN user_books ub ON ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id AND ub.status = 'want_to_read'
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)

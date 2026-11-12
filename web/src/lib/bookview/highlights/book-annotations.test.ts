@@ -6,6 +6,7 @@ import { filterBookAnnotations, otherBookAnnotations } from './book-annotations.
 import { markStats } from './highlights-model.js';
 
 const book: Book = {
+	owner_id: null, visibility: 'library', can_manage_visibility: false,
 	id: 7, library_id: 1, title: 'Book', sort_title: 'Book', subtitle: null, description: null,
 	language: null, publisher: null, published_date: null, page_count: null, cover_url: null, cover_source: null,
 	authors: [], series: null, tags: [], identifiers: [], files: [], field_sources: [], created_at: '', updated_at: ''

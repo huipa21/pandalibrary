@@ -104,6 +104,19 @@ func (s *Service) importBook(ctx context.Context, row sqlc.ImportJob, input mani
 			if err != nil {
 				return err
 			}
+			if row.Source == "upload" {
+				visibility := input.Visibility
+				if visibility == "" {
+					visibility = "library"
+				}
+				if visibility != "public" && visibility != "private" && visibility != "library" {
+					return catalog.ErrInvalid
+				}
+				if _, err := tx.ExecContext(ctx, `UPDATE books SET owner_id = ?, visibility = ? WHERE id = ?`,
+					row.UserID, visibility, bookID); err != nil {
+					return err
+				}
+			}
 		} else if _, err := queries.ImportTarget(ctx, sqlc.ImportTargetParams{BookID: bookID, LibraryID: row.LibraryID, UserID: row.UserID.Int64}); err != nil {
 			return fmt.Errorf("attachment target changed: %w", err)
 		}

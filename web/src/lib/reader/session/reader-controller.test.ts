@@ -37,6 +37,7 @@ vi.mock('#lib/sync/client.js', () => ({
 vi.mock('#lib/sync/state.js', () => ({ readerState: vi.fn() }));
 
 const book: Book = {
+	owner_id: null, visibility: 'library', can_manage_visibility: false,
 	id: 21, library_id: 1, title: 'PDF', sort_title: 'PDF', subtitle: null, description: null,
 	language: 'en', publisher: null, published_date: null, page_count: null, cover_url: null,
 	cover_source: null, authors: [], series: null, tags: [], identifiers: [], field_sources: [],

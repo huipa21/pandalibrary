@@ -43,6 +43,10 @@ func (h assignHook) Imported(ctx context.Context, tx *sql.Tx, job importer.Job, 
 	if err != nil {
 		return fmt.Errorf("find assigned bookheap item: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `UPDATE books SET owner_id = ?, visibility = ? WHERE id = ?`,
+		row.AddedBy, row.Visibility, bookID); err != nil {
+		return fmt.Errorf("persist upload sharing: %w", err)
+	}
 	var shelfIDs []int64
 	if err := json.Unmarshal([]byte(row.TargetShelfIds), &shelfIDs); err != nil {
 		var input assignPayload

@@ -263,6 +263,20 @@
 					</div>
 				{/if}
 			</div>
+			<div class="space-y-2">
+				<label for="bh-upload-visibility" class="block text-sm font-medium">{m['bh.visibility.label']()}</label>
+				<select
+					id="bh-upload-visibility"
+					class={`w-full ${inputClass}`}
+					bind:value={queue.visibility}
+					disabled={queue.running}
+					aria-describedby="bh-upload-visibility-help"
+				>
+					<option value="public">{m['bh.visibility.public']()}</option>
+					<option value="private">{m['bh.visibility.private']()}</option>
+				</select>
+				<p id="bh-upload-visibility-help" class="text-xs text-slate-600">{m['bh.visibility.help']()}</p>
+			</div>
 			<div
 				role="group"
 				aria-labelledby="bh3-drop-label"
@@ -355,6 +369,9 @@
 								<p class="truncate text-sm font-medium" title={row.file.name}>{row.file.name}</p>
 								<p class="flex flex-wrap gap-x-2 text-xs text-slate-600">
 									<span>{formatBytes(row.file.size, getLocale())}</span>
+									{#if row.visibility}
+										<span>{row.visibility === 'public' ? m['bh.visibility.public']() : m['bh.visibility.private']()}</span>
+									{/if}
 									<span
 										class={row.status === 'error' ? 'text-red-700' : row.status === 'done' ? 'font-semibold text-emerald-800' : ''}
 										data-testid="bh3-row-status"

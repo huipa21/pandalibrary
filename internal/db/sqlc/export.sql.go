@@ -39,20 +39,20 @@ SELECT b.id, b.title, s.name AS series_name, b.series_index,
        ), '') AS TEXT) AS isbn
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
 AND b.id IN (SELECT value FROM json_each(CAST(?3 AS TEXT)))
 ORDER BY b.id
 `
 
 type ExportBooksParams struct {
-	Isadmin     int64
 	Userid      int64
+	Isadmin     int64
 	Bookidsjson string
 }
 
@@ -67,7 +67,7 @@ type ExportBooksRow struct {
 }
 
 func (q *Queries) ExportBooks(ctx context.Context, arg ExportBooksParams) ([]ExportBooksRow, error) {
-	rows, err := q.db.QueryContext(ctx, exportBooks, arg.Isadmin, arg.Userid, arg.Bookidsjson)
+	rows, err := q.db.QueryContext(ctx, exportBooks, arg.Userid, arg.Isadmin, arg.Bookidsjson)
 	if err != nil {
 		return nil, err
 	}
@@ -105,10 +105,10 @@ SELECT
         JOIN books b ON b.id = h.book_id
         WHERE h.user_id = ?1
         AND h.deleted_at IS NULL
-        AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+        AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
             SELECT 1 FROM library_access la
             WHERE la.library_id = b.library_id AND la.user_id = ?1
-        ))
+        )))))
         AND NOT EXISTS (
             SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
         )
@@ -126,10 +126,10 @@ SELECT
             WHERE h.id = n.highlight_id AND h.user_id = n.user_id AND h.book_id = n.book_id
             AND h.deleted_at IS NULL
         ))
-        AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+        AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
             SELECT 1 FROM library_access la
             WHERE la.library_id = b.library_id AND la.user_id = ?1
-        ))
+        )))))
         AND NOT EXISTS (
             SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
         )
@@ -142,10 +142,10 @@ SELECT
         JOIN books b ON b.id = p.book_id
         WHERE p.user_id = ?1
         AND p.deleted_at IS NULL
-        AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+        AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
             SELECT 1 FROM library_access la
             WHERE la.library_id = b.library_id AND la.user_id = ?1
-        ))
+        )))))
         AND NOT EXISTS (
             SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
         )
@@ -172,10 +172,10 @@ FROM highlights h
 JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?1
 AND h.deleted_at IS NULL
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
 )
@@ -238,10 +238,10 @@ AND (n.highlight_id IS NULL OR EXISTS (
     WHERE h.id = n.highlight_id AND h.user_id = n.user_id AND h.book_id = n.book_id
     AND h.deleted_at IS NULL
 ))
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
 )
@@ -301,10 +301,10 @@ FROM page_annotations p
 JOIN books b ON b.id = p.book_id
 WHERE p.user_id = ?1
 AND p.deleted_at IS NULL
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
 )

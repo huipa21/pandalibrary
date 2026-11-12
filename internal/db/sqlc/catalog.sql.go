@@ -27,20 +27,20 @@ FROM book_authors ba
 JOIN authors a ON a.id = ba.author_id
 JOIN books b ON b.id = ba.book_id
 WHERE b.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 ORDER BY ba.position, a.id, ba.role
 `
 
 type CatalogBookAuthorsParams struct {
 	BookID  int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 type CatalogBookAuthorsRow struct {
@@ -51,7 +51,7 @@ type CatalogBookAuthorsRow struct {
 }
 
 func (q *Queries) CatalogBookAuthors(ctx context.Context, arg CatalogBookAuthorsParams) ([]CatalogBookAuthorsRow, error) {
-	rows, err := q.db.QueryContext(ctx, catalogBookAuthors, arg.BookID, arg.IsAdmin, arg.UserID)
+	rows, err := q.db.QueryContext(ctx, catalogBookAuthors, arg.BookID, arg.UserID, arg.IsAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -92,24 +92,24 @@ func (q *Queries) CatalogBookExists(ctx context.Context, id int64) (int64, error
 const catalogBookFieldSources = `-- name: CatalogBookFieldSources :many
 SELECT fs.book_id, fs.field, fs.source, fs.source_ref, fs.chosen_by, fs.chosen_at FROM book_field_sources fs JOIN books b ON b.id = fs.book_id
 WHERE b.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 ORDER BY fs.field
 `
 
 type CatalogBookFieldSourcesParams struct {
 	BookID  int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 func (q *Queries) CatalogBookFieldSources(ctx context.Context, arg CatalogBookFieldSourcesParams) ([]BookFieldSource, error) {
-	rows, err := q.db.QueryContext(ctx, catalogBookFieldSources, arg.BookID, arg.IsAdmin, arg.UserID)
+	rows, err := q.db.QueryContext(ctx, catalogBookFieldSources, arg.BookID, arg.UserID, arg.IsAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -141,28 +141,28 @@ func (q *Queries) CatalogBookFieldSources(ctx context.Context, arg CatalogBookFi
 const catalogBookFile = `-- name: CatalogBookFile :one
 SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at FROM book_files f JOIN books b ON b.id = f.book_id
 WHERE b.id = ?1 AND f.id = ?2
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?4
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?3
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?4
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
 )
 `
 
 type CatalogBookFileParams struct {
 	BookID  int64
 	FileID  int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 func (q *Queries) CatalogBookFile(ctx context.Context, arg CatalogBookFileParams) (BookFile, error) {
 	row := q.db.QueryRowContext(ctx, catalogBookFile,
 		arg.BookID,
 		arg.FileID,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 	)
 	var i BookFile
 	err := row.Scan(
@@ -181,24 +181,24 @@ func (q *Queries) CatalogBookFile(ctx context.Context, arg CatalogBookFileParams
 const catalogBookFiles = `-- name: CatalogBookFiles :many
 SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at FROM book_files f JOIN books b ON b.id = f.book_id
 WHERE b.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 ORDER BY f.id
 `
 
 type CatalogBookFilesParams struct {
 	BookID  int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 func (q *Queries) CatalogBookFiles(ctx context.Context, arg CatalogBookFilesParams) ([]BookFile, error) {
-	rows, err := q.db.QueryContext(ctx, catalogBookFiles, arg.BookID, arg.IsAdmin, arg.UserID)
+	rows, err := q.db.QueryContext(ctx, catalogBookFiles, arg.BookID, arg.UserID, arg.IsAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -233,20 +233,20 @@ const catalogBookIdentifiers = `-- name: CatalogBookIdentifiers :many
 SELECT bi.scheme, bi.value FROM book_identifiers bi
 JOIN books b ON b.id = bi.book_id
 WHERE b.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 ORDER BY bi.scheme, bi.value
 `
 
 type CatalogBookIdentifiersParams struct {
 	BookID  int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 type CatalogBookIdentifiersRow struct {
@@ -255,7 +255,7 @@ type CatalogBookIdentifiersRow struct {
 }
 
 func (q *Queries) CatalogBookIdentifiers(ctx context.Context, arg CatalogBookIdentifiersParams) ([]CatalogBookIdentifiersRow, error) {
-	rows, err := q.db.QueryContext(ctx, catalogBookIdentifiers, arg.BookID, arg.IsAdmin, arg.UserID)
+	rows, err := q.db.QueryContext(ctx, catalogBookIdentifiers, arg.BookID, arg.UserID, arg.IsAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -281,19 +281,19 @@ const catalogBookSeries = `-- name: CatalogBookSeries :one
 SELECT s.id, s.name, b.series_index
 FROM books b JOIN series s ON s.id = b.series_id
 WHERE b.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 `
 
 type CatalogBookSeriesParams struct {
 	BookID  int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 type CatalogBookSeriesRow struct {
@@ -303,7 +303,7 @@ type CatalogBookSeriesRow struct {
 }
 
 func (q *Queries) CatalogBookSeries(ctx context.Context, arg CatalogBookSeriesParams) (CatalogBookSeriesRow, error) {
-	row := q.db.QueryRowContext(ctx, catalogBookSeries, arg.BookID, arg.IsAdmin, arg.UserID)
+	row := q.db.QueryRowContext(ctx, catalogBookSeries, arg.BookID, arg.UserID, arg.IsAdmin)
 	var i CatalogBookSeriesRow
 	err := row.Scan(&i.ID, &i.Name, &i.SeriesIndex)
 	return i, err
@@ -314,20 +314,20 @@ SELECT t.id, t.name FROM book_tags bt
 JOIN tags t ON t.id = bt.tag_id
 JOIN books b ON b.id = bt.book_id
 WHERE b.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 ORDER BY t.name COLLATE NOCASE, t.id
 `
 
 type CatalogBookTagsParams struct {
 	BookID  int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 type CatalogBookTagsRow struct {
@@ -336,7 +336,7 @@ type CatalogBookTagsRow struct {
 }
 
 func (q *Queries) CatalogBookTags(ctx context.Context, arg CatalogBookTagsParams) ([]CatalogBookTagsRow, error) {
-	rows, err := q.db.QueryContext(ctx, catalogBookTags, arg.BookID, arg.IsAdmin, arg.UserID)
+	rows, err := q.db.QueryContext(ctx, catalogBookTags, arg.BookID, arg.UserID, arg.IsAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -466,20 +466,20 @@ const catalogGetAuthor = `-- name: CatalogGetAuthor :one
 SELECT a.id, a.name, a.sort_name, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
 FROM authors a JOIN book_authors ba ON ba.author_id = a.id JOIN books b ON b.id = ba.book_id
 WHERE a.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 GROUP BY a.id, a.name, a.sort_name
 `
 
 type CatalogGetAuthorParams struct {
 	AuthorID int64
-	IsAdmin  int64
 	UserID   int64
+	IsAdmin  int64
 }
 
 type CatalogGetAuthorRow struct {
@@ -490,7 +490,7 @@ type CatalogGetAuthorRow struct {
 }
 
 func (q *Queries) CatalogGetAuthor(ctx context.Context, arg CatalogGetAuthorParams) (CatalogGetAuthorRow, error) {
-	row := q.db.QueryRowContext(ctx, catalogGetAuthor, arg.AuthorID, arg.IsAdmin, arg.UserID)
+	row := q.db.QueryRowContext(ctx, catalogGetAuthor, arg.AuthorID, arg.UserID, arg.IsAdmin)
 	var i CatalogGetAuthorRow
 	err := row.Scan(
 		&i.ID,
@@ -502,25 +502,25 @@ func (q *Queries) CatalogGetAuthor(ctx context.Context, arg CatalogGetAuthorPara
 }
 
 const catalogGetBook = `-- name: CatalogGetBook :one
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at FROM books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
 WHERE b.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 `
 
 type CatalogGetBookParams struct {
 	BookID  int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 func (q *Queries) CatalogGetBook(ctx context.Context, arg CatalogGetBookParams) (Book, error) {
-	row := q.db.QueryRowContext(ctx, catalogGetBook, arg.BookID, arg.IsAdmin, arg.UserID)
+	row := q.db.QueryRowContext(ctx, catalogGetBook, arg.BookID, arg.UserID, arg.IsAdmin)
 	var i Book
 	err := row.Scan(
 		&i.ID,
@@ -540,6 +540,8 @@ func (q *Queries) CatalogGetBook(ctx context.Context, arg CatalogGetBookParams) 
 		&i.AddedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OwnerID,
+		&i.Visibility,
 	)
 	return i, err
 }
@@ -576,20 +578,20 @@ const catalogGetSeries = `-- name: CatalogGetSeries :one
 SELECT s.id, s.name, s.description, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
 FROM series s JOIN books b ON b.series_id = s.id
 WHERE s.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 GROUP BY s.id, s.name, s.description
 `
 
 type CatalogGetSeriesParams struct {
 	SeriesID int64
-	IsAdmin  int64
 	UserID   int64
+	IsAdmin  int64
 }
 
 type CatalogGetSeriesRow struct {
@@ -600,7 +602,7 @@ type CatalogGetSeriesRow struct {
 }
 
 func (q *Queries) CatalogGetSeries(ctx context.Context, arg CatalogGetSeriesParams) (CatalogGetSeriesRow, error) {
-	row := q.db.QueryRowContext(ctx, catalogGetSeries, arg.SeriesID, arg.IsAdmin, arg.UserID)
+	row := q.db.QueryRowContext(ctx, catalogGetSeries, arg.SeriesID, arg.UserID, arg.IsAdmin)
 	var i CatalogGetSeriesRow
 	err := row.Scan(
 		&i.ID,
@@ -615,20 +617,20 @@ const catalogGetTag = `-- name: CatalogGetTag :one
 SELECT t.id, t.name, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
 FROM tags t JOIN book_tags bt ON bt.tag_id = t.id JOIN books b ON b.id = bt.book_id
 WHERE t.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 GROUP BY t.id, t.name
 `
 
 type CatalogGetTagParams struct {
 	TagID   int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 type CatalogGetTagRow struct {
@@ -638,7 +640,7 @@ type CatalogGetTagRow struct {
 }
 
 func (q *Queries) CatalogGetTag(ctx context.Context, arg CatalogGetTagParams) (CatalogGetTagRow, error) {
-	row := q.db.QueryRowContext(ctx, catalogGetTag, arg.TagID, arg.IsAdmin, arg.UserID)
+	row := q.db.QueryRowContext(ctx, catalogGetTag, arg.TagID, arg.UserID, arg.IsAdmin)
 	var i CatalogGetTagRow
 	err := row.Scan(&i.ID, &i.Name, &i.VisibleBookCount)
 	return i, err
@@ -828,12 +830,12 @@ func (q *Queries) CatalogLibrarySlugTaken(ctx context.Context, arg CatalogLibrar
 const catalogListAuthors = `-- name: CatalogListAuthors :many
 SELECT a.id, a.name, a.sort_name, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
 FROM authors a JOIN book_authors ba ON ba.author_id = a.id JOIN books b ON b.id = ba.book_id
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
 AND (CAST(?3 AS INTEGER) = 0
     OR a.sort_name COLLATE NOCASE > CAST(?4 AS TEXT) COLLATE NOCASE
@@ -845,8 +847,8 @@ LIMIT CAST(?5 AS INTEGER)
 `
 
 type CatalogListAuthorsParams struct {
-	IsAdmin   int64
 	UserID    int64
+	IsAdmin   int64
 	AfterID   int64
 	AfterName string
 	PageSize  int64
@@ -861,8 +863,8 @@ type CatalogListAuthorsRow struct {
 
 func (q *Queries) CatalogListAuthors(ctx context.Context, arg CatalogListAuthorsParams) ([]CatalogListAuthorsRow, error) {
 	rows, err := q.db.QueryContext(ctx, catalogListAuthors,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.AfterID,
 		arg.AfterName,
 		arg.PageSize,
@@ -894,13 +896,13 @@ func (q *Queries) CatalogListAuthors(ctx context.Context, arg CatalogListAuthors
 }
 
 const catalogListBooksByAdded = `-- name: CatalogListBooksByAdded :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at FROM books b
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
 AND (CAST(?3 AS INTEGER) = 0 OR b.library_id = ?3)
 AND (CAST(?4 AS INTEGER) = 0 OR b.series_id = ?4)
@@ -918,8 +920,8 @@ LIMIT CAST(?9 AS INTEGER)
 `
 
 type CatalogListBooksByAddedParams struct {
-	IsAdmin        int64
 	UserID         int64
+	IsAdmin        int64
 	LibraryID      int64
 	SeriesID       int64
 	AuthorID       int64
@@ -931,8 +933,8 @@ type CatalogListBooksByAddedParams struct {
 
 func (q *Queries) CatalogListBooksByAdded(ctx context.Context, arg CatalogListBooksByAddedParams) ([]Book, error) {
 	rows, err := q.db.QueryContext(ctx, catalogListBooksByAdded,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.LibraryID,
 		arg.SeriesID,
 		arg.AuthorID,
@@ -966,6 +968,8 @@ func (q *Queries) CatalogListBooksByAdded(ctx context.Context, arg CatalogListBo
 			&i.AddedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OwnerID,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}
@@ -981,13 +985,13 @@ func (q *Queries) CatalogListBooksByAdded(ctx context.Context, arg CatalogListBo
 }
 
 const catalogListBooksBySeries = `-- name: CatalogListBooksBySeries :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at FROM books b
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
 AND (CAST(?3 AS INTEGER) = 0 OR b.library_id = ?3)
 AND b.series_id = ?4
@@ -1010,8 +1014,8 @@ LIMIT CAST(?10 AS INTEGER)
 `
 
 type CatalogListBooksBySeriesParams struct {
-	IsAdmin    int64
 	UserID     int64
+	IsAdmin    int64
 	LibraryID  int64
 	SeriesID   sql.NullInt64
 	AuthorID   int64
@@ -1024,8 +1028,8 @@ type CatalogListBooksBySeriesParams struct {
 
 func (q *Queries) CatalogListBooksBySeries(ctx context.Context, arg CatalogListBooksBySeriesParams) ([]Book, error) {
 	rows, err := q.db.QueryContext(ctx, catalogListBooksBySeries,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.LibraryID,
 		arg.SeriesID,
 		arg.AuthorID,
@@ -1060,6 +1064,8 @@ func (q *Queries) CatalogListBooksBySeries(ctx context.Context, arg CatalogListB
 			&i.AddedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OwnerID,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}
@@ -1075,13 +1081,13 @@ func (q *Queries) CatalogListBooksBySeries(ctx context.Context, arg CatalogListB
 }
 
 const catalogListBooksByTitle = `-- name: CatalogListBooksByTitle :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at FROM books b
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
 AND (CAST(?3 AS INTEGER) = 0 OR b.library_id = ?3)
 AND (CAST(?4 AS INTEGER) = 0 OR b.series_id = ?4)
@@ -1099,8 +1105,8 @@ LIMIT CAST(?9 AS INTEGER)
 `
 
 type CatalogListBooksByTitleParams struct {
-	IsAdmin    int64
 	UserID     int64
+	IsAdmin    int64
 	LibraryID  int64
 	SeriesID   int64
 	AuthorID   int64
@@ -1112,8 +1118,8 @@ type CatalogListBooksByTitleParams struct {
 
 func (q *Queries) CatalogListBooksByTitle(ctx context.Context, arg CatalogListBooksByTitleParams) ([]Book, error) {
 	rows, err := q.db.QueryContext(ctx, catalogListBooksByTitle,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.LibraryID,
 		arg.SeriesID,
 		arg.AuthorID,
@@ -1147,6 +1153,8 @@ func (q *Queries) CatalogListBooksByTitle(ctx context.Context, arg CatalogListBo
 			&i.AddedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OwnerID,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}
@@ -1304,12 +1312,12 @@ func (q *Queries) CatalogListLibraryAccess(ctx context.Context, arg CatalogListL
 const catalogListSeries = `-- name: CatalogListSeries :many
 SELECT s.id, s.name, s.description, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
 FROM series s JOIN books b ON b.series_id = s.id
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
 AND (CAST(?3 AS INTEGER) = 0
     OR s.name COLLATE NOCASE > CAST(?4 AS TEXT) COLLATE NOCASE
@@ -1321,8 +1329,8 @@ LIMIT CAST(?5 AS INTEGER)
 `
 
 type CatalogListSeriesParams struct {
-	IsAdmin   int64
 	UserID    int64
+	IsAdmin   int64
 	AfterID   int64
 	AfterName string
 	PageSize  int64
@@ -1337,8 +1345,8 @@ type CatalogListSeriesRow struct {
 
 func (q *Queries) CatalogListSeries(ctx context.Context, arg CatalogListSeriesParams) ([]CatalogListSeriesRow, error) {
 	rows, err := q.db.QueryContext(ctx, catalogListSeries,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.AfterID,
 		arg.AfterName,
 		arg.PageSize,
@@ -1372,12 +1380,12 @@ func (q *Queries) CatalogListSeries(ctx context.Context, arg CatalogListSeriesPa
 const catalogListTags = `-- name: CatalogListTags :many
 SELECT t.id, t.name, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
 FROM tags t JOIN book_tags bt ON bt.tag_id = t.id JOIN books b ON b.id = bt.book_id
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
 AND (CAST(?3 AS INTEGER) = 0
     OR t.name COLLATE NOCASE > CAST(?4 AS TEXT) COLLATE NOCASE
@@ -1389,8 +1397,8 @@ LIMIT CAST(?5 AS INTEGER)
 `
 
 type CatalogListTagsParams struct {
-	IsAdmin   int64
 	UserID    int64
+	IsAdmin   int64
 	AfterID   int64
 	AfterName string
 	PageSize  int64
@@ -1404,8 +1412,8 @@ type CatalogListTagsRow struct {
 
 func (q *Queries) CatalogListTags(ctx context.Context, arg CatalogListTagsParams) ([]CatalogListTagsRow, error) {
 	rows, err := q.db.QueryContext(ctx, catalogListTags,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.AfterID,
 		arg.AfterName,
 		arg.PageSize,
@@ -1611,22 +1619,22 @@ func (q *Queries) CatalogUserRole(ctx context.Context, id int64) (string, error)
 
 const catalogVisibleBookCount = `-- name: CatalogVisibleBookCount :one
 SELECT count(*) FROM books b
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
 `
 
 type CatalogVisibleBookCountParams struct {
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 func (q *Queries) CatalogVisibleBookCount(ctx context.Context, arg CatalogVisibleBookCountParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, catalogVisibleBookCount, arg.IsAdmin, arg.UserID)
+	row := q.db.QueryRowContext(ctx, catalogVisibleBookCount, arg.UserID, arg.IsAdmin)
 	var count int64
 	err := row.Scan(&count)
 	return count, err

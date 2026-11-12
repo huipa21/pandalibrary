@@ -17,10 +17,10 @@ SELECT ?1, b.id, ?2, ?3,
        ?3, ?5
 FROM books b
 WHERE b.id = ?6
-AND (CAST(?7 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?7 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
@@ -260,9 +260,9 @@ const readingGetOwnedBookmark = `-- name: ReadingGetOwnedBookmark :one
 SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm
 JOIN books b ON b.id = bm.book_id
 WHERE bm.id = ?1 AND bm.user_id = ?2
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
 `
 
@@ -297,9 +297,9 @@ const readingGetOwnedHighlight = `-- name: ReadingGetOwnedHighlight :one
 SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position, h.text, h.color, h.chapter, h.created_at, h.updated_at, h.deleted_at, h.rev, h.style FROM highlights h
 JOIN books b ON b.id = h.book_id
 WHERE h.id = ?1 AND h.user_id = ?2
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
 `
 
@@ -336,9 +336,9 @@ const readingGetOwnedNote = `-- name: ReadingGetOwnedNote :one
 SELECT n.seq, n.id, n.user_id, n.book_id, n.highlight_id, n.body_md, n.created_at, n.updated_at, n.deleted_at, n.rev FROM notes n
 JOIN books b ON b.id = n.book_id
 WHERE n.id = ?1 AND n.user_id = ?2
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
 `
 
@@ -369,9 +369,9 @@ func (q *Queries) ReadingGetOwnedNote(ctx context.Context, arg ReadingGetOwnedNo
 const readingGetOwnedPageAnnotation = `-- name: ReadingGetOwnedPageAnnotation :one
 SELECT pa.seq, pa.id, pa.user_id, pa.book_id, pa.book_file_id, pa.kind, pa.locator, pa.position, pa.data, pa.asset_sha256, pa.created_at, pa.updated_at, pa.deleted_at, pa.rev FROM page_annotations pa JOIN books b ON b.id = pa.book_id
 WHERE pa.id = ?1 AND pa.user_id = ?2
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2)
 `
 
@@ -418,10 +418,10 @@ const readingGetProgress = `-- name: ReadingGetProgress :one
 SELECT rp.user_id, rp.book_id, rp.book_file_id, rp.source, rp.locator, rp.percentage, rp.device, rp.device_id, rp.updated_at, rp.rev FROM reading_progress rp
 JOIN books b ON b.id = rp.book_id
 WHERE rp.user_id = ?1 AND rp.book_id = ?2
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = ?1
@@ -522,10 +522,10 @@ const readingGetUserBook = `-- name: ReadingGetUserBook :one
 SELECT ub.user_id, ub.book_id, ub.status, ub.rating, ub.started_at, ub.finished_at, ub.updated_at, ub.rev, ub.reading_cycle FROM user_books ub
 JOIN books b ON b.id = ub.book_id
 WHERE ub.user_id = ?1 AND ub.book_id = ?2
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = ?1
@@ -605,10 +605,10 @@ SELECT ?1, ?2, b.id, ?3, ?4,
        ?11
 FROM books b
 WHERE b.id = ?12
-AND (CAST(?13 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?13 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
@@ -721,10 +721,10 @@ LEFT JOIN user_books ub ON ub.user_id = ?1 AND ub.book_id = b.id
 LEFT JOIN reading_progress rp ON rp.user_id = ?1 AND rp.book_id = b.id
 WHERE b.id IN (SELECT value FROM json_each(CAST(?2 AS TEXT)))
 AND (ub.book_id IS NOT NULL OR rp.book_id IS NOT NULL)
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = ?1
@@ -781,9 +781,9 @@ const readingListBookmarksByBookID = `-- name: ReadingListBookmarksByBookID :man
 SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm
 JOIN books b ON b.id = bm.book_id
 WHERE bm.user_id = ?1 AND bm.book_id = ?2 AND bm.deleted_at IS NULL
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
 )
@@ -838,10 +838,10 @@ SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position,
 JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?1 AND h.book_id = ?2
 AND h.deleted_at IS NULL
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden
     WHERE hidden.book_id = b.id AND hidden.user_id = ?1
@@ -899,10 +899,10 @@ SELECT n.seq, n.id, n.user_id, n.book_id, n.highlight_id, n.body_md, n.created_a
 JOIN books b ON b.id = n.book_id
 WHERE n.user_id = ?1 AND n.book_id = ?2
 AND n.deleted_at IS NULL
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden
     WHERE hidden.book_id = b.id AND hidden.user_id = ?1
@@ -953,9 +953,9 @@ func (q *Queries) ReadingListNotes(ctx context.Context, arg ReadingListNotesPara
 const readingListPageAnnotations = `-- name: ReadingListPageAnnotations :many
 SELECT pa.seq, pa.id, pa.user_id, pa.book_id, pa.book_file_id, pa.kind, pa.locator, pa.position, pa.data, pa.asset_sha256, pa.created_at, pa.updated_at, pa.deleted_at, pa.rev FROM page_annotations pa JOIN books b ON b.id = pa.book_id
 WHERE pa.user_id = ?1 AND pa.book_id = ?2 AND pa.deleted_at IS NULL
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1)
 ORDER BY pa.position, pa.id
 `
@@ -1047,9 +1047,9 @@ AND (CAST(?2 AS INTEGER) = 0 OR bm.book_id = ?2)
 AND (CAST(?3 AS INTEGER) = 0
     OR bm.created_at < ?4
     OR (bm.created_at = ?4 AND bm.id < ?5))
-AND (CAST(?6 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?6 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
 )
@@ -1212,9 +1212,9 @@ func (q *Queries) ReadingPageBookSessions(ctx context.Context, arg ReadingPageBo
 const readingPullBookmarks = `-- name: ReadingPullBookmarks :many
 SELECT bm.seq, bm.id, bm.user_id, bm.book_id, bm.book_file_id, bm.locator, bm.position, bm.label, bm.chapter, bm.created_at, bm.updated_at, bm.deleted_at, bm.rev FROM bookmarks bm JOIN books b ON b.id = bm.book_id
 WHERE bm.user_id = ?1 AND bm.rev > ?2 AND bm.rev <= ?3
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1)
 ORDER BY bm.rev, bm.id
 `
@@ -1271,9 +1271,9 @@ func (q *Queries) ReadingPullBookmarks(ctx context.Context, arg ReadingPullBookm
 const readingPullHighlights = `-- name: ReadingPullHighlights :many
 SELECT h.seq, h.id, h.user_id, h.book_id, h.book_file_id, h.locator, h.position, h.text, h.color, h.chapter, h.created_at, h.updated_at, h.deleted_at, h.rev, h.style FROM highlights h JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?1 AND h.rev > ?2 AND h.rev <= ?3
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1)
 ORDER BY h.rev, h.id
 `
@@ -1332,9 +1332,9 @@ func (q *Queries) ReadingPullHighlights(ctx context.Context, arg ReadingPullHigh
 const readingPullNotes = `-- name: ReadingPullNotes :many
 SELECT n.seq, n.id, n.user_id, n.book_id, n.highlight_id, n.body_md, n.created_at, n.updated_at, n.deleted_at, n.rev FROM notes n JOIN books b ON b.id = n.book_id
 WHERE n.user_id = ?1 AND n.rev > ?2 AND n.rev <= ?3
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1)
 ORDER BY n.rev, n.id
 `
@@ -1388,9 +1388,9 @@ func (q *Queries) ReadingPullNotes(ctx context.Context, arg ReadingPullNotesPara
 const readingPullPageAnnotations = `-- name: ReadingPullPageAnnotations :many
 SELECT pa.seq, pa.id, pa.user_id, pa.book_id, pa.book_file_id, pa.kind, pa.locator, pa.position, pa.data, pa.asset_sha256, pa.created_at, pa.updated_at, pa.deleted_at, pa.rev FROM page_annotations pa JOIN books b ON b.id = pa.book_id
 WHERE pa.user_id = ?1 AND pa.rev > ?2 AND pa.rev <= ?3
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1)
 ORDER BY pa.rev, pa.id
 `
@@ -1448,9 +1448,9 @@ func (q *Queries) ReadingPullPageAnnotations(ctx context.Context, arg ReadingPul
 const readingPullProgress = `-- name: ReadingPullProgress :many
 SELECT rp.user_id, rp.book_id, rp.book_file_id, rp.source, rp.locator, rp.percentage, rp.device, rp.device_id, rp.updated_at, rp.rev FROM reading_progress rp JOIN books b ON b.id = rp.book_id
 WHERE rp.user_id = ?1 AND rp.rev > ?2 AND rp.rev <= ?3
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1)
 ORDER BY rp.rev, rp.book_id
 `
@@ -1545,9 +1545,9 @@ func (q *Queries) ReadingPullSettings(ctx context.Context, arg ReadingPullSettin
 const readingPullUserBooks = `-- name: ReadingPullUserBooks :many
 SELECT ub.user_id, ub.book_id, ub.status, ub.rating, ub.started_at, ub.finished_at, ub.updated_at, ub.rev, ub.reading_cycle FROM user_books ub JOIN books b ON b.id = ub.book_id
 WHERE ub.user_id = ?1 AND ub.rev > ?2 AND ub.rev <= ?3
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1)
 ORDER BY ub.rev, ub.book_id
 `
@@ -1650,9 +1650,9 @@ JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?2
 AND h.deleted_at IS NULL
 AND (CAST(?3 AS TEXT) = '' OR h.style = ?3)
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
 ORDER BY f.rank, h.id LIMIT ?5
 `
@@ -1716,9 +1716,9 @@ FROM highlights h JOIN books b ON b.id = h.book_id
 WHERE h.user_id = ?1 AND h.deleted_at IS NULL
 AND (CAST(?2 AS TEXT) = '' OR h.style = ?2)
 AND ((h.text LIKE ?3 ESCAPE '\'))
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1)
 ORDER BY h.position, h.id LIMIT ?5
 `
@@ -1784,9 +1784,9 @@ WHERE n.user_id = ?2
 AND n.deleted_at IS NULL
 AND (CAST(?3 AS TEXT) = '' OR
     CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END = ?3)
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
 ORDER BY f.rank, n.id LIMIT ?5
 `
@@ -1856,9 +1856,9 @@ AND ((n.body_md LIKE ?3 ESCAPE '\')
         WHERE h.id = n.highlight_id AND h.deleted_at IS NULL
         AND (h.text LIKE ?3 ESCAPE '\')
     ))
-AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1)
 ORDER BY n.created_at DESC, n.id LIMIT ?5
 `
@@ -2007,9 +2007,9 @@ SELECT ?1, ?2, b.id, ?3, ?4,
        ?9, ?10, ?11
 FROM books b
 WHERE b.id = ?12
-AND (CAST(?13 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?13 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?2)
 ON CONFLICT(id) DO UPDATE SET
     book_file_id = excluded.book_file_id,
@@ -2071,10 +2071,10 @@ SELECT ?1, ?2, b.id, ?3, ?4,
        ?10, ?11, ?12, ?13
 FROM books b
 WHERE b.id = ?14
-AND (CAST(?15 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?15 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
@@ -2136,10 +2136,10 @@ SELECT ?1, ?2, b.id, ?3, ?4,
        ?5, ?6, ?7, ?8
 FROM books b
 WHERE b.id = ?9
-AND (CAST(?10 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?10 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
@@ -2192,9 +2192,9 @@ SELECT ?1, ?2, b.id, ?3, ?4,
        ?9, ?10, NULL, ?11
 FROM books b
 WHERE b.id = ?12
-AND (CAST(?13 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?13 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+)))))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2)
 ON CONFLICT(id) DO UPDATE SET
     book_file_id = excluded.book_file_id, locator = excluded.locator,
@@ -2252,10 +2252,10 @@ SELECT ?1, b.id, ?2, ?3, ?4,
        ?9
 FROM books b
 WHERE b.id = ?10
-AND (CAST(?11 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?11 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
@@ -2336,10 +2336,10 @@ SELECT ?1, b.id, ?2, ?3, ?4,
        ?5, ?6, ?7
 FROM books b
 WHERE b.id = ?8
-AND (CAST(?9 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?9 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
@@ -2382,24 +2382,24 @@ func (q *Queries) ReadingUpsertUserBook(ctx context.Context, arg ReadingUpsertUs
 const readingVisibleBook = `-- name: ReadingVisibleBook :one
 SELECT b.id FROM books b
 WHERE b.id = ?1
-AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
-    WHERE h.book_id = b.id AND h.user_id = ?3
+    WHERE h.book_id = b.id AND h.user_id = ?2
 )
 `
 
 type ReadingVisibleBookParams struct {
 	BookID  int64
-	IsAdmin int64
 	UserID  int64
+	IsAdmin int64
 }
 
 func (q *Queries) ReadingVisibleBook(ctx context.Context, arg ReadingVisibleBookParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, readingVisibleBook, arg.BookID, arg.IsAdmin, arg.UserID)
+	row := q.db.QueryRowContext(ctx, readingVisibleBook, arg.BookID, arg.UserID, arg.IsAdmin)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -2409,29 +2409,29 @@ const readingVisibleBookFile = `-- name: ReadingVisibleBookFile :one
 SELECT bf.id FROM book_files bf
 JOIN books b ON b.id = bf.book_id
 WHERE bf.id = ?1 AND b.id = ?2
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?4
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?3
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
-    WHERE h.book_id = b.id AND h.user_id = ?4
+    WHERE h.book_id = b.id AND h.user_id = ?3
 )
 `
 
 type ReadingVisibleBookFileParams struct {
 	BookFileID int64
 	BookID     int64
-	IsAdmin    int64
 	UserID     int64
+	IsAdmin    int64
 }
 
 func (q *Queries) ReadingVisibleBookFile(ctx context.Context, arg ReadingVisibleBookFileParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, readingVisibleBookFile,
 		arg.BookFileID,
 		arg.BookID,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -2442,9 +2442,9 @@ const readingVisibleBookmarkCount = `-- name: ReadingVisibleBookmarkCount :one
 SELECT COUNT(*) FROM bookmarks bm
 JOIN books b ON b.id = bm.book_id
 WHERE bm.user_id = ?1 AND bm.book_id = ?2 AND bm.deleted_at IS NULL
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?1
 )
@@ -2467,29 +2467,29 @@ const readingVisibleBookmarkFileFormat = `-- name: ReadingVisibleBookmarkFileFor
 SELECT bf.format FROM book_files bf
 JOIN books b ON b.id = bf.book_id
 WHERE bf.id = ?1 AND b.id = ?2
-AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?4
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?3
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
-    WHERE h.book_id = b.id AND h.user_id = ?4
+    WHERE h.book_id = b.id AND h.user_id = ?3
 )
 `
 
 type ReadingVisibleBookmarkFileFormatParams struct {
 	BookFileID int64
 	BookID     int64
-	IsAdmin    int64
 	UserID     int64
+	IsAdmin    int64
 }
 
 func (q *Queries) ReadingVisibleBookmarkFileFormat(ctx context.Context, arg ReadingVisibleBookmarkFileFormatParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, readingVisibleBookmarkFileFormat,
 		arg.BookFileID,
 		arg.BookID,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 	)
 	var format string
 	err := row.Scan(&format)

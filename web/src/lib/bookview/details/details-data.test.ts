@@ -36,6 +36,7 @@ function note(id: string): Note {
 
 function book(id: number, index: number | null = id): Book {
 	return {
+		owner_id: null, visibility: 'library', can_manage_visibility: false,
 		id, library_id: 1, title: `Book ${id}`, sort_title: `Book ${id}`, subtitle: null,
 		description: null, language: null, publisher: null, published_date: null,
 		page_count: null, cover_url: null, cover_source: null,

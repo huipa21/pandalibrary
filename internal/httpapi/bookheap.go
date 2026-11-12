@@ -44,6 +44,8 @@ func (h *bookheapHTTP) upload(w http.ResponseWriter, r *http.Request, viewer cat
 		return
 	}
 	var pending *bookheap.Pending
+	visibility := "public"
+	seenVisibility := false
 	defer func() {
 		if err := pending.Discard(); err != nil {
 			h.catalog.logger.Error("discard bookheap upload", "request_id", RequestID(r), "error", err)
@@ -59,7 +61,24 @@ func (h *bookheapHTTP) upload(w http.ResponseWriter, r *http.Request, viewer cat
 			return
 		}
 		disposition, params, err := mime.ParseMediaType(part.Header.Get("Content-Disposition"))
-		if err != nil || disposition != "form-data" || params["name"] != "file" || pending != nil {
+		if err != nil || disposition != "form-data" {
+			h.multipartError(w, r, catalog.ErrInvalid)
+			return
+		}
+		if params["name"] == "visibility" {
+			value, err := io.ReadAll(io.LimitReader(part, 16))
+			if err != nil || seenVisibility || params["filename"] != "" || (string(value) != "public" && string(value) != "private") {
+				h.multipartError(w, r, catalog.ErrInvalid)
+				return
+			}
+			visibility, seenVisibility = string(value), true
+			if err := part.Close(); err != nil {
+				h.multipartError(w, r, err)
+				return
+			}
+			continue
+		}
+		if params["name"] != "file" || pending != nil {
 			h.multipartError(w, r, catalog.ErrInvalid)
 			return
 		}
@@ -84,6 +103,10 @@ func (h *bookheapHTTP) upload(w http.ResponseWriter, r *http.Request, viewer cat
 	}
 	if _, err := io.Copy(io.Discard, r.Body); err != nil {
 		h.multipartError(w, r, err)
+		return
+	}
+	if err := pending.SetVisibility(visibility); err != nil {
+		h.writeError(w, r, err)
 		return
 	}
 	item, err := h.service.Commit(r.Context(), viewer, pending)
@@ -227,6 +250,10 @@ func (h *bookheapHTTP) writeError(w http.ResponseWriter, r *http.Request, err er
 	case errors.As(err, &duplicate):
 		extensions := map[string]any{"duplicate_of_item_id": duplicate.ItemID}
 		detail := "This file is already in the bookheap."
+		if duplicate.BookID == 0 && duplicate.ItemID == 0 {
+			extensions = nil
+			detail = "This file has already been uploaded."
+		}
 		if duplicate.BookID != 0 {
 			extensions = map[string]any{"duplicate_of_book_id": duplicate.BookID}
 			detail = "This file is already in the library."

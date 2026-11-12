@@ -7,6 +7,7 @@
 	let permission = $state<'context' | 'allow' | 'deny'>('context');
 	let offline = $state(false);
 	let book = $state<Book>({
+		owner_id: null, visibility: 'library', can_manage_visibility: false,
 		id: 21, library_id: 1, title: 'Fixture', sort_title: 'Fixture', subtitle: null,
 		description: null, language: null, publisher: null, published_date: null,
 		page_count: null, cover_url: null, cover_source: null, authors: [], series: null,

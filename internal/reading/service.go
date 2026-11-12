@@ -1436,12 +1436,12 @@ func (s *Service) SearchAnnotations(
 			) a JOIN books b ON b.id = a.book_id
 			WHERE a.user_id = ? AND a.content LIKE ? ESCAPE '\'
 			AND (? = '' OR a.kind = ?)
-			AND (? = 1 OR EXISTS (
+			AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
 				SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
-			))
+			))))
 			AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?)
 			ORDER BY a.created_at DESC, a.kind, a.id LIMIT 100`,
-			viewer.UserID, "%"+escapeLike(query)+"%", kind, kind, adminFlag(viewer), viewer.UserID, viewer.UserID)
+			viewer.UserID, "%"+escapeLike(query)+"%", kind, kind, viewer.UserID, adminFlag(viewer), viewer.UserID, viewer.UserID)
 		if err != nil {
 			return fmt.Errorf("search reviews and inserted text: %w", err)
 		}

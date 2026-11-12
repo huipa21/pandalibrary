@@ -7,10 +7,10 @@ CROSS JOIN reading_sessions rs ON rs.user_id = sqlc.arg(user_id)
     AND rs.started_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
     AND rs.started_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
 JOIN books b ON b.id = rs.book_id
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
@@ -30,10 +30,10 @@ JOIN books b ON b.id = terminal_cycles.book_id
 CROSS JOIN json_each(CAST(sqlc.arg(days) AS TEXT)) d
 WHERE terminal_cycles.ended_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
 AND terminal_cycles.ended_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
-AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
@@ -52,10 +52,10 @@ SELECT b.id AS book_id, b.title,
 FROM reading_sessions rs JOIN books b ON b.id = rs.book_id
 WHERE rs.user_id = sqlc.arg(user_id)
 AND rs.started_at >= sqlc.arg(start_at) AND rs.started_at < sqlc.arg(end_at)
-AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
@@ -70,10 +70,10 @@ SELECT CAST(COALESCE(MIN(rs.started_at), sqlc.arg(end_at)) AS INTEGER) AS start_
 FROM reading_sessions rs JOIN books b ON b.id = rs.book_id
 WHERE rs.user_id = sqlc.arg(user_id) AND rs.started_at < sqlc.arg(end_at)
 AND rs.active_seconds > 0
-AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h
     WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
@@ -94,10 +94,10 @@ WITH local_days AS (
         AND rs.started_at < CAST(json_extract(z.value, '$.end') AS INTEGER)
     JOIN books b ON b.id = rs.book_id
     WHERE rs.active_seconds > 0
-    AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
         SELECT 1 FROM library_access la
         WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-    ))
+    )))))
     AND NOT EXISTS (
         SELECT 1 FROM book_hidden h
         WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)

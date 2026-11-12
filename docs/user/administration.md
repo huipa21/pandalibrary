@@ -35,6 +35,17 @@ There are four ways to add books:
 Book details are read from the files and can be filled in from online metadata
 providers.
 
+When uploading, choose **Public** (the default) or **Private**. Public books are
+visible to all signed-in users, even without access to the destination library;
+they are never available anonymously. Private books are visible only to the
+account that uploaded them. The choice follows a Bookheap upload when it is
+later assigned to a library. Retrying an upload keeps its original choice.
+Existing books and books discovered in folders retain library-based access.
+Per-reader hidden-book restrictions still apply to public books.
+
+The uploader can change a book's visibility from its **Details** tab, using the
+visibility icon below the cover and confirming the change.
+
 ## Bookheap
 
 The Bookheap is a staging area for books that are not in a library yet. Readers

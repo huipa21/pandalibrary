@@ -56,6 +56,9 @@ export interface FieldSource {
 export interface Book {
 	readonly id: number;
 	readonly library_id: number;
+	readonly owner_id: number | null;
+	readonly visibility: 'public' | 'private' | 'library';
+	readonly can_manage_visibility: boolean;
 	readonly title: string;
 	readonly sort_title: string;
 	readonly subtitle: string | null;

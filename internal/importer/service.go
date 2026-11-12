@@ -81,13 +81,14 @@ type Job struct {
 }
 
 type manifest struct {
-	Staged    blobstore.StagedBook `json:"staged"`
-	BookID    int64                `json:"book_id"`
-	DropPath  string               `json:"drop_path,omitempty"`
-	DropSize  int64                `json:"drop_size,omitempty"`
-	DropMtime int64                `json:"drop_mtime,omitempty"`
-	Failure   string               `json:"failure,omitempty"`
-	Hook      json.RawMessage      `json:"hook,omitempty"`
+	Visibility string               `json:"visibility,omitempty"`
+	Staged     blobstore.StagedBook `json:"staged"`
+	BookID     int64                `json:"book_id"`
+	DropPath   string               `json:"drop_path,omitempty"`
+	DropSize   int64                `json:"drop_size,omitempty"`
+	DropMtime  int64                `json:"drop_mtime,omitempty"`
+	Failure    string               `json:"failure,omitempty"`
+	Hook       json.RawMessage      `json:"hook,omitempty"`
 }
 
 func New(options Options) (*Service, error) {
@@ -154,7 +155,17 @@ func (s *Service) Discard(staged blobstore.StagedBook) error {
 	return s.options.Blobs.RemoveStaged(staged.Token)
 }
 
-func (s *Service) QueueUpload(ctx context.Context, viewer catalog.Viewer, libraryID, bookID int64, name string, staged blobstore.StagedBook) (Job, error) {
+func (s *Service) QueueUpload(ctx context.Context, viewer catalog.Viewer, libraryID, bookID int64, name string, staged blobstore.StagedBook, visibilityOption ...string) (Job, error) {
+	visibility := "public"
+	if len(visibilityOption) > 1 {
+		return Job{}, catalog.ErrInvalid
+	}
+	if len(visibilityOption) == 1 {
+		visibility = visibilityOption[0]
+	}
+	if visibility != "public" && visibility != "private" {
+		return Job{}, catalog.ErrInvalid
+	}
 	if !viewer.IsAdmin || viewer.UserID < 1 {
 		return Job{}, catalog.ErrForbidden
 	}
@@ -173,7 +184,7 @@ func (s *Service) QueueUpload(ctx context.Context, viewer catalog.Viewer, librar
 			return Job{}, catalog.ErrInvalid
 		}
 	}
-	return s.enqueue(ctx, "upload", libraryID, viewer.UserID, name, manifest{Staged: staged, BookID: bookID})
+	return s.enqueue(ctx, "upload", libraryID, viewer.UserID, name, manifest{Staged: staged, BookID: bookID, Visibility: visibility})
 }
 
 func (s *Service) enqueue(ctx context.Context, source string, libraryID, userID int64, name string, input manifest) (Job, error) {
@@ -198,7 +209,18 @@ func (s *Service) History(ctx context.Context, viewer catalog.Viewer, before int
 		rows = rows[:limit]
 	}
 	for _, row := range rows {
-		page.Items = append(page.Items, jobDTO(row))
+		job := jobDTO(row)
+		for _, id := range []**int64{&job.BookID, &job.DuplicateOfBookID} {
+			if *id == nil {
+				continue
+			}
+			if err := s.options.Catalog.CheckVisible(ctx, viewer, **id); errors.Is(err, catalog.ErrNotFound) {
+				*id = nil
+			} else if err != nil {
+				return page, err
+			}
+		}
+		page.Items = append(page.Items, job)
 	}
 	return page, nil
 }

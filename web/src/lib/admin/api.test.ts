@@ -149,9 +149,18 @@ describe('uploadBook', () => {
 		expect(init?.method).toBe('POST');
 		expect(init?.headers).toBeUndefined();
 		const form = init?.body as FormData;
-		expect([...form.keys()]).toEqual(['library_id', 'file']);
+		expect([...form.keys()]).toEqual(['library_id', 'file', 'visibility']);
 		expect(form.get('library_id')).toBe('1');
+		expect(form.get('visibility')).toBe('public');
 		expect((form.get('file') as File).name).toBe('Book.epub');
+	});
+
+	it('includes the selected private visibility in direct uploads', async () => {
+		const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+			new Response(JSON.stringify({ job }), { status: 202 })
+		);
+		await uploadBook(1, new File(['x'], 'a.epub'), { fetcher, visibility: 'private' });
+		expect((fetcher.mock.calls[0][1]?.body as FormData).get('visibility')).toBe('private');
 	});
 
 	it('turns problem responses into ApiError', async () => {

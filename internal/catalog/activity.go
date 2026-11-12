@@ -47,9 +47,9 @@ WITH activity AS (
 	FROM book_reviews r
 	JOIN books b ON b.id = r.book_id
 	WHERE r.user_id = ?
-	AND (? = 1 OR EXISTS (
+	AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
 		SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
-	))
+	))))
 	AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?)
 	UNION ALL
 	SELECT CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END AS kind,
@@ -60,18 +60,18 @@ WITH activity AS (
 	LEFT JOIN highlights h ON h.id = n.highlight_id AND h.user_id = n.user_id
 		AND h.book_id = n.book_id AND h.deleted_at IS NULL
 	WHERE n.user_id = ? AND n.deleted_at IS NULL
-	AND (? = 1 OR EXISTS (
+	AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
 		SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
-	))
+	))))
 	AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?)
 	UNION ALL
 	SELECT h.style, h.id, h.book_id, b.title, b.cover_sha256, h.text, '',
 		h.created_at, h.updated_at, h.book_file_id, '', '', h.id
 	FROM highlights h JOIN books b ON b.id = h.book_id
 	WHERE h.user_id = ? AND h.deleted_at IS NULL
-	AND (? = 1 OR EXISTS (
+	AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
 		SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
-	))
+	))))
 	AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?)
 	UNION ALL
 	SELECT pa.kind, pa.id, pa.book_id, b.title, b.cover_sha256,
@@ -79,9 +79,9 @@ WITH activity AS (
 		pa.created_at, pa.updated_at, pa.book_file_id, pa.locator, pa.data, NULL
 	FROM page_annotations pa JOIN books b ON b.id = pa.book_id
 	WHERE pa.user_id = ? AND pa.deleted_at IS NULL
-	AND (? = 1 OR EXISTS (
+	AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
 		SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
-	))
+	))))
 	AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?)
 )`
 
@@ -129,10 +129,10 @@ func (s *Service) ListPersonalActivity(ctx context.Context, viewer Viewer, optio
 
 	admin := adminFlag(viewer)
 	args := []any{
-		viewer.UserID, admin, viewer.UserID, viewer.UserID,
-		viewer.UserID, admin, viewer.UserID, viewer.UserID,
-		viewer.UserID, admin, viewer.UserID, viewer.UserID,
-		viewer.UserID, admin, viewer.UserID, viewer.UserID,
+		viewer.UserID, viewer.UserID, admin, viewer.UserID, viewer.UserID,
+		viewer.UserID, viewer.UserID, admin, viewer.UserID, viewer.UserID,
+		viewer.UserID, viewer.UserID, admin, viewer.UserID, viewer.UserID,
+		viewer.UserID, viewer.UserID, admin, viewer.UserID, viewer.UserID,
 		options.Kind, options.Kind,
 	}
 	var total int64

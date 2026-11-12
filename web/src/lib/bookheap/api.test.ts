@@ -48,14 +48,15 @@ function setup() {
 }
 
 describe('uploadHeapFile', () => {
-	it('posts one multipart file part with credentials and reports progress', async () => {
+	it('posts a multipart file with public visibility by default and reports progress', async () => {
 		const { request, createRequest } = setup();
 		const onprogress = vi.fn();
 		const book = new File(['data'], 'Dune.epub');
 		const pending = uploadHeapFile(book, { createRequest, onprogress });
 		expect(request).toMatchObject({ method: 'POST', url: BOOKHEAP_FILES_PATH, withCredentials: true });
-		expect([...request.body!.keys()]).toEqual(['file']);
+		expect([...request.body!.keys()]).toEqual(['file', 'visibility']);
 		expect((request.body!.get('file') as File).name).toBe('Dune.epub');
+		expect(request.body!.get('visibility')).toBe('public');
 
 		request.upload.onprogress?.({ loaded: 3, total: 9, lengthComputable: true } as ProgressEvent);
 		request.upload.onprogress?.({ loaded: 4, total: 0, lengthComputable: false } as ProgressEvent);
@@ -63,6 +64,14 @@ describe('uploadHeapFile', () => {
 
 		request.respond(201, JSON.stringify({ item: { id: 12, title: 'Dune' } }));
 		await expect(pending).resolves.toMatchObject({ id: 12, title: 'Dune' });
+	});
+
+	it('posts an explicitly selected private visibility', async () => {
+		const { request, createRequest } = setup();
+		const pending = uploadHeapFile(new File(['x'], 'a.epub'), { createRequest, visibility: 'private' });
+		expect(request.body!.get('visibility')).toBe('private');
+		request.respond(201, JSON.stringify({ item: { id: 1 } }));
+		await expect(pending).resolves.toMatchObject({ id: 1 });
 	});
 
 	it('maps problem responses to ApiError like the JSON client', async () => {

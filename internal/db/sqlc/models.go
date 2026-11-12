@@ -53,6 +53,8 @@ type Book struct {
 	AddedBy       sql.NullInt64
 	CreatedAt     int64
 	UpdatedAt     int64
+	OwnerID       sql.NullInt64
+	Visibility    string
 }
 
 type BookAuthor struct {
@@ -134,6 +136,7 @@ type BookheapItem struct {
 	AddedBy           sql.NullInt64
 	CreatedAt         int64
 	UpdatedAt         int64
+	Visibility        string
 }
 
 type Bookmark struct {

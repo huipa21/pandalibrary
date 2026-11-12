@@ -42,6 +42,9 @@ const pdf = (id: number, size = 1024): BookFile => ({
 const book = (overrides: Partial<Book> = {}): Book => ({
 	id: 1,
 	library_id: 1,
+	owner_id: null,
+	visibility: 'library',
+	can_manage_visibility: false,
 	title: 'Current',
 	sort_title: 'Current',
 	subtitle: 'Old subtitle',

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 type Messages = Record<string, string>;
 
-const bookViewKeys = (messages: Messages) => Object.keys(messages).filter((key) => /^(?:bv\d+|bd\d+|bc4)\./.test(key)).sort();
+const bookViewKeys = (messages: Messages) => Object.keys(messages).filter((key) => /^(?:bv\d+|bv\.visibility|bd\d+|bc4)\./.test(key)).sort();
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 
 describe('book view and cover tile messages', () => {

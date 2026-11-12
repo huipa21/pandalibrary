@@ -10,7 +10,7 @@
 		| 'text-cursor' | 'insert'
 		| 'highlighter' | 'underline' | 'strikethrough' | 'message' | 'bookmark-plus'
 		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move'
-		| 'list-tree' | 'bookmark' | 'chevrons-left';
+		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe';
 </script>
 
 <script lang="ts">
@@ -37,6 +37,10 @@
 		<path d="M13 5h6v6m0-6-9 9M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4" />
 	{:else if name === 'eye'}
 		<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" />
+	{:else if name === 'lock'}
+		<rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
+	{:else if name === 'globe'}
+		<circle cx="12" cy="12" r="9" /><ellipse cx="12" cy="12" rx="4" ry="9" /><path d="M3 12h18" />
 	{:else if name === 'folder-plus'}
 		<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 10v6m-3-3h6" />
 	{:else if name === 'download'}

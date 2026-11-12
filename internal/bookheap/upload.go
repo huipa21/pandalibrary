@@ -26,12 +26,13 @@ const maxNameCandidates = 1000
 // Pending is an upload streamed into a dot-prefixed temp file in the heap root.
 // Call Commit to store it, or Discard to remove it; Discard is always safe.
 type Pending struct {
-	service *Service
-	temp    string
-	name    string
-	size    int64
-	sha256  string
-	userID  int64
+	service    *Service
+	temp       string
+	name       string
+	size       int64
+	sha256     string
+	userID     int64
+	visibility string
 }
 
 // Receive validates the file name and streams reader into a temp file while
@@ -55,7 +56,7 @@ func (s *Service) Receive(ctx context.Context, viewer catalog.Viewer, name strin
 	if _, err := rand.Read(random[:]); err != nil {
 		return nil, err
 	}
-	pending := &Pending{service: s, temp: ".upload-" + hex.EncodeToString(random[:]) + ".part", name: name, userID: viewer.UserID}
+	pending := &Pending{service: s, temp: ".upload-" + hex.EncodeToString(random[:]) + ".part", name: name, userID: viewer.UserID, visibility: "public"}
 	file, err := root.OpenFile(pending.temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
 	if err != nil {
 		return nil, fmt.Errorf("create upload temp file: %w", err)
@@ -90,6 +91,7 @@ func (p *Pending) Discard() (returnErr error) {
 	if p == nil || p.temp == "" {
 		return nil
 	}
+
 	root, err := os.OpenRoot(p.service.dir)
 	if err != nil {
 		return err
@@ -99,6 +101,15 @@ func (p *Pending) Discard() (returnErr error) {
 		return err
 	}
 	p.temp = ""
+	return nil
+}
+
+// SetVisibility selects sharing before the upload is committed.
+func (p *Pending) SetVisibility(visibility string) error {
+	if visibility != "public" && visibility != "private" {
+		return fmt.Errorf("%w: visibility must be public or private", catalog.ErrInvalid)
+	}
+	p.visibility = visibility
 	return nil
 }
 
@@ -125,7 +136,7 @@ func (s *Service) Commit(ctx context.Context, viewer catalog.Viewer, pending *Pe
 	if s.isStopped() {
 		return Item{}, ErrStopped
 	}
-	if err := duplicateOf(ctx, sqlc.New(s.reader), pending.sha256, math.MaxInt64); err != nil {
+	if err := uploadDuplicate(ctx, sqlc.New(s.reader), viewer, pending.sha256); err != nil {
 		return Item{}, err
 	}
 	root, err := os.OpenRoot(s.dir)
@@ -151,7 +162,7 @@ func (s *Service) Commit(ctx context.Context, viewer catalog.Viewer, pending *Pe
 	final := ""
 	err = db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
-		if err := duplicateOf(ctx, queries, pending.sha256, math.MaxInt64); err != nil {
+		if err := uploadDuplicate(ctx, queries, viewer, pending.sha256); err != nil {
 			return err
 		}
 		var err error
@@ -166,6 +177,7 @@ func (s *Service) Commit(ctx context.Context, viewer catalog.Viewer, pending *Pe
 		now := s.now().UnixMilli()
 		params := insertParams(result, final, info.Size(), info.ModTime().UnixNano(), pending.sha256, "upload", StatusReady, now)
 		params.AddedBy = nullID(pending.userID)
+		params.Visibility = pending.visibility
 		row, err = queries.BookheapInsert(ctx, params)
 		if err != nil {
 			return fmt.Errorf("insert bookheap item: %w", err)
@@ -217,6 +229,22 @@ func (s *Service) placeUpload(ctx context.Context, root *os.Root, queries *sqlc.
 	return "", fmt.Errorf("%w: no free file name for the upload", catalog.ErrConflict)
 }
 
+func uploadDuplicate(ctx context.Context, queries *sqlc.Queries, viewer catalog.Viewer, sha string) error {
+	err := duplicateOf(ctx, queries, sha, math.MaxInt64)
+	var duplicate *DuplicateError
+	if !errors.As(err, &duplicate) || duplicate.BookID == 0 {
+		return err
+	}
+	if _, accessErr := queries.CatalogGetBook(ctx, sqlc.CatalogGetBookParams{
+		BookID: duplicate.BookID, UserID: viewer.UserID, IsAdmin: 1,
+	}); errors.Is(accessErr, sql.ErrNoRows) {
+		return &DuplicateError{}
+	} else if accessErr != nil {
+		return accessErr
+	}
+	return err
+}
+
 // duplicateOf returns a *DuplicateError when sha matches a library file or a heap item with a smaller ID.
 func duplicateOf(ctx context.Context, queries *sqlc.Queries, sha string, beforeID int64) error {
 	bookID, err := queries.BookheapDuplicateBook(ctx, sha)
@@ -247,6 +275,7 @@ func insertParams(result analysis, rel string, size, mtime int64, sha, source, s
 		Title: result.title, Authors: string(encoded), Language: text(result.language), Series: text(result.series),
 		CoverSha256: text(result.cover), Source: source, Status: status, Error: text(result.problem),
 		CreatedAt: now, UpdatedAt: now,
+		Visibility: "library",
 	}
 	if result.seriesIndex != nil {
 		params.SeriesIndex = sql.NullFloat64{Float64: *result.seriesIndex, Valid: true}

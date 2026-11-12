@@ -1,7 +1,7 @@
 import { ApiError } from '#lib/api/client.js';
 import { assignHeapItems, uploadHeapFile } from './api.js';
 import { notifyBookheapChanged } from './events.js';
-import type { HeapItem } from './types.js';
+import type { HeapItem, UploadVisibility } from './types.js';
 
 /** Formats the extract registry sniffs; the server remains authoritative. */
 export const SUPPORTED_EXTENSIONS = ['.epub', '.pdf', '.mobi', '.azw3', '.fb2', '.fbz', '.cbz'] as const;
@@ -39,6 +39,8 @@ export interface UploadRow {
 	duplicateOf: number | null;
 	/** Destination captured for this row; retained when an assignment needs retrying. */
 	libraryId: number | null;
+	/** Captured on the first attempt and retained for retries, including aborted uploads. */
+	visibility: UploadVisibility | null;
 }
 
 export interface UploadNotice {
@@ -57,7 +59,7 @@ export interface AddResult {
 
 export type Uploader = (
 	file: File,
-	options: { signal: AbortSignal; onprogress: (loaded: number, total: number | null) => void }
+	options: { visibility: UploadVisibility; signal: AbortSignal; onprogress: (loaded: number, total: number | null) => void }
 ) => Promise<HeapItem>;
 
 export interface UploadQueueOptions {
@@ -175,6 +177,7 @@ interface Run {
 	halted: boolean;
 	changed: boolean;
 	readonly libraryId: number | null;
+	readonly visibility: UploadVisibility;
 }
 
 /**
@@ -188,6 +191,7 @@ export class UploadQueue {
 	/** Set when a 401/403 halted the last run; pending rows are kept. */
 	stopped = $state<'unauthorized' | 'forbidden' | null>(null);
 	libraryId = $state<number | null>(null);
+	visibility = $state<UploadVisibility>('public');
 
 	readonly #upload: Uploader;
 	readonly #assign: typeof assignHeapItems;
@@ -251,7 +255,7 @@ export class UploadQueue {
 				continue;
 			}
 			known.add(key);
-			this.rows.push({ id: this.#nextId++, key, file, status: 'pending', loaded: 0, total: file.size, item: null, error: null, duplicateOf: null, libraryId: null });
+			this.rows.push({ id: this.#nextId++, key, file, status: 'pending', loaded: 0, total: file.size, item: null, error: null, duplicateOf: null, libraryId: null, visibility: null });
 			added += 1;
 		}
 		if (unsupported.length > 0 || tooLarge.length > 0 || ignored > 0) this.notice = { unsupported, tooLarge, ignored };
@@ -293,7 +297,7 @@ export class UploadQueue {
 		}
 		let finish!: () => void;
 		const done = new Promise<void>((resolve) => (finish = resolve));
-		this.#run = { controller: new AbortController(), done, finish, halted: false, changed: false, libraryId: this.libraryId };
+		this.#run = { controller: new AbortController(), done, finish, halted: false, changed: false, libraryId: this.libraryId, visibility: this.visibility };
 		this.running = true;
 		this.stopped = null;
 		this.#pump();
@@ -344,7 +348,9 @@ export class UploadQueue {
 		try {
 			if (!row.item) {
 				row.libraryId = run.libraryId;
+				row.visibility ??= run.visibility;
 				row.item = await this.#upload(row.file, {
+					visibility: row.visibility,
 					signal: run.controller.signal,
 					onprogress: (loaded, total) => {
 						row.total = total ?? row.file.size;

@@ -27,10 +27,10 @@ SELECT b.id, b.title, s.name AS series_name, b.series_index,
        ), '') AS TEXT) AS isbn
 FROM books b
 LEFT JOIN series s ON s.id = b.series_id
-WHERE (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(UserID)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(UserID)
 )
@@ -43,10 +43,10 @@ FROM highlights h
 JOIN books b ON b.id = h.book_id
 WHERE h.user_id = sqlc.arg(UserID)
 AND h.deleted_at IS NULL
-AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
+AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(UserID)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(UserID)
 )
@@ -60,10 +60,10 @@ FROM page_annotations p
 JOIN books b ON b.id = p.book_id
 WHERE p.user_id = sqlc.arg(UserID)
 AND p.deleted_at IS NULL
-AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
+AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(UserID)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(UserID)
 )
@@ -82,10 +82,10 @@ AND (n.highlight_id IS NULL OR EXISTS (
     WHERE h.id = n.highlight_id AND h.user_id = n.user_id AND h.book_id = n.book_id
     AND h.deleted_at IS NULL
 ))
-AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
+AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(UserID)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(UserID)
 )
@@ -101,10 +101,10 @@ SELECT
         JOIN books b ON b.id = h.book_id
         WHERE h.user_id = sqlc.arg(UserID)
         AND h.deleted_at IS NULL
-        AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
+        AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
             SELECT 1 FROM library_access la
             WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(UserID)
-        ))
+        )))))
         AND NOT EXISTS (
             SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(UserID)
         )
@@ -122,10 +122,10 @@ SELECT
             WHERE h.id = n.highlight_id AND h.user_id = n.user_id AND h.book_id = n.book_id
             AND h.deleted_at IS NULL
         ))
-        AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
+        AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
             SELECT 1 FROM library_access la
             WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(UserID)
-        ))
+        )))))
         AND NOT EXISTS (
             SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(UserID)
         )
@@ -138,10 +138,10 @@ SELECT
         JOIN books b ON b.id = p.book_id
         WHERE p.user_id = sqlc.arg(UserID)
         AND p.deleted_at IS NULL
-        AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
+        AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
             SELECT 1 FROM library_access la
             WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(UserID)
-        ))
+        )))))
         AND NOT EXISTS (
             SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = sqlc.arg(UserID)
         )

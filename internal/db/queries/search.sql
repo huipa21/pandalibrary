@@ -12,10 +12,10 @@ SELECT b.id, b.title,
 FROM books_fts(CAST(sqlc.arg(match_query) AS TEXT)) f
 JOIN books b ON b.id = f.rowid
 LEFT JOIN series s ON s.id = b.series_id
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 )
@@ -48,10 +48,10 @@ SELECT b.id, b.title,
 FROM books_fts f
 JOIN books b ON b.id = f.rowid
 LEFT JOIN series s ON s.id = b.series_id
-WHERE (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
-))
+)))))
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 )

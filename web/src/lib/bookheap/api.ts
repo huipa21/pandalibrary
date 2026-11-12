@@ -1,5 +1,5 @@
 import { api, ApiError, type ProblemDetails } from '#lib/api/client.js';
-import type { HeapItem, HeapItemStatus } from './types.js';
+import type { HeapItem, HeapItemStatus, UploadVisibility } from './types.js';
 
 export const BOOKHEAP_FILES_PATH = '/api/v1/admin/bookheap/files';
 
@@ -21,6 +21,7 @@ export interface UploadRequest {
 }
 
 export interface UploadHeapFileOptions {
+	readonly visibility?: UploadVisibility;
 	readonly signal?: AbortSignal;
 	/** Called with bytes sent so far and the total request size when known. */
 	readonly onprogress?: (loaded: number, total: number | null) => void;
@@ -60,13 +61,14 @@ function abortError(): DOMException {
 }
 
 /**
- * Uploads one file into the Bookheap (`POST /api/v1/admin/bookheap/files`, single multipart part
- * `file`). XMLHttpRequest is used instead of fetch so upload progress is observable. Rejects with
+ * Uploads one file into the Bookheap (`POST /api/v1/admin/bookheap/files`, multipart fields
+ * `file` and `visibility`, defaulting to public). Visibility persists through later assignment.
+ * XMLHttpRequest is used instead of fetch so upload progress is observable. Rejects with
  * `ApiError` for HTTP errors, a `TypeError` for network failures and an `AbortError` when aborted.
  */
 export function uploadHeapFile(
 	file: File,
-	{ signal, onprogress, createRequest = () => new XMLHttpRequest() as unknown as UploadRequest }: UploadHeapFileOptions = {}
+	{ visibility = 'public', signal, onprogress, createRequest = () => new XMLHttpRequest() as unknown as UploadRequest }: UploadHeapFileOptions = {}
 ): Promise<HeapItem> {
 	return new Promise<HeapItem>((resolve, reject) => {
 		if (signal?.aborted) {
@@ -104,6 +106,7 @@ export function uploadHeapFile(
 
 		const form = new FormData();
 		form.append('file', file, file.name);
+		form.append('visibility', visibility);
 		request.send(form);
 	});
 }

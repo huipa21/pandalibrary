@@ -47,6 +47,13 @@ Opening a book shows four tabs:
 Reading statuses: Unread, Want to read, Reading, Re-reading, On hold, Read,
 Skimmed and Abandoned.
 
+Change your reading status beside the rating in the book header. Below the
+cover, the full-width **Read** or **Resume** button opens the reader. The icons
+under it download the book and add it to a shelf. If you uploaded the book, a
+third icon lets you make it private or public after confirmation: private means
+only you can see it, while public means any signed-in user can see it, not
+anonymous visitors.
+
 - **Unread** and **Want to read** are only for books you have not started.
   Saving positive reading progress automatically starts **Reading**. After
   starting, a book cannot return to either untouched status.

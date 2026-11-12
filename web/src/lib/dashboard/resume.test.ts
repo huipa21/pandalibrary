@@ -14,6 +14,7 @@ vi.mock('#lib/sync/client.js', () => ({
 
 const timestamp = '2026-11-04T00:00:00Z';
 const book: Book = {
+	owner_id: null, visibility: 'library', can_manage_visibility: false,
 	id: 21, library_id: 1, title: 'Book', sort_title: 'Book', subtitle: null, description: null,
 	language: null, publisher: null, published_date: null, page_count: null, cover_url: null,
 	cover_source: null, authors: [], series: null, tags: [], identifiers: [], field_sources: [],

@@ -6,6 +6,7 @@ const stamp = '2026-11-06T10:00:00Z';
 
 function makeBook(id: number, title: string): Book {
 	return {
+		owner_id: null, visibility: 'library', can_manage_visibility: false,
 		id, library_id: 1, title, sort_title: title, subtitle: null, description: `${title} description`,
 		language: 'en', publisher: null, published_date: null, page_count: null, cover_url: null, cover_source: null,
 		authors: [{ id: 4, name: 'A Writer', role: 'author', position: 0 }],

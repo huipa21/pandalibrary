@@ -1,8 +1,8 @@
 -- name: BookheapInsert :one
 INSERT INTO bookheap_items (rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors,
     language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id,
-    duplicate_of_item_id, added_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    duplicate_of_item_id, added_by, created_at, updated_at, visibility)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (rel_path) DO NOTHING
 RETURNING *;
 

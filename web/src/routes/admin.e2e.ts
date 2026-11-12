@@ -198,6 +198,8 @@ test('uploads a book and polls import history until it finishes', async ({ page 
 	});
 
 	await page.goto('/admin/imports');
+	await expect(page.getByLabel('Book visibility')).toHaveValue('public');
+	await page.getByLabel('Book visibility').selectOption('private');
 	await expect(page.getByText('could not read [drop]/old.cbz')).toBeVisible();
 	await expect(page.getByText('Drop folder')).toBeVisible();
 
@@ -209,12 +211,14 @@ test('uploads a book and polls import history until it finishes', async ({ page 
 	await page.getByLabel('Book file').setInputFiles({ name: 'huge.epub', mimeType: 'application/epub+zip', buffer: Buffer.from('big') });
 	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(page.getByText('This file is larger than the server allows.')).toBeVisible();
+	await expect(page.getByLabel('Book visibility')).toHaveValue('private');
 
 	await page.getByLabel('Book file').setInputFiles({ name: 'Dune.epub', mimeType: 'application/epub+zip', buffer: Buffer.from('epub') });
 	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(page.getByText('Upload accepted as job #5 (Dune.epub): Waiting.')).toBeVisible();
 	expect(multipart).toContain('name="library_id"');
 	expect(multipart).toContain('name="file"; filename="Dune.epub"');
+	expect(multipart).toContain('name="visibility"\r\n\r\nprivate');
 	const item = page.getByRole('listitem').filter({ hasText: 'Dune.epub' });
 	await expect(item.getByText('Waiting')).toBeVisible();
 	await expect(page.getByText('Some imports are still running')).toBeVisible();

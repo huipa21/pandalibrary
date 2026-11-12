@@ -19,6 +19,7 @@ type CapturedMutation = {
 
 const stamp = '2026-11-06T10:00:00Z';
 const book: Book = {
+	owner_id: 1, visibility: 'public', can_manage_visibility: true,
 	id: 21, library_id: 1, title: 'The Emerald Library', sort_title: 'The Emerald Library',
 	subtitle: 'A reader’s journey', description: Array.from({ length: 10 }, (_, i) => `Synopsis line ${i + 1}`).join('\n'),
 	language: 'en', publisher: 'Panda Press', published_date: '2024-01-02', page_count: 320,
@@ -95,6 +96,9 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 		members: number[];
 		shelfDeletes: string[];
 		failShelfDelete: boolean;
+		visibilityRequests: ('public' | 'private')[];
+		rejectVisibility: boolean;
+		visibilityWait: Promise<void> | null;
 	} = {
 		book,
 		online: true,
@@ -106,7 +110,10 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 		shelfAdds: 0,
 		members: [42, 43],
 		shelfDeletes: [],
-		failShelfDelete: false
+		failShelfDelete: false,
+		visibilityRequests: [],
+		rejectVisibility: false,
+		visibilityWait: null
 	};
 	let rev = 1;
 	await page.route('**/api/v1/**', async (route) => {
@@ -152,6 +159,14 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 			return route.fulfill({ json: { results: mutations.map((_, index) => ({ index, status: 'applied' })) } });
 		}
 		if (path === '/books/21') return route.fulfill({ json: { book: state.book } });
+		if (path === '/books/21/visibility' && route.request().method() === 'PUT') {
+			const { visibility } = route.request().postDataJSON() as { visibility: 'public' | 'private' };
+			state.visibilityRequests.push(visibility);
+			if (state.visibilityWait) await state.visibilityWait;
+			if (state.rejectVisibility) return route.fulfill({ status: 500, json: { title: 'Failed', status: 500 } });
+			state.book = { ...state.book, visibility };
+			return route.fulfill({ json: { book: state.book } });
+		}
 		if (path === '/books/21/files/31') return route.fulfill({ contentType: 'application/epub+zip', body: 'book fixture' });
 		if (path === '/books') {
 			const items = url.searchParams.has('author_id') ? [state.book, authorBook]
@@ -184,6 +199,129 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 	return state;
 }
 
+test('visibility confirms before requests, supports cancellation and updates after success', async ({ page }) => {
+	const state = await setup(page);
+	await page.goto('/books/21');
+	const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
+	await expect(makePrivate).toHaveAttribute('title', 'Make private: only you');
+	page.once('dialog', async (dialog) => {
+		expect(dialog.message()).toContain('only you');
+		expect(state.visibilityRequests).toEqual([]);
+		await dialog.dismiss();
+	});
+	await makePrivate.click();
+	expect(state.visibilityRequests).toEqual([]);
+	await expect(makePrivate).toBeEnabled();
+
+	page.once('dialog', async (dialog) => {
+		expect(state.visibilityRequests).toEqual([]);
+		await dialog.accept();
+	});
+	await makePrivate.click();
+	const makePublic = page.getByRole('button', { name: 'Make public', exact: true });
+	await expect(makePublic).toBeVisible();
+	await expect(makePublic).toHaveAttribute('title', 'Make public: visible to all signed-in users');
+	expect(state.visibilityRequests).toEqual(['private']);
+	await expect(page.getByRole('status').filter({ hasText: 'This book is now private: only you can see it.' })).toBeAttached();
+	page.once('dialog', async (dialog) => {
+		expect(dialog.message()).toContain('visible to all signed-in users');
+		await dialog.accept();
+	});
+	await makePublic.click();
+	await expect(makePrivate).toBeVisible();
+	expect(state.visibilityRequests).toEqual(['private', 'public']);
+});
+
+for (const role of ['user', 'admin']) {
+	test(`visibility control is hidden from non-owner ${role}`, async ({ page }) => {
+		const state = await setup(page, role);
+		state.book = { ...book, owner_id: 2, can_manage_visibility: false };
+		await page.goto('/books/21');
+		await expect(page.getByRole('heading', { name: book.title, exact: true })).toBeVisible();
+		await expect(page.getByRole('button', { name: /^Make (private|public)$/ })).toHaveCount(0);
+		expect(state.visibilityRequests).toEqual([]);
+	});
+}
+
+test('an authorized legacy book can be made private', async ({ page }) => {
+	const state = await setup(page);
+	state.book = { ...book, visibility: 'library' };
+	await page.goto('/books/21');
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.getByRole('button', { name: 'Make private', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Make public', exact: true })).toBeVisible();
+	expect(state.visibilityRequests).toEqual(['private']);
+});
+
+test('visibility is disabled while saving or offline and preserves state on failure', async ({ page, context }) => {
+	const state = await setup(page);
+	state.rejectVisibility = true;
+	let release!: () => void;
+	state.visibilityWait = new Promise<void>((resolve) => { release = resolve; });
+	await page.goto('/books/21');
+	const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
+	page.once('dialog', (dialog) => dialog.accept());
+	await makePrivate.click();
+	await expect(makePrivate).toBeDisabled();
+	await expect(makePrivate).toHaveAttribute('aria-busy', 'true');
+	release();
+	await expect(page.getByRole('alert').filter({ hasText: 'Could not change visibility. Please try again.' })).toBeVisible();
+	await expect(makePrivate).toBeEnabled();
+	expect(state.visibilityRequests).toEqual(['private']);
+
+	await context.setOffline(true);
+	await expect(makePrivate).toBeDisabled();
+	await expect(makePrivate).toHaveAttribute('title', 'Connect to the internet to change visibility.');
+	expect(state.visibilityRequests).toEqual(['private']);
+	await context.setOffline(false);
+	await expect(makePrivate).toBeEnabled();
+});
+
+for (const label of ['Read', 'Resume']) {
+	test(`cover actions are icon-only, ordered and keep ${label} full cover width`, async ({ page }) => {
+		const state = await setup(page);
+		if (label === 'Read') state.progress = { ...state.progress, percentage: 0 };
+		await page.goto('/books/21');
+		const readButton = page.getByRole('button', { name: label, exact: true });
+		await expect(readButton).toBeVisible();
+		await expect(page.getByRole('button', { name: /^Reading status:/ })).toHaveCount(1);
+		for (const width of [1440, 390]) {
+			await page.setViewportSize({ width, height: 900 });
+			const cover = await page.getByRole('img', { name: book.title, exact: true }).boundingBox();
+			const read = await readButton.boundingBox();
+			expect(Math.abs(read!.width - cover!.width)).toBeLessThanOrEqual(1);
+			expect(Math.abs(read!.x - cover!.x)).toBeLessThanOrEqual(1);
+			const actions = ['Download', 'Add to shelf', 'Make private'].map((name) =>
+				page.getByRole('button', { name, exact: true }));
+			let previousX = -1;
+			for (const action of actions) {
+				await expect(action).toHaveText('');
+				await expect(action).toHaveAttribute('title', /.+/);
+				const bounds = await action.boundingBox();
+				expect(bounds!.x).toBeGreaterThan(previousX);
+				previousX = bounds!.x;
+			}
+		}
+	});
+}
+
+test('download icon downloads the primary file', async ({ page }) => {
+	await setup(page);
+	await page.route('**/api/v1/books/21/files/31?*', (route) => route.fulfill({
+		contentType: 'application/epub+zip',
+		headers: { 'content-disposition': 'attachment; filename="library.epub"' },
+		body: 'book fixture'
+	}));
+	await page.goto('/books/21');
+	const requested = page.waitForRequest((request) =>
+		request.url().endsWith(book.files[0].download_url));
+	const downloaded = page.waitForEvent('download');
+	await page.getByRole('button', { name: 'Download', exact: true }).click();
+	await requested;
+	expect((await downloaded).suggestedFilename()).toBe('library.epub');
+	await expect(page).toHaveURL('/books/21');
+});
+
 test('renders details, reading statistics, editions and related books responsively', async ({ page }) => {
 	const state = await setup(page);
 	await page.setViewportSize({ width: 1440, height: 900 });
@@ -214,7 +352,7 @@ test('renders details, reading statistics, editions and related books responsive
 	await expect(page.getByRole('link', { name: 'Files on disk: 2' })).toHaveAttribute('href', '/books/21/files');
 	await expect(page.getByText('Panda Press')).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Fiction', exact: true })).toHaveAttribute('href', '/library/1');
-	await expect(page.getByRole('link', { name: 'Download', exact: true })).toHaveAttribute('href', book.files[0].download_url);
+	await expect(page.getByRole('button', { name: 'Download', exact: true })).toHaveAttribute('title', 'Download');
 	await page.getByLabel('Choose a download format').click();
 	await expect(page.getByRole('link', { name: 'Download PDF' }).first()).toHaveAttribute('href', book.files[1].download_url);
 	await page.getByLabel('Choose a download format').click();

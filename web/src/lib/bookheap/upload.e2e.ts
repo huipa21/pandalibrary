@@ -37,12 +37,14 @@ const problem = (route: Route, status: number, extra: Record<string, unknown> = 
 /** Holds every upload until `release()` and answers per file name. */
 async function mockUploads(page: Page) {
 	const names: string[] = [];
+	const visibilities: string[] = [];
 	let release!: () => void;
 	const gate = new Promise<void>((resolve) => (release = resolve));
 	await page.route('**/api/v1/admin/bookheap/files', async (route) => {
 		const body = route.request().postDataBuffer()?.toString('latin1') ?? '';
 		const name = /filename="([^"]+)"/.exec(body)?.[1] ?? '';
 		names.push(name);
+		visibilities.push(/name="visibility"\r\n\r\n([^\r]+)/.exec(body)?.[1] ?? '');
 		await gate;
 		const reply = () => {
 			if (name === 'Dune.epub') return route.fulfill({ status: 201, json: { item: heapItem(12, name, 'Dune') } });
@@ -53,7 +55,7 @@ async function mockUploads(page: Page) {
 		// Aborted requests can no longer be fulfilled.
 		await reply().catch(() => undefined);
 	});
-	return { names, release };
+	return { names, visibilities, release };
 }
 
 const book = (name: string) => ({ name, mimeType: 'application/octet-stream', buffer: Buffer.from('book') });
@@ -92,6 +94,10 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(dialog.getByText('No files yet.', { exact: false })).toBeVisible();
 	await expect(dialog.getByRole('button', { name: 'Clear' })).toBeDisabled();
 	await expect(dialog.getByLabel('Library (optional)')).toHaveValue('');
+	const visibility = dialog.getByLabel('Book visibility');
+	await expect(visibility).toHaveValue('public');
+	await expect(dialog.getByText('Public books are visible to all signed-in users', { exact: false })).toBeVisible();
+	await visibility.selectOption('private');
 	const upload = dialog.getByRole('button', { name: /^(Upload|Uploading…)$/ });
 	await expect(upload).toBeDisabled();
 	await expect(dialog.getByTestId('bh3-file-input')).toHaveAttribute('accept', '.epub,.pdf,.mobi,.azw3,.fb2,.fbz,.cbz');
@@ -127,6 +133,7 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(dialog.getByRole('progressbar', { name: 'Upload progress for Dune.epub' })).toHaveAttribute('aria-valuemax', '100');
 	await expect(dialog.getByRole('button', { name: 'Remove Dune.epub' })).toBeDisabled();
 	await expect(dialog.getByRole('button', { name: 'Clear' })).toBeDisabled();
+	await expect(visibility).toBeDisabled();
 	await expect(dialog.getByRole('button', { name: 'Remove Flaky.cbz' })).toBeEnabled();
 	await expect.poll(() => uploads.names).toEqual(['Dune.epub', 'Copy.pdf']);
 
@@ -140,19 +147,23 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(dialog.getByRole('link', { name: 'View Bookheap' })).toHaveAttribute('href', '/bookheap');
 	await expect(dialog.locator('[aria-live="polite"]')).toHaveText('1 uploaded, 2 duplicate, 1 failed');
 	expect([...uploads.names].sort()).toEqual(['Copy.pdf', 'Dune.epub', 'Flaky.cbz', 'Heap.mobi']);
+	expect(uploads.visibilities).toEqual(['private', 'private', 'private', 'private']);
 	await expect.poll(() => changes.length).toBe(1);
 
+	await visibility.selectOption('public');
 	await dialog.getByRole('button', { name: 'Retry failed' }).click();
 	await expect.poll(() => uploads.names.filter((name) => name === 'Flaky.cbz').length).toBe(2);
 	await expect(dialog.getByRole('button', { name: 'Retry failed' })).toBeVisible();
 	await expect(statuses.nth(3)).toHaveText('Server error. You can retry.');
 	expect(changes).toHaveLength(1);
+	expect(uploads.visibilities.at(-1)).toBe('private');
 
 	await page.keyboard.press('Escape');
 	await expect(dialog).toBeHidden();
 	await expect(trigger).toBeFocused();
 
 	await trigger.click();
+	await expect(visibility).toHaveValue('public');
 	await expect(list.getByRole('listitem')).toHaveCount(3);
 	await expect(list).not.toContainText('Dune.epub');
 	await dialog.getByRole('button', { name: 'Clear' }).click();
@@ -165,9 +176,11 @@ test('administrators upload many files from the header dialog with per-file resu
 test('uploads optionally assign a library and retry assignment failures without re-uploading', async ({ page }) => {
 	await authenticate(page);
 	let uploads = 0;
+	let multipart = '';
 	const assignments: unknown[] = [];
 	await page.route('**/api/v1/admin/bookheap/files', (route) => {
 		uploads += 1;
+		multipart = route.request().postDataBuffer()?.toString('latin1') ?? '';
 		return route.fulfill({ status: 201, json: { item: heapItem(12, 'Dune.epub', 'Dune') } });
 	});
 	await page.route('**/api/v1/admin/bookheap/assign', (route) => {
@@ -179,6 +192,7 @@ test('uploads optionally assign a library and retry assignment failures without 
 	await page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true }).click();
 	const dialog = page.getByRole('dialog', { name: 'Upload books' });
 	await dialog.getByLabel('Library (optional)').selectOption({ label: 'Main' });
+	await dialog.getByLabel('Book visibility').selectOption('private');
 	await dialog.getByTestId('bh3-file-input').setInputFiles(book('Dune.epub'));
 	await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(dialog.getByTestId('bh3-row-status')).toHaveText('Uploaded, but library assignment failed. Retry or assign from Bookheap.');
@@ -188,6 +202,7 @@ test('uploads optionally assign a library and retry assignment failures without 
 	await expect(dialog.getByTestId('bh3-success-mark')).toBeVisible();
 	await expect(dialog.getByTestId('bh3-result')).toHaveText('1 uploaded, 0 duplicate, 0 failed');
 	expect(uploads).toBe(1);
+	expect(multipart).toContain('name="visibility"\r\n\r\nprivate');
 	expect(assignments).toEqual([
 		{ ids: [12], library_id: 2, shelf_ids: [] },
 		{ ids: [12], library_id: 2, shelf_ids: [] }

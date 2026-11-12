@@ -14,6 +14,7 @@ function file(id: number, format: string, name: string, size: number, added: str
 
 function makeBook(): Book {
 	return {
+		owner_id: null, visibility: 'library', can_manage_visibility: false,
 		id: 21, library_id: 1, title: 'Multi-format Book', sort_title: 'Multi-format Book',
 		subtitle: null, description: null, language: 'en', publisher: null, published_date: null,
 		page_count: null, cover_url: null, cover_source: null,

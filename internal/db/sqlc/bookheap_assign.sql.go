@@ -59,7 +59,7 @@ func (q *Queries) BookheapAssignBusy(ctx context.Context) ([]BookheapAssignBusyR
 }
 
 const bookheapAssignByJob = `-- name: BookheapAssignByJob :one
-SELECT id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at FROM bookheap_items
+SELECT id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at, visibility FROM bookheap_items
 WHERE import_job_id = ?1 AND status IN ('queued', 'importing')
 `
 
@@ -91,6 +91,7 @@ func (q *Queries) BookheapAssignByJob(ctx context.Context, importJobID sql.NullI
 		&i.AddedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Visibility,
 	)
 	return i, err
 }

@@ -4,6 +4,8 @@ export type HeapItemStatus = 'ready' | 'duplicate' | 'invalid' | 'queued' | 'imp
 /** `upload` for files sent through the API, `scan` for files discovered in the heap folder. */
 export type HeapItemSource = 'upload' | 'scan';
 
+export type UploadVisibility = 'public' | 'private';
+
 /** Bookheap staging item. Timestamps are RFC3339 UTC. */
 export interface HeapItem {
 	readonly id: number;

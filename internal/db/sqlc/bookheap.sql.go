@@ -11,7 +11,7 @@ import (
 )
 
 const bookheapByPath = `-- name: BookheapByPath :one
-SELECT id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at FROM bookheap_items WHERE rel_path = ?
+SELECT id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at, visibility FROM bookheap_items WHERE rel_path = ?
 `
 
 func (q *Queries) BookheapByPath(ctx context.Context, relPath string) (BookheapItem, error) {
@@ -42,6 +42,7 @@ func (q *Queries) BookheapByPath(ctx context.Context, relPath string) (BookheapI
 		&i.AddedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Visibility,
 	)
 	return i, err
 }
@@ -110,7 +111,7 @@ func (q *Queries) BookheapDuplicateItem(ctx context.Context, arg BookheapDuplica
 }
 
 const bookheapGet = `-- name: BookheapGet :one
-SELECT id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at FROM bookheap_items WHERE id = ?
+SELECT id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at, visibility FROM bookheap_items WHERE id = ?
 `
 
 func (q *Queries) BookheapGet(ctx context.Context, id int64) (BookheapItem, error) {
@@ -141,6 +142,7 @@ func (q *Queries) BookheapGet(ctx context.Context, id int64) (BookheapItem, erro
 		&i.AddedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Visibility,
 	)
 	return i, err
 }
@@ -148,10 +150,10 @@ func (q *Queries) BookheapGet(ctx context.Context, id int64) (BookheapItem, erro
 const bookheapInsert = `-- name: BookheapInsert :one
 INSERT INTO bookheap_items (rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors,
     language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id,
-    duplicate_of_item_id, added_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    duplicate_of_item_id, added_by, created_at, updated_at, visibility)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (rel_path) DO NOTHING
-RETURNING id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at
+RETURNING id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at, visibility
 `
 
 type BookheapInsertParams struct {
@@ -175,6 +177,7 @@ type BookheapInsertParams struct {
 	AddedBy           sql.NullInt64
 	CreatedAt         int64
 	UpdatedAt         int64
+	Visibility        string
 }
 
 func (q *Queries) BookheapInsert(ctx context.Context, arg BookheapInsertParams) (BookheapItem, error) {
@@ -199,6 +202,7 @@ func (q *Queries) BookheapInsert(ctx context.Context, arg BookheapInsertParams) 
 		arg.AddedBy,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Visibility,
 	)
 	var i BookheapItem
 	err := row.Scan(
@@ -226,12 +230,13 @@ func (q *Queries) BookheapInsert(ctx context.Context, arg BookheapInsertParams) 
 		&i.AddedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Visibility,
 	)
 	return i, err
 }
 
 const bookheapList = `-- name: BookheapList :many
-SELECT id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at FROM bookheap_items
+SELECT id, rel_path, file_name, size_bytes, mtime_ns, sha256, format, title, authors, language, series, series_index, cover_sha256, source, status, error, duplicate_of_book_id, duplicate_of_item_id, target_library_id, target_shelf_ids, import_job_id, added_by, created_at, updated_at, visibility FROM bookheap_items
 WHERE (CAST(?1 AS TEXT) = '' OR status = ?1)
   AND (CAST(?2 AS TEXT) = ''
     OR instr(lower(title), lower(?2)) > 0
@@ -293,6 +298,7 @@ func (q *Queries) BookheapList(ctx context.Context, arg BookheapListParams) ([]B
 			&i.AddedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Visibility,
 		); err != nil {
 			return nil, err
 		}

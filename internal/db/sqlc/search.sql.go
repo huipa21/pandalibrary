@@ -24,12 +24,12 @@ SELECT b.id, b.title,
 FROM books_fts(CAST(?1 AS TEXT)) f
 JOIN books b ON b.id = f.rowid
 LEFT JOIN series s ON s.id = b.series_id
-WHERE (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?3
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 AND NOT EXISTS (
     SELECT 1 FROM json_each(CAST(?4 AS TEXT)) p
@@ -49,8 +49,8 @@ LIMIT CAST(?7 AS INTEGER)
 
 type SearchBooksFTSParams struct {
 	MatchQuery string
-	IsAdmin    int64
 	UserID     int64
+	IsAdmin    int64
 	Patterns   string
 	AfterID    int64
 	AfterScore float64
@@ -71,8 +71,8 @@ type SearchBooksFTSRow struct {
 func (q *Queries) SearchBooksFTS(ctx context.Context, arg SearchBooksFTSParams) ([]SearchBooksFTSRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchBooksFTS,
 		arg.MatchQuery,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.Patterns,
 		arg.AfterID,
 		arg.AfterScore,
@@ -122,12 +122,12 @@ SELECT b.id, b.title,
 FROM books_fts f
 JOIN books b ON b.id = f.rowid
 LEFT JOIN series s ON s.id = b.series_id
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
-))
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
 )
 AND NOT EXISTS (
     SELECT 1 FROM json_each(CAST(?3 AS TEXT)) p
@@ -144,8 +144,8 @@ LIMIT CAST(?5 AS INTEGER)
 `
 
 type SearchBooksLikeParams struct {
-	IsAdmin  int64
 	UserID   int64
+	IsAdmin  int64
 	Patterns string
 	AfterID  int64
 	PageSize int64
@@ -164,8 +164,8 @@ type SearchBooksLikeRow struct {
 
 func (q *Queries) SearchBooksLike(ctx context.Context, arg SearchBooksLikeParams) ([]SearchBooksLikeRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchBooksLike,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.Patterns,
 		arg.AfterID,
 		arg.PageSize,

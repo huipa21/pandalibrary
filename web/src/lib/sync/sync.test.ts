@@ -21,6 +21,7 @@ const file = {
 	original_filename: 'book.fb2', created_at: '2026-11-01T00:00:00Z'
 };
 const book: Book = {
+	owner_id: null, visibility: 'library', can_manage_visibility: false,
 	id: 21, library_id: 1, title: 'Offline book', sort_title: 'Offline book', subtitle: null,
 	description: null, language: 'en', publisher: null, published_date: null, page_count: null,
 	cover_url: null, cover_source: null, authors: [], series: null, tags: [], identifiers: [],

@@ -36,6 +36,7 @@ func CatalogMount(service *catalog.Service, authentication *auth.Service, logger
 			secured.Get("/api/v1/books", handler.withViewer(handler.listBooks))
 			secured.Get("/api/v1/books/count", handler.withViewer(handler.countBooks))
 			secured.Get("/api/v1/books/{id}", handler.withViewer(handler.getBook))
+			secured.With(cookieProtection).Put("/api/v1/books/{id}/visibility", handler.withViewer(handler.setVisibility))
 			secured.Get("/api/v1/books/{id}/files/{fileID}", handler.withViewer(handler.serveBookFile))
 			secured.Head("/api/v1/books/{id}/files/{fileID}", handler.withViewer(handler.serveBookFile))
 			secured.Get("/api/v1/books/{id}/cover", handler.withViewer(handler.serveCover))
@@ -161,12 +162,32 @@ func (h *catalogHTTP) getBook(w http.ResponseWriter, r *http.Request, viewer cat
 	if !ok {
 		return
 	}
+
 	result, err := h.service.GetBook(r.Context(), viewer, id)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]catalog.Book{"book": result})
+}
+
+func (h *catalogHTTP) setVisibility(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	id, ok := h.pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var body struct {
+		Visibility string `json:"visibility"`
+	}
+	if !h.decodeJSON(w, r, &body) {
+		return
+	}
+	book, err := h.service.SetVisibility(r.Context(), viewer, id, body.Visibility)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]catalog.Book{"book": book})
 }
 
 func (h *catalogHTTP) listEntities(kind string) catalogHandler {

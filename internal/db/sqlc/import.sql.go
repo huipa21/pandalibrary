@@ -451,6 +451,7 @@ func (q *Queries) ImportTag(ctx context.Context, arg ImportTagParams) (int64, er
 
 const importTarget = `-- name: ImportTarget :one
 SELECT id FROM books WHERE id = ?1 AND library_id = ?2
+AND (visibility != 'private' OR owner_id = CAST(?3 AS INTEGER))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = books.id
     AND h.user_id = CAST(?3 AS INTEGER))
 `

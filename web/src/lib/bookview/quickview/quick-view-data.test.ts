@@ -26,6 +26,7 @@ const file = (id: number, format: string) => ({
 	original_filename: `book-${id}.${format}`, created_at: timestamp
 });
 const book: Book = {
+	owner_id: null, visibility: 'library', can_manage_visibility: false,
 	id: 5, library_id: 1, title: 'Seeded', sort_title: 'Seeded', subtitle: null, description: 'About',
 	language: 'en', publisher: 'Press', published_date: '2020-01-02', page_count: 120, cover_url: null,
 	cover_source: null, authors: [], series: null, tags: [], identifiers: [], field_sources: [],
