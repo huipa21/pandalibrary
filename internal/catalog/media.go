@@ -137,7 +137,7 @@ func (s *Service) UpdateCover(ctx context.Context, viewer Viewer, bookID int64, 
 	if bookID < 1 {
 		return CoverUpdate{}, invalid("book ID is invalid")
 	}
-	if source != "upload" && source != "pdfjs" {
+	if source != "upload" {
 		return CoverUpdate{}, invalid("cover source is invalid")
 	}
 	if err := s.CheckVisible(ctx, viewer, bookID); err != nil {

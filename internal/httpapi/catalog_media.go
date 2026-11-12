@@ -114,7 +114,7 @@ func (h *catalogHTTP) updateCover(w http.ResponseWriter, r *http.Request, viewer
 	if source == "" {
 		source = "upload"
 	}
-	if source != "upload" && source != "pdfjs" {
+	if source != "upload" {
 		WriteProblem(w, h.logger, http.StatusBadRequest, "The cover source is invalid.")
 		return
 	}

@@ -30,8 +30,11 @@ see across all your libraries, like the counts next to your shelves. You can:
 - filter by author, series or tag and change the sort order;
 - clear filters with the clear-filters button.
 
-Books without a cover get a generated cover. Badges show each book's formats and
-your reading status.
+Books without a cover automatically get a generated default cover showing the
+title and authors, whatever the book's format. There is nothing to run: once a
+real cover is added — from the book file, an upload or a metadata provider — it
+replaces the default cover. Badges show each book's formats and your reading
+status.
 
 ## Book pages
 
@@ -149,7 +152,7 @@ a different PDF default.
 
 Some PDFs contain invalid embedded TrueType font hinting (`TT: undefined
 function`). The PDF renderer discards these invalid instructions automatically.
-The reader and cover generator quiet recoverable PDF diagnostics while still
+The reader quiets recoverable PDF diagnostics while still
 reporting load and rendering failures; the original PDF is not modified.
 
 **Page display** contains four layouts and the scanned-text recognition switch.

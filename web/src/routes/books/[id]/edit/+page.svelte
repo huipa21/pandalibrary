@@ -25,7 +25,6 @@
 		selectionCount
 	} from '#lib/metadata/merge.js';
 	import { ObjectUrlSlot } from '#lib/metadata/object-url.js';
-	import PdfCoverBatch from '#lib/metadata/PdfCoverBatch.svelte';
 	import { MERGE_FIELDS, type Candidate, type LookupResponse, type MergeField, type Selections } from '#lib/metadata/types.js';
 
 	let book = $state<Book | null>(null);
@@ -482,7 +481,5 @@
 				</div>
 			</form>
 		{/if}
-
-		<PdfCoverBatch />
 	</article>
 {/if}

@@ -115,17 +115,3 @@ export async function fetchCoverPreview(
 	const blob = await response.blob();
 	return blob.type === 'image/jpeg' ? blob : new Blob([blob], { type: 'image/jpeg' });
 }
-
-/** Uploads raw image bytes (not JSON or multipart) as a PDF.js-generated cover. */
-export async function uploadPdfCover(bookId: number, image: Blob, fetcher: typeof fetch = fetch): Promise<void> {
-	if (image.type !== 'image/jpeg' && image.type !== 'image/png') throw new Error('Unsupported generated cover type.');
-	const response = await fetcher(`/api/v1/books/${bookId}/cover?source=pdfjs`, {
-		method: 'PUT',
-		headers: { 'content-type': image.type },
-		body: image,
-		credentials: 'same-origin',
-		cache: 'no-store',
-		redirect: 'error'
-	});
-	if (!response.ok) throw await problemFrom(response);
-}

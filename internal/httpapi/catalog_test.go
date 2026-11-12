@@ -499,9 +499,11 @@ func TestCatalogHTTPMutationsAndValidation(t *testing.T) {
 
 	imageBytes := testPNG(t, color.RGBA{R: 20, G: 30, B: 220, A: 255})
 	before := fixture.request(http.MethodGet, "/api/v1/books/101/cover", nil, fixture.admin, nil)
-	uploaded := fixture.request(http.MethodPut, "/api/v1/books/101/cover?source=pdfjs", bytes.NewReader(imageBytes),
+	requireProblem(t, fixture.request(http.MethodPut, "/api/v1/books/101/cover?source=pdfjs", bytes.NewReader(imageBytes),
+		fixture.admin, map[string]string{"Content-Type": "image/png"}), http.StatusBadRequest)
+	uploaded := fixture.request(http.MethodPut, "/api/v1/books/101/cover?source=upload", bytes.NewReader(imageBytes),
 		fixture.admin, map[string]string{"Content-Type": "image/png"})
-	if uploaded.Code != http.StatusOK || !strings.Contains(uploaded.Body.String(), `"cover_source":"pdfjs"`) {
+	if uploaded.Code != http.StatusOK || !strings.Contains(uploaded.Body.String(), `"cover_source":"upload"`) {
 		t.Fatalf("upload cover = %d %s", uploaded.Code, uploaded.Body.String())
 	}
 	after := fixture.request(http.MethodGet, "/api/v1/books/101/cover", nil, fixture.admin,
