@@ -76,14 +76,46 @@ async function setup(page: Page, initial: PageAnnotationInput[] = [], theme = 'l
 
 async function choose(page: Page, name: string) {
 	await page.keyboard.press('Escape');
-	await page.locator('#reader-surface').focus();
-	await page.keyboard.press('i');
+	await page.getByRole('button', { name: 'Insert text, drawing or image', exact: true }).click();
+	await page.getByRole('menuitem', { name, exact: true }).click();
+	await expect(page.getByRole('menu')).toHaveCount(0);
+	await expect(page.locator('#reader-surface')).toHaveAttribute('data-tool', 'insert');
 	const layer = page.locator('.reader-pdf-page[data-page="1"]');
 	const box = await layer.boundingBox();
 	if (!box) throw new Error('Page missing');
 	await page.mouse.click(box.x + box.width * 0.2, box.y + Math.min(box.height * 0.3, 250));
-	await page.getByRole('menuitem', { name, exact: true }).click();
 }
+
+test('toolbar insert menu is anchored, keyboard accessible, and placement can be cancelled', async ({ page }) => {
+	const state = await setup(page);
+	const insert = page.getByRole('button', { name: 'Insert text, drawing or image', exact: true });
+	await insert.click();
+	const menu = page.getByRole('menu', { name: 'Insert text, drawing or image', exact: true });
+	await expect(menu.getByRole('menuitem')).toHaveText(['Text', 'Draw', 'Image']);
+	const triggerBox = await insert.boundingBox(), menuBox = await menu.boundingBox();
+	if (!triggerBox || !menuBox) throw new Error('Insert menu missing');
+	expect(Math.abs(menuBox.y - triggerBox.y - triggerBox.height - 4)).toBeLessThan(2);
+	await expect(page.locator('#reader-surface')).toHaveAttribute('data-tool', 'select');
+	await page.keyboard.press('Escape');
+	await expect(insert).toBeFocused();
+	await expect(menu).toHaveCount(0);
+	await page.locator('#reader-surface').focus();
+	await page.keyboard.press('i');
+	await expect(menu.getByRole('menuitem', { name: 'Text', exact: true })).toBeFocused();
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('application', { name: 'Draw', exact: true })).toHaveCount(0);
+	await expect(page.locator('#reader-surface')).toHaveAttribute('data-tool', 'insert');
+	await page.locator('#reader-surface').focus();
+	await page.keyboard.press('Escape');
+	await expect(page.locator('#reader-surface')).toHaveAttribute('data-tool', 'select');
+	const box = await page.locator('.reader-pdf-page').first().boundingBox();
+	if (!box) throw new Error('Page missing');
+	await page.mouse.click(box.x + 100, box.y + 180);
+	await expect(menu).toHaveCount(0);
+	await expect(page.getByRole('application', { name: 'Draw', exact: true })).toHaveCount(0);
+	expect(state.pushes).toHaveLength(0);
+});
 
 test('text insert, zoom/rotation, edit, move, keyboard, delete and same-ID undo', async ({ page }) => {
 	const state = await setup(page);
@@ -203,9 +235,6 @@ test('image preparation, upload, aspect-locked resize, cached offline reload and
 	expect(state.assetDownloads()).toBe(downloads);
 	await page.evaluate(() => window.dispatchEvent(new Event('offline')));
 	await page.locator('#reader-surface').focus(); await page.keyboard.press('i');
-	const pdf = await page.locator('.reader-pdf-page').first().boundingBox();
-	if (!pdf) throw new Error('Page missing');
-	await page.mouse.click(pdf.x + 20, pdf.y + 180);
 	await expect(page.getByRole('menuitem', { name: 'Image', exact: true })).toBeDisabled();
 	await expect(image.locator('img')).toHaveJSProperty('complete', true);
 });

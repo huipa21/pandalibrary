@@ -27,6 +27,8 @@ export function isReaderSettings(value: ReaderSettings): boolean {
 		['light', 'sepia', 'dark'].includes(value.theme) &&
 		(value.background === undefined || isBackgroundId(value.background)) &&
 		['paginated', 'scrolled'].includes(value.flow) &&
+		(value.reflowLayout === undefined || ['single', 'single-continuous', 'split', 'split-continuous'].includes(value.reflowLayout)) &&
+		(value.reflowZoom === undefined || validPdfZoom(value.reflowZoom)) &&
 		(value.pdfLayout === undefined || ['single', 'single-continuous', 'split', 'split-continuous'].includes(value.pdfLayout)) &&
 		(value.pdfZoom === undefined || validPdfZoom(value.pdfZoom)) &&
 		(value.pdfRotation === undefined || [0, 90, 180, 270].includes(value.pdfRotation))
@@ -74,6 +76,14 @@ function applyKnown(
 	}
 	if (value.pdfLayout !== undefined) {
 		if (value.pdfLayout === 'single' || value.pdfLayout === 'single-continuous' || value.pdfLayout === 'split' || value.pdfLayout === 'split-continuous') result.pdfLayout = value.pdfLayout;
+		else invalid = true;
+	}
+	if (value.reflowLayout !== undefined) {
+		if (value.reflowLayout === 'single' || value.reflowLayout === 'single-continuous' || value.reflowLayout === 'split' || value.reflowLayout === 'split-continuous') result.reflowLayout = value.reflowLayout;
+		else invalid = true;
+	}
+	if (value.reflowZoom !== undefined) {
+		if (validPdfZoom(value.reflowZoom)) result.reflowZoom = value.reflowZoom;
 		else invalid = true;
 	}
 	if (value.pdfZoom !== undefined) {

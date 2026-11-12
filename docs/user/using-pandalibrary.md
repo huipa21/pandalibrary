@@ -91,17 +91,18 @@ overlays the book on smaller screens.
 In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:
 
 - use **Contents** to jump to a chapter when the book provides a contents list;
-- use **Size** to resize ebook text, or **Zoom** for CBZ comics;
-- open **Page display** to choose **Pages** or **Scroll** for ebooks. In CBZ
-  comics, **Page display** offers backgrounds instead, without reflow layouts;
+- use **Zoom** to choose **Automatic**, **Actual size**, **Fit page**,
+  **Page width** or a percentage, just as in the PDF reader;
+- open **Page display** to choose **Single page**, **Single page continuous**,
+  **Split** or **Split continuous**;
 - open **Format** to change ebook fonts, spacing and backgrounds. Use **Save
   settings** for this book or **Save as format default** for other books of that
-  format; these save controls are in **Page display** for CBZ comics;
+  format. In CBZ comics, **Format** offers backgrounds without text controls;
 - use **Rotate** to turn the view left or right. In these non-PDF formats,
   rotation lasts only for the current reader session and is not saved;
-- open **Add** to create a private book note or highlight selected text
-  (**Highlight current page** for comics).
-  Text highlighting is unavailable until you select a passage;
+- open the **+** button to choose **Text**, **Draw** or **Image**, then click
+  the place in the book where you want to add the item. The dropdown opens
+  directly beneath the button in every reader;
 - select text in EPUB, MOBI, AZW3, FB2 or FBZ to open the floating annotation
   toolbar: copy, highlight, underline, strike out, attach a comment or bookmark
   the passage. Use the colour arrows to choose highlight and line colours;
@@ -113,8 +114,11 @@ In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:
 - use the previous/next buttons, arrow keys or position slider to navigate.
 
 On narrow screens, these view menus move into **More view options**, like PDF
-view menus. **Select**, **Hand** and the point-based **Insert** tool are PDF-only;
-ebooks use text selection directly and comics use page annotations instead.
+view menus. **Select** and **Hand** are PDF-only tools; ebooks use text selection
+directly. The **+** insertion menu is shared by every reader.
+Ebook zoom changes the page view independently of the font size in **Format**.
+Continuous layouts let you scroll between pages; split layouts show pairs of
+pages.
 
 For EPUB, MOBI, AZW3, FB2, FBZ and PDF, open the magnifying-glass **Search**
 tab in the left rail to search the book's text. Enter a query and press Enter.
@@ -206,9 +210,9 @@ the sidebar, or with a page click.
   The Delete button asks
   for confirmation; a deleted item can be restored with **Undo** for eight
   seconds. Entries from other files are listed separately and are read-only.
-  Add or edit a comment by expanding a mark. In non-PDF readers, **Add → Add
-  book note** creates a standalone private note. Existing private book notes
-  remain on the book's **Annotations** page.
+  Add or edit a comment by expanding a mark. In non-PDF readers, create standalone
+  private book notes from the **Annotations** sidebar. Existing private book
+  notes remain on the book's **Annotations** page.
 - **Bookmarks** lists saved positions. Click an entry to jump there, or use its
   Edit and Delete icons. The bookmark icon in the top toolbar adds or removes a
   bookmark for the current page.
@@ -229,10 +233,11 @@ while online before relying on OCR offline; browser storage eviction may
 require downloading the models again. Large image-heavy PDFs can use
 substantial device memory, especially during OCR.
 
-### Inserting items in PDFs
+### Inserting items
 
-Choose **Insert** (`I`), click a point on the page, then choose **Text**,
-**Draw** or **Image**.
+In any reader, open **+**, choose **Text**, **Draw** or **Image**, then click a
+point on the page to place it. In PDFs, `I` also opens the insertion menu.
+Press Escape to cancel placement.
 
 - **Text:** type a note, choose its size and colour, then click Done, click
   outside the editor, or press Ctrl+Enter or Escape to save. Empty notes are
@@ -243,13 +248,13 @@ Choose **Insert** (`I`), click a point on the page, then choose **Text**,
 - **Image:** choose a PNG, JPEG or WebP file. Attaching a new image needs a
   connection; images already cached on the device remain available offline.
 
-In Select or Insert mode, click an item to select it. Drag the selection frame
-to move it; images have corner handles that preserve their aspect ratio.
+In PDFs, in Select or Insert mode, click an item to select it. Drag the selection
+frame to move it; images have corner handles that preserve their aspect ratio.
 Double-click text to edit it. Arrow keys move a selected item by 0.5% of the
 page (5% with Shift). Delete, Backspace or the Delete button removes an item;
 Undo restores it for six seconds. Hand mode does not select or drag items.
 Inserts are private, sync like other annotations, and never modify the shared
-PDF file.
+book file.
 
 ## Offline reading
 
@@ -263,7 +268,7 @@ Previously saved changes that match the server are reconciled automatically.
 If a conflict or rejection remains, choose **Review changes** to see the
 affected book when available and any server reason; retry or discard a change
 only after reviewing it.
-For PDFs, text and drawings can also be added offline. Adding a new image needs
+Text and drawings can also be added offline. Adding a new image needs
 a connection; an existing image is available offline only after it has been
 viewed and cached on that device. Scanned-page recognition needs the relevant
 OCR models to have been downloaded beforehand.

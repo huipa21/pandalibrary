@@ -22,7 +22,7 @@ class MockView extends EventTarget {
 	remove = vi.fn();
 	clearSearch = vi.fn();
 	getCFI = vi.fn((_index: number, _range?: Range) => 'epubcfi(/6/2!/4/2)');
-	resolveNavigation = vi.fn(() => ({ index: 0 }));
+	resolveNavigation = vi.fn((_target?: string): { index: number; anchor?: (doc: unknown) => unknown } => ({ index: 0 }));
 	addAnnotation = vi.fn(async (annotation: unknown) => {
 		this.dispatchEvent(new CustomEvent('draw-annotation', { detail: { annotation, draw: this.draw } }));
 	});
@@ -103,6 +103,64 @@ async function openEngine(format: 'epub' | 'cbz' = 'epub') {
 afterEach(async () => {
 	await Promise.all(readers.splice(0).map((reader) => reader.destroy()));
 	vi.clearAllMocks();
+});
+
+describe('Foliate insertion anchors', () => {
+	it('places fixed-layout inserts by section CFI without resolving a text anchor', async () => {
+		const { reader, view, doc } = await openEngine('cbz');
+		Object.assign(doc.defaultView, { innerWidth: 200, innerHeight: 100 });
+		Object.assign(doc, { createRange: () => ({}) });
+		const anchor = vi.fn(() => { throw new Error('Image pages have no text range'); });
+		view.resolveNavigation.mockReturnValue({ index: 0, anchor });
+		const locator = { type: 'cfi' as const, value: 'epubcfi(/6/2)', rect: { x: 0.1, y: 0.2, width: 0.25, height: 0.2 } };
+		expect(reader.getInsertionBounds(locator)).toMatchObject({ left: 144, top: 246, width: 100, height: 40 });
+		expect(anchor).not.toHaveBeenCalled();
+	});
+
+	it('captures a real CFI and normalized click placement, then tracks the saved anchor geometry', async () => {
+		const { reader, view, doc, iframe } = await openEngine();
+		Object.assign(doc.defaultView, { innerWidth: 200, innerHeight: 100 });
+		const node = { ownerDocument: doc, nodeType: 3 };
+		let anchorTop = 20;
+		const range = {
+			startContainer: node, startOffset: 4, setStart: vi.fn(), collapse: vi.fn(),
+			getBoundingClientRect: () => rectangle(30, anchorTop, 0, 10)
+		};
+		Object.assign(doc, {
+			createRange: () => range,
+			caretPositionFromPoint: vi.fn(() => ({ offsetNode: node, offset: 4 }))
+		});
+		view.resolveNavigation.mockReturnValue({
+			index: 0, anchor: () => ({ startContainer: node, startOffset: 4 })
+		});
+		const insert = vi.fn();
+		const unsubscribe = reader.subscribeInsertion(insert);
+		const click = Object.assign(new Event('click', { cancelable: true }), { clientX: 60, clientY: 25 });
+		doc.dispatchEvent(click);
+		expect(click.defaultPrevented).toBe(true);
+		expect(view.getCFI).toHaveBeenLastCalledWith(0, range);
+		expect(insert).toHaveBeenCalledWith({
+			locator: { type: 'cfi', value: 'epubcfi(/6/2!/4/2)',
+				rect: { x: 0.3, y: 0.05, width: 0.25, height: 0.2 } }, position: 0
+		});
+		const locator = insert.mock.calls[0][0].locator;
+		Object.assign(view.renderer, { getContents: () => [{ doc, index: 0 }] });
+		expect(reader.insertionAt(224, 256)).toMatchObject({
+			locator: { type: 'cfi', value: 'epubcfi(/6/2!/4/2)', rect: { x: 0.3, y: 0.05 } }
+		});
+		const first = reader.getInsertionBounds(locator)!;
+		expect(first).toMatchObject({ left: 224, top: 256, width: 100, height: 40 });
+		anchorTop = 30;
+		expect(reader.getInsertionBounds(locator)!.top).toBe(first.top + 20);
+		anchorTop = 110;
+		expect(reader.getInsertionBounds(locator)).toBeNull();
+		anchorTop = 20;
+		iframe.isConnected = false;
+		expect(reader.getInsertionBounds(locator)).toBeNull();
+		unsubscribe();
+		doc.dispatchEvent(Object.assign(new Event('click'), { clientX: 60, clientY: 25 }));
+		expect(insert).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe('Foliate current-page bookmarks', () => {

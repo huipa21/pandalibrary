@@ -5,7 +5,7 @@
 	import type { PageLayerContext, NormalizedPoint } from '../types.js';
 	import type { NormalizedRect, PageAnnotation, PageAnnotationInput } from '../../types.js';
 	import { pageAnnotationPainter } from './page-annotation-painter.js';
-	import InsertMenu from './InsertMenu.svelte';
+	import type { InsertType } from '../../toolbar/InsertMenu.svelte';
 	import TextBoxEditor from './TextBoxEditor.svelte';
 	import InkSurface from './InkSurface.svelte';
 	import ImagePlacer from './ImagePlacer.svelte';
@@ -13,9 +13,10 @@
 	import { pointRect } from './geometry-insert.js';
 	import { finishInk } from './ink.js';
 
+	type PdfAnnotation = PageAnnotation & { locator: Extract<PageAnnotation['locator'], { type: 'pdf' }> };
 	const context = getPdfReaderContext();
 	let ready = $state(false);
-	let menu = $state<{ page: number; point: NormalizedPoint; x: number; y: number } | null>(null);
+	let pending = $state<InsertType | null>(null);
 	let mode = $state<'text' | 'ink' | 'image' | null>(null);
 	let target = $state<{ page: number; point: NormalizedPoint } | null>(null);
 	let selected = $state<string | null>(null);
@@ -25,7 +26,7 @@
 	let undoTimer: ReturnType<typeof setTimeout>;
 	let saving = $state(false);
 	const contexts = new Map<number, PageLayerContext>();
-	const row = $derived(context.controller.pageAnnotations.find((item) => item.id === selected));
+	const row = $derived(context.controller.pageAnnotations.find((item): item is PdfAnnotation => item.id === selected && item.locator.type === 'pdf'));
 	const painter = pageAnnotationPainter(
 		() => context.controller.pageAnnotations, () => context.tool.current,
 		(ctx) => {
@@ -54,12 +55,13 @@
 		return { update: place, destroy() { node.remove(); } };
 	}
 	function finish() {
-		mode = null; target = null; editing = null; menu = null;
+		mode = null; target = null; editing = null; pending = null;
 		context.tool.set(context.tool.previous);
 	}
 	async function save(input: PageAnnotationInput | null) {
 		if (saving) return;
 		if (!input) { finish(); return true; }
+		if (input.locator.type !== 'pdf') return false;
 		saving = true;
 		input.position = (input.locator.page - 1 + input.locator.rect.y) / context.view.pageCount;
 		const success = editing ? await context.controller.updatePageAnnotation(editing, input) :
@@ -69,19 +71,13 @@
 		else context.announce(context.controller.actionError || m['pv9.save_failed']());
 		return success;
 	}
-	function choose(kind: 'text' | 'ink' | 'image') {
-		if (!menu) return;
-		target = { page: menu.page, point: menu.point };
-		active = contexts.get(menu.page) ?? null;
-		selected = null; mode = kind; menu = null;
-	}
 	function edit(item: PageAnnotation) {
-		if (item.kind !== 'text') return;
+		if (item.kind !== 'text' || item.locator.type !== 'pdf') return;
 		editing = item; selected = null; target = { page: item.locator.page, point: item.locator.rect };
 		active = contexts.get(item.locator.page) ?? null; mode = 'text';
 	}
 	async function update(item: PageAnnotation, rect: NormalizedRect) {
-		if (saving) return;
+		if (saving || item.locator.type !== 'pdf') return;
 		let patch: Partial<PageAnnotationInput> = { locator: { ...item.locator, rect },
 			position: (item.locator.page - 1 + rect.y) / context.view.pageCount };
 		if (item.kind === 'ink') {
@@ -115,20 +111,28 @@
 	}
 	function itemFrom(event: Event) {
 		const element = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-annotation-id]') : null;
-		return context.controller.pageAnnotations.find((item) => item.id === element?.dataset.annotationId);
+		return context.controller.pageAnnotations.find((item): item is PdfAnnotation => item.id === element?.dataset.annotationId && item.locator.type === 'pdf');
 	}
 	onMount(() => {
 		const unregister = context.engine.pageLayers.register(painter);
 		const surface = context.engine.viewport;
+		function startInsert(event: Event) {
+			if (!(event instanceof CustomEvent) || !['text', 'draw', 'image'].includes(event.detail)) return;
+			if (event.detail === 'image' && context.offline) return;
+			if (mode && !confirm(m['pv9.discard_insert']())) return;
+			mode = null; target = null; editing = null; selected = null;
+			pending = event.detail;
+			context.tool.set('insert');
+		}
 		function editFromSidebar(event: Event) {
 			if (!(event instanceof CustomEvent) || typeof event.detail !== 'string') return;
-			const item = context.controller.pageAnnotations.find((item) => item.id === event.detail);
+			const item = context.controller.pageAnnotations.find((item): item is PdfAnnotation => item.id === event.detail && item.locator.type === 'pdf');
 			if (!item) {
 				context.announce(m['ux6.unavailable']());
 				return;
 			}
 			if (mode && !confirm(m['pv9.discard_insert']())) return;
-			mode = null; target = null; editing = null; menu = null;
+			mode = null; target = null; editing = null; pending = null;
 			context.tool.set('select');
 			selected = item.id;
 			active = contexts.get(item.locator.page) ?? null;
@@ -143,9 +147,20 @@
 			}
 			if (event.target instanceof Element && event.target.closest('.pv9-overlay, button, a, input')) return;
 			selected = null;
-			if (context.tool.current !== 'insert') return;
+			if (context.tool.current !== 'insert' || !pending) return;
+			if (pending === 'image' && context.offline) {
+				context.announce(m['pv9.image_offline']());
+				finish();
+				return;
+			}
 			const hit = context.engine.hitTest(event.clientX, event.clientY);
-			if (hit) { event.preventDefault(); menu = { ...hit, x: event.clientX, y: event.clientY }; }
+			if (hit) {
+				event.preventDefault();
+				target = hit;
+				active = contexts.get(hit.page) ?? null;
+				mode = pending === 'draw' ? 'ink' : pending;
+				pending = null;
+			}
 		}
 		function key(event: KeyboardEvent) {
 			const item = itemFrom(event);
@@ -163,10 +178,12 @@
 		surface.addEventListener('click', click);
 		surface.addEventListener('keydown', key);
 		surface.addEventListener('reader-edit-insert', editFromSidebar);
+		surface.addEventListener('reader-start-insert', startInsert);
 		ready = true;
 		return () => {
 			clearTimeout(undoTimer); surface.removeEventListener('click', click); surface.removeEventListener('keydown', key);
 			surface.removeEventListener('reader-edit-insert', editFromSidebar);
+			surface.removeEventListener('reader-start-insert', startInsert);
 			unregister(); contexts.clear();
 		};
 	});
@@ -175,14 +192,14 @@
 		if (ready) untrack(() => context.engine.pageLayers.repaint());
 	});
 	$effect(() => {
-		if (context.tool.current === 'hand') { selected = null; menu = null; }
+		if (context.tool.current !== 'insert') pending = null;
+		if (context.tool.current === 'hand') selected = null;
 	});
 	$effect(() => {
 		return context.controller.registerDraftGuard(() => !mode || confirm(m['pv9.discard_insert']()));
 	});
 </script>
 
-{#if menu}<InsertMenu {...menu} offline={context.offline} {choose} cancel={() => { menu = null; }} />{/if}
 {#if active && (mode || row && context.tool.current !== 'hand')}
 	<div use:portal={active}>
 		<div class="pv9-overlay">

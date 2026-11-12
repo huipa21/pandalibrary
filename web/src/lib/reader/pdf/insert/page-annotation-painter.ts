@@ -20,7 +20,7 @@ export function pageAnnotationPainter(
 		paint(ctx) {
 			context(ctx);
 			for (const row of annotations) {
-				if (row.locator.page !== ctx.page || row.id === hiddenId) continue;
+				if (row.locator.type !== 'pdf' || row.locator.page !== ctx.page || row.id === hiddenId) continue;
 				const item = document.createElement('div');
 				item.dataset.annotationId = row.id;
 				item.tabIndex = currentTool === 'hand' ? -1 : 0;

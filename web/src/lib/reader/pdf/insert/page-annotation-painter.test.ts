@@ -46,6 +46,16 @@ const common = {
 };
 
 describe('insert painter DOM output', () => {
+	it('ignores reflow annotations when painting a PDF page', () => {
+		const { layer, painter, ctx } = setup([{
+			...common, kind: 'text', locator: { type: 'cfi', value: 'epubcfi(/6/2!/4/2)', rect: common.locator.rect },
+			data: { text: 'Reflow note', color: '#111827', size: 0.018 }
+		}]);
+		painter.paint(ctx);
+		expect(layer.children).toHaveLength(0);
+		painter.dispose();
+	});
+
 	it('paints safe text in unrotated percent space with page-relative typography', () => {
 		const { layer, painter, ctx } = setup([{ ...common, kind: 'text', data: { text: '<b>Note</b>\nLine', color: '#111827', size: 0.018 } }]);
 		painter.paint(ctx);

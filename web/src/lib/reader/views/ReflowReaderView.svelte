@@ -14,11 +14,12 @@
 	import SearchPanel from '#lib/reader/SearchPanel.svelte';
 	import ReflowSelectionToolbar from './ReflowSelectionToolbar.svelte';
 	import FormatMenu from '#lib/reader/toolbar/FormatMenu.svelte';
-	import ReflowSizeMenu from '#lib/reader/toolbar/ReflowSizeMenu.svelte';
-	import ReflowLayoutMenu from '#lib/reader/toolbar/ReflowLayoutMenu.svelte';
+	import ZoomMenu from '#lib/reader/toolbar/ZoomMenu.svelte';
+	import LayoutMenu from '#lib/reader/toolbar/LayoutMenu.svelte';
+	import { reflowLayout, reflowZoom, stepReflowZoom } from '#lib/reader/reflow-display.js';
 	import RotateMenu from '#lib/reader/toolbar/RotateMenu.svelte';
-	import ToolbarMenu from '#lib/reader/toolbar/ToolbarMenu.svelte';
-	import MenuItem from '#lib/reader/toolbar/MenuItem.svelte';
+	import InsertMenu, { type InsertType } from '#lib/reader/toolbar/InsertMenu.svelte';
+	import ReflowInsertLayer from './ReflowInsertLayer.svelte';
 	import ReaderFrame from '#lib/reader/frame/ReaderFrame.svelte';
 	import ReaderCloseButton from '#lib/reader/frame/ReaderCloseButton.svelte';
 	import ReaderStatusDot from '#lib/reader/frame/ReaderStatusDot.svelte';
@@ -47,6 +48,9 @@
 	let selectedColor = $state<HighlightColor>('yellow');
 	let engine = $state<FoliateReader | null>(null);
 	let announcement = $state('');
+	let insertMode = $state<InsertType | null>(null);
+	let insertMenuOpen = $state(false);
+	let offline = $state(false);
 	let sidebarSelection = $state.raw<ReaderSelection | null>(null);
 	const tabs: readonly SidebarTab[] = untrack(() => controller.format === 'cbz'
 		? ['toc', 'annotations', 'bookmarks']
@@ -61,7 +65,8 @@
 		return controller.availableBookmarks.filter((bookmark) => engine!.isOnCurrentPage(bookmark.locator));
 	});
 	const annotationList = $derived(buildAnnotationList({
-		highlights: controller.highlights, notes: controller.notes, pageAnnotations: [],
+		highlights: controller.highlights, notes: controller.notes,
+		pageAnnotations: [...controller.pageAnnotations, ...controller.otherPageAnnotations],
 		fileId: controller.file?.id ?? -1, locatorType: 'cfi'
 	}));
 	const entries = $derived(filterEntries(annotationList.entries, query));
@@ -94,6 +99,10 @@
 		});
 	});
 	onMount(() => {
+		const connectionChanged = () => { offline = !navigator.onLine; };
+		connectionChanged();
+		window.addEventListener('online', connectionChanged);
+		window.addEventListener('offline', connectionChanged);
 		if (!surface) throw new Error('The reader surface is unavailable.');
 		readerChrome.set('full');
 		controller.setDraftGuard(() => {
@@ -111,6 +120,8 @@
 			if (!destroyed) readerChrome.set('default');
 		});
 		return () => {
+			window.removeEventListener('online', connectionChanged);
+			window.removeEventListener('offline', connectionChanged);
 			destroyed = true;
 			controller.setDraftGuard(() => true);
 			sidebar.dispose();
@@ -166,13 +177,6 @@
 			announcement = m['reader.error.render']();
 		}
 	}
-	async function addToolbarHighlight() {
-		const created = await controller.addHighlight(controller.selection ?? sidebarSelection, selectedColor);
-		if (created) {
-			clearSelection();
-			sidebar.show('annotations');
-		}
-	}
 	async function toggleBookmark() {
 		if (!engine || !controller.ready || controller.busy) return;
 		const existing = currentBookmarks[0];
@@ -222,13 +226,25 @@
 		void tick().then(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }); });
 	}
 	async function jumpAnnotation(entry: AnnotationEntry): Promise<boolean> {
-		if (entry.kind !== 'mark' || !controller.file || !controller.format || !annotationForReader(entry.row, controller.file.id, controller.format)) return false;
+		if (entry.kind !== 'mark') {
+			if (entry.row.book_file_id !== controller.file?.id || entry.row.locator.type !== 'cfi' || !engine) return false;
+			try {
+				await engine.goTo(entry.row.locator);
+				if (!sidebar.docked) sidebar.collapse();
+				return true;
+			} catch {
+				announcement = m['ux6.jump_failed']();
+				return false;
+			}
+		}
+		if (!controller.file || !controller.format || !annotationForReader(entry.row, controller.file.id, controller.format)) return false;
 		await navigate(() => controller.goToHighlight(entry.row));
 		if (!sidebar.docked) sidebar.collapse();
 		return true;
 	}
 	async function removeAnnotation(entry: AnnotationEntry): Promise<boolean> {
-		if (entry.kind !== 'mark' || !canOpenNote()) return false;
+		if (entry.kind !== 'mark') return !!await controller.removePageAnnotation(entry.row);
+		if (!canOpenNote()) return false;
 		const removed = !!await controller.removeHighlight(entry.row, { confirm: false });
 		if (removed && detail?.id === entry.id) closeDetail();
 		return removed;
@@ -266,14 +282,19 @@
 				{#snippet status()}<ReaderStatusDot warning={controller.settingsWarning} onretry={() => controller.retryWrites()} />{/snippet}
 				{#snippet centre()}<h1 class="reader-title">{controller.book?.title}</h1>{/snippet}
 				{#snippet overflow()}
-					<ReflowSizeMenu size={controller.settings.size} typography={controller.format !== 'cbz'}
-						disabled={!controller.ready} onsize={(size) => controller.applySettings({ size })} />
-					{#if controller.format !== 'cbz'}
-						<ReflowLayoutMenu flow={controller.settings.flow} disabled={!controller.ready}
-							onflow={(flow) => controller.applySettings({ flow })} />
-					{/if}
+					<ZoomMenu zoom={reflowZoom(controller.settings, controller.format === 'cbz')}
+						scale={controller.location && engine ? engine.zoomScale : 1}
+						includeValueInLabel
+						showHint={false}
+						disabled={!controller.ready}
+						onzoom={(reflowZoom) => controller.applySettings({ reflowZoom })}
+						onstep={(step) => controller.applySettings({ reflowZoom: stepReflowZoom(engine?.zoomScale ?? 1, step) })} />
+					<LayoutMenu layout={reflowLayout(controller.settings)} disabled={!controller.ready}
+						onlayout={(reflowLayout) => controller.applySettings({
+							reflowLayout, flow: reflowLayout.endsWith('continuous') ? 'scrolled' : 'paginated'
+						})} />
 					<FormatMenu typography={controller.format !== 'cbz'}
-						label={controller.format === 'cbz' ? m['pv4.display']() : m['rp2.format']()}
+						label={m['rp2.format']()}
 						icon={controller.format === 'cbz' ? 'layout-single' : undefined}
 						font={controller.settings.font} size={controller.settings.size} spacing={controller.settings.spacing}
 						background={background.id}
@@ -290,13 +311,8 @@
 					<RotateMenu onrotate={rotate} disabled={!engine} />
 				{/snippet}
 				{#snippet right()}
-					<ToolbarMenu label={m['reader.add']()} icon="insert">
-						<MenuItem label={controller.format === 'cbz' ? m['reader.annotations.add_page']() : m['reader.annotations.add_highlight']()}
-							icon="highlighter" disabled={!controller.ready || controller.busy || (!controller.selection && !sidebarSelection && controller.format !== 'cbz')}
-							onchoose={() => void addToolbarHighlight()} />
-						<MenuItem label={m['reader.annotations.add_note']()} icon="message"
-							disabled={!controller.ready || controller.busy} onchoose={() => openNote(null)} />
-					</ToolbarMenu>
+					<InsertMenu bind:open={insertMenuOpen} disabled={!controller.ready || controller.busy} {offline}
+						onselect={(type) => { insertMode = type; clearSelection(); }} />
 					<button class="pv4-button" data-testid="reflow-bookmark-toggle"
 						aria-label={m['rp8.add_page']()} aria-pressed={currentBookmarks.length > 0}
 						title={currentBookmarks.length ? m['rp8.remove_page']() : m['rp8.add_page']()}
@@ -323,6 +339,9 @@
 		{#if engine && surface && controller.format !== 'cbz'}
 			<ReflowSelectionToolbar {engine} {controller} {surface} cancomment={canOpenNote}
 				oncomment={commentOnSelection} onclear={() => sidebarSelection = null} onerror={(message) => announcement = message} />
+		{/if}
+		{#if engine && surface}
+			<ReflowInsertLayer {engine} {controller} {surface} bind:mode={insertMode} announce={(message) => announcement = message} />
 		{/if}
 		<ReaderSidebar {sidebar} {tabs} count={annotationList.count}>
 			{#snippet children(tab)}
@@ -352,6 +371,9 @@
 				<span class="rp7-count">{m['rp7.count']({ count: annotationList.count })}</span>
 			</header>
 			<div class="rp7-content" bind:this={scrollRoot}>
+			<div class="p-3">
+				<button class="reader-action" disabled={!controller.ready || controller.busy} onclick={() => openNote(null)}>{m['reader.annotations.add_note']()}</button>
+			</div>
 			{#if sidebarSelection}
 				<div class="reader-selection p-3">
 					<p class="font-medium">{m['reader.annotations.selected']()}</p>

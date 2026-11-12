@@ -148,6 +148,7 @@
 	"pv9.resize": "调整大小 {corner}",
 	"pv9.discard_drawing": "放弃这幅手绘？",
 	"pv9.discard_insert": "放弃未完成的插入？",
+	"pv9.place_prompt": "点击书页放置批注。",
 	"pv9.stroke_limit": "一幅手绘最多可包含 200 笔。请撤销一笔或完成手绘。",
 	"pv9.uploading": "正在处理并上传图片...",
 	"pv9.upload_failed": "无法上传图片，请重试。",

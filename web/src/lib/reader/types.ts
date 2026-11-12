@@ -38,6 +38,8 @@ export interface ReaderSettings {
 	theme: 'light' | 'sepia' | 'dark';
 	background?: BackgroundId;
 	flow: 'paginated' | 'scrolled';
+	reflowLayout?: PdfLayout;
+	reflowZoom?: PdfZoom;
 	pdfLayout?: PdfLayout;
 	pdfZoom?: PdfZoom;
 	pdfRotation?: 0 | 90 | 180 | 270;
@@ -114,7 +116,9 @@ export interface Bookmark {
 	rev: number;
 }
 
-export type PageAnnotationLocator = { type: 'pdf'; page: number; rect: NormalizedRect };
+export type PageAnnotationLocator =
+	| { type: 'pdf'; page: number; rect: NormalizedRect }
+	| { type: 'cfi'; value: string; rect: NormalizedRect };
 export type TextData = { text: string; color: string; size: number };
 export type InkData = { color: string; width: number; strokes: number[][] };
 export type ImageData = {

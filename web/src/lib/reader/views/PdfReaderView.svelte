@@ -16,7 +16,7 @@
 	import '#lib/reader/pdf/appearance.css';
 	import RotateMenu from '#lib/reader/toolbar/RotateMenu.svelte';
 	import ToolToggle from '#lib/reader/toolbar/ToolToggle.svelte';
-	import InsertToggle from '#lib/reader/toolbar/InsertToggle.svelte';
+	import InsertMenu, { type InsertType } from '#lib/reader/toolbar/InsertMenu.svelte';
 	import { PdfViewerEngine } from '#lib/reader/pdf/engine.js';
 	import type { ReaderController } from '#lib/reader/session/reader-controller.svelte.js';
 	import type { PdfLayout, PdfZoom, ReaderSettings } from '#lib/reader/types.js';
@@ -42,6 +42,7 @@
 	let view = $state<PdfViewState | null>(null);
 	let tool = $state<PdfTool>('select');
 	let previousTool = $state<'select' | 'hand'>('select');
+	let insertMenuOpen = $state(false);
 	const sidebar = createSidebarState();
 	let ocrEnabled = $state(true);
 	let announcement = $state('');
@@ -207,6 +208,10 @@
 		tool = next;
 	}
 
+	function startInsert(type: InsertType) {
+		surface?.dispatchEvent(new CustomEvent('reader-start-insert', { detail: type }));
+	}
+
 	function onKeydown(event: KeyboardEvent) {
 		if (event.defaultPrevented || !engine) return;
 		if (event.target instanceof Element && event.target.closest('.pv-sidebar')) return;
@@ -228,7 +233,10 @@
 				run(() => active.rotate(action.delta));
 				break;
 			}
-			case 'tool': setTool(action.tool === 'insert' && tool === 'insert' ? previousTool : action.tool); break;
+			case 'tool':
+				if (action.tool === 'insert') insertMenuOpen = !insertMenuOpen;
+				else setTool(action.tool);
+				break;
 			case 'escape':
 				if (tool === 'insert') setTool(previousTool);
 				else document.getSelection()?.removeAllRanges();
@@ -374,7 +382,7 @@
 					onpointerdown={(event) => event.preventDefault()} onclick={togglePageBookmark}
 				><Icon name="bookmark" /></button>
 				<ToolToggle tool={tool === 'hand' ? 'hand' : 'select'} ontoggle={() => setTool(tool === 'hand' ? 'select' : 'hand')} />
-				<InsertToggle active={tool === 'insert'} disabled={!engine} ontoggle={() => setTool(tool === 'insert' ? previousTool : 'insert')} />
+				<InsertMenu bind:open={insertMenuOpen} disabled={!engine} offline={!$offlineStatus.online} onselect={startInsert} />
 				<span class="pv-divider" aria-hidden="true"></span>
 				<ReaderCloseButton closing={controller.closing} onclose={() => controller.close()} />
 			{/snippet}

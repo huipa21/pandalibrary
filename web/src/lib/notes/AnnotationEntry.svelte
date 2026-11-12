@@ -31,7 +31,7 @@
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 			<span class="rounded-full px-2 py-0.5 text-xs font-semibold {annotationTagClass(kind)}">{label}</span>
 			<time class="text-xs text-slate-500" datetime={item.created_at}>{Number.isNaN(date.getTime()) ? item.created_at : formatter.format(date)}</time>
-			{#if item.locator}<span class="text-xs text-slate-500">{m['notes.page']({ page: item.locator.page })}</span>{/if}
+			{#if item.locator?.type === 'pdf'}<span class="text-xs text-slate-500">{m['notes.page']({ page: item.locator.page })}</span>{/if}
 		</div>
 		<p class="break-words font-medium text-slate-900">{item.book_title}</p>
 		{#if kind === 'comment' && item.anchor}

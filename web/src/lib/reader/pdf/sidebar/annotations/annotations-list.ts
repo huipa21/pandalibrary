@@ -115,7 +115,7 @@ export function buildAnnotationList(input: {
 	const otherFile: AnnotationEntry[] = [];
 	function add(entry: AnnotationEntry) {
 		const compatible = input.locatorType === 'cfi'
-			? entry.kind === 'mark' && isCfiLocator(entry.row.locator)
+			? isCfiLocator(entry.row.locator)
 			: entry.page !== null;
 		(entry.row.book_file_id === input.fileId && compatible ? entries : otherFile).push(entry);
 	}
@@ -134,7 +134,7 @@ export function buildAnnotationList(input: {
 	for (const row of input.pageAnnotations) {
 		if (row.deleted_at) continue;
 		add({
-			id: row.id, kind: row.kind, row, page: row.locator.page, y: row.locator.rect.y,
+			id: row.id, kind: row.kind, row, page: row.locator.type === 'pdf' ? row.locator.page : null, y: row.locator.rect.y,
 			rect: row.locator.rect, createdAt: row.created_at, updatedAt: row.updated_at,
 			excerpt: row.kind === 'text' ? excerpt(row.data.text)
 				: row.kind === 'ink' ? m['pv10.drawing']() : m['pv10.image'](),
