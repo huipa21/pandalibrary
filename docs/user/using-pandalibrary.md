@@ -53,9 +53,11 @@ Skimmed and Abandoned.
 Change your reading status beside the rating in the book header. Below the
 cover, the full-width **Read** or **Resume** button opens the reader. The icons
 under it download the book and add it to a shelf. If you uploaded the book, a
-third icon lets you make it private or public after confirmation: private means
+visibility control directly below **Read** or **Resume** shows its current
+state and lets you make it private or public after confirmation: private means
 only you can see it, while public means any signed-in user can see it, not
-anonymous visitors.
+anonymous visitors. Books without a recorded uploader, such as older books
+and folder imports, keep library-based access and do not show this control.
 
 The book's **Library** is shown below **Shelves**. Tags remain above the overview,
 separate from the metadata card. Publication dates show only the date; file sizes

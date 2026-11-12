@@ -84,8 +84,14 @@ test.beforeAll(async ({ browser }) => {
 		}, { timeout: 30_000 }).toBe('imported');
 
 		state.uploadDir = await mkdtemp(join(tmpdir(), 'pandalibrary-bh5-'));
-		for (const [name, title] of [['BH5 Alpha', 'BH5 Alpha'], ['BH5 Beta', 'BH5 Beta'], ['BH5 Extra', 'BH5 Extra'], ['BH5 Existing copy', 'BH5 Existing']]) {
+		for (const [name, title] of [['BH5 Upload One', 'BH5 Upload One'], ['BH5 Upload Two', 'BH5 Upload Two'], ['BH5 Extra', 'BH5 Extra'], ['BH5 Existing copy', 'BH5 Existing']]) {
 			await writeFile(join(state.uploadDir, `${name}.epub`), epubFixture(title));
+		}
+		for (const title of ['BH5 Alpha', 'BH5 Beta']) {
+			const staged = await page.request.post('/api/v1/admin/bookheap/files', { multipart: {
+				file: { name: `${title}.epub`, mimeType: 'application/epub+zip', buffer: epubFixture(title) }
+			} });
+			expect(staged.status()).toBe(201);
 		}
 	} finally {
 		await page.close();
@@ -149,36 +155,55 @@ test.afterAll(async ({ browser }) => {
 	}
 });
 
-test('header Upload sends selected files to the heap folder with per-file results', async ({ page }) => {
+test('header Upload assigns books to the required library and optional shelf with public visibility', async ({ page }) => {
 	test.setTimeout(90_000);
 	await signInRealAdmin(page);
 	const trigger = page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true });
 	await trigger.click();
 	const dialog = page.getByRole('dialog', { name: 'Upload books' });
 	await expect(dialog).toBeVisible();
+	await expect(dialog.locator('#bh3-library')).toHaveAttribute('required', '');
+	await dialog.locator('#bh3-library').selectOption(String(state.libraryID));
+	await dialog.locator('#bh3-shelf').selectOption(String(state.shelfID));
+	await expect(dialog.locator('#bh-upload-visibility')).toHaveValue('public');
 
 	const file = (name: string) => join(state.uploadDir, `${name}.epub`);
 	const chooser = page.waitForEvent('filechooser');
 	await dialog.getByRole('button', { name: 'Select files' }).click();
-	await (await chooser).setFiles([file('BH5 Alpha'), file('BH5 Beta'), file('BH5 Extra'), file('BH5 Existing copy')]);
+	await (await chooser).setFiles([file('BH5 Upload One'), file('BH5 Upload Two'), file('BH5 Extra'), file('BH5 Existing copy')]);
 	const list = dialog.getByRole('list', { name: 'Files to upload' });
 	await expect(list.getByRole('listitem')).toHaveCount(4);
 	await dialog.getByRole('button', { name: 'Remove BH5 Extra.epub' }).click();
 	await expect(list.getByRole('listitem')).toHaveCount(3);
 	// Selecting the same file again is ignored (same name, size and modification time).
-	await dialog.getByTestId('bh3-file-input').setInputFiles([file('BH5 Alpha')]);
+	await dialog.getByTestId('bh3-file-input').setInputFiles([file('BH5 Upload One')]);
 	await expect(list.getByRole('listitem')).toHaveCount(3);
 
 	await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(dialog.getByTestId('bh3-result')).toHaveText('2 uploaded, 1 duplicate, 0 failed', { timeout: 30_000 });
-	const alpha = list.getByRole('listitem').filter({ hasText: 'BH5 Alpha.epub' });
-	await expect(alpha.getByTestId('bh3-row-status')).toHaveText('Added as “BH5 Alpha”');
+	const first = list.getByRole('listitem').filter({ hasText: 'BH5 Upload One.epub' });
+	await expect(first.getByTestId('bh3-row-status')).toHaveText('Uploaded “BH5 Upload One” — queued for library import');
 	const duplicate = list.getByRole('listitem').filter({ hasText: 'BH5 Existing copy.epub' });
 	await expect(duplicate.getByRole('link', { name: 'Already in your library' }))
 		.toHaveAttribute('href', `/books/${state.existingBookID}`);
 
-	expect(existsSync(join(heapDir, 'BH5 Alpha.epub'))).toBe(true);
-	expect(existsSync(join(heapDir, 'BH5 Beta.epub'))).toBe(true);
+	for (const title of ['BH5 Upload One', 'BH5 Upload Two']) {
+		let bookID = 0;
+		await expect.poll(async () => {
+			const job = (await imports(page)).find((item) => item.original_name === `${title}.epub`);
+			bookID = job?.book_id ?? 0;
+			return job?.status;
+		}, { timeout: 30_000 }).toBe('imported');
+		const response = await page.request.get(`/api/v1/books/${bookID}`);
+		expect(response.ok()).toBe(true);
+		const { book } = await response.json() as { book: { library_id: number; visibility: string } };
+		expect(book.library_id).toBe(state.libraryID);
+		expect(book.visibility).toBe('public');
+		const shelves = await page.request.get(`/api/v1/books/${bookID}/shelves`);
+		expect(shelves.ok()).toBe(true);
+		const memberships = await shelves.json() as { shelves: { id: number }[] };
+		expect(memberships.shelves.some((shelf) => shelf.id === state.shelfID)).toBe(true);
+	}
 	expect(existsSync(join(heapDir, 'BH5 Existing copy.epub'))).toBe(false);
 	expect(existsSync(join(heapDir, 'BH5 Extra.epub'))).toBe(false);
 	const items = await listHeap(page);
@@ -274,7 +299,8 @@ test('items selected across pages are assigned to a library and shelf and leave 
 	}
 	await expect(page.getByTestId('bh4-total')).toContainText(`Files: ${batchSize}`);
 
-	const jobs = (await imports(page)).filter((job) => job.source === 'bookheap' && job.library_id === state.libraryID);
+	const jobs = (await imports(page)).filter((job) => job.source === 'bookheap' && job.library_id === state.libraryID &&
+		assignedTitles.some((title) => job.original_name === `${title}.epub`));
 	expect(jobs).toHaveLength(4);
 	for (const job of jobs) expect(job, job.error ?? '').toMatchObject({ status: 'imported' });
 	for (const file of assignedFiles) expect(existsSync(join(heapDir, ...file.split('/'))), file).toBe(false);

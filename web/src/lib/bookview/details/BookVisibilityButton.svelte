@@ -15,8 +15,10 @@
 	let error = $state('');
 	let notice = $state('');
 	let controller: AbortController | null = null;
+	const id = $props.id();
 	const disconnected = $derived(offline || !$offlineStatus.online);
 	const makePublic = $derived(book.visibility === 'private');
+	const currentVisibility = $derived(makePublic ? m['bh.visibility.private']() : m['bh.visibility.public']());
 	const label = $derived(makePublic ? m['bv.visibility.make_public']() : m['bv.visibility.make_private']());
 	const description = $derived(makePublic ? m['bv.visibility.public_description']() : m['bv.visibility.private_description']());
 
@@ -52,16 +54,24 @@
 </script>
 
 {#if book.can_manage_visibility}
-	<div class="min-w-0">
+	<div class="w-full min-w-0">
 		<button
 			type="button"
-			class="inline-flex size-10 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-60"
+			class="inline-flex w-full min-w-0 items-center gap-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-left text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-60"
 			aria-label={label}
+			aria-describedby={`${id}-state${disconnected ? ` ${id}-offline` : ''}`}
 			title={disconnected ? m['bv.visibility.offline']() : `${label}: ${description}`}
 			disabled={disconnected || busy}
 			aria-busy={busy}
 			onclick={() => void toggle()}
-		><Icon name={busy ? 'refresh' : makePublic ? 'globe' : 'lock'} class={busy ? 'size-5 animate-spin motion-reduce:animate-none' : 'size-5'} /></button>
+		>
+			<Icon name={busy ? 'refresh' : makePublic ? 'lock' : 'globe'} class={busy ? 'size-5 shrink-0 animate-spin motion-reduce:animate-none' : 'size-5 shrink-0'} />
+			<span class="min-w-0">
+				<span id={`${id}-state`} class="block text-xs">{currentVisibility}</span>
+				<span class="block text-sm font-semibold">{label}</span>
+			</span>
+		</button>
+		{#if disconnected}<p id={`${id}-offline`} class="mt-2 text-xs text-slate-500">{m['bv.visibility.offline']()}</p>{/if}
 		{#if error}<p class="mt-2 text-sm text-red-800" role="alert">{error}</p>{/if}
 		{#if notice}<p class="sr-only" role="status">{notice}</p>{/if}
 	</div>

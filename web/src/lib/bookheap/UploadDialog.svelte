@@ -4,10 +4,11 @@
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { translate } from '#lib/paging/translate.js';
 	import { focusableWithin, nextTrappedFocus } from '#lib/shell/focus.js';
-	import { listAllAdminLibraries } from '#lib/admin/api.js';
 	import type { Library } from '#lib/admin/types.js';
+	import type { Shelf } from '#lib/shelves/types.js';
 	import { inputClass } from '#lib/admin/ui.js';
 	import { heapErrorKey } from './results.js';
+	import { loadAssignTargets, shelfLabel } from './targets.js';
 	import {
 		UPLOAD_ACCEPT,
 		filesFromDataTransfer,
@@ -35,15 +36,22 @@
 	let dragDepth = $state(0);
 	let confirming = $state(false);
 	let libraries = $state<Library[]>([]);
+	let shelves = $state<Shelf[]>([]);
 	let librariesError = $state('');
-	let librariesLoading = $state(false);
+	let librariesLoading = $state(true);
+	let targetsReady = $state(false);
+	let libraryValidation = $state(false);
+	let librarySelect = $state<HTMLSelectElement | null>(null);
 	let librariesController: AbortController | null = null;
 
 	const counts = $derived(queue.counts);
 	const finished = $derived(counts.uploaded + counts.duplicates + counts.failed);
 	const hasResults = $derived(!queue.running && finished > 0);
 	/** The Upload button stays focusable (aria-disabled) so focus is not lost when a run starts. */
-	const canUpload = $derived(!queue.running && counts.pending > 0);
+	const validLibrary = $derived(
+		targetsReady && Number.isSafeInteger(queue.libraryId) && libraries.some((library) => library.id > 0 && library.id === queue.libraryId)
+	);
+	const canUpload = $derived(!queue.running && counts.pending > 0 && validLibrary);
 	const size = $derived(formatBytes(queue.totalBytes, getLocale()));
 	const limit = $derived(formatBytes(queue.maxBytes, getLocale()));
 	const announcement = $derived(
@@ -83,12 +91,25 @@
 		const controller = new AbortController();
 		librariesController = controller;
 		librariesLoading = true;
+		targetsReady = false;
 		librariesError = '';
+		libraryValidation = false;
+		libraries = [];
+		shelves = [];
 		try {
-			const result = await listAllAdminLibraries(controller.signal);
-			if (!controller.signal.aborted) libraries = result;
+			const result = await loadAssignTargets(controller.signal);
+			if (controller.signal.aborted) return;
+			libraries = result.libraries;
+			shelves = result.shelves;
+			if (!libraries.some((library) => library.id > 0 && library.id === queue.libraryId)) queue.libraryId = null;
+			queue.shelfIds = queue.shelfIds.filter((id) => shelves.some((shelf) => shelf.id === id)).slice(0, 1);
+			targetsReady = true;
 		} catch (cause) {
-			if (!controller.signal.aborted) librariesError = translate(heapErrorKey(cause, 'load_targets'));
+			if (!controller.signal.aborted) {
+				queue.libraryId = null;
+				queue.shelfIds = [];
+				librariesError = translate(heapErrorKey(cause, 'load_targets'));
+			}
 		} finally {
 			if (!controller.signal.aborted) librariesLoading = false;
 		}
@@ -127,10 +148,26 @@
 	}
 
 	async function retryFailed() {
+		if (!validateTargets() || queue.running) return;
 		const run = queue.retryFailed();
 		await tick();
 		uploadButton?.focus();
 		await run;
+	}
+
+	function validateTargets() {
+		if (!validLibrary) {
+			libraryValidation = true;
+			librarySelect?.focus();
+			return false;
+		}
+		queue.shelfIds = queue.shelfIds.filter((id) => shelves.some((shelf) => shelf.id === id)).slice(0, 1);
+		return true;
+	}
+
+	function startUpload() {
+		if (queue.running || counts.pending === 0 || !validateTargets()) return;
+		void queue.start();
 	}
 
 	function onkeydown(event: KeyboardEvent) {
@@ -241,13 +278,18 @@
 			<div class="space-y-2">
 				<label for="bh3-library" class="block text-sm font-medium">{m['bh3.library']()}</label>
 				<select
+					bind:this={librarySelect}
 					id="bh3-library"
 					class={`w-full ${inputClass}`}
 					value={queue.libraryId === null ? '' : String(queue.libraryId)}
-					disabled={queue.running || librariesLoading}
-					aria-describedby="bh3-library-help"
+					required
+					disabled={queue.running || !targetsReady}
+					aria-busy={librariesLoading}
+					aria-invalid={libraryValidation && !validLibrary ? 'true' : undefined}
+					aria-describedby="bh3-library-help bh3-library-guidance"
 					onchange={(event) => {
 						queue.libraryId = event.currentTarget.value ? Number(event.currentTarget.value) : null;
+						libraryValidation = false;
 					}}
 				>
 					<option value="">{m['bh3.library_none']()}</option>
@@ -256,11 +298,43 @@
 					{/each}
 				</select>
 				<p id="bh3-library-help" class="text-xs text-slate-600">{m['bh3.library_help']()}</p>
+				<div id="bh3-library-guidance">
+					{#if librariesLoading}
+						<p class="text-sm text-slate-600" role="status">{m['bh4.assign.loading']()}</p>
+					{:else if targetsReady && libraries.length === 0}
+						<p class="text-sm text-slate-600">
+							{m['bh4.assign.no_libraries']()}
+							<a class="underline" href="/admin/libraries">{m['bh4.assign.manage_libraries']()}</a>
+						</p>
+					{:else if targetsReady && !validLibrary}
+						<p class="text-sm text-red-800">{m['bh4.assign.library_required']()}</p>
+					{/if}
+				</div>
 				{#if librariesError}
 					<div class="flex items-center gap-2 text-sm text-red-800" role="alert">
 						<p>{librariesError}</p>
 						<button type="button" class="underline" onclick={() => void loadLibraries()}>{m['admin.retry']()}</button>
 					</div>
+				{/if}
+			</div>
+			<div class="space-y-2">
+				<label for="bh3-shelf" class="block text-sm font-medium">{m['bh3.shelf']()}</label>
+				<select
+					id="bh3-shelf"
+					class={`w-full ${inputClass}`}
+					value={queue.shelfIds[0] === undefined ? '' : String(queue.shelfIds[0])}
+					disabled={queue.running || !targetsReady}
+					onchange={(event) => {
+						queue.shelfIds = event.currentTarget.value ? [Number(event.currentTarget.value)] : [];
+					}}
+				>
+					<option value="">{m['bh3.shelf_none']()}</option>
+					{#each shelves as shelf (shelf.id)}
+						<option value={String(shelf.id)}>{shelfLabel(shelf)}</option>
+					{/each}
+				</select>
+				{#if targetsReady && shelves.length === 0}
+					<p class="text-sm text-slate-600">{m['bh4.assign.no_shelves']()}</p>
 				{/if}
 			</div>
 			<div class="space-y-2">
@@ -358,7 +432,7 @@
 			{#if queue.rows.length === 0}
 				<p class="py-4 text-center text-sm text-slate-600">{m['bh3.empty']()}</p>
 			{:else}
-				<ul class="max-h-80 divide-y divide-slate-200 overflow-y-auto rounded-md border border-slate-200" aria-label={m['bh3.list_label']()}>
+				<ul class="max-h-80 shrink-0 divide-y divide-slate-200 overflow-y-auto rounded-md border border-slate-200" aria-label={m['bh3.list_label']()}>
 					{#each queue.rows as row (row.id)}
 						{@const percent = uploadPercent(row)}
 						<li class={['flex items-center gap-3 px-3 py-2', row.status === 'done' ? 'bg-emerald-50' : '']} data-status={row.status}>
@@ -456,6 +530,7 @@
 						<button
 							type="button"
 							class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+							aria-disabled={!validLibrary}
 							onclick={() => void retryFailed()}
 						>{m['bh3.retry_failed']()}</button>
 					{/if}
@@ -469,9 +544,7 @@
 						type="button"
 						class="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 						aria-disabled={!canUpload}
-						onclick={() => {
-							if (canUpload) void queue.start();
-						}}
+						onclick={startUpload}
 					>{queue.running ? m['bh3.uploading']() : m['bh3.upload']()}</button>
 				</div>
 			{/if}

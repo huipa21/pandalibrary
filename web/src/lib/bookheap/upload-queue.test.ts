@@ -9,7 +9,8 @@ import {
 	filesFromDataTransfer,
 	formatBytes,
 	uploadPercent,
-	type Uploader
+	type Uploader,
+	type UploadQueueOptions
 } from './upload-queue.svelte.js';
 
 function file(name: string, size = 10, lastModified = 1): File {
@@ -55,9 +56,18 @@ function controlledUploader() {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+function createQueue(options: UploadQueueOptions = {}): UploadQueue {
+	const assign = vi.fn<typeof assignHeapItems>().mockImplementation(async ({ ids }) =>
+		ids.map((id) => ({ id, ok: true, error: null, import_job_id: 100 + id }))
+	);
+	const queue = new UploadQueue({ assign, ...options });
+	queue.libraryId = 1;
+	return queue;
+}
+
 describe('UploadQueue adding files', () => {
 	it('deduplicates by name, size and modification time on reselect and drop', () => {
-		const queue = new UploadQueue({ upload: vi.fn() });
+		const queue = createQueue({ upload: vi.fn() });
 		const a = file('a.epub', 10, 1);
 		expect(queue.add([a, file('b.pdf')])).toMatchObject({ added: 2, duplicates: 0 });
 		expect(queue.add([file('a.epub', 10, 1), file('a.epub', 11, 1), file('a.epub', 10, 2), file('c.cbz')])).toMatchObject({ added: 3, duplicates: 1 });
@@ -67,7 +77,7 @@ describe('UploadQueue adding files', () => {
 	});
 
 	it('filters unsupported and oversize files and reports them in a dismissible notice', () => {
-		const queue = new UploadQueue({ upload: vi.fn(), maxBytes: 100 });
+		const queue = createQueue({ upload: vi.fn(), maxBytes: 100 });
 		const result = queue.add([file('ok.AZW3', 100), file('notes.txt'), file('.epub'), file('big.fb2', 101), file('ok.fbz'), file('x.mobi')], 2);
 		expect(result).toEqual({ added: 3, duplicates: 0, unsupported: ['notes.txt', '.epub'], tooLarge: ['big.fb2'] });
 		expect(queue.notice).toEqual({ unsupported: ['notes.txt', '.epub'], tooLarge: ['big.fb2'], ignored: 2 });
@@ -80,7 +90,7 @@ describe('UploadQueue adding files', () => {
 
 	it('removes one row and clears all, but not rows or lists that are uploading', async () => {
 		const { calls, upload } = controlledUploader();
-		const queue = new UploadQueue({ upload, notify: vi.fn(), concurrency: 1 });
+		const queue = createQueue({ upload, notify: vi.fn(), concurrency: 1 });
 		queue.add([file('a.epub'), file('b.epub'), file('c.epub')]);
 		const [, b] = queue.rows;
 		expect(queue.remove(b.id)).toBe(true);
@@ -101,14 +111,52 @@ describe('UploadQueue adding files', () => {
 });
 
 describe('UploadQueue uploading', () => {
-	it.each([null, 2])('freezes visibility for a run and late-added files with destination %s', async (libraryId) => {
+	it.each([null, 0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])('requires a valid library before starting with %s', (libraryId) => {
+		const upload = vi.fn<Uploader>();
+		const assign = vi.fn<typeof assignHeapItems>();
+		const queue = new UploadQueue({ upload, assign, notify: vi.fn() });
+		expect(queue.libraryId).toBeNull();
+		expect(queue.shelfIds).toEqual([]);
+		expect(queue.visibility).toBe('public');
+		queue.libraryId = libraryId;
+		queue.add([file('a.epub')]);
+		expect(() => queue.start()).toThrow('A valid library is required before uploading');
+		expect(upload).not.toHaveBeenCalled();
+		expect(assign).not.toHaveBeenCalled();
+		expect(queue.running).toBe(false);
+		expect(queue.rows[0]).toMatchObject({ status: 'pending', libraryId: null, shelfIds: [], visibility: null });
+	});
+
+	it('requires a valid library before resetting failed rows for retry', async () => {
+		const upload = vi.fn<Uploader>().mockRejectedValue(new TypeError('offline'));
+		const queue = createQueue({ upload, notify: vi.fn() });
+		queue.add([file('a.epub')]);
+		await queue.start();
+		queue.libraryId = null;
+		expect(() => queue.retryFailed()).toThrow('A valid library is required before uploading');
+		expect(queue.rows[0]).toMatchObject({ status: 'error', error: 'network', libraryId: 1 });
+		expect(upload).toHaveBeenCalledTimes(1);
+		expect(queue.running).toBe(false);
+	});
+
+	it('uploads publicly by default and assigns to the required library without optional shelves', async () => {
+		const upload = vi.fn<Uploader>().mockResolvedValue(item(1, 'A'));
+		const assign = vi.fn<typeof assignHeapItems>().mockResolvedValue([{ id: 1, ok: true, error: null, import_job_id: 101 }]);
+		const queue = createQueue({ upload, assign, notify: vi.fn() });
+		queue.add([file('a.epub')]);
+		await queue.start();
+		expect(upload.mock.calls[0][1].visibility).toBe('public');
+		expect(assign).toHaveBeenCalledWith({ ids: [1], library_id: 1, shelf_ids: [] });
+		expect(queue.rows[0]).toMatchObject({ status: 'done', libraryId: 1, shelfIds: [], visibility: 'public' });
+	});
+
+	it('freezes visibility for a run and late-added files', async () => {
 		const { calls, upload } = controlledUploader();
 		const assign = vi.fn<typeof assignHeapItems>().mockImplementation(async ({ ids }) =>
 			ids.map((id) => ({ id, ok: true, error: null, import_job_id: 100 + id }))
 		);
-		const queue = new UploadQueue({ upload, assign, notify: vi.fn(), concurrency: 1 });
+		const queue = createQueue({ upload, assign, notify: vi.fn(), concurrency: 1 });
 		expect(queue.visibility).toBe('public');
-		queue.libraryId = libraryId;
 		queue.visibility = 'private';
 		queue.add([file('a.epub'), file('b.epub')]);
 		const run = queue.start();
@@ -121,58 +169,86 @@ describe('UploadQueue uploading', () => {
 		}
 		await run;
 		expect(queue.rows.map((row) => row.visibility)).toEqual(['private', 'private', 'private']);
-		expect(assign).toHaveBeenCalledTimes(libraryId === null ? 0 : 3);
+		expect(assign).toHaveBeenCalledTimes(3);
 	});
 
-	it('keeps failed upload visibility when retrying alongside newly selected public files', async () => {
+	it('keeps failed upload destination and visibility when retrying alongside new files', async () => {
 		const upload = vi.fn<Uploader>().mockRejectedValueOnce(new TypeError('offline')).mockResolvedValue(item(1, 'A'));
-		const queue = new UploadQueue({ upload, notify: vi.fn(), concurrency: 1 });
+		const assign = vi.fn<typeof assignHeapItems>().mockImplementation(async ({ ids }) =>
+			ids.map((id) => ({ id, ok: true, error: null, import_job_id: 100 + id }))
+		);
+		const queue = createQueue({ upload, assign, notify: vi.fn(), concurrency: 1 });
+		queue.libraryId = 2;
+		queue.shelfIds = [10];
 		queue.visibility = 'private';
 		queue.add([file('a.epub')]);
 		await queue.start();
 		queue.dropDone();
+		queue.libraryId = 3;
+		queue.shelfIds = [20];
 		queue.visibility = 'public';
 		queue.add([file('b.epub')]);
 		await queue.retryFailed();
 		expect(upload.mock.calls.map(([, options]) => options.visibility)).toEqual(['private', 'private', 'public']);
 		expect(queue.rows.map((row) => row.visibility)).toEqual(['private', 'public']);
+		expect(queue.rows.map((row) => [row.libraryId, row.shelfIds])).toEqual([[2, [10]], [3, [20]]]);
+		expect(assign.mock.calls.map(([input]) => input)).toEqual([
+			{ ids: [1], library_id: 2, shelf_ids: [10] },
+			{ ids: [1], library_id: 3, shelf_ids: [20] }
+		]);
 	});
 
-	it('retains the visibility of aborted attempts when resuming', async () => {
+	it('retains destination and visibility of aborted attempts while unstarted rows use the new run', async () => {
 		const { calls, upload } = controlledUploader();
-		const queue = new UploadQueue({ upload, notify: vi.fn(), concurrency: 1 });
+		const queue = createQueue({ upload, notify: vi.fn(), concurrency: 1 });
+		queue.libraryId = 2;
+		queue.shelfIds = [10];
 		queue.visibility = 'private';
-		queue.add([file('a.epub')]);
+		queue.add([file('a.epub'), file('b.epub')]);
 		const run = queue.start();
 		await queue.abort();
 		await run;
 		queue.visibility = 'public';
+		queue.libraryId = 3;
+		queue.shelfIds = [20];
 		const resumed = queue.start();
 		expect(calls.map((call) => call.visibility)).toEqual(['private', 'private']);
 		calls[1].resolve(item(1, 'A'));
+		await flush();
+		calls[2].resolve(item(2, 'B'));
 		await resumed;
+		expect(calls.map((call) => call.visibility)).toEqual(['private', 'private', 'public']);
+		expect(queue.rows.map((row) => [row.libraryId, row.shelfIds])).toEqual([[2, [10]], [3, [20]]]);
 	});
 
-	it('assigns uploads to the library captured for the run, including files added during it', async () => {
+	it('copies library and shelves for the run, including pending and late-added files', async () => {
 		const { calls, upload } = controlledUploader();
 		const assign = vi.fn<typeof assignHeapItems>().mockImplementation(async ({ ids }) =>
 			ids.map((id) => ({ id, ok: true, error: null, import_job_id: 100 + id }))
 		);
-		const queue = new UploadQueue({ upload, assign, notify: vi.fn(), concurrency: 1 });
+		const queue = createQueue({ upload, assign, notify: vi.fn(), concurrency: 1 });
 		queue.libraryId = 2;
-		queue.add([file('a.epub')]);
+		queue.shelfIds = [10, 11];
+		queue.add([file('a.epub'), file('b.epub')]);
 		const run = queue.start();
 		queue.libraryId = 3;
-		queue.add([file('b.epub')]);
+		queue.shelfIds.push(12);
+		queue.shelfIds = [20];
+		queue.add([file('late.epub')]);
 		calls[0].resolve(item(1, 'A'));
 		await flush();
 		calls[1].resolve(item(2, 'B'));
+		await flush();
+		calls[2].resolve(item(3, 'Late'));
 		await run;
 		expect(assign.mock.calls.map(([input]) => input)).toEqual([
-			{ ids: [1], library_id: 2, shelf_ids: [] },
-			{ ids: [2], library_id: 2, shelf_ids: [] }
+			{ ids: [1], library_id: 2, shelf_ids: [10, 11] },
+			{ ids: [2], library_id: 2, shelf_ids: [10, 11] },
+			{ ids: [3], library_id: 2, shelf_ids: [10, 11] }
 		]);
-		expect(queue.rows.map((row) => row.status)).toEqual(['done', 'done']);
+		expect(queue.rows.map((row) => row.status)).toEqual(['done', 'done', 'done']);
+		queue.rows[0].shelfIds.push(99);
+		expect(queue.rows[1].shelfIds).toEqual([10, 11]);
 	});
 
 	it.each(['http', 'rejected', 'missing'] as const)('retries %s assignment failures without uploading the file again', async (failure) => {
@@ -182,21 +258,24 @@ describe('UploadQueue uploading', () => {
 		else assign.mockResolvedValueOnce(failure === 'missing' ? [] : [{ id: 1, ok: false, error: 'failed', import_job_id: null }]);
 		assign.mockResolvedValueOnce([{ id: 1, ok: true, error: null, import_job_id: 101 }]);
 		const notify = vi.fn();
-		const queue = new UploadQueue({ upload, assign, notify });
+		const queue = createQueue({ upload, assign, notify });
 		queue.libraryId = 2;
+		queue.shelfIds = [10];
 		queue.visibility = 'private';
 		queue.add([file('a.epub')]);
 		await queue.start();
-		expect(queue.rows[0]).toMatchObject({ status: 'error', item: { id: 1 }, libraryId: 2 });
+		expect(queue.rows[0]).toMatchObject({ status: 'error', item: { id: 1 }, libraryId: 2, shelfIds: [10] });
 		expect(queue.counts).toMatchObject({ failed: 1, retryable: 1, duplicates: 0 });
 		expect(notify).toHaveBeenCalledTimes(1);
 		queue.libraryId = 3;
+		queue.shelfIds.push(11);
+		queue.shelfIds = [20];
 		queue.visibility = 'public';
 		await queue.retryFailed();
 		expect(upload).toHaveBeenCalledTimes(1);
 		expect(upload.mock.calls[0][1].visibility).toBe('private');
 		expect(queue.rows[0].visibility).toBe('private');
-		expect(assign).toHaveBeenLastCalledWith({ ids: [1], library_id: 2, shelf_ids: [] });
+		expect(assign).toHaveBeenLastCalledWith({ ids: [1], library_id: 2, shelf_ids: [10] });
 		expect(queue.counts).toMatchObject({ uploaded: 1, failed: 0 });
 		expect(notify).toHaveBeenCalledTimes(2);
 	});
@@ -204,7 +283,7 @@ describe('UploadQueue uploading', () => {
 	it('uploads at most two files at a time and moves rows through every status', async () => {
 		const { calls, upload } = controlledUploader();
 		const notify = vi.fn();
-		const queue = new UploadQueue({ upload, notify });
+		const queue = createQueue({ upload, notify });
 		queue.add([file('a.epub'), file('b.epub'), file('c.epub'), file('d.epub')]);
 		const run = queue.start();
 		expect(queue.running).toBe(true);
@@ -244,7 +323,7 @@ describe('UploadQueue uploading', () => {
 
 	it('adds files to a run when only one upload is left in flight', async () => {
 		const { calls, upload } = controlledUploader();
-		const queue = new UploadQueue({ upload, notify: vi.fn() });
+		const queue = createQueue({ upload, notify: vi.fn() });
 		queue.add([file('a.epub')]);
 		const run = queue.start();
 		queue.add([file('b.epub'), file('c.epub')]);
@@ -269,7 +348,7 @@ describe('UploadQueue uploading', () => {
 			throw errors.shift();
 		});
 		const notify = vi.fn();
-		const queue = new UploadQueue({ upload, notify });
+		const queue = createQueue({ upload, notify });
 		queue.add(['a', 'b', 'c', 'd', 'e', 'f'].map((name) => file(`${name}.epub`)));
 		await queue.start();
 		expect(queue.rows.map((row) => [row.error, row.duplicateOf])).toEqual([
@@ -281,7 +360,7 @@ describe('UploadQueue uploading', () => {
 
 	it('stops the queue on 401/403 and keeps the remaining rows pending', async () => {
 		const upload = vi.fn<Uploader>().mockRejectedValueOnce(problem(401)).mockResolvedValue(item(2, 'B'));
-		const queue = new UploadQueue({ upload, notify: vi.fn(), concurrency: 1 });
+		const queue = createQueue({ upload, notify: vi.fn(), concurrency: 1 });
 		queue.add([file('a.epub'), file('b.epub'), file('c.epub')]);
 		await queue.start();
 		expect(upload).toHaveBeenCalledTimes(1);
@@ -304,7 +383,7 @@ describe('UploadQueue uploading', () => {
 			.mockResolvedValueOnce(item(4, 'D'))
 			.mockResolvedValueOnce(item(1, 'A'));
 		const notify = vi.fn();
-		const queue = new UploadQueue({ upload, notify, concurrency: 1 });
+		const queue = createQueue({ upload, notify, concurrency: 1 });
 		queue.add([file('a.epub'), file('b.epub'), file('c.epub'), file('d.epub')]);
 		await queue.start();
 		expect(notify).toHaveBeenCalledTimes(1);
@@ -325,7 +404,7 @@ describe('UploadQueue uploading', () => {
 	it('aborts in-flight uploads on a confirmed close and leaves unstarted rows unsent', async () => {
 		const { calls, upload } = controlledUploader();
 		const notify = vi.fn();
-		const queue = new UploadQueue({ upload, notify });
+		const queue = createQueue({ upload, notify });
 		queue.add([file('a.epub'), file('b.epub'), file('c.epub'), file('d.epub')]);
 		const run = queue.start();
 		calls[0].resolve(item(1, 'A'));

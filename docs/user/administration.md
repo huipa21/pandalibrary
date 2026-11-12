@@ -19,12 +19,14 @@ reset accounts from the command line:
 There are four ways to add books:
 
 - **Upload to a library:** upload books on **Admin → Uploads & imports**.
-- **Upload to the Bookheap:** the **Upload** button in the header sends books to
-  the Bookheap. Optionally choose a library in the upload dialog to queue each
-  uploaded book for import automatically; leave it blank to assign later.
+- **Header upload:** the **Upload** button in the header opens the upload dialog.
+  Choose a library (required), optionally select a manual shelf, and choose
+  **Public** (the default) or **Private**. Every uploaded book is staged in the
+  Bookheap and automatically queued for import into the selected library and shelf.
   Completed uploads have a green checkmark and a results summary. If library
   assignment fails after upload, retry it without uploading the file again,
-  or assign it from the Bookheap.
+  or assign it from the Bookheap. Retries keep the original library, shelf and
+  visibility choices.
 - **Bookheap folder:** copy files into the Bookheap folder (subfolders are
   fine), then select **Scan** on the Bookheap page.
 - **Drop folder:** files copied into the drop folder are imported automatically
@@ -45,6 +47,9 @@ Per-reader hidden-book restrictions still apply to public books.
 
 The uploader can change a book's visibility from its **Details** tab, using the
 visibility icon below the cover and confirming the change.
+It appears directly below **Read** or **Resume** and shows the current visibility.
+Books without a recorded uploader retain library-based access; administrators
+cannot take ownership or change another uploader's visibility with this control.
 
 ## Bookheap
 
