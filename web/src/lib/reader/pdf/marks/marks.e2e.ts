@@ -390,17 +390,21 @@ test('comment saves a note with a marker, and cancelling an empty comment remove
 	await selectionToolbar(page).getByRole('button', { name: 'Comment', exact: true }).click();
 	const popover = page.getByRole('dialog', { name: 'Add comment', exact: true });
 	await expect(popover).toBeVisible();
-	await popover.getByRole('textbox', { name: 'Note in Markdown' }).fill('A **useful** comment');
-	await expect(popover.locator('.reader-note-preview strong')).toHaveText('useful');
+	await popover.getByRole('textbox').fill('A **useful** comment');
+	await expect(popover.locator('textarea')).toHaveValue('A **useful** comment');
+	await expect(popover.locator('.cm-editor, .reader-note-preview')).toHaveCount(0);
+	await page.screenshot({ path: test.info().outputPath('sticky-note-comment.png') });
 	await popover.getByRole('button', { name: 'Save note' }).click();
 	await expect(popover).toHaveCount(0);
 	const mark = highlightPushes(state)[0];
 	await expect.poll(() => state.pushes.find((row) => row.entity === 'notes')?.data).toMatchObject({ highlight_id: mark.id, body_md: 'A **useful** comment' });
 	const marker = page.locator(`.pv-mark-comment[data-annotation-id="${mark.id}"]`);
 	await expect(marker).toBeVisible();
+	await expect(marker.locator('svg')).toHaveCount(1);
 	await marker.click();
 	const editor = page.getByRole('dialog', { name: 'Edit comment', exact: true });
-	await expect(editor.locator('.reader-note-preview strong')).toHaveText('useful');
+	await expect(editor.getByRole('textbox')).toHaveValue('A **useful** comment');
+	await expect(editor.locator('.cm-editor, .reader-note-preview')).toHaveCount(0);
 	await editor.getByRole('button', { name: 'Cancel' }).click();
 	await expect(editor).toHaveCount(0);
 
@@ -545,11 +549,11 @@ for (const theme of ['light', 'dark']) {
 		await page.screenshot({ path: test.info().outputPath(`mark-toolbar-${theme}.png`) });
 		await markToolbar(page).getByRole('button', { name: 'Add comment', exact: true }).click();
 		const comment = page.getByRole('dialog', { name: 'Add comment', exact: true });
-		const editor = comment.getByRole('textbox', { name: 'Note in Markdown' });
+		const editor = comment.getByRole('textbox');
 		await editor.fill('A **readable** comment');
-		await expect(comment.locator('.reader-note-preview strong')).toHaveText('readable');
-		await expect(editor).toHaveCSS('color', 'rgb(15, 23, 42)');
-		await expect(comment.locator('.reader-note-preview')).toHaveCSS('color', 'rgb(15, 23, 42)');
+		await expect(editor).toHaveValue('A **readable** comment');
+		await expect(comment.locator('.cm-editor, .reader-note-preview')).toHaveCount(0);
+		await expect(editor).toHaveCSS('color', 'rgb(73, 61, 27)');
 	});
 }
 

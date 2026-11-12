@@ -157,6 +157,60 @@ test('shows compact rows for every annotation kind, without categories or bookma
 	await expect(drawer.getByText('No annotations match your search.')).toBeVisible();
 });
 
+test('row Edit precedes Delete and opens comment editing without Markdown', async ({ page }) => {
+	const state = await setup(page);
+	const row = entry(page, 4);
+	const edit = row.locator('[data-rp7-edit]');
+	await expect(edit).toBeVisible();
+	expect(await edit.evaluate((button) => button.nextElementSibling?.hasAttribute('data-rp7-delete'))).toBe(true);
+	await edit.click();
+	const dialog = detail(page);
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByRole('textbox')).toBeVisible();
+	await expect(dialog.locator('.cm-editor, .reader-note-preview')).toHaveCount(0);
+	await dialog.getByRole('textbox').fill('A plain **comment**');
+	await dialog.getByRole('button', { name: 'Save note' }).click();
+	await expect.poll(() => state.pushes.some((row) =>
+		row.entity === 'notes' && row.data.highlight_id === id(4) && row.data.body_md === 'A plain **comment**'
+	)).toBe(true);
+	await dialog.getByRole('button', { name: 'Close annotation details' }).click();
+	await expect(edit).toBeFocused();
+});
+
+test('row Edit updates inserted text without changing its rectangle', async ({ page }) => {
+	const state = await setup(page);
+	await entry(page, 31).locator('[data-rp7-edit]').click();
+	await detail(page).getByRole('textbox', { name: 'Text', exact: true }).fill('Edited inserted text');
+	await detail(page).getByRole('button', { name: 'Done', exact: true }).click();
+	await expect.poll(() => state.pushes.find((row) =>
+		row.entity === 'page_annotations' && row.id === id(31) && row.op === 'upsert'
+	)?.data).toMatchObject({
+		locator: inserts[0].locator,
+		data: { text: 'Edited inserted text', color: '#112233', size: 0.02 }
+	});
+	await detail(page).getByRole('button', { name: 'Close annotation details' }).click();
+	await expect(entry(page, 31)).toContainText('Edited inserted text');
+});
+
+for (const [kind, number] of [['drawing', 32], ['image', 33]] as const) {
+	test(`row Edit selects the ${kind} on its page for keyboard movement`, async ({ page }) => {
+		const state = await setup(page);
+		await entry(page, number).locator('[data-rp7-edit]').click();
+		await expect(detail(page)).toHaveCount(0);
+		const frame = page.getByRole('group', { name: 'Selected annotation', exact: true });
+		await expect(frame).toBeVisible();
+		await expect(frame).toBeFocused();
+		await frame.press('ArrowRight');
+		await expect.poll(() => state.pushes.find((row) =>
+			row.entity === 'page_annotations' && row.id === id(number) && row.op === 'upsert'
+		)?.data.locator).toMatchObject({
+			page: 2, rect: { y: number === 33 ? 0.4 : rect.y, width: rect.width, height: rect.height }
+		});
+		const mutation = state.pushes.find((row) => row.entity === 'page_annotations' && row.id === id(number));
+		expect((mutation?.data.locator as { rect: { x: number } }).rect.x).toBeCloseTo(0.105);
+	});
+}
+
 test('two-step deletion resets on blur and timeout, announces, and can be undone', async ({ page }) => {
 	const state = await setup(page);
 	const remove = entry(page, 1).locator('[data-rp7-delete]');
@@ -183,7 +237,7 @@ test('two-step deletion resets on blur and timeout, announces, and can be undone
 	await expect.poll(() => state.pushes.some((row) => row.entity === 'page_annotations' && row.id === id(31) && row.op === 'delete')).toBe(true);
 });
 
-test('dialog shows full text and sanitized comments, traps focus, edits and restores focus', async ({ page }) => {
+test('dialog shows full text and plain comments, traps focus, edits and restores focus', async ({ page }) => {
 	const state = await setup(page);
 	await expand(page, 1).click();
 	const dialog = detail(page);
@@ -192,7 +246,8 @@ test('dialog shows full text and sanitized comments, traps focus, edits and rest
 	await expect(dialog.locator('blockquote')).toHaveText(fullText);
 	await expect(dialog.getByText('Black', { exact: true })).toBeVisible();
 	await expect(dialog.locator('[data-note-id]')).toHaveCount(2);
-	await expect(dialog.locator('[data-note-id]').first().locator('strong')).toHaveText('comment');
+	await expect(dialog.locator('[data-note-id]').first()).toContainText(initialNotes[0].body_md);
+	await expect(dialog.locator('[data-note-id] strong')).toHaveCount(0);
 	await expect(dialog.locator('[data-note-id] img')).toHaveCount(0);
 	expect(await page.evaluate(() => (window as Window & { __unsafe?: number }).__unsafe)).toBeUndefined();
 	await expect(dialog.getByRole('button', { name: 'Close annotation details' })).toBeFocused();
@@ -202,9 +257,9 @@ test('dialog shows full text and sanitized comments, traps focus, edits and rest
 	await expect(dialog.getByRole('button', { name: 'Close annotation details' })).toBeFocused();
 
 	await dialog.locator(`[data-note-id="${id(11)}"]`).getByRole('button', { name: 'Edit note' }).click();
-	await dialog.getByRole('textbox', { name: 'Note in Markdown' }).fill('Edited **中文** comment');
+	await dialog.getByRole('textbox').fill('Edited **中文** comment');
 	await dialog.getByRole('button', { name: 'Save note' }).click();
-	await expect(dialog.getByText('中文', { exact: true })).toBeVisible();
+	await expect(dialog.getByText('Edited **中文** comment', { exact: true })).toBeVisible();
 	await expect(entry(page, 1).locator('.rp7-comment')).toHaveText('Edited 中文 comment');
 	await expect.poll(() => state.pushes.some((row) => row.entity === 'notes' && row.data.body_md === 'Edited **中文** comment')).toBe(true);
 	await page.keyboard.press('Escape');
@@ -213,7 +268,7 @@ test('dialog shows full text and sanitized comments, traps focus, edits and rest
 
 	await expand(page, 2).click();
 	await detail(page).getByRole('button', { name: 'Add comment' }).click();
-	await detail(page).getByRole('textbox', { name: 'Note in Markdown' }).fill('New **comment**');
+	await detail(page).getByRole('textbox').fill('New **comment**');
 	await detail(page).getByRole('button', { name: 'Save note' }).click();
 	await expect(entry(page, 2).locator('.rp7-comment')).toHaveText('New comment');
 	await detail(page).getByRole('button', { name: 'Close annotation details' }).click();
@@ -224,12 +279,12 @@ test('closing a dialog protects an unsaved comment draft', async ({ page }) => {
 	await setup(page);
 	await expand(page, 1).click();
 	await detail(page).getByRole('button', { name: 'Add comment' }).click();
-	await detail(page).getByRole('textbox', { name: 'Note in Markdown' }).fill('Unfinished comment');
+	await detail(page).getByRole('textbox').fill('Unfinished comment');
 	page.removeAllListeners('dialog');
 	page.on('dialog', (dialog) => dialog.dismiss());
 	await page.keyboard.press('Escape');
 	await expect(detail(page)).toBeVisible();
-	await expect(detail(page).getByRole('textbox', { name: 'Note in Markdown' })).toContainText('Unfinished comment');
+	await expect(detail(page).getByRole('textbox')).toHaveValue('Unfinished comment');
 	page.removeAllListeners('dialog');
 	page.on('dialog', (dialog) => dialog.accept());
 	await page.keyboard.press('Escape');
@@ -299,13 +354,13 @@ test('a failed delete keeps the dialog open, restores the entry, and reports the
 	await expect(entry(page, 31)).toBeVisible();
 });
 
-test('revealing a comment marker clears a hiding search, focuses and flashes its entry', async ({ page }) => {
+test('opening a comment marker reveals its entry and focuses the sticky note', async ({ page }) => {
 	await setup(page);
 	await panel(page).getByRole('searchbox').fill('not present');
 	await expect(entry(page, 1)).toHaveCount(0);
 	await page.locator(`.pv-mark-comment[data-annotation-id="${id(1)}"]`).click();
 	await expect(panel(page).getByRole('searchbox')).toHaveValue('');
-	await expect(entry(page, 1).locator('[data-panel-jump]')).toBeFocused();
+	await expect(page.getByRole('dialog', { name: 'Edit comment', exact: true }).getByRole('textbox')).toBeFocused();
 	await expect(entry(page, 1)).toHaveClass(/rp7-entry-flash/);
 });
 

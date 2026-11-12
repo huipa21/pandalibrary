@@ -1,4 +1,12 @@
 declare module 'foliate-js/view.js' {
+	export interface FoliateAnnotation {
+		id?: string;
+		value: string;
+		color: string;
+		style?: 'highlight' | 'underline' | 'strikeout';
+		hasNote?: boolean;
+	}
+
 	export interface FoliateTocItem {
 		label: string;
 		href?: string;
@@ -8,8 +16,20 @@ declare module 'foliate-js/view.js' {
 	export interface FoliateSection {
 		load?(): string | Promise<string>;
 		unload?(): void;
+		createDocument?(): Document | Promise<Document>;
 		linear?: string;
 	}
+
+	export interface FoliateSearchMatch {
+		cfi: string;
+		excerpt: { pre: string; match: string; post: string };
+	}
+
+	export type FoliateSearchResult =
+		| { progress: number }
+		| { label: string; subitems: FoliateSearchMatch[] }
+		| FoliateSearchMatch
+		| 'done';
 
 	export interface FoliateBook {
 		sections: FoliateSection[];
@@ -40,8 +60,10 @@ declare module 'foliate-js/view.js' {
 		next(): Promise<void>;
 		getCFI(index: number, range?: Range): string;
 		resolveNavigation(target: string): FoliateResolved | undefined;
-		addAnnotation(annotation: { value: string; color: string }): Promise<unknown>;
-		deleteAnnotation(annotation: { value: string; color: string }): Promise<unknown>;
+		addAnnotation(annotation: FoliateAnnotation): Promise<unknown>;
+		deleteAnnotation(annotation: FoliateAnnotation): Promise<unknown>;
+		search(options: { query: string }): AsyncGenerator<FoliateSearchResult, void, unknown>;
+		clearSearch(): void;
 	}
 
 	export function makeBook(file: File): Promise<FoliateBook>;
@@ -49,6 +71,15 @@ declare module 'foliate-js/view.js' {
 
 declare module 'foliate-js/overlayer.js' {
 	export class Overlayer {
-		static highlight(rects: DOMRect[], options: { color: string }): SVGElement;
+		static highlight(rects: DOMRect[], options: { color: string; writingMode?: string }): SVGElement;
+		static underline(rects: DOMRect[], options: { color: string; writingMode?: string }): SVGElement;
+		static strikethrough(rects: DOMRect[], options: { color: string; writingMode?: string }): SVGElement;
 	}
+
+}
+
+declare module 'foliate-js/epubcfi.js' {
+	export function fromRange(range: Range): string;
+	export function parse(cfi: string): unknown;
+	export function toRange(doc: Document, parts: unknown): Range;
 }

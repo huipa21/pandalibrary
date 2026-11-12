@@ -25,6 +25,7 @@ export interface ReaderAnnotation {
 	locator: ReaderLocator;
 	color: string;
 	style?: HighlightStyle;
+	hasNote?: boolean;
 }
 
 export type PdfLayout = 'single' | 'single-continuous' | 'split' | 'split-continuous';

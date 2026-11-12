@@ -77,6 +77,45 @@ describe('annotation list', () => {
 		expect(filterEntries(entities.entries, 'tea & coffee ©')).toHaveLength(1);
 	});
 
+	it('lists current-file CFI marks in reading order with attached comments', () => {
+		const cfi = (id: string, position: number): Highlight => ({
+			...highlight(id, 1), position, locator: { type: 'cfi', value: 'epubcfi(/6/2)' }
+		});
+		const list = buildAnnotationList({
+			fileId: 31, locatorType: 'cfi',
+			highlights: [
+				cfi('later', 0.8), cfi('first', 0.1), cfi('tied', 0.1),
+				{ ...cfi('deleted', 0), deleted_at: 'today' }
+			],
+			notes: [note('attached', 'first', '**Café** 中文'), note('book', null)],
+			pageAnnotations: []
+		});
+		expect(list.entries.map((entry) => entry.id)).toEqual(['first', 'tied', 'later']);
+		expect(list.entries[0]).toMatchObject({
+			page: null, y: 0, commentExcerpt: '**Café** 中文',
+			notes: [{ id: 'attached' }]
+		});
+		expect(filterEntries(list.entries, 'CAFE').map((entry) => entry.id)).toEqual(['first']);
+		expect(list.count).toBe(3);
+		expect(list.bookNotes.map((entry) => entry.id)).toEqual(['book']);
+	});
+
+	it('keeps other-file and incompatible locators read-only in a CFI list', () => {
+		const list = buildAnnotationList({
+			fileId: 31, locatorType: 'cfi',
+			highlights: [
+				{ ...highlight('current', 1), locator: { type: 'cfi', value: 'epubcfi(/6/2)' } },
+				{ ...highlight('other', 1), book_file_id: 32, locator: { type: 'cfi', value: 'epubcfi(/6/2)' } },
+				highlight('pdf', 1),
+				{ ...highlight('invalid', 1), locator: { type: 'cfi', value: '' } }
+			],
+			notes: [], pageAnnotations: [insert]
+		});
+		expect(list.entries.map((entry) => entry.id)).toEqual(['current']);
+		expect(list.otherFile.map((entry) => entry.id).sort()).toEqual(['invalid', 'other', 'pdf', 'text']);
+		expect(list.count).toBe(1);
+	});
+
 	it('strips Markdown from the first comment and caps excerpts at 160 code points', () => {
 		expect(markdownExcerpt('# Heading\n\nA **bold** [link](https://example.com) and `code`.')).toBe('Heading A bold link and code.');
 		expect(markdownExcerpt('中**文**测试\n\n- one\n- two')).toBe('中文测试 one two');

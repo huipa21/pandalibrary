@@ -94,6 +94,16 @@ export function textMarkPainter(
 					marker.dataset.annotationId = mark.id;
 					marker.setAttribute('aria-label', label);
 					marker.title = label;
+					const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+					icon.setAttribute('viewBox', '0 0 16 16');
+					icon.setAttribute('aria-hidden', 'true');
+					const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+					path.setAttribute('d', 'M3 1.5h7l3 3v10H3z M10 1.5v3h3 M5 7h6 M5 10h6');
+					path.setAttribute('fill', 'none');
+					path.setAttribute('stroke', 'currentColor');
+					path.setAttribute('stroke-linejoin', 'round');
+					icon.append(path);
+					marker.append(icon);
 					marker.style.left = `${(last.x + last.width) * 100}%`;
 					marker.style.top = `${last.y * 100}%`;
 					marker.style.setProperty('--pv-mark', resolveMarkColor(mark.color));

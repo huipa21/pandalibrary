@@ -4,7 +4,7 @@ import { buildMarks, foldText } from '#lib/bookview/highlights/highlights-model.
 import * as m from '#lib/paraglide/messages.js';
 import { resolveMarkColor } from '../../../annotations.js';
 import {
-	isPdfLocator, type Highlight, type HighlightStyle, type NormalizedRect, type Note, type PageAnnotation
+	isCfiLocator, isPdfLocator, type Highlight, type HighlightStyle, type NormalizedRect, type Note, type PageAnnotation
 } from '../../../types.js';
 
 interface EntryBase {
@@ -109,11 +109,15 @@ export function buildAnnotationList(input: {
 	notes: readonly Note[];
 	pageAnnotations: readonly PageAnnotation[];
 	fileId: number;
+	locatorType?: 'pdf' | 'cfi';
 }) {
 	const entries: AnnotationEntry[] = [];
 	const otherFile: AnnotationEntry[] = [];
 	function add(entry: AnnotationEntry) {
-		(entry.row.book_file_id === input.fileId && entry.page !== null ? entries : otherFile).push(entry);
+		const compatible = input.locatorType === 'cfi'
+			? entry.kind === 'mark' && isCfiLocator(entry.row.locator)
+			: entry.page !== null;
+		(entry.row.book_file_id === input.fileId && compatible ? entries : otherFile).push(entry);
 	}
 	for (const row of buildMarks(input.highlights, input.notes)) {
 		const locator = isPdfLocator(row.locator) ? row.locator : null;
@@ -121,7 +125,9 @@ export function buildAnnotationList(input: {
 		add({
 			id: row.id, kind: 'mark', row, page: locator?.page ?? null, y: rect?.y ?? 0, rect,
 			createdAt: row.created_at, updatedAt: row.updated_at, excerpt: excerpt(row.text),
-			notes: row.notes, commentExcerpt: row.notes[0] ? markdownExcerpt(row.notes[0].body_md) : '',
+			notes: row.notes, commentExcerpt: row.notes[0]
+				? input.locatorType === 'cfi' ? excerpt(row.notes[0].body_md) : markdownExcerpt(row.notes[0].body_md)
+				: '',
 			swatch: { kind: 'mark', style: row.style ?? 'highlight', hex: resolveMarkColor(row.color) }
 		});
 	}
@@ -138,7 +144,9 @@ export function buildAnnotationList(input: {
 	const compare = (a: AnnotationEntry, b: AnnotationEntry) =>
 		(a.page ?? Infinity) - (b.page ?? Infinity) || a.y - b.y ||
 		a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
-	entries.sort(compare);
+	entries.sort(input.locatorType === 'cfi'
+		? (a, b) => a.row.position - b.row.position || compare(a, b)
+		: compare);
 	otherFile.sort(compare);
 	return {
 		entries, otherFile,

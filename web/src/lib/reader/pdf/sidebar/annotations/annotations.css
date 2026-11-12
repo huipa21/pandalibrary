@@ -39,6 +39,7 @@
 	text-align: left;
 	cursor: pointer;
 }
+.rp7-entry-editable { grid-template-columns: minmax(0, 1fr) 28px 28px; }
 .rp7-entry-body:disabled { cursor: default; }
 .rp7-swatch { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; }
 .rp7-fill { box-sizing: border-box; border: 1px solid rgb(0 0 0 / 25%); border-radius: 3px; }
@@ -48,7 +49,7 @@
 .rp7-excerpt { grid-column: 3 / 5; }
 .rp7-comment { grid-column: 1 / 4; grid-row: 2; min-width: 0; opacity: 0.75; font-style: italic; }
 .rp7-page { grid-column: 4; grid-row: 2; }
-.rp7-delete-button, .rp7-expand, .rp7-icon-button {
+.rp7-edit, .rp7-delete-button, .rp7-expand, .rp7-icon-button {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -64,13 +65,15 @@
 }
 .rp7-entry > .rp7-delete-button { grid-column: 2; grid-row: 1; }
 .rp7-expand { grid-column: 2; grid-row: 2; }
+.rp7-edit { grid-column: 2; grid-row: 1; }
+.rp7-entry-editable > .rp7-delete-button, .rp7-entry-editable > .rp7-expand { grid-column: 3; }
 .rp7-action-spacer { grid-column: 2; grid-row: 1; }
-.rp7-delete-button:hover, .rp7-expand:hover, .rp7-icon-button:hover, .rp7-entry-body:not(:disabled):hover { background: rgb(127 127 127 / 12%); }
+.rp7-edit:not(:disabled):hover, .rp7-delete-button:hover, .rp7-expand:hover, .rp7-icon-button:hover, .rp7-entry-body:not(:disabled):hover { background: rgb(127 127 127 / 12%); }
 .rp7-tab button:not(.control-button):focus-visible, .rp7-dialog button:focus-visible {
 	outline: 2px solid #059669;
 	outline-offset: -2px;
 }
-.rp7-delete-button:disabled, .rp7-footer-button:disabled { opacity: 0.5; cursor: default; }
+.rp7-edit:disabled, .rp7-delete-button:disabled, .rp7-footer-button:disabled { opacity: 0.5; cursor: default; }
 .rp7-entry > .rp7-delete-confirm {
 	position: absolute;
 	top: 0;

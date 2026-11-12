@@ -1,7 +1,7 @@
 import { v7 as uuidv7 } from 'uuid';
 import type { Mutation } from './api.js';
 import {
-	isLocatorForFormat, type Highlight, type HighlightStyle, type ReaderAnnotation, type ReaderFormat, type ReaderSelection
+	isLocatorForFormat, type Highlight, type HighlightStyle, type Note, type ReaderAnnotation, type ReaderFormat, type ReaderSelection
 } from './types.js';
 
 export type { HighlightStyle } from './types.js';
@@ -75,12 +75,14 @@ function bytes(value: string): number {
 export function annotationForReader(
 	highlight: Highlight,
 	fileId: number,
-	format: ReaderFormat
+	format: ReaderFormat,
+	notes: readonly Note[] = []
 ): ReaderAnnotation | null {
 	if (highlight.book_file_id !== fileId || !isLocatorForFormat(highlight.locator, format)) return null;
 	return {
 		id: highlight.id, locator: highlight.locator, color: highlight.color,
-		style: highlight.style ?? 'highlight'
+		style: highlight.style ?? 'highlight',
+		hasNote: notes.some((note) => note.highlight_id === highlight.id && !note.deleted_at && !!note.body_md.trim())
 	};
 }
 

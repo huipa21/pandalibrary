@@ -7,7 +7,7 @@
 	import { entryLabel } from './labels.js';
 	import DeleteButton from './DeleteButton.svelte';
 
-	let { entry, index, size, busy, readonly = false, flashed = false, onjump, ondelete, onexpand, onkey }: {
+	let { entry, index, size, busy, readonly = false, flashed = false, onjump, onedit, ondelete, onexpand, onkey }: {
 		entry: AnnotationEntry;
 		index: number;
 		size: number;
@@ -15,9 +15,10 @@
 		readonly?: boolean;
 		flashed?: boolean;
 		onjump: (entry: AnnotationEntry) => Promise<boolean>;
+		onedit?: (entry: AnnotationEntry, trigger: HTMLButtonElement) => void;
 		ondelete: (entry: AnnotationEntry) => Promise<boolean>;
 		onexpand: (entry: AnnotationEntry, trigger: HTMLButtonElement, readonly: boolean) => void;
-		onkey?: (event: KeyboardEvent, index: number, part: 'body' | 'delete' | 'expand') => void;
+		onkey?: (event: KeyboardEvent, index: number, part: 'body' | 'edit' | 'delete' | 'expand') => void;
 	} = $props();
 	const label = $derived(entry.excerpt || entryLabel(entry));
 	const stamp = $derived(formatStamp(entry.createdAt, new Date(), getLocale()));
@@ -28,6 +29,7 @@
 
 <li
 	class="rp7-entry"
+	class:rp7-entry-editable={!readonly && !!onedit}
 	class:rp7-entry-flash={flashed}
 	data-panel-entry={entry.id}
 	data-panel-kind={entry.kind}
@@ -59,6 +61,18 @@
 		<span class="rp7-page">{entry.page === null ? '' : m['rp7.page']({ page: entry.page })}</span>
 	</button>
 	{#if !readonly}
+		{#if onedit}
+			<button
+				type="button"
+				class="rp7-edit"
+				data-rp7-edit
+				aria-label={`${m['reader.annotations.edit']()}: ${label}`}
+				title={m['reader.annotations.edit']()}
+				disabled={busy}
+				onclick={(event) => onedit?.(entry, event.currentTarget)}
+				onkeydown={(event) => onkey?.(event, index, 'edit')}
+			><Icon name="pencil" class="size-4" /></button>
+		{/if}
 		<DeleteButton
 			excerpt={label}
 			{busy}

@@ -16,7 +16,7 @@
 	let scrollRoot = $state<HTMLElement>();
 	let query = $state('');
 	let otherOpen = $state(false);
-	let selected = $state<{ entry: AnnotationEntry; readonly: boolean; trigger: HTMLButtonElement } | null>(null);
+	let selected = $state<{ entry: AnnotationEntry; readonly: boolean; trigger: HTMLButtonElement; editing: boolean } | null>(null);
 	let reveal = $state<{ id: string; seq: number; other: boolean } | null>(null);
 	let flashed = $state<AnnotationEntry | null>(null);
 	let undo = $state<Parameters<typeof controller.restoreDeletedAnnotation>[0] | null>(null);
@@ -137,7 +137,17 @@
 	}
 
 	function expand(entry: AnnotationEntry, trigger: HTMLButtonElement, readonly: boolean) {
-		selected = { entry, readonly, trigger };
+		selected = { entry, readonly, trigger, editing: false };
+	}
+	async function edit(entry: AnnotationEntry, trigger: HTMLButtonElement) {
+		if (!canDiscard()) return;
+		if (entry.kind === 'ink' || entry.kind === 'image') {
+			if (await jump(entry)) {
+				ctx.engine.viewport.dispatchEvent(new CustomEvent('reader-edit-insert', { detail: entry.id }));
+			}
+			return;
+		}
+		selected = { entry, readonly: false, trigger, editing: true };
 	}
 	function closeDialog(restoreFocus: boolean, checkDraft = true) {
 		if (checkDraft && !canDiscard()) return;
@@ -192,6 +202,7 @@
 			busy={controller.busy}
 			target={reveal && !reveal.other ? reveal : null}
 			onjump={jump}
+			onedit={edit}
 			ondelete={remove}
 			onexpand={expand}
 		/>
@@ -223,6 +234,7 @@
 	<AnnotationDialog
 		entry={dialogEntry}
 		readonly={selected.readonly}
+		editComments={selected.editing}
 		{controller}
 		{registerGuard}
 		ondeleteNote={removeNote}

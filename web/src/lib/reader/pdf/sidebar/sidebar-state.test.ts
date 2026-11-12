@@ -24,6 +24,23 @@ function media(matches: boolean) {
 }
 
 describe('sidebar state', () => {
+	it('persists search across text readers but rejects it for CBZ without bypassing tab guards', () => {
+		const storage = memory();
+		const sidebar = createSidebarState({ storage, matchMedia: null });
+		sidebar.show('annotations');
+		const unregister = sidebar.registerGuard(() => false);
+		sidebar.show('search');
+		expect(sidebar.tab).toBe('annotations');
+		unregister();
+		sidebar.show('search');
+		const reflow = createSidebarState({ storage, matchMedia: null, tabs: ['toc', 'annotations', 'bookmarks', 'search'] });
+		expect([reflow.open, reflow.tab]).toEqual([true, 'search']);
+		const cbz = createSidebarState({ storage, matchMedia: null, tabs: ['toc', 'annotations', 'bookmarks'] });
+		expect([cbz.open, cbz.tab]).toEqual([true, 'toc']);
+		cbz.show('search');
+		expect(cbz.tab).toBe('toc');
+	});
+
 	it('restores a supported tab when moving from PDF to a reflowable reader', () => {
 		const sidebar = createSidebarState({
 			storage: memory('{"open":true,"tab":"pages"}'), matchMedia: null,

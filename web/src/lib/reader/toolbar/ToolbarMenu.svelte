@@ -9,11 +9,12 @@
 		icon?: IconName;
 		text?: string;
 		open?: boolean;
+		disabled?: boolean;
 		children: Snippet;
 		align?: 'start' | 'end';
 	}
 
-	let { label, icon, text, open = $bindable(false), children, align = 'end' }: Props = $props();
+	let { label, icon, text, open = $bindable(false), disabled = false, children, align = 'end' }: Props = $props();
 	const id = $props.id();
 	const nested = getContext<boolean>('pv4-menu') ?? false;
 	setContext('pv4-menu', true);
@@ -44,8 +45,10 @@
 	}
 
 	async function show(last = false) {
+		if (disabled) return;
 		open = true;
 		await tick();
+		if (!open || disabled) return;
 		(last ? items().at(-1) : items()[0])?.focus();
 	}
 
@@ -91,6 +94,10 @@
 	}
 
 	$effect(() => {
+		if (disabled) {
+			open = false;
+			return;
+		}
 		if (!open) return;
 		if (!nested) window.dispatchEvent(new CustomEvent('pv4-menu-open', { detail: id }));
 		void tick().then(position);
@@ -119,6 +126,7 @@
 	<button
 		bind:this={trigger}
 		type="button"
+		{disabled}
 		class={nested ? 'pv4-item' : `pv4-button ${text ? 'pv4-text-button' : ''}`}
 		role={nested ? 'menuitem' : undefined}
 		aria-label={label}

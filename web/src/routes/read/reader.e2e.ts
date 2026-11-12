@@ -1,4 +1,5 @@
 import { expect, test, type Frame, type Page, type Route } from '@playwright/test';
+import type { View } from 'foliate-js/view.js';
 import { azw3Fixture, cbzFixture, epubFixture, fb2Fixture, fbzFixture, mobiFixture, pdfFixture } from '../../lib/reader/fixtures';
 import { pdfPageBox, pdfPageText } from '../../lib/real-pdf.js';
 import axe from 'axe-core';
@@ -160,6 +161,22 @@ async function bookFrame(page: Page, text?: string): Promise<Frame> {
 	return frame;
 }
 
+async function expectReaderToolbarFits(page: Page) {
+	const toolbar = page.locator('.pv4-toolbar');
+	await expect(toolbar).toHaveCSS('height', '44px');
+	expect(await toolbar.evaluate((element) => {
+		const viewport = { width: document.documentElement.clientWidth, height: window.innerHeight };
+		const toolbar = element.getBoundingClientRect();
+		return Array.from(element.querySelectorAll('button')).flatMap((button) => {
+			if (!button.getClientRects().length) return [];
+			const box = button.getBoundingClientRect();
+			return box.left >= 0 && box.right <= viewport.width && box.top >= 0 &&
+				box.bottom <= viewport.height && box.top >= toolbar.top && box.bottom <= toolbar.bottom
+				? [] : [{ label: button.getAttribute('aria-label') ?? button.textContent, x: box.x, y: box.y, width: box.width, height: box.height }];
+		});
+	})).toEqual([]);
+}
+
 test('isolates EPUB scripts and round-trips progress, highlights, notes and settings', async ({ page }) => {
 	const state = await setupReader(page, 'epub', epubFixture());
 	await useProductionCsp(page);
@@ -225,16 +242,18 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	await expect(page.getByText('A passage worth highlighting.')).toBeVisible();
 	await page.getByRole('button', { name: 'Highlight selection' }).click();
 	await expect.poll(() => state.highlights.length).toBe(1);
-	const highlight = page.locator('blockquote').filter({ hasText: 'A passage worth highlighting.' }).locator('..');
-	await highlight.getByRole('button', { name: 'Add note to highlight' }).click();
-	await page.getByRole('textbox', { name: 'Note in Markdown' }).fill('**Keep this** <img src=x onerror="window.top.__noteAttack=true"><script>window.top.__noteAttack=true</script>');
-	await expect(page.locator('.reader-note-preview strong')).toHaveText('Keep this');
-	await expect(page.locator('.reader-note-preview img, .reader-note-preview script')).toHaveCount(0);
+	const highlight = page.locator('.rp7-entry').filter({ hasText: 'A passage worth highlighting.' });
+	await highlight.locator('.rp7-edit').click();
+	await page.getByRole('dialog').getByRole('button', { name: 'Add note to highlight' }).click();
+	const comment = '**Keep this** <img src=x onerror="window.top.__noteAttack=true"><script>window.top.__noteAttack=true</script>';
+	await page.getByRole('textbox', { name: 'Comment', exact: true }).fill(comment);
+	await expect(page.locator('.reader-note-preview')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Save note' }).click();
 	await expect.poll(() => state.notes.length).toBe(1);
 	await expect(page.getByRole('button', { name: 'Add book note' })).toHaveCount(0);
-	await highlight.getByLabel('Highlight color').selectOption('blue');
+	await page.getByRole('dialog').getByLabel('Highlight color').selectOption('blue');
 	await expect.poll(() => state.highlights[0]?.color).toBe('blue');
+	await page.getByRole('button', { name: 'Close annotation details' }).click();
 
 	await page.getByRole('button', { name: 'More view options' }).click();
 	await page.getByRole('menuitem', { name: 'Format', exact: true }).click();
@@ -263,19 +282,25 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 	frame = await bookFrame(page, 'Second section');
 	await expect(frame.getByText('Second section')).toBeVisible();
-	await expect(page.locator('.reader-markdown strong')).toHaveText('Keep this');
+	const annotationsTab = page.getByRole('tab', { name: 'Annotations', exact: true });
+	if (await annotationsTab.getAttribute('aria-selected') !== 'true') await annotationsTab.click();
+	await expect(highlight.locator('.rp7-comment')).toContainText('**Keep this**');
 	await expect(page.getByText('Book-level note')).toHaveCount(0);
-	await expect(page.locator('.reader-markdown img, .reader-markdown script')).toHaveCount(0);
-	await page.getByRole('button', { name: 'Go to highlight' }).click();
+	await expect(highlight.locator('img, script, strong')).toHaveCount(0);
+	await highlight.locator('[data-panel-jump]').click();
 	await expect.poll(() => page.evaluate(() => (window as Window & { __readerDraws?: number }).__readerDraws ?? 0)).toBeGreaterThan(0);
-	await highlight.getByRole('button', { name: 'Edit', exact: true }).click();
-	await page.getByRole('textbox', { name: 'Note in Markdown' }).fill('Edited note');
+	if (await annotationsTab.getAttribute('aria-selected') !== 'true') await annotationsTab.click();
+	await highlight.locator('.rp7-edit').click();
+	await expect(page.getByRole('dialog').getByText(comment, { exact: true })).toBeVisible();
+	await page.getByRole('dialog').getByRole('button', { name: 'Edit', exact: true }).click();
+	await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Edited note');
 	await page.getByRole('button', { name: 'Save note' }).click();
 	await expect.poll(() => state.notes.find((note) => note.highlight_id !== null)?.body_md).toBe('Edited note');
-	await highlight.getByRole('button', { name: 'Delete', exact: true }).last().click();
+	await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
 	await expect.poll(() => state.notes.length).toBe(0);
-	await expect(highlight.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(1);
-	await highlight.getByRole('button', { name: 'Delete', exact: true }).click();
+	await page.getByRole('button', { name: 'Close annotation details' }).click();
+	await highlight.locator('[data-rp7-delete]').click();
+	await highlight.locator('[data-rp7-delete]').click();
 	await expect.poll(() => state.highlights.length).toBe(0);
 	expect(await page.evaluate(() => (window as Window & { __noteAttack?: boolean }).__noteAttack)).toBeUndefined();
 	expect(externalScriptRequests).toBe(0);
@@ -535,6 +560,186 @@ test('RP9 EPUB Format changes live typography and background and saves both scop
 	await expect(frame.locator('html')).toHaveCSS('color-scheme', 'dark');
 });
 
+test('EPUB view menus change size and flow without exposing PDF tools', async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const state = await setupReader(page, 'epub', epubFixture());
+	await page.goto('/read/21/31');
+	const frame = await bookFrame(page, 'First section');
+	const bodySize = () => frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize));
+	const initialSize = await bodySize();
+	await expectReaderToolbarFits(page);
+	await expect(page.getByRole('button', { name: 'Select tool', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Hand tool', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Insert text, drawing or image', exact: true })).toHaveCount(0);
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Highlight selection', exact: true })).toBeDisabled();
+	await page.keyboard.press('Escape');
+	await frame.evaluate(() => {
+		const passage = document.querySelector('#passage');
+		if (!passage) throw new Error('Missing passage');
+		const range = document.createRange();
+		range.selectNodeContents(passage);
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event('selectionchange'));
+	});
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Highlight selection', exact: true })).toBeEnabled();
+	await page.getByRole('menuitem', { name: 'Highlight selection', exact: true }).click();
+	await expect.poll(() => state.highlights.map((highlight) => highlight.text)).toEqual(['A passage worth highlighting.']);
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Add book note', exact: true }).click();
+	await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('A private toolbar note');
+	await page.getByRole('button', { name: 'Save note', exact: true }).click();
+	await expect.poll(() => state.notes.some((note) => note.highlight_id === null && note.body_md === 'A private toolbar note')).toBe(true);
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Save position', exact: true }).click();
+	await expect(page.getByRole('tab', { name: 'Bookmarks', exact: true })).toHaveAttribute('aria-selected', 'true');
+	await expect(page.getByRole('heading', { name: 'New bookmark', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+	const size = page.getByRole('button', { name: 'Size', exact: true });
+	await size.focus();
+	await size.press('ArrowDown');
+	await expect(page.getByRole('menuitemradio', { name: '50%', exact: true })).toBeFocused();
+	await page.keyboard.press('Enter');
+	await expect.poll(bodySize).toBeCloseTo(initialSize * 0.5, 2);
+	await expect(size).toBeFocused();
+	await size.press('ArrowDown');
+	await expect(page.getByRole('menuitem', { name: 'Decrease font size', exact: true })).toBeDisabled();
+	await expect(page.getByRole('menuitem', { name: 'Increase font size', exact: true })).toBeEnabled();
+	await page.keyboard.press('End');
+	await expect(page.getByRole('menuitem', { name: 'Increase font size', exact: true })).toBeFocused();
+	await page.keyboard.press('ArrowUp');
+	await expect(page.getByRole('menuitemradio', { name: '200%', exact: true })).toBeFocused();
+	await page.keyboard.press('Enter');
+	await expect.poll(bodySize).toBeCloseTo(initialSize * 2, 2);
+	await size.press('ArrowDown');
+	await expect(page.getByRole('menuitem', { name: 'Increase font size', exact: true })).toBeDisabled();
+	await expect(page.getByRole('menuitem', { name: 'Decrease font size', exact: true })).toBeEnabled();
+	await page.getByRole('menuitemradio', { name: '100%', exact: true }).click();
+	await size.click();
+	await page.getByRole('menuitem', { name: 'Increase font size', exact: true }).click();
+	await expect.poll(bodySize).toBeCloseTo(initialSize * 1.1, 2);
+	await page.keyboard.press('Escape');
+	await expect(size).toBeFocused();
+	await page.getByRole('button', { name: 'Page display', exact: true }).click();
+	await expect(page.getByRole('menuitemradio', { name: 'Pages', exact: true })).toHaveAttribute('aria-checked', 'true');
+	await page.getByRole('menuitemradio', { name: 'Scroll', exact: true }).click();
+	await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('flow'))).toBe('scrolled');
+	await page.getByRole('button', { name: 'Page display', exact: true }).click();
+	await expect(page.getByRole('menuitemradio', { name: 'Scroll', exact: true })).toHaveAttribute('aria-checked', 'true');
+	await expect(page.getByRole('menuitemcheckbox')).toHaveCount(0);
+	await page.getByRole('menuitemradio', { name: 'Pages', exact: true }).click();
+	await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('flow'))).toBe('paginated');
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	await expectReaderToolbarFits(page);
+	await expect(page.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+	for (const label of ['Size', 'Page display', 'Format', 'Rotate']) {
+		await expect(page.getByRole('button', { name: label, exact: true })).not.toBeVisible();
+		await page.getByRole('button', { name: 'More view options', exact: true }).press('ArrowDown');
+		await page.getByRole('menuitem', { name: label, exact: true }).click();
+		if (label === 'Size') {
+			await page.getByRole('menuitem', { name: 'Decrease font size', exact: true }).click();
+			await expect.poll(bodySize).toBeCloseTo(initialSize, 2);
+		} else if (label === 'Page display') {
+			await page.getByRole('menuitemradio', { name: 'Scroll', exact: true }).click();
+			await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('flow'))).toBe('scrolled');
+		} else if (label === 'Format') {
+			const dialog = page.getByRole('dialog', { name: 'Format', exact: true });
+			await expect(dialog.getByRole('radio', { name: 'Serif', exact: true })).toBeVisible();
+			await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
+			await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value)
+				.toMatchObject({ size: 100, flow: 'scrolled', futureOption: { keep: true } });
+			await dialog.press('Escape');
+			await expect(dialog).not.toBeVisible();
+		} else {
+			await page.getByRole('menuitem', { name: 'Rotate right', exact: true }).click();
+			await expect(page.locator('foliate-view')).toHaveCSS('transform', 'matrix(0, 1, -1, 0, 0, 0)');
+		}
+		await page.keyboard.press('Escape');
+		await page.keyboard.press('Escape');
+	}
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+	await expect(page.locator('foliate-view')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
+});
+
+test('CBZ exposes zoom, backgrounds and session rotation without typography or PDF tools', async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const state = await setupReader(page, 'cbz', cbzFixture());
+	await page.goto('/read/21/31');
+	await expect((await bookFrame(page)).locator('img')).toBeVisible();
+	await expectReaderToolbarFits(page);
+	for (const label of ['Size', 'Format', 'Select tool', 'Hand tool', 'Insert text, drawing or image']) {
+		await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+	}
+	await page.getByRole('button', { name: 'Zoom', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Zoom in', exact: true })).toBeVisible();
+	await expect(page.getByRole('menuitemradio', { name: '100%', exact: true })).toHaveAttribute('aria-checked', 'true');
+	await page.getByRole('menuitemradio', { name: '150%', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Zoom', exact: true })).toHaveText('150%');
+	await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('zoom'))).toBe('1.5');
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: 'Page display', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Page display', exact: true });
+	await expect(dialog.getByRole('radio', { name: 'Serif', exact: true })).toHaveCount(0);
+	await expect(dialog.getByRole('button', { name: 'Increase spacing', exact: true })).toHaveCount(0);
+	await expect(dialog.getByRole('menuitemradio', { name: 'Pages', exact: true })).toHaveCount(0);
+	await expect(dialog.getByRole('menuitemradio', { name: 'Scroll', exact: true })).toHaveCount(0);
+	await dialog.getByRole('radio', { name: 'Sepia', exact: true }).click();
+	await expect(page.locator('#reader-surface')).toHaveAttribute('data-background', 'sepia');
+	await expect(dialog.getByRole('button', { name: 'Save settings', exact: true })).toBeVisible();
+	await expect(dialog.getByRole('button', { name: 'Save as format default', exact: true })).toBeVisible();
+	await page.keyboard.press('Escape');
+	await page.setViewportSize({ width: 390, height: 844 });
+	await expectReaderToolbarFits(page);
+	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Highlight current page', exact: true })).toBeEnabled();
+	await page.getByRole('menuitem', { name: 'Highlight current page', exact: true }).click();
+	await expect.poll(() => state.highlights.length).toBe(1);
+	await page.getByRole('button', { name: 'More view options', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Size', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('menuitem', { name: 'Format', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('menuitem', { name: 'Zoom', exact: true })).toBeVisible();
+	await page.getByRole('menuitem', { name: 'Page display', exact: true }).click();
+	await expect(dialog.getByRole('radio', { name: 'Sepia', exact: true })).toHaveAttribute('aria-checked', 'true');
+	await page.keyboard.press('Escape');
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: 'More view options', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Rotate', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Rotate left', exact: true }).click();
+	await expect(page.locator('foliate-view')).toHaveCSS('transform', 'matrix(0, -1, 1, 0, 0, 0)');
+	await page.keyboard.press('Escape');
+	await page.reload();
+	await expect((await bookFrame(page)).locator('img')).toBeVisible();
+	await expect(page.locator('foliate-view')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
+});
+
+test('Chinese EPUB header keeps localized view and Add menus usable on mobile', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await setupReader(page, 'epub', epubFixture(), { locale: 'zh' });
+	await page.goto('/read/21/31');
+	await expect(page.getByRole('button', { name: '下一页', exact: true })).toBeEnabled();
+	await expectReaderToolbarFits(page);
+	await page.getByRole('button', { name: '添加', exact: true }).click();
+	await expect(page.getByRole('menuitem')).toHaveCount(3);
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: '更多视图选项', exact: true }).click();
+	for (const label of ['字号', '页面显示', '格式', '旋转']) {
+		await expect(page.getByRole('menuitem', { name: label, exact: true })).toBeVisible();
+	}
+	await page.getByRole('menuitem', { name: '页面显示', exact: true }).focus();
+	await page.keyboard.press('ArrowRight');
+	await expect(page.getByRole('menuitemradio', { name: '翻页', exact: true })).toBeFocused();
+	await page.keyboard.press('ArrowDown');
+	await expect(page.getByRole('menuitemradio', { name: '滚动', exact: true })).toBeFocused();
+	await page.keyboard.press('Enter');
+	await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('flow'))).toBe('scrolled');
+});
+
 test('PDF free zoom preserves rotated text and highlight geometry', async ({ page }) => {
 	const state = await setupReader(page, 'pdf', pdfFixture(1));
 	state.settings = [{ key: 'reader.book.21', value: { pdfZoom: 'page-actual', pdfRotation: 90 }, updated_at: new Date().toISOString(), rev: ++state.rev }];
@@ -658,7 +863,7 @@ for (const [format, fixture] of [
 			await page.getByRole('button', { name: 'Highlight current page' }).click();
 			await expect.poll(() => state.highlights.length).toBe(1);
 			await page.reload();
-			await expect(page.getByText('Highlighted page')).toBeVisible();
+			await expect(page.locator(`[data-panel-entry="${state.highlights[0].id}"]`)).toBeVisible();
 		} else {
 			await expect(frame.getByText('A passage worth highlighting.')).toBeVisible();
 			if (format === 'mobi') await expect(frame.getByRole('link', { name: 'Start' })).toHaveAttribute('href', 'filepos:0');

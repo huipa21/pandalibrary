@@ -7,7 +7,8 @@
 		toc: { icon: 'list-tree', label: m['rp4.contents'] },
 		pages: { icon: 'copy', label: m['rp4.pages'] },
 		annotations: { icon: 'highlighter', label: m['rp4.annotations'] },
-		bookmarks: { icon: 'bookmark', label: m['rp4.bookmarks'] }
+		bookmarks: { icon: 'bookmark', label: m['rp4.bookmarks'] },
+		search: { icon: 'search', label: m['reader.search.title'] }
 	};
 	export const tabId = (tab: SidebarTab) => `pv-sidebar-tab-${tab}`;
 	export const PANEL_ID = 'pv-sidebar-panel';

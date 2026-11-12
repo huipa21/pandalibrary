@@ -480,7 +480,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				created_at: now, updated_at: now, deleted_at: null, rev: 0
 			};
 			highlights = [...highlights, highlight];
-			const annotation = annotationForReader(highlight, file.id, format);
+			const annotation = annotationForReader(highlight, file.id, format, notes);
 			if (annotation) await reader.addAnnotation(annotation);
 			selection = null;
 			return highlight;
@@ -510,12 +510,12 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 					color: nextColor, style, chapter: highlight.chapter
 				}
 			});
-			const previous = annotationForReader(highlight, file.id, format);
+			const previous = annotationForReader(highlight, file.id, format, notes);
 			const updated = { ...highlight, color: nextColor, style };
 			highlights = highlights.map((item) => item.id === highlight.id ? updated : item);
 			if (previous) {
 				await reader.removeAnnotation(previous);
-				const next = annotationForReader(updated, file.id, format);
+				const next = annotationForReader(updated, file.id, format, notes);
 				if (next) await reader.addAnnotation(next);
 			}
 			return true;
@@ -558,6 +558,15 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
+	async function refreshCommentMarker(highlightId: string | null) {
+		if (!highlightId || !reader || !file || !format || format === 'pdf') return;
+		const highlight = highlights.find((row) => row.id === highlightId);
+		const annotation = highlight && annotationForReader(highlight, file.id, format, notes);
+		if (!annotation) return;
+		await reader.removeAnnotation(annotation);
+		await reader.addAnnotation(annotation);
+	}
+
 	async function saveNote(draft: NoteDraft) {
 		if (!book || !draft || busy || !draft.body.trim()) return;
 		const current = { ...draft };
@@ -573,6 +582,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				created_at: existing?.created_at ?? now, updated_at: now, deleted_at: null, rev: existing?.rev ?? 0
 			};
 			notes = existing ? notes.map((item) => item.id === note.id ? note : item) : [...notes, note];
+			await refreshCommentMarker(note.highlight_id);
 			return true;
 		} catch (error) {
 			if (error instanceof Error && error.message === 'Note exceeds the server limit.') {
@@ -590,6 +600,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		try {
 			await saveMutation(deleteAnnotation('notes', note.id));
 			notes = notes.filter((item) => item.id !== note.id);
+			await refreshCommentMarker(note.highlight_id);
 			return true;
 		} catch (error) {
 			reportActionError(error);
@@ -686,18 +697,19 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 						text: h.text, color: h.color, style: h.style ?? 'highlight', chapter: h.chapter }
 				});
 				highlights = [...highlights.filter((item) => item.id !== h.id), { ...h, deleted_at: null }];
-				const annotation = annotationForReader(h, file.id, format);
-				if (annotation) await reader.addAnnotation(annotation);
 				for (const note of entry.notes) {
 					await saveMutation(makeNote(book.id, note.body_md, h.id, note.id));
 					notes = [...notes.filter((item) => item.id !== note.id), { ...note, deleted_at: null }];
 				}
+				const annotation = annotationForReader(h, file.id, format, notes);
+				if (annotation) await reader.addAnnotation(annotation);
 			} else if (entry.kind === 'bookmark') {
 				await saveMutation(updateBookmarkLabel(entry.row, entry.row.label));
 				bookmarks = [...bookmarks.filter((item) => item.id !== row.id), { ...entry.row, deleted_at: null }];
 			} else if (entry.kind === 'note') {
 				await saveMutation(makeNote(book.id, entry.row.body_md, entry.row.highlight_id, row.id));
 				notes = [...notes.filter((item) => item.id !== row.id), { ...entry.row, deleted_at: null }];
+				await refreshCommentMarker(entry.row.highlight_id);
 			} else {
 				await saveMutation(makePageAnnotation(book.id, file.id, entry.row, entry.row));
 				annotationVersion += 1;
@@ -798,7 +810,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			if (version !== requestVersion) throw new Error('Reader opening was superseded.');
 			await currentReader.applySettings(settings);
 			for (const highlight of highlights) {
-				const annotation = annotationForReader(highlight, fileId, selectedFormat);
+				const annotation = annotationForReader(highlight, fileId, selectedFormat, notes);
 				if (annotation) {
 					try {
 						await currentReader.addAnnotation(annotation);

@@ -120,6 +120,19 @@
 	onMount(() => {
 		const unregister = context.engine.pageLayers.register(painter);
 		const surface = context.engine.viewport;
+		function editFromSidebar(event: Event) {
+			if (!(event instanceof CustomEvent) || typeof event.detail !== 'string') return;
+			const item = context.controller.pageAnnotations.find((item) => item.id === event.detail);
+			if (!item) {
+				context.announce(m['ux6.unavailable']());
+				return;
+			}
+			if (mode && !confirm(m['pv9.discard_insert']())) return;
+			mode = null; target = null; editing = null; menu = null;
+			context.tool.set('select');
+			selected = item.id;
+			active = contexts.get(item.locator.page) ?? null;
+		}
 		function click(event: MouseEvent) {
 			if (context.tool.current === 'hand' || mode || event.defaultPrevented) return;
 			const item = itemFrom(event);
@@ -149,9 +162,11 @@
 		}
 		surface.addEventListener('click', click);
 		surface.addEventListener('keydown', key);
+		surface.addEventListener('reader-edit-insert', editFromSidebar);
 		ready = true;
 		return () => {
 			clearTimeout(undoTimer); surface.removeEventListener('click', click); surface.removeEventListener('keydown', key);
+			surface.removeEventListener('reader-edit-insert', editFromSidebar);
 			unregister(); contexts.clear();
 		};
 	});

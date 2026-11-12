@@ -92,9 +92,11 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 	});
 	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
 	await page.getByRole('button', { name: 'Highlight selection' }).click();
+	await page.locator('.rp7-entry .rp7-edit').click();
 	await page.getByRole('button', { name: 'Add note to highlight' }).click();
-	await page.getByRole('textbox', { name: 'Note in Markdown' }).fill('Release validation note');
+	await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Release validation note');
 	await page.getByRole('button', { name: 'Save note' }).click();
+	await page.getByRole('button', { name: 'Close annotation details' }).click();
 	await page.getByRole('button', { name: 'Next page' }).click();
 	await expect.poll(async () => page.evaluate(async (bookID) => {
 		const response = await fetch(`/api/v1/me/books/${bookID}`);

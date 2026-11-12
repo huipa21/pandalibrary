@@ -2,6 +2,7 @@ import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from 'pdf
 import type { EventBus as PdfEventBus, PDFLinkService as PdfLinkService, PDFViewer as PdfJsViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import { fraction as clampFraction } from '../progress.js';
 import { isReaderSettings } from '../settings.js';
+import type { ReaderSearchEngine, ReaderSearchResult } from '../search.js';
 import {
 	isPdfLocator,
 	type NormalizedRect,
@@ -29,6 +30,7 @@ import type {
 } from './types.js';
 import { clampScale, nextScale, presetValue } from './zoom.js';
 import { readPdfViewState } from './view-state.js';
+import { PdfSearch } from './search.js';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdf.css';
 
@@ -66,12 +68,13 @@ interface Enhancement {
 }
 
 /** The PDF reader engine: pdf.js `PDFViewer` plus page layers, enhancers and the progress contract. */
-export class PdfViewerEngine implements Reader {
+export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 	private container: HTMLElement;
 	private scroller: HTMLDivElement | null = null;
 	private viewer: PdfJsViewer | null = null;
 	private eventBus: PdfEventBus | null = null;
 	private linkService: PdfLinkService | null = null;
+	private searchEngine: PdfSearch | null = null;
 	private document: PDFDocumentProxy | null = null;
 	private loadingTask: PDFDocumentLoadingTask | null = null;
 	private pdfjs: typeof import('pdfjs-dist') | null = null;
@@ -180,6 +183,7 @@ export class PdfViewerEngine implements Reader {
 		const initialized = new Promise<void>((resolve) => this.eventBus!.on('pagesinit', () => resolve(), { once: true }));
 		viewer.setDocument(pdf);
 		this.linkService?.setDocument(pdf);
+		this.searchEngine?.controller.setDocument(pdf);
 		await initialized;
 		if (this.disposed) return;
 		this.decoratePages();
@@ -207,11 +211,13 @@ export class PdfViewerEngine implements Reader {
 		scroller.replaceChildren(viewerDiv);
 		const eventBus = new module.EventBus();
 		const linkService = new module.PDFLinkService({ eventBus });
+		const searchEngine = new PdfSearch(module.PDFFindController, eventBus, linkService);
 		const viewer = new module.PDFViewer({
 			container: scroller,
 			viewer: viewerDiv,
 			eventBus,
 			linkService,
+			findController: searchEngine.controller,
 			textLayerMode: 1,
 			annotationMode: this.pdfjs!.AnnotationMode.ENABLE,
 			annotationEditorMode: this.pdfjs!.AnnotationEditorType.DISABLE,
@@ -222,6 +228,7 @@ export class PdfViewerEngine implements Reader {
 		this.viewer = viewer;
 		this.eventBus = eventBus;
 		this.linkService = linkService;
+		this.searchEngine = searchEngine;
 
 		eventBus.on('pagerender', ({ pageNumber }: { pageNumber: number }) => this.abortEnhancements(pageNumber));
 		eventBus.on('pagerendered', ({ pageNumber }: { pageNumber: number }) => this.pageRendered(pageNumber));
@@ -269,6 +276,24 @@ export class PdfViewerEngine implements Reader {
 		if (!isPdfLocator(target) || target.page > pages) throw new Error('PDF locator is unavailable.');
 		const offset = (target as { offset?: unknown }).offset;
 		return this.goToPage(target.page, typeof offset === 'number' && offset >= 0 && offset < 1 ? offset : 0);
+	}
+
+	async search(query: string, signal?: AbortSignal): Promise<ReaderSearchResult[]> {
+		this.requireViewer();
+		if (this.disposed || !this.searchEngine) throw new Error('The PDF reader is not open.');
+		return this.searchEngine.search(query, signal);
+	}
+
+	async goToSearchResult(result: ReaderSearchResult): Promise<void> {
+		this.requireViewer();
+		if (this.disposed || !this.searchEngine) throw new Error('The PDF reader is not open.');
+		await this.searchEngine.goToSearchResult(result);
+		this.intended = result.page ?? null;
+		this.scheduleRelocate();
+	}
+
+	clearSearch(): void {
+		this.searchEngine?.clearSearch();
 	}
 
 	async goToPage(page: number, offset = 0): Promise<void> {
@@ -400,6 +425,8 @@ export class PdfViewerEngine implements Reader {
 
 	async destroy(): Promise<void> {
 		this.disposed = true;
+		this.searchEngine?.destroy();
+		this.searchEngine = null;
 		this.listeners.abort();
 		cancelAnimationFrame(this.frame);
 		clearTimeout(this.settle);

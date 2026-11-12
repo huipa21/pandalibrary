@@ -352,7 +352,7 @@ async function exerciseSelectionActions(page: Page, book: Book, text: string) {
 	await selectPdfText(page, text);
 	await selectionToolbar(page).getByRole('button', { name: 'Comment', exact: true }).click();
 	const comment = page.getByRole('dialog', { name: 'Add comment', exact: true });
-	await comment.getByRole('textbox', { name: 'Note in Markdown' }).fill(`PV11 comment: ${text}`);
+	await comment.getByRole('textbox').fill(`PV11 comment: ${text}`);
 	await comment.getByRole('button', { name: 'Save note' }).click();
 	await expect(comment).toHaveCount(0);
 	await selectPdfText(page, text);
@@ -1259,10 +1259,11 @@ test('captures PDF visual, keyboard, reduced-motion and touch QA', async ({ page
 			await mark.getByRole('button', { name: 'Add comment', exact: true }).click();
 			const comment = page.getByRole('dialog', { name: 'Add comment', exact: true });
 			await expect(comment).toBeVisible();
-			const note = comment.getByRole('textbox', { name: 'Note in Markdown' });
+			const note = comment.getByRole('textbox');
 			await note.fill('A visual QA comment.');
-			await expect(comment.locator('.reader-note-preview')).toContainText('A visual QA comment.');
-			await expect(note).toHaveCSS('color', 'rgb(15, 23, 42)');
+			await expect(note).toHaveValue('A visual QA comment.');
+			await expect(comment.locator('.cm-editor, .reader-note-preview')).toHaveCount(0);
+			await expect(note).toHaveCSS('color', 'rgb(73, 61, 27)');
 			await shot(`${prefix}-comment`);
 			await comment.getByRole('button', { name: 'Cancel', exact: true }).click();
 

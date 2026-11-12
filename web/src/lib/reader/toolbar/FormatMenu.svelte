@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getContext, tick, type Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
+	import Icon, { type IconName } from '#lib/bookview/Icon.svelte';
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { BACKGROUNDS, type BackgroundId } from '../appearance.js';
 	import type { ReaderSettings } from '../types.js';
@@ -9,6 +10,8 @@
 	type Font = ReaderSettings['font'];
 	interface Props {
 		typography: boolean;
+		label?: string;
+		icon?: IconName;
 		font: Font;
 		size: number;
 		spacing: number;
@@ -20,7 +23,7 @@
 		children?: Snippet;
 	}
 
-	let { typography, font, size, spacing, background, onfont, onsize, onspacing, onbackground, children }: Props = $props();
+	let { typography, label = m['rp2.format'](), icon, font, size, spacing, background, onfont, onsize, onspacing, onbackground, children }: Props = $props();
 	const id = $props.id();
 	const nested = getContext<boolean>('pv4-menu') ?? false;
 	const fonts: { value: Font; label: () => string }[] = [
@@ -170,21 +173,22 @@
 	});
 </script>
 
-<div bind:this={root} role="group" aria-label={m['rp2.format']()} onfocusout={onFocusOut}>
+<div bind:this={root} role="group" aria-label={label} onfocusout={onFocusOut}>
 	<button
 		bind:this={trigger}
 		type="button"
 		class={nested ? 'pv4-item' : 'pv4-button rp2-trigger'}
 		role={nested ? 'menuitem' : undefined}
-		aria-label={m['rp2.format']()}
-		title={m['rp2.format']()}
+		aria-label={label}
+		title={label}
 		aria-haspopup="dialog"
 		aria-expanded={open}
 		aria-controls={open ? `${id}-panel` : undefined}
 		onclick={() => open ? close() : void show()}
 		onkeydown={onTriggerKey}
 	>
-		{#if nested}<span class="pv4-item-label">{m['rp2.format']()}</span>
+		{#if nested}<span class="pv4-item-label">{label}</span>
+		{:else if icon}<Icon name={icon} />
 		{:else}<span class="rp2-glyph" aria-hidden="true">Aa</span>{/if}
 	</button>
 	{#if open}
@@ -194,7 +198,7 @@
 			id={`${id}-panel`}
 			class="pv4-panel rp2-panel"
 			role="dialog"
-			aria-label={m['rp2.format']()}
+			aria-label={label}
 			tabindex="-1"
 			style:left={`${left}px`}
 			style:top={`${top}px`}

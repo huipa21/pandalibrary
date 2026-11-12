@@ -344,6 +344,43 @@ describe('reader controller PDF extensions', () => {
 		controller.dispose();
 	});
 
+	it('refreshes reflow note markers on save, edit, deletion, restore and reopen', async () => {
+		const locator = { type: 'cfi' as const, value: 'epubcfi(/6/2!/4/2)' };
+		vi.mocked(getBook).mockResolvedValue({
+			...book, files: [{ ...book.files[0], format: 'epub' }]
+		});
+		let events: ReaderEvents;
+		const reader = {
+			open: vi.fn(), applySettings: vi.fn(), addAnnotation: vi.fn(), removeAnnotation: vi.fn(),
+			destroy: vi.fn(async () => {}), previous: vi.fn(), next: vi.fn(),
+			goTo: vi.fn(async () => events.relocate({ fraction: 0, locator }))
+		};
+		vi.mocked(createReader).mockImplementation(async (_format, _surface, next) => { events = next; return reader; });
+		const controller = createReaderController(params);
+		await controller.retry();
+		vi.stubGlobal('document', { hidden: true });
+		vi.stubGlobal('window', { confirm: () => true });
+		await controller.attach({} as HTMLElement);
+		const mark = await controller.addHighlight({ text: 'Passage', fraction: 0, locator }, 'yellow');
+		expect(mark).toBeTruthy();
+		expect(reader.addAnnotation).toHaveBeenLastCalledWith(expect.objectContaining({ hasNote: false }));
+		await controller.saveNote({ id: 'comment', highlightId: mark!.id, body: 'Plain **text**', original: '', editing: false });
+		expect(reader.addAnnotation).toHaveBeenLastCalledWith(expect.objectContaining({ hasNote: true }));
+		await controller.updateHighlight(mark!, { color: 'blue' });
+		expect(reader.addAnnotation).toHaveBeenLastCalledWith(expect.objectContaining({ hasNote: true, color: 'blue' }));
+		const note = controller.notes[0];
+		await controller.deleteNote(note);
+		expect(reader.addAnnotation).toHaveBeenLastCalledWith(expect.objectContaining({ hasNote: false }));
+		await controller.restoreDeletedAnnotation({ kind: 'note', row: note });
+		expect(reader.addAnnotation).toHaveBeenLastCalledWith(expect.objectContaining({ hasNote: true }));
+		const persisted = { ...empty, highlights: [...controller.highlights], notes: [...controller.notes] };
+		vi.mocked(getBookState).mockResolvedValue(persisted);
+		await controller.retry();
+		await controller.attach({} as HTMLElement);
+		expect(reader.addAnnotation).toHaveBeenLastCalledWith(expect.objectContaining({ hasNote: true }));
+		controller.dispose();
+	});
+
 	it('passes highlight styles through creation and updates', async () => {
 		let events: ReaderEvents;
 		const reader = {

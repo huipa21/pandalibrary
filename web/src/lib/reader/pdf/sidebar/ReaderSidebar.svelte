@@ -3,12 +3,13 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { getPdfReaderContext } from '../context.js';
 	import Sidebar from '../../frame/ReaderSidebar.svelte';
+	import SearchPanel from '../../SearchPanel.svelte';
 	import type { SidebarTab } from './sidebar-state.svelte.js';
 
 	let { ready }: { ready: boolean } = $props();
 	const ctx = getPdfReaderContext();
 	const controller = ctx.controller;
-	const loaders: Record<SidebarTab, () => Promise<{ default: Component }>> = {
+	const loaders: Record<Exclude<SidebarTab, 'search'>, () => Promise<{ default: Component }>> = {
 		toc: () => import('./toc/TocTab.svelte'),
 		pages: () => import('./pages/PagesTab.svelte'),
 		annotations: () => import('./annotations/AnnotationsTab.svelte'),
@@ -27,11 +28,15 @@
 <Sidebar sidebar={ctx.sidebar} {count}>
 	{#snippet children(tab)}
 		{#if ready}
-			{#await loaders[tab]() then module}
-				<module.default />
-			{:catch error}
-				<p class="pv-sidebar-placeholder" role="alert">{failed(error)}</p>
-			{/await}
+			{#if tab === 'search'}
+				<SearchPanel engine={ctx.engine} />
+			{:else}
+				{#await loaders[tab]() then module}
+					<module.default />
+				{:catch error}
+					<p class="pv-sidebar-placeholder" role="alert">{failed(error)}</p>
+				{/await}
+			{/if}
 		{/if}
 	{/snippet}
 </Sidebar>

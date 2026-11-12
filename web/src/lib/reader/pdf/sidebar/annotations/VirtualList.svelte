@@ -4,7 +4,7 @@
 	import { ANNOTATION_ROW_HEIGHT, annotationWindow } from './virtual-window.js';
 	import AnnotationRow from './AnnotationEntry.svelte';
 
-	let { entries, scrollRoot, virtual, readonly = false, busy, target, onjump, ondelete, onexpand }: {
+	let { entries, scrollRoot, virtual, readonly = false, busy, target, onjump, onedit, ondelete, onexpand }: {
 		entries: AnnotationEntry[];
 		scrollRoot: HTMLElement | undefined;
 		virtual: boolean;
@@ -12,6 +12,7 @@
 		busy: boolean;
 		target: { id: string; seq: number } | null;
 		onjump: (entry: AnnotationEntry) => Promise<boolean>;
+		onedit?: (entry: AnnotationEntry, trigger: HTMLButtonElement) => void;
 		ondelete: (entry: AnnotationEntry) => Promise<boolean>;
 		onexpand: (entry: AnnotationEntry, trigger: HTMLButtonElement, readonly: boolean) => void;
 	} = $props();
@@ -79,7 +80,7 @@
 		void focusIndex(index, 'body', true);
 	});
 
-	function onkey(event: KeyboardEvent, index: number, part: 'body' | 'delete' | 'expand') {
+	function onkey(event: KeyboardEvent, index: number, part: 'body' | 'edit' | 'delete' | 'expand') {
 		if (!virtual || event.key !== 'Tab') return;
 		if (!event.shiftKey && part === 'expand' && index === range.end - 1 && index + 1 < entries.length) {
 			event.preventDefault();
@@ -105,6 +106,7 @@
 			{readonly}
 			flashed={flashId === entry.id}
 			{onjump}
+			{onedit}
 			{ondelete}
 			{onexpand}
 			{onkey}

@@ -101,6 +101,7 @@ describe('textMarkPainter', () => {
 		const layer = new Element('layer');
 		vi.stubGlobal('document', {
 			createElement: (tag: string) => tag === 'layer' ? layer : new Element(tag),
+			createElementNS: (_namespace: string, tag: string) => new Element(tag),
 			createDocumentFragment: () => new Element('fragment')
 		});
 		const marks = textMarks([
@@ -124,6 +125,10 @@ describe('textMarkPainter', () => {
 			type: 'button', tabIndex: -1, title: 'Open comment', style: { left: '40%', top: '20%' }
 		});
 		expect(comment.style.setProperty).toHaveBeenCalledWith('--pv-mark', '#facc15');
+		expect(comment.children[0]).toMatchObject({
+			tag: 'svg', attributes: { viewBox: '0 0 16 16', 'aria-hidden': 'true' }
+		});
+		expect(comment.children[0].children[0].tag).toBe('path');
 	});
 });
 

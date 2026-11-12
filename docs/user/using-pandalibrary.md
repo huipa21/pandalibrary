@@ -91,14 +91,39 @@ overlays the book on smaller screens.
 In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:
 
 - use **Contents** to jump to a chapter when the book provides a contents list;
-- open **Format** in the toolbar to change font, size, spacing, background and
-  page flow live (comics offer size and background controls). Use **Save settings**
-  for this book or **Save as format default** for other books of that format;
-- select text, then open **Annotations** to highlight it and attach a note;
+- use **Size** to resize ebook text, or **Zoom** for CBZ comics;
+- open **Page display** to choose **Pages** or **Scroll** for ebooks. In CBZ
+  comics, **Page display** offers backgrounds instead, without reflow layouts;
+- open **Format** to change ebook fonts, spacing and backgrounds. Use **Save
+  settings** for this book or **Save as format default** for other books of that
+  format; these save controls are in **Page display** for CBZ comics;
+- use **Rotate** to turn the view left or right. In these non-PDF formats,
+  rotation lasts only for the current reader session and is not saved;
+- open **Add** to create a private book note, save the current position as a
+  bookmark, or highlight selected text (**Highlight current page** for comics).
+  Text highlighting is unavailable until you select a passage;
+- select text in EPUB, MOBI, AZW3, FB2 or FBZ to open the floating annotation
+  toolbar: copy, highlight, underline, strike out, attach a comment or bookmark
+  the passage. Use the colour arrows to choose highlight and line colours;
+- open **Annotations** to review saved marks, change their colours, attach or
+  edit notes, or delete them. In CBZ comics, use **Highlight current page** to mark
+  the current page instead of selecting text;
 - open **Bookmarks** to save, edit or jump to exact positions;
 - use the previous/next buttons, arrow keys or position slider to navigate.
 
-On narrow screens, **Format** is inside **More view options**, like PDF view menus.
+On narrow screens, these view menus move into **More view options**, like PDF
+view menus. **Select**, **Hand** and the point-based **Insert** tool are PDF-only;
+ebooks use text selection directly and comics use page annotations instead.
+
+For EPUB, MOBI, AZW3, FB2, FBZ and PDF, open the magnifying-glass **Search**
+tab in the left rail to search the book's text. Enter a query and press Enter.
+Results show matching passages with highlighted search terms; select a result
+to jump to that passage. Results are paginated, with 20 matches per page.
+Use the previous/next match controls to move between occurrences, including
+across result pages. Clear the search to remove its highlights.
+Search runs locally in your browser and also works for downloaded books offline.
+CBZ comics have no text search. PDF search uses the document's embedded text,
+not the separately recognized text on scanned pages.
 
 Reading time is recorded as sessions for your stats; idle time is not counted.
 
@@ -149,8 +174,10 @@ black; each family remembers its last colour on this device. Selecting text
 across pages creates a separate mark on each page. Click a mark to change its
 colour or style, add or edit its comment, copy its text, or delete it. On a
 dark reader background, very dark lines are displayed lighter for visibility
-without changing their saved colour. Comment editors show a live Markdown
-preview.
+without changing their saved colour. In every reader, comments open in a
+sticky-note window with a plain-text field, not a Markdown editor or preview.
+Choose **Save note** to save the comment in **Annotations**. A small note icon
+beside the passage opens its comment again.
 Bookmarks made from selected text use that text as their initial label; you can
 rename them in the reader's **Bookmarks** tab.
 
@@ -160,7 +187,7 @@ choose to leave without saving. A coloured status dot indicates offline,
 pending or failed sync, or a settings-save warning; open it for details and a
 retry action when synchronization is available.
 
-The reader's left rail has four tabs. Select an active tab again, or use
+The PDF reader's left rail has five tabs. Select an active tab again, or use
 **Collapse sidebar**, to close the panel. Its open state and selected tab are
 remembered on this device. On wide screens the panel sits beside the page; on
 narrow screens it overlays the page and closes with Escape when focus is in
@@ -170,14 +197,17 @@ the sidebar, or with a page click.
   there; the current section is marked.
 - **Pages** shows page thumbnails. Select one to jump to that page; the
   current page or spread is outlined.
+- **Search** finds text throughout the PDF and lists matching passages.
 - **Annotations** lists highlights, underlines, strikeouts and inserted text,
   drawings and images together. Search the list, select an entry to jump to it,
-  or expand it to see its full content and comments. The Delete button asks
+  or expand it to see its full content and comments. All reader formats use
+  this compact list style, with an **Edit** button immediately before **Delete**.
+  The Delete button asks
   for confirmation; a deleted item can be restored with **Undo** for eight
   seconds. Entries from other files are listed separately and are read-only.
-  Add or edit a comment by expanding a mark. Standalone book notes are no
-  longer created in the reader; existing private book notes remain on the
-  **Annotations** page.
+  Add or edit a comment by expanding a mark. In non-PDF readers, **Add → Add
+  book note** creates a standalone private note. Existing private book notes
+  remain on the book's **Annotations** page.
 - **Bookmarks** lists saved positions and lets you jump, rename or delete them.
   **Bookmark this page** adds a page-level bookmark; select it again to remove
   that bookmark. Selection bookmarks remain separate.

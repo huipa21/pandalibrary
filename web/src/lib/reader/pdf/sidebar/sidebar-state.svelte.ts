@@ -1,4 +1,4 @@
-export const SIDEBAR_TABS = ['toc', 'pages', 'annotations', 'bookmarks'] as const;
+export const SIDEBAR_TABS = ['toc', 'pages', 'annotations', 'bookmarks', 'search'] as const;
 export type SidebarTab = (typeof SIDEBAR_TABS)[number];
 export type RevealKind = 'mark' | 'bookmark' | 'insert' | 'note';
 export interface SidebarTarget { readonly kind: RevealKind; readonly id: string; readonly seq: number }
