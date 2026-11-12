@@ -594,10 +594,14 @@ test('EPUB view menus change size and flow without exposing PDF tools', async ({
 	await page.getByRole('button', { name: 'Save note', exact: true }).click();
 	await expect.poll(() => state.notes.some((note) => note.highlight_id === null && note.body_md === 'A private toolbar note')).toBe(true);
 	await page.getByRole('button', { name: 'Add', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Save position', exact: true }).click();
-	await expect(page.getByRole('tab', { name: 'Bookmarks', exact: true })).toHaveAttribute('aria-selected', 'true');
-	await expect(page.getByRole('heading', { name: 'New bookmark', exact: true })).toBeVisible();
-	await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Save position', exact: true })).toHaveCount(0);
+	await page.keyboard.press('Escape');
+	const bookmark = page.getByTestId('reflow-bookmark-toggle');
+	await bookmark.click();
+	await expect(bookmark).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('heading', { name: 'New bookmark', exact: true })).toHaveCount(0);
+	await bookmark.click();
+	await expect(bookmark).toHaveAttribute('aria-pressed', 'false');
 
 	const size = page.getByRole('button', { name: 'Size', exact: true });
 	await size.focus();
@@ -725,7 +729,7 @@ test('Chinese EPUB header keeps localized view and Add menus usable on mobile', 
 	await expect(page.getByRole('button', { name: '下一页', exact: true })).toBeEnabled();
 	await expectReaderToolbarFits(page);
 	await page.getByRole('button', { name: '添加', exact: true }).click();
-	await expect(page.getByRole('menuitem')).toHaveCount(3);
+	await expect(page.getByRole('menuitem')).toHaveCount(2);
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: '更多视图选项', exact: true }).click();
 	for (const label of ['字号', '页面显示', '格式', '旋转']) {

@@ -99,8 +99,8 @@ In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:
   format; these save controls are in **Page display** for CBZ comics;
 - use **Rotate** to turn the view left or right. In these non-PDF formats,
   rotation lasts only for the current reader session and is not saved;
-- open **Add** to create a private book note, save the current position as a
-  bookmark, or highlight selected text (**Highlight current page** for comics).
+- open **Add** to create a private book note or highlight selected text
+  (**Highlight current page** for comics).
   Text highlighting is unavailable until you select a passage;
 - select text in EPUB, MOBI, AZW3, FB2 or FBZ to open the floating annotation
   toolbar: copy, highlight, underline, strike out, attach a comment or bookmark
@@ -108,7 +108,8 @@ In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:
 - open **Annotations** to review saved marks, change their colours, attach or
   edit notes, or delete them. In CBZ comics, use **Highlight current page** to mark
   the current page instead of selecting text;
-- open **Bookmarks** to save, edit or jump to exact positions;
+- use the bookmark icon in the top toolbar to add or remove a bookmark for the
+  current page, and open **Bookmarks** to review saved positions;
 - use the previous/next buttons, arrow keys or position slider to navigate.
 
 On narrow screens, these view menus move into **More view options**, like PDF
@@ -208,9 +209,9 @@ the sidebar, or with a page click.
   Add or edit a comment by expanding a mark. In non-PDF readers, **Add → Add
   book note** creates a standalone private note. Existing private book notes
   remain on the book's **Annotations** page.
-- **Bookmarks** lists saved positions and lets you jump, rename or delete them.
-  **Bookmark this page** adds a page-level bookmark; select it again to remove
-  that bookmark. Selection bookmarks remain separate.
+- **Bookmarks** lists saved positions. Click an entry to jump there, or use its
+  Edit and Delete icons. The bookmark icon in the top toolbar adds or removes a
+  bookmark for the current page.
 
 Changes are saved on this device while offline and sync when connected.
 
@@ -269,9 +270,16 @@ OCR models to have been downloaded beforehand.
 
 ## Bookmarks
 
-Bookmarks stay with their book. Open the book in the reader to jump to, rename
-or delete its saved positions. For PDFs, use the **Bookmarks** tab in the
-reader's left rail; other formats have a **Bookmarks** section in the reader.
+Bookmarks stay with their book. All reader formats use the **Bookmarks** tab in
+the left rail. Each entry shows its date and time, reading progress, and Edit and
+Delete icons on the first row. The second row previews the selected text, or the
+opening text of the bookmarked page, truncated to one line. Click the entry to
+jump to its saved position; Edit and Delete act without jumping.
+
+Use the bookmark icon in the top toolbar to bookmark the current page immediately.
+Its active state indicates that the page is bookmarked; select it again to remove
+that bookmark. When text is selected, it becomes the bookmark's initial label.
+For pages without text, such as comic pages, a page label is used instead.
 A bookmark can be opened only in its original file. Older links to the former
 Bookmarks page now open **All Books**.
 

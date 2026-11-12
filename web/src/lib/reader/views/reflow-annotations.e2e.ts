@@ -137,6 +137,58 @@ const selectionToolbar = (page: Page) => page.getByRole('toolbar', { name: 'Sele
 const highlights = (state: Awaited<ReturnType<typeof setup>>) =>
 	state.mutations.filter((mutation) => mutation.entity === 'highlights' && mutation.op === 'upsert');
 
+for (const width of [1440, 375]) {
+	test(`EPUB header bookmarks use selected text and support row navigation, edit and delete at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 800 });
+		const state = await setup(page);
+		const toggle = page.getByTestId('reflow-bookmark-toggle');
+		await expect(toggle).toBeVisible();
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+		await selectPassage(page);
+		await toggle.click();
+		await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+		await expect.poll(() => state.bookmarks.length).toBe(1);
+		expect(state.bookmarks[0]).toMatchObject({ label: passage });
+		await page.getByRole('tab', { name: 'Contents', exact: true }).click();
+		await page.getByRole('tabpanel', { name: 'Contents', exact: true })
+			.getByRole('button', { name: 'Second', exact: true }).click();
+		await bookFrame(page, 'Second section');
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+		await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+		const bookmarks = page.getByRole('tabpanel', { name: 'Bookmarks', exact: true });
+		const row = bookmarks.locator('[data-bookmark-id]');
+		await expect(row.locator('[data-bookmark-label]')).toHaveText(passage);
+		await expect(row.getByRole('button', { name: 'Jump', exact: true })).toHaveCount(0);
+		await row.getByRole('button', { name: 'Edit', exact: true }).click();
+		await bookFrame(page, 'Second section');
+		const label = 'A deliberately long bookmark label for checking compact one-line ellipsis rendering '.repeat(2);
+		await bookmarks.getByRole('textbox', { name: /^Label/ }).fill(label);
+		await bookmarks.getByRole('button', { name: 'Save', exact: true }).click();
+		const labelElement = row.locator('[data-bookmark-label]');
+		await expect(labelElement).toHaveText(label);
+		await expect(labelElement).toHaveCSS('white-space', 'nowrap');
+		await expect(labelElement).toHaveCSS('text-overflow', 'ellipsis');
+		expect(await labelElement.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+		await row.locator('[data-bookmark-jump]').click();
+		await bookFrame(page);
+		await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+		if (width < 1024) {
+			await expect(bookmarks).toHaveCount(0);
+			await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+		}
+		page.once('dialog', (dialog) => dialog.accept());
+		await row.getByRole('button', { name: 'Delete', exact: true }).click();
+		await expect(row).toHaveCount(0);
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+		await expect.poll(() => state.bookmarks.length).toBe(0);
+		await toggle.click();
+		await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+		await toggle.click();
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+		await expect.poll(() => state.bookmarks.length).toBe(0);
+	});
+}
+
 async function openAnnotations(page: Page) {
 	const tab = page.getByRole('tab', { name: 'Annotations', exact: true });
 	if (await tab.getAttribute('aria-selected') !== 'true') await tab.click();
@@ -441,6 +493,20 @@ for (const [format, fixture] of [
 			locator: { type: 'cfi', value: expect.stringMatching(/^epubcfi\(.+,.+,.+\)$/) }
 		});
 		await expect(selectionToolbar(page)).toHaveCount(0);
+		const bookmark = page.getByTestId('reflow-bookmark-toggle');
+		await bookmark.click();
+		await expect(bookmark).toHaveAttribute('aria-pressed', 'true');
+		await expect.poll(() => state.bookmarks.length).toBe(1);
+		expect(state.bookmarks[0]).toMatchObject({
+			label: 'First section', locator: { type: 'cfi', value: expect.stringContaining('epubcfi(') }
+		});
+		await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+		const row = page.locator('[data-bookmark-id]');
+		await expect(row.locator('[data-bookmark-label]')).toHaveText('First section');
+		await expect(row.locator('time')).toBeVisible();
+		await bookmark.click();
+		await expect(row).toHaveCount(0);
+		await expect(bookmark).toHaveAttribute('aria-pressed', 'false');
 	});
 }
 
@@ -456,4 +522,14 @@ test('CBZ retains the sidebar page-mark action without a text-selection toolbar'
 	await page.reload();
 	await openAnnotations(page);
 	await expect(page.locator('.rp7-excerpt')).toHaveText('Highlight');
+	const bookmark = page.getByTestId('reflow-bookmark-toggle');
+	await bookmark.click();
+	await expect(bookmark).toHaveAttribute('aria-pressed', 'true');
+	await expect.poll(() => state.bookmarks.length).toBe(1);
+	expect(state.bookmarks[0].label).toBe('Page 1');
+	await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+	await expect(page.locator('[data-bookmark-label]')).toHaveText('Page 1');
+	await bookmark.click();
+	await expect(page.locator('[data-bookmark-id]')).toHaveCount(0);
+	await expect(bookmark).toHaveAttribute('aria-pressed', 'false');
 });

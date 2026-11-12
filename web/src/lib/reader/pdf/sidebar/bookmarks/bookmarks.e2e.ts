@@ -19,6 +19,7 @@ type Push = { entity: string; id: string; op: string; updated_at: number; data: 
 const panel = (page: Page) => page.getByRole('tabpanel', { name: 'Bookmarks', exact: true });
 const entry = (page: Page, n: number) => panel(page).locator(`[data-bookmark-id="${id(n)}"]`);
 const pageBox = (page: Page) => page.getByRole('textbox', { name: /^Page \d+ of \d+$/ });
+const pageToggle = (page: Page) => page.getByTestId('pdf-bookmark-toggle');
 
 async function setup(page: Page, bookmarks: Bookmark[] = [], width = 1280, locale = 'en') {
 	await page.setViewportSize({ width, height: 800 });
@@ -76,43 +77,51 @@ async function setup(page: Page, bookmarks: Bookmark[] = [], width = 1280, local
 	return pushes;
 }
 
-test('page toggle adds an exact page-level locator and removes it without a second confirmation', async ({ page }) => {
-	const pushes = await setup(page);
+for (const width of [1280, 375]) {
+test(`header toggle adds and removes a page bookmark at ${width}px without confirmation`, async ({ page }) => {
+	const pushes = await setup(page, [], width);
 	const dialogs: string[] = [];
 	page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
 	await expect(panel(page)).toContainText('No bookmarks yet.');
-	await panel(page).getByRole('button', { name: 'Bookmark this page', exact: true }).click();
-	const toggle = panel(page).getByRole('button', { name: 'Remove page bookmark', exact: true });
+	await expect(panel(page).getByRole('button', { name: 'Bookmark this page', exact: true })).toHaveCount(0);
+	const toggle = pageToggle(page);
+	await expect(toggle).toBeVisible();
+	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+	await toggle.click();
 	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 	await expect(panel(page).locator('[data-bookmark-id]')).toHaveCount(1);
 	await expect.poll(() => pushes.filter((row) => row.entity === 'bookmarks').length).toBe(1);
 	expect(pushes.find((row) => row.entity === 'bookmarks')?.data).toMatchObject({
-		locator: { type: 'pdf', page: 1 }, label: 'Page 1', position: 0
+		locator: { type: 'pdf', page: 1 }, label: 'First PDF page text', position: 0
 	});
 	expect(pushes.find((row) => row.entity === 'bookmarks')?.data.locator).toEqual({ type: 'pdf', page: 1 });
 	await pageBox(page).fill('2');
 	await pageBox(page).press('Enter');
-	await expect(panel(page).getByRole('button', { name: 'Bookmark this page', exact: true })).toBeVisible();
+	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 	await pageBox(page).fill('1');
 	await pageBox(page).press('Enter');
+	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 	await toggle.click();
 	await expect(panel(page)).toContainText('No bookmarks yet.');
 	await expect.poll(() => pushes.filter((row) => row.entity === 'bookmarks' && row.op === 'delete').length).toBe(1);
 	expect(dialogs).toEqual([]);
 });
+}
 
 test('selection bookmarks do not activate the page toggle; rename validates, trims, and cancels on Escape and blur', async ({ page }) => {
 	const bookmark = saved(1, { locator: { type: 'pdf', page: 1, rects: [{ x: 0.1, y: 0.2, width: 0.2, height: 0.1 }] } });
 	const pushes = await setup(page, [bookmark]);
 	const row = entry(page, 1);
-	await expect(panel(page).getByRole('button', { name: 'Bookmark this page', exact: true })).toHaveAttribute('aria-pressed', 'false');
-	expect((await row.boundingBox())?.height).toBe(36);
+	await expect(pageToggle(page)).toHaveAttribute('aria-pressed', 'false');
+	await pageBox(page).fill('2');
+	await pageBox(page).press('Enter');
 	const rename = () => row.getByRole('button', { name: /^Rename bookmark:/ }).click();
 	await rename();
+	await expect(pageBox(page)).toHaveValue('2');
 	const input = panel(page).getByRole('textbox', { name: 'Bookmark label', exact: true });
 	await input.fill('  New label  ');
 	await input.press('Enter');
-	await expect(row.getByRole('button', { name: /New label p. 1/ })).toBeVisible();
+	await expect(row.locator('[data-bookmark-jump]')).toContainText('New label');
 	await expect.poll(() => pushes.filter((row) => row.entity === 'bookmarks').length).toBe(1);
 	expect(pushes.find((row) => row.entity === 'bookmarks')?.data).toMatchObject({
 		label: 'New label', locator: bookmark.locator, position: bookmark.position
@@ -121,7 +130,7 @@ test('selection bookmarks do not activate the page toggle; rename validates, tri
 	await input.fill('Discard me');
 	await input.press('Escape');
 	await expect(panel(page)).toBeVisible();
-	await expect(row.getByRole('button', { name: /New label p. 1/ })).toBeFocused();
+	await expect(row.locator('[data-bookmark-jump]')).toBeFocused();
 	await rename();
 	await input.fill('Cancel on blur');
 	await input.press('Tab');
@@ -171,9 +180,9 @@ test('current file rows are ordered and other files are read-only in a trailing 
 test('offline page bookmarks and label edits are queued and survive reconnect and reload', async ({ page, context }) => {
 	const pushes = await setup(page);
 	await context.setOffline(true);
-	await panel(page).getByRole('button', { name: 'Bookmark this page', exact: true }).click();
+	await pageToggle(page).click();
 	await expect(panel(page).locator('[data-bookmark-id]')).toHaveCount(1);
-	await panel(page).getByRole('button', { name: 'Rename bookmark: Page 1', exact: true }).click();
+	await panel(page).getByRole('button', { name: 'Rename bookmark: First PDF page text', exact: true }).click();
 	const input = panel(page).getByRole('textbox', { name: 'Bookmark label', exact: true });
 	await input.fill('Offline label');
 	await input.press('Enter');
@@ -193,6 +202,67 @@ test('jump changes page and collapses the overlay sidebar', async ({ page }) => 
 	await expect(page.getByRole('tab', { name: 'Bookmarks', exact: true })).toBeFocused();
 });
 
+for (const width of [1280, 375]) {
+	test(`compact PDF entries truncate labels and keep edit/delete separate from navigation at ${width}px`, async ({ page }) => {
+		const label = 'A long bookmark label that should stay on one line rather than expanding the sidebar '.repeat(2);
+		await setup(page, [saved(1, { label })], width);
+		const row = entry(page, 1);
+		const text = row.locator('.rp8-label');
+		await expect(text).toHaveText(label);
+		await expect(text).toHaveCSS('white-space', 'nowrap');
+		await expect(text).toHaveCSS('text-overflow', 'ellipsis');
+		expect(await text.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+		await expect(row.locator('time')).toHaveAttribute('datetime', base.created_at);
+		const timeBounds = await row.locator('time').boundingBox();
+		const labelBounds = await text.boundingBox();
+		const edit = row.getByRole('button', { name: /^Rename bookmark:/ });
+		const deleteButton = row.getByRole('button', { name: /^Delete bookmark:/ });
+		const editBounds = await edit.boundingBox();
+		const deleteBounds = await deleteButton.boundingBox();
+		expect(timeBounds && labelBounds && editBounds && deleteBounds).toBeTruthy();
+		expect(labelBounds!.y).toBeGreaterThan(timeBounds!.y);
+		expect(editBounds!.x).toBeGreaterThan(timeBounds!.x + timeBounds!.width);
+		expect(deleteBounds!.x).toBeGreaterThan(editBounds!.x);
+		await pageBox(page).fill('2');
+		await pageBox(page).press('Enter');
+		await edit.click();
+		await expect(pageBox(page)).toHaveValue('2');
+		await row.getByRole('textbox', { name: 'Bookmark label', exact: true }).press('Escape');
+		await row.locator('[data-bookmark-jump]').click();
+		await expect(pageBox(page)).toHaveValue('1');
+		if (width < 1024) await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+		await pageBox(page).fill('2');
+		await pageBox(page).press('Enter');
+		await deleteButton.click();
+		await row.getByRole('button', { name: /^Confirm delete bookmark:/ }).click();
+		await expect(row).toHaveCount(0);
+		await expect(pageBox(page)).toHaveValue('2');
+	});
+
+	test(`PDF header bookmark uses selected text as its default label at ${width}px`, async ({ page }) => {
+		const pushes = await setup(page, [], width);
+		await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
+		await expect(async () => {
+			await page.locator('.reader-pdf-text span').filter({ hasText: 'First PDF page text' }).first().evaluate((element) => {
+				const text = element.firstChild!;
+				const range = document.createRange();
+				range.setStart(text, 6);
+				range.setEnd(text, text.textContent!.length);
+				const selection = window.getSelection()!;
+				selection.removeAllRanges();
+				selection.addRange(range);
+				document.dispatchEvent(new Event('selectionchange'));
+			});
+			await expect(page.getByRole('toolbar', { name: 'Selection actions', exact: true })).toBeVisible();
+		}).toPass();
+		await pageToggle(page).click();
+		await expect.poll(() => pushes.find((row) => row.entity === 'bookmarks')?.data.label).toBe('PDF page text');
+		await expect(pageToggle(page)).toHaveAttribute('aria-pressed', 'true');
+		await pageToggle(page).click();
+		await expect(pageToggle(page)).toHaveAttribute('aria-pressed', 'false');
+	});
+}
+
 test('a bookmark from the floating selection toolbar appears in the tab', async ({ page }) => {
 	await setup(page);
 	await page.locator('.reader-pdf-text span').filter({ hasText: 'First PDF page text' }).first().evaluate((element) => {
@@ -209,7 +279,7 @@ test('a bookmark from the floating selection toolbar appears in the tab', async 
 	await page.getByRole('button', { name: 'Bookmark', exact: true }).click();
 	await expect(panel(page).locator('[data-bookmark-id]')).toHaveCount(1);
 	await expect(panel(page).locator('[data-bookmark-jump]')).toContainText('First PDF page text');
-	await expect(panel(page).getByRole('button', { name: 'Bookmark this page', exact: true })).toBeVisible();
+	await expect(pageToggle(page)).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('reveal scrolls, focuses and flashes the entry again for each new target sequence', async ({ page }) => {
@@ -275,11 +345,13 @@ for (const theme of ['light', 'dark']) {
 	});
 }
 
-test('page toggle and default labels are localized in Chinese', async ({ page }) => {
+test('header toggle is localized in Chinese while the default label preserves page text', async ({ page }) => {
 	const pushes = await setup(page, [], 1280, 'zh');
 	const chinese = page.getByRole('tabpanel', { name: '书签', exact: true });
 	await expect(chinese).toContainText('暂无书签。');
-	await chinese.getByRole('button', { name: '为此页添加书签', exact: true }).click();
-	await expect(chinese.getByRole('button', { name: '移除此页书签', exact: true })).toBeVisible();
-	await expect.poll(() => pushes.find((row) => row.entity === 'bookmarks')?.data.label).toBe('第 1 页');
+	await expect(pageToggle(page)).toHaveAccessibleName('为此页添加书签');
+	await pageToggle(page).click();
+	await expect(pageToggle(page)).toHaveAttribute('aria-pressed', 'true');
+	await expect(pageToggle(page)).toHaveAttribute('title', '移除此页书签');
+	await expect.poll(() => pushes.find((row) => row.entity === 'bookmarks')?.data.label).toBe('First PDF page text');
 });

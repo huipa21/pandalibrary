@@ -105,6 +105,62 @@ afterEach(async () => {
 	vi.clearAllMocks();
 });
 
+describe('Foliate current-page bookmarks', () => {
+	it('resolves bookmark anchors against the visible range after reflow and excludes the next page boundary', async () => {
+		const { reader, view, doc } = await openEngine();
+		const start = { ownerDocument: doc };
+		let targetOffset = 25;
+		let targetIndex = 0;
+		const visible = (from: number, to: number) => ({
+			startContainer: start, startOffset: from,
+			cloneRange: () => ({ startOffset: to, collapse: vi.fn() })
+		});
+		Object.assign(doc, {
+			createRange: () => ({
+				startOffset: 0,
+				setStart(_node: unknown, offset: number) { this.startOffset = offset; },
+				collapse: vi.fn(),
+				compareBoundaryPoints(_how: number, other: { startOffset: number }) {
+					return this.startOffset - other.startOffset;
+				}
+			})
+		});
+		view.resolveNavigation.mockImplementation((...args: unknown[]) => ({
+			index: args[0] === 'epubcfi(/6/2!/4/2)' ? 0 : targetIndex,
+			anchor: () => ({ startContainer: start, startOffset: targetOffset })
+		}));
+		const bookmark = { type: 'cfi' as const, value: 'epubcfi(/6/2!/4/4:25)' };
+		const relocate = (from: number, to: number) => view.dispatchEvent(new CustomEvent('relocate', {
+			detail: { cfi: 'epubcfi(/6/2!/4/2)', fraction: 0.2, range: visible(from, to) }
+		}));
+		relocate(20, 40);
+		expect(reader.isOnCurrentPage(bookmark)).toBe(true);
+		relocate(15, 30);
+		expect(reader.isOnCurrentPage(bookmark)).toBe(true);
+		targetOffset = 30;
+		expect(reader.isOnCurrentPage(bookmark)).toBe(false);
+		targetOffset = 14;
+		expect(reader.isOnCurrentPage(bookmark)).toBe(false);
+		targetOffset = 15;
+		expect(reader.isOnCurrentPage(bookmark)).toBe(true);
+		targetIndex = 1;
+		expect(reader.isOnCurrentPage(bookmark)).toBe(false);
+	});
+
+	it('matches image-only fixed-layout bookmarks by resolved section and provides a page label', async () => {
+		const { reader, view } = await openEngine('cbz');
+		view.resolveNavigation.mockImplementation((...args: unknown[]) => ({
+			index: args[0] === 'epubcfi(/6/4)' ? 1 : 0
+		}));
+		view.dispatchEvent(new CustomEvent('relocate', {
+			detail: { cfi: 'epubcfi(/6/2)', fraction: 0.1, range: null }
+		}));
+		expect(reader.getBookmarkText()).toBe('Page 1');
+		expect(reader.isOnCurrentPage({ type: 'cfi', value: 'epubcfi(/6/2!/4/2)' })).toBe(true);
+		expect(reader.isOnCurrentPage({ type: 'cfi', value: 'epubcfi(/6/4)' })).toBe(false);
+	});
+});
+
 describe('Foliate element-boundary selections', () => {
 	for (const boundary of ['element', 'partial-start', 'partial-end'] as const) {
 		it(`round-trips ${boundary} boundaries through the upstream CFI codec without changing native geometry`, async () => {

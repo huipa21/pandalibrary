@@ -3,6 +3,7 @@ import * as m from '#lib/paraglide/messages.js';
 import { resolveMarkColor } from './annotations.js';
 import { backgroundFor } from './appearance.js';
 import { fraction } from './progress.js';
+import { firstVisibleLine } from './foliate-bookmarks.js';
 import { captureBookBlobs, isolateBookSections } from './safe-content.js';
 import type { ReaderSearchEngine, ReaderSearchResult } from './search.js';
 import {
@@ -10,6 +11,7 @@ import {
 	type Reader,
 	type ReaderAnnotation,
 	type ReaderEvents,
+	type ReaderLocator,
 	type ReaderSettings,
 	type ReflowableFormat,
 	type Relocation
@@ -27,6 +29,7 @@ const MIME_TYPES: Record<ReflowableFormat, string> = {
 interface FoliateLocation {
 	fraction?: number;
 	cfi?: string;
+	range?: Range | null;
 }
 
 interface FoliateLoad {
@@ -89,6 +92,7 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	private annotations = new Map<string, ReaderAnnotation>();
 	private documents = new Map<number, Document>();
 	private location: Relocation | null = null;
+	private visibleRange: Range | null = null;
 	private lastLoadError: unknown = null;
 	private disposed = false;
 	private rotation = 0;
@@ -119,6 +123,47 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 
 	get contents() {
 		return this.book?.toc ?? [];
+	}
+
+	isOnCurrentPage(locator: ReaderLocator): boolean {
+		const view = this.view;
+		if (!view || !this.location || !isCfiLocator(this.location.locator) || !isCfiLocator(locator)) return false;
+		if (locator.value === this.location.locator.value) return true;
+		try {
+			const current = view.resolveNavigation(this.location.locator.value);
+			const target = view.resolveNavigation(locator.value);
+			if (!current || !target || current.index !== target.index) return false;
+			if (view.isFixedLayout) return true;
+			const visible = this.visibleRange;
+			const doc = visible?.startContainer.ownerDocument;
+			if (!visible || !doc || !target.anchor) return false;
+			const anchor = target.anchor(doc);
+			if (!anchor) return false;
+			const point = doc.createRange();
+			if ('startContainer' in anchor) {
+				point.setStart(anchor.startContainer, anchor.startOffset);
+				point.collapse(true);
+			} else {
+				point.selectNodeContents(anchor);
+				point.collapse(true);
+			}
+			const end = visible.cloneRange();
+			end.collapse(false);
+			// Compare logical DOM positions, not exact viewport CFIs: reflow changes
+			// the visible range while the saved bookmark anchor remains stable.
+			return point.compareBoundaryPoints(0, visible) >= 0 && point.compareBoundaryPoints(0, end) < 0;
+		} catch (error) {
+			console.error('Could not resolve the current-page bookmark', error);
+			return false;
+		}
+	}
+
+	getBookmarkText(): string {
+		const text = this.visibleRange ? firstVisibleLine(this.visibleRange) : '';
+		if (text) return text;
+		const current = this.location && isCfiLocator(this.location.locator)
+			? this.view?.resolveNavigation(this.location.locator.value) : null;
+		return m['rp8.page']({ page: (current?.index ?? 0) + 1 });
 	}
 
 	async goToContents(href: string): Promise<void> {
@@ -157,6 +202,7 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 		view.addEventListener('relocate', (event) => {
 			const detail = (event as CustomEvent<FoliateLocation>).detail;
 			if (!detail.cfi || !isCfiLocator({ type: 'cfi', value: detail.cfi })) return;
+			this.visibleRange = detail.range ?? null;
 			this.location = { fraction: fraction(detail.fraction ?? 0), locator: { type: 'cfi', value: detail.cfi } };
 			this.events.relocate(this.location);
 		});

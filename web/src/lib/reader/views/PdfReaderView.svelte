@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
+	import Icon from '#lib/bookview/Icon.svelte';
 	import { readerChrome } from '#lib/shell/reader-chrome.js';
 	import ReaderFrame from '#lib/reader/frame/ReaderFrame.svelte';
 	import ReaderCloseButton from '#lib/reader/frame/ReaderCloseButton.svelte';
@@ -29,6 +30,9 @@
 	import ReaderSidebar from '#lib/reader/pdf/sidebar/ReaderSidebar.svelte';
 	import { createSidebarState, PANEL_WIDTH, RAIL_WIDTH } from '#lib/reader/pdf/sidebar/sidebar-state.svelte.js';
 	import { offlineStatus } from '#lib/sync/client.js';
+	import { defaultPdfBookmarkLabel, pageBookmark } from '#lib/reader/pdf/sidebar/bookmarks/bookmarks-model.js';
+	import { toFraction } from '#lib/reader/pdf/progress.js';
+	import { capturePdfSelection } from '#lib/reader/pdf/marks/selection.js';
 
 	const SAVE_DELAY = 1000;
 	const OCR_KEY = 'pandalibrary.pdf-ocr';
@@ -50,11 +54,13 @@
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
 	// The "Saved" status of view-state autosaves is not shown; explicit saves still report.
 	let autosavedMessage = $state('');
+	let bookmarking = $state(false);
 
 	const page = $derived(view?.page ?? (controller.location?.locator.type === 'pdf' ? controller.location.locator.page : 1));
 	const background = $derived(backgroundFor(controller.settings));
 	const savedMessage = $derived(controller.savedMessage === autosavedMessage ? '' : controller.savedMessage);
 	const sidebarInset = $derived(RAIL_WIDTH + (sidebar.open && sidebar.docked ? PANEL_WIDTH : 0));
+	const currentPageBookmark = $derived(pageBookmark(controller.bookmarks, controller.file?.id ?? -1, page));
 
 	setPdfReaderContext({
 		get engine() {
@@ -152,6 +158,43 @@
 
 	function jump(next: number) {
 		run(() => engine?.goToPage(next));
+	}
+
+	async function togglePageBookmark() {
+		if (bookmarking || controller.busy || !controller.ready || !engine?.pdf || !view || !controller.file) return;
+		const active = engine;
+		const fileId = controller.file.id;
+		const bookId = controller.book?.id;
+		const targetPage = page;
+		const pageCount = view.pageCount;
+		const existing = currentPageBookmark;
+		const selected = capturePdfSelection(document.getSelection(), active);
+		const selectedText = selected?.parts.find((part) => part.page === targetPage)?.text ?? '';
+		bookmarking = true;
+		try {
+			if (existing) {
+				await controller.removeBookmark(existing, { confirm: false });
+				return;
+			}
+			let items: { str?: string; hasEOL?: boolean; transform?: number[] }[] = [];
+			if (!selectedText.trim()) {
+				try {
+					const pdfPage = await active.pdf!.getPage(targetPage);
+					items = (await pdfPage.getTextContent()).items.filter((item) => 'str' in item);
+				} catch (error) {
+					console.warn('Could not read the PDF bookmark label', error);
+					const text = active.pageElement(targetPage)?.querySelector('.textLayer')?.textContent ?? '';
+					items = [{ str: text.split(/\r?\n/).find((line) => line.trim()) ?? '' }];
+				}
+			}
+			if (engine !== active || controller.book?.id !== bookId || controller.file?.id !== fileId || !controller.ready) return;
+			await controller.addBookmark({
+				label: defaultPdfBookmarkLabel(selectedText, items, m['rp8.page']({ page: targetPage })),
+				at: { locator: { type: 'pdf', page: targetPage }, fraction: toFraction(targetPage, 0, pageCount) }
+			});
+		} finally {
+			bookmarking = false;
+		}
 	}
 
 	function setTool(next: PdfTool) {
@@ -323,6 +366,13 @@
 				<RotateMenu onrotate={(delta) => run(() => engine?.rotate(delta))} />
 			{/snippet}
 			{#snippet right()}
+				<button
+					type="button" class="pv4-button" data-testid="pdf-bookmark-toggle"
+					aria-label={m['rp8.add_page']()} aria-pressed={!!currentPageBookmark}
+					title={currentPageBookmark ? m['rp8.remove_page']() : m['rp8.add_page']()}
+					disabled={bookmarking || controller.busy || !controller.ready || !engine || !view}
+					onpointerdown={(event) => event.preventDefault()} onclick={togglePageBookmark}
+				><Icon name="bookmark" /></button>
 				<ToolToggle tool={tool === 'hand' ? 'hand' : 'select'} ontoggle={() => setTool(tool === 'hand' ? 'select' : 'hand')} />
 				<InsertToggle active={tool === 'insert'} disabled={!engine} ontoggle={() => setTool(tool === 'insert' ? previousTool : 'insert')} />
 				<span class="pv-divider" aria-hidden="true"></span>
