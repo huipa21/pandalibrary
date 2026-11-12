@@ -23,12 +23,14 @@ Installation, configuration, backups and upgrades are in the
 |---|---|---|
 | Dashboard | Sidebar → **Dashboard** | Your home page: reading feeds and the shelves you choose to show |
 | All Books | Sidebar → **All Books** | Every book you can see, in a grid or list, with filters and sorting |
-| Libraries, Authors, Series, Tags | Sidebar → **Browse** | Browse the catalog by collection |
+| Favorites | Sidebar → **Home → Favorites** | Your special collection of favorite books |
+| Libraries | Sidebar → **Library** | Library cards with visible book counts; select one to browse its books and shelves |
+| Authors, Series, Tags | Sidebar → **Browse** | Browse the catalog by collection |
 | Book page | Open any book | Details, reading status, rating, reviews, shelves, files, activity and book-scoped annotations |
 | Reader | **Read** on a book | Read in the browser and add highlights, passage comments and bookmarks |
 | Bookmarks | Open a book in the reader | Saved reading positions for that book |
 | Annotations | Sidebar → **Annotations** | Reviews, comments, highlights, inserted text and drawings in date order; consistent search results and direct navigation |
-| Shelves | Sidebar → shelf list | Favorites, your own manual shelves and automatic (rule-based) shelves |
+| Shelves | Select a library → sidebar shelf list | Unshelved books, manual shelves and automatic (rule-based) shelves scoped to that library |
 | Search | Header search, or Sidebar → **Search** | Find books by title, author or series |
 | Stats | Sidebar → **Stats** | Daily reading time, finished books and reading streaks |
 | Settings | Account menu → **Profile** | Profile, language, app passwords for devices, and offline storage |

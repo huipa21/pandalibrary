@@ -76,6 +76,28 @@ function contrastRatio(foreground: string, background: string): number {
 	return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
+test('Favorites stays under Home on desktop and mobile, never in the shelf section', async ({ page }) => {
+	await authenticate(page);
+	await mockCatalog(page);
+	await page.route('**/api/v1/shelves/system/favorites/books?*', (route) =>
+		route.fulfill({ json: { items: [], next_cursor: null } })
+	);
+	for (const width of [1280, 390]) {
+		await page.setViewportSize({ width, height: 900 });
+		await page.goto('/books');
+		if (width < 1024) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+		const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+		const favorite = sidebar.getByRole('region', { name: 'Home' }).getByRole('link', { name: /^Favorites/ });
+		await expect(favorite).toBeVisible();
+		await expect(favorite).toHaveAttribute('href', '/shelves/system/favorites');
+		await expect(sidebar.locator('[data-slot="sidebar-shelves"] a[href="/shelves/system/favorites"]')).toHaveCount(0);
+		await favorite.click();
+		await expect(page).toHaveURL('/shelves/system/favorites');
+		if (width < 1024) await page.getByRole('button', { name: 'Open navigation menu' }).click();
+		await expect(favorite).toHaveAttribute('aria-current', 'page');
+	}
+});
+
 test('header and sidebar float as matching panels, content cards sit on an invisible area and scroll under an opaque header band', async ({ page }) => {
 	await authenticate(page);
 	await mockCatalog(page);
@@ -222,7 +244,7 @@ test('sidebar navigation keeps shell geometry stable between scrolling and non-s
 	}
 });
 
-test('desktop sidebar lists HOME links, shelves, and All Books across every library', async ({ page }) => {
+test('desktop sidebar lists HOME links, Library, and All Books across every library', async ({ page }) => {
 	await authenticate(page);
 	const bookQueries = await mockCatalog(page);
 	await page.setViewportSize({ width: 1280, height: 800 });
@@ -232,26 +254,27 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 	await expect(sidebar).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeHidden();
 	const home = sidebar.getByRole('region', { name: 'Home' }).getByRole('link');
-	await expect(home).toHaveText(['Dashboard', 'All Books', 'Annotations']);
+	await expect(home).toHaveText(['Dashboard', 'All Books', /Favorites/, 'Annotations']);
+	await expect(home.filter({ hasText: 'Favorites' })).toHaveAttribute('href', '/shelves/system/favorites');
 	await expect(sidebar.locator('a[href="/bookmarks"]')).toHaveCount(0);
 	await expect(sidebar.getByRole('link', { name: 'All Books' })).toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0);
-	for (const name of ['Libraries', 'Authors', 'Series', 'Tags', 'Read', 'Stats']) {
+	for (const name of ['Library', 'Authors', 'Series', 'Tags', 'Read', 'Stats']) {
 		await expect(sidebar.getByRole('link', { name, exact: true })).toBeVisible();
 	}
 	await expect(sidebar.getByRole('link', { name: 'Search', exact: true })).toHaveCount(0);
 
-	const shelves = sidebar.getByRole('region', { name: 'Shelves' });
-	await expect(shelves.getByRole('link', { name: /Weekend reads/ })).toHaveAttribute('href', '/shelves/7');
-	const shelfActions = shelves.getByRole('button', { name: 'Shelf actions' });
+	const shelves = sidebar.getByRole('region', { name: 'Library', exact: true });
+	await expect(shelves.getByRole('link', { name: /Weekend reads/ })).toHaveCount(0);
+	const shelfActions = shelves.getByRole('button', { name: 'Library actions' });
 	await expect(shelfActions).toBeVisible();
 	await shelfActions.click();
-	await expect(shelves.getByRole('menuitem', { name: 'New shelf' })).toBeVisible();
-	await expect(shelves.getByRole('menuitem', { name: 'Manage shelves' })).toBeVisible();
+	await expect(shelves.getByRole('menuitem', { name: 'New Library' })).toHaveCount(0);
+	await expect(shelves.getByRole('menuitem', { name: 'Manage Libraries' })).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(shelfActions).toBeFocused();
-	await expect(shelves.getByRole('link', { name: /Favorites/ })).toHaveCount(1);
+	await expect(shelves.getByRole('link', { name: /Favorites/ })).toHaveCount(0);
 	await expect(page.locator('[data-slot="sidebar-footer"]')).toBeVisible();
 
 	await expect(page.getByRole('heading', { name: 'All Books', level: 1 })).toHaveClass('sr-only');
@@ -280,10 +303,10 @@ test('desktop sidebar lists HOME links, shelves, and All Books across every libr
 	await expect(page).toHaveURL('/books/21');
 	await expect(sidebar.getByRole('link', { name: 'All Books' })).not.toHaveAttribute('aria-current', 'page');
 
-	await sidebar.getByRole('link', { name: 'Libraries', exact: true }).click();
+	await sidebar.getByRole('link', { name: 'Library', exact: true }).click();
 	await expect(page).toHaveURL('/libraries');
 	await expect(page.getByRole('link', { name: 'Fiction' })).toHaveAttribute('href', '/library/1');
-	await expect(sidebar.getByRole('link', { name: 'Libraries', exact: true })).toHaveAttribute('aria-current', 'page');
+	await expect(sidebar.getByRole('link', { name: 'Library', exact: true })).toHaveAttribute('aria-current', 'page');
 
 	await sidebar.getByRole('link', { name: 'Dashboard' }).click();
 	await expect(page).toHaveURL('/');
@@ -294,13 +317,13 @@ test('administrators see the Admin entry with localized Chinese navigation', asy
 	await authenticate(page, 'admin', 'zh');
 	await page.goto('/');
 	const sidebar = page.getByRole('navigation', { name: '主导航' });
-	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', /^书堆/, '批注']);
+	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', /^收藏/, /^书堆/, '批注']);
 	await expect(sidebar.locator('a[href="/bookmarks"]')).toHaveCount(0);
 	await expect(sidebar.getByRole('link', { name: /^书堆/ })).toHaveAttribute('href', '/bookheap');
 	await expect(sidebar.getByRole('link', { name: '管理', exact: true })).toHaveAttribute('href', '/admin');
-	await sidebar.getByRole('button', { name: '书架操作' }).click();
-	await expect(sidebar.getByRole('menuitem', { name: '新建书架' })).toBeVisible();
-	await expect(sidebar.getByRole('menuitem', { name: '管理书架' })).toBeVisible();
+	await sidebar.getByRole('button', { name: '书库操作' }).click();
+	await expect(sidebar.getByRole('menuitem', { name: '新建书库' })).toBeVisible();
+	await expect(sidebar.getByRole('menuitem', { name: '管理书库' })).toBeVisible();
 	await expect(sidebar.getByRole('link', { name: '仪表盘' })).toHaveAttribute('aria-current', 'page');
 });
 

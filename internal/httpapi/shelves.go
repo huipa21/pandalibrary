@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"pandalibrary/internal/auth"
 	"pandalibrary/internal/catalog"
@@ -52,7 +54,7 @@ func (h *catalogHTTP) listBookShelves(w http.ResponseWriter, r *http.Request, vi
 }
 
 func (h *catalogHTTP) listShelves(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	values, ok := h.query(w, r, "limit", "cursor")
+	values, ok := h.query(w, r, "limit", "cursor", "library_id")
 	if !ok {
 		return
 	}
@@ -60,7 +62,11 @@ func (h *catalogHTTP) listShelves(w http.ResponseWriter, r *http.Request, viewer
 	if !ok {
 		return
 	}
-	result, err := h.service.ListShelves(r.Context(), viewer, options)
+	libraryIDs, ok := h.shelfLibraryIDs(w, values)
+	if !ok {
+		return
+	}
+	result, err := h.service.ListShelves(r.Context(), viewer, options, libraryIDs...)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -69,10 +75,15 @@ func (h *catalogHTTP) listShelves(w http.ResponseWriter, r *http.Request, viewer
 }
 
 func (h *catalogHTTP) getSystemShelf(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	if _, ok := h.query(w, r); !ok {
+	values, ok := h.query(w, r, "library_id")
+	if !ok {
 		return
 	}
-	result, err := h.service.GetSystemShelf(r.Context(), viewer, chi.URLParam(r, "key"))
+	libraryIDs, ok := h.shelfLibraryIDs(w, values)
+	if !ok {
+		return
+	}
+	result, err := h.service.GetSystemShelf(r.Context(), viewer, chi.URLParam(r, "key"), libraryIDs...)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -81,7 +92,7 @@ func (h *catalogHTTP) getSystemShelf(w http.ResponseWriter, r *http.Request, vie
 }
 
 func (h *catalogHTTP) listSystemShelfBooks(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	values, ok := h.query(w, r, "limit", "cursor")
+	values, ok := h.query(w, r, "limit", "cursor", "library_id")
 	if !ok {
 		return
 	}
@@ -89,7 +100,11 @@ func (h *catalogHTTP) listSystemShelfBooks(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	result, err := h.service.ListSystemShelfBooks(r.Context(), viewer, chi.URLParam(r, "key"), options)
+	libraryIDs, ok := h.shelfLibraryIDs(w, values)
+	if !ok {
+		return
+	}
+	result, err := h.service.ListSystemShelfBooks(r.Context(), viewer, chi.URLParam(r, "key"), options, libraryIDs...)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -98,14 +113,19 @@ func (h *catalogHTTP) listSystemShelfBooks(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *catalogHTTP) getShelf(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	if _, ok := h.query(w, r); !ok {
+	values, ok := h.query(w, r, "library_id")
+	if !ok {
+		return
+	}
+	libraryIDs, ok := h.shelfLibraryIDs(w, values)
+	if !ok {
 		return
 	}
 	id, ok := h.pathID(w, r, "id")
 	if !ok {
 		return
 	}
-	result, err := h.service.GetShelf(r.Context(), viewer, id)
+	result, err := h.service.GetShelf(r.Context(), viewer, id, libraryIDs...)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -169,7 +189,7 @@ func (h *catalogHTTP) listShelfBooks(w http.ResponseWriter, r *http.Request, vie
 	if !ok {
 		return
 	}
-	values, ok := h.query(w, r, "limit", "cursor")
+	values, ok := h.query(w, r, "limit", "cursor", "library_id")
 	if !ok {
 		return
 	}
@@ -177,12 +197,29 @@ func (h *catalogHTTP) listShelfBooks(w http.ResponseWriter, r *http.Request, vie
 	if !ok {
 		return
 	}
-	result, err := h.service.ListShelfBooks(r.Context(), viewer, id, options)
+	libraryIDs, ok := h.shelfLibraryIDs(w, values)
+	if !ok {
+		return
+	}
+	result, err := h.service.ListShelfBooks(r.Context(), viewer, id, options, libraryIDs...)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
 	h.writeJSON(w, http.StatusOK, result)
+}
+
+func (h *catalogHTTP) shelfLibraryIDs(w http.ResponseWriter, values url.Values) ([]int64, bool) {
+	value := values.Get("library_id")
+	if value == "" {
+		return nil, true
+	}
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id < 1 {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "The library ID must be positive.")
+		return nil, false
+	}
+	return []int64{id}, true
 }
 
 func (h *catalogHTTP) shelfBookIDs(w http.ResponseWriter, r *http.Request) (int64, int64, bool) {

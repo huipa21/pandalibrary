@@ -9,38 +9,51 @@
 	import ShelfDescription from '#lib/shelves/ShelfDescription.svelte';
 	import BookCard from '#lib/catalog/BookCard.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
-	import type { Shelf } from '#lib/shelves/types.js';
+	import type { SystemShelf } from '#lib/shelves/types.js';
 	import type { Book } from '#lib/catalog/types.js';
+	import { libraryHref, shelfLibraryID } from '#lib/libraries/context.js';
 
 	const pager = new CursorPager<Book>();
-	let shelf = $state<Shelf | null>(null);
+	let shelf = $state<SystemShelf | null>(null);
 	let error = $state('');
 	let requestVersion = 0;
+	let libraryID = $state<number | undefined>(undefined);
+	let metadataController: AbortController | null = null;
 
 	const key = $derived(page.params.key as string);
 
 	$effect(() => {
 		const current = key;
-		untrack(() => void loadShelf(current));
+		const url = page.url;
+		untrack(() => void loadShelf(current, shelfLibraryID(url)));
 	});
 
 	onDestroy(() => {
 		requestVersion += 1;
+		metadataController?.abort();
 		pager.dispose();
 	});
 
-	$effect(() => { if (shelf && pager.status === 'ready') rememberBrowseContext({ ids: pager.items.map((book) => book.id), label: systemShelfTitle(key), href: `/shelves/system/${encodeURIComponent(key)}` }); });
+	$effect(() => { if (shelf && pager.status === 'ready') rememberBrowseContext({ ids: pager.items.map((book) => book.id), label: systemShelfTitle(key), href: libraryHref(`/shelves/system/${encodeURIComponent(key)}`, libraryID) }); });
 
-	async function loadShelf(current: string) {
+	async function loadShelf(current: string, scope: number | undefined | null) {
 		const version = ++requestVersion;
+		metadataController?.abort();
+		metadataController = new AbortController();
+		const signal = metadataController.signal;
+		libraryID = scope ?? undefined;
 		error = '';
 		shelf = null;
 		void pager.reset(null);
+		if (scope === null) {
+			error = m['shelves.error.invalid']();
+			return;
+		}
 		try {
-			const loaded = await getSystemShelf(current);
+			const loaded = await getSystemShelf(current, { library_id: scope, signal });
 			if (version !== requestVersion) return;
 			shelf = loaded;
-			await pager.reset((cursor, signal) => listSystemShelfBooks(current, { cursor, signal }));
+			await pager.reset((cursor, signal) => listSystemShelfBooks(current, { cursor, signal, library_id: scope }));
 		} catch (cause) {
 			if (version !== requestVersion) return;
 			error = translate(shelfErrorKey(cause, 'load'));
@@ -61,7 +74,7 @@
 	{#if error}
 		<div class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">
 			<p>{error}</p>
-			<button class="mt-2 underline underline-offset-4 focus-visible:outline-2" onclick={() => void loadShelf(key)}>{m['shelves.retry']()}</button>
+			<button class="mt-2 underline underline-offset-4 focus-visible:outline-2" onclick={() => void loadShelf(key, shelfLibraryID(page.url))}>{m['shelves.retry']()}</button>
 		</div>
 	{:else if !shelf}
 		<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>

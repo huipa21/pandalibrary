@@ -17,6 +17,7 @@ import (
 
 	"pandalibrary/internal/app"
 	"pandalibrary/internal/auth"
+	"pandalibrary/internal/backup"
 	"pandalibrary/internal/buildinfo"
 	"pandalibrary/internal/config"
 	"pandalibrary/internal/db"
@@ -50,6 +51,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runUser(args[1:], stdout, stderr)
 	case "migrate":
 		return runMigrate(args[1:], stdout)
+	case "restore":
+		return runRestore(args[1:], stdout, stderr)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
@@ -139,6 +142,11 @@ func runUserWithPrompt(args []string, stdout, stderr io.Writer, prompt passwordP
 	}
 
 	ctx := context.Background()
+	dataLock, err := backup.Acquire(filepath.Dir(databasePath()))
+	if err != nil {
+		return err
+	}
+	defer func() { returnErr = errors.Join(returnErr, dataLock.Close()) }()
 	databases, err := db.Open(ctx, databasePath())
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -237,6 +245,11 @@ func runMigrate(args []string, stdout io.Writer) (returnErr error) {
 		return fmt.Errorf("unknown migrate command %q", command)
 	}
 
+	dataLock, err := backup.Acquire(filepath.Dir(databasePath()))
+	if err != nil {
+		return err
+	}
+	defer func() { returnErr = errors.Join(returnErr, dataLock.Close()) }()
 	databases, err := db.Open(context.Background(), databasePath())
 	if err != nil {
 		return err
@@ -293,4 +306,43 @@ func databasePath() string {
 		dataDir = "/data"
 	}
 	return filepath.Join(dataDir, "pandalibrary.db")
+}
+
+func runRestore(args []string, stdout, stderr io.Writer) (returnErr error) {
+	flags := flag.NewFlagSet("restore", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	filename := flags.String("file", "", "full-data .tar.gz archive")
+	dataDir := flags.String("data-dir", filepath.Dir(databasePath()), "target data directory")
+	confirm := flags.Bool("confirm", false, "confirm replacement of all app data on next startup")
+	if err := flags.Parse(args); errors.Is(err, flag.ErrHelp) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if *filename == "" || !*confirm || flags.NArg() != 0 {
+		return errors.New("usage: pandalibrary restore --file <archive.tar.gz> --data-dir <directory> --confirm (server must be stopped)")
+	}
+	cfg, err := config.Parse([]string{"--data-dir", *dataDir}, stderr)
+	if err != nil {
+		return err
+	}
+	lock, err := backup.Acquire(cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	defer func() { returnErr = errors.Join(returnErr, lock.Close()) }()
+	service, err := backup.New(cfg, nil, nil)
+	if err != nil {
+		return err
+	}
+	file, err := os.Open(*filename)
+	if err != nil {
+		return err
+	}
+	defer func() { returnErr = errors.Join(returnErr, file.Close()) }()
+	if err := service.Stage(context.Background(), file); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, "Restore validated and staged. Restart required: start PandaLibrary with the same data/drop/bookheap configuration to apply it.")
+	return err
 }

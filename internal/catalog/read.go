@@ -70,7 +70,7 @@ func (s *Service) ListLibraries(ctx context.Context, viewer Viewer, options Page
 	if err != nil {
 		return Page[Library]{}, fmt.Errorf("list libraries: %w", err)
 	}
-	rows, next, err := paginate(rows, limit, func(row sqlc.Library) cursor {
+	rows, next, err := paginate(rows, limit, func(row sqlc.CatalogListLibrariesRow) cursor {
 		return cursor{Version: 1, Kind: "libraries", Scope: scope, ID: row.ID, Text: row.Name}
 	})
 	if err != nil {
@@ -78,7 +78,11 @@ func (s *Service) ListLibraries(ctx context.Context, viewer Viewer, options Page
 	}
 	items := make([]Library, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, libraryDTO(row))
+		item := libraryDTO(sqlc.Library{
+			ID: row.ID, Name: row.Name, Slug: row.Slug, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		})
+		item.VisibleBookCount = row.VisibleBookCount
+		items = append(items, item)
 	}
 	return Page[Library]{Items: items, NextCursor: next}, nil
 }
@@ -91,13 +95,25 @@ func (s *Service) GetLibrary(ctx context.Context, viewer Viewer, id int64) (Libr
 	if id < 1 {
 		return Library{}, invalid("library ID is invalid")
 	}
-	row, err := sqlc.New(s.reader).CatalogGetLibrary(ctx, sqlc.CatalogGetLibraryParams{
-		LibraryID: id, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
+	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (Library, error) {
+		row, err := libraryInTx(ctx, queries, viewer, id)
+		if err != nil {
+			return Library{}, err
+		}
+		return libraryWithCount(ctx, queries, viewer, row)
+	})
+}
+
+func libraryWithCount(ctx context.Context, queries *sqlc.Queries, viewer Viewer, row sqlc.Library) (Library, error) {
+	count, err := queries.CatalogLibraryVisibleBookCount(ctx, sqlc.CatalogLibraryVisibleBookCountParams{
+		LibraryID: row.ID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
 	})
 	if err != nil {
-		return Library{}, notFound(fmt.Errorf("get library: %w", err))
+		return Library{}, fmt.Errorf("count visible library books: %w", err)
 	}
-	return libraryDTO(row), nil
+	item := libraryDTO(row)
+	item.VisibleBookCount = count
+	return item, nil
 }
 
 // ListBooks returns a visibility-filtered, keyset-paginated catalog.

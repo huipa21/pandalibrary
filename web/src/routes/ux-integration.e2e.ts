@@ -78,7 +78,8 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 	const { user: { id } } = await created.json() as { user: { id: number } };
 	const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'ux-reader', exact: true }) });
 	await expect(row).toBeVisible();
-	await row.getByRole('button', { name: /^Edit / }).click();
+	await row.getByRole('checkbox').check();
+	await page.getByRole('toolbar').getByRole('button', { name: 'Edit', exact: true }).click();
 	const edit = page.getByRole('region', { name: 'Edit account' });
 	await edit.getByLabel('Display name').fill('Renamed Reader');
 	await edit.getByRole('button', { name: 'Save changes' }).click();
@@ -91,13 +92,15 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await expect(reader.getByText('Only administrators can open this area.')).toBeVisible();
 		expect((await reader.request.get('/api/v1/admin/users')).status()).toBe(403);
 		page.once('dialog', (dialog) => dialog.accept());
-		await row.getByRole('button', { name: /^Disable / }).click();
+		await page.getByRole('toolbar').getByRole('button', { name: 'Disable', exact: true }).click();
 		await expect(row).toContainText('Disabled');
 		expect((await reader.request.get('/api/v1/auth/me')).status()).toBe(401);
 		page.once('dialog', (dialog) => dialog.accept());
-		await row.getByRole('button', { name: /^Enable / }).click();
-		await expect(row.getByRole('button', { name: /^Disable / })).toBeVisible();
-		await row.getByRole('button', { name: /^Reset password / }).click();
+		await row.getByRole('checkbox').check();
+		await page.getByRole('toolbar').getByRole('button', { name: 'Enable', exact: true }).click();
+		await expect(row).toContainText('Active');
+		await row.getByRole('checkbox').check();
+		await page.getByRole('toolbar').getByRole('button', { name: 'Reset password', exact: true }).click();
 		const reset = page.getByRole('region', { name: 'Reset password' });
 		await reset.getByLabel('New password', { exact: true }).fill('ux-replacement-password');
 		await reset.getByLabel('Confirm new password').fill('different-password');
@@ -108,8 +111,8 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await expect(page.getByText('Password reset. Sessions and device credentials were revoked.')).toBeVisible();
 		await login(reader, 'ux-reader', 'ux-replacement-password');
 		page.once('dialog', (dialog) => dialog.accept());
-		await row.getByRole('button', { name: /^Revoke credentials / }).click();
-		await expect(page.getByText('Browser sessions and device credentials revoked.', { exact: true })).toBeVisible();
+		await page.getByRole('toolbar').getByRole('button', { name: 'Revoke credentials', exact: true }).click();
+		await expect(page.getByText('Completed for 1 account(s).', { exact: true })).toBeVisible();
 		expect((await reader.request.get('/api/v1/auth/me')).status()).toBe(401);
 		await page.goto('/admin/libraries');
 		const library = page.getByRole('region', { name: 'New library' });
@@ -127,11 +130,13 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await page.goto('/admin/users');
 		await page.screenshot({ path: info.outputPath('admin-users-en.png'), fullPage: true });
 		page.once('dialog', (dialog) => dialog.accept());
-		await row.getByRole('button', { name: /^Delete / }).click();
+		await row.getByRole('checkbox').check();
+		await page.getByRole('toolbar').getByRole('button', { name: 'Delete', exact: true }).click();
 		await expect(row).toHaveCount(0);
 		const own = page.getByRole('row').filter({ has: page.getByRole('cell', { name: realAdmin.username, exact: true }) });
 		page.once('dialog', (dialog) => dialog.accept());
-		await own.getByRole('button', { name: /^Disable / }).click();
+		await own.getByRole('checkbox').check();
+		await page.getByRole('toolbar').getByRole('button', { name: 'Disable', exact: true }).click();
 		await expect(page.getByRole('alert')).toContainText('administrator');
 		// Self reset and revoke use a separate admin so other real-server tests keep their session.
 		const response = await page.request.post('/api/v1/admin/users', { data: {
@@ -141,14 +146,15 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await readerContext.clearCookies();
 		await login(reader, 'ux-self', 'ux-self-password');
 		await reader.goto('/admin/users');
-		await expect(reader.getByRole('heading', { name: '用户账号', level: 1 })).toBeVisible();
+		await expect(reader.getByRole('heading', { name: '用户', level: 1, exact: true })).toBeVisible();
 		await reader.screenshot({ path: info.outputPath('admin-users-zh.png'), fullPage: true });
 		// Switch this account to English through the API, then test both self invalidations.
 		const self = await response.json() as { user: { id: number } };
 		expect((await page.request.patch(`/api/v1/admin/users/${self.user.id}`, { data: { locale: 'en' } })).ok()).toBe(true);
 		await reader.reload();
 		const selfRow = reader.getByRole('row').filter({ has: reader.getByRole('cell', { name: 'ux-self', exact: true }) });
-		await selfRow.getByRole('button', { name: /^Reset password / }).click();
+		await selfRow.getByRole('checkbox').check();
+		await reader.getByRole('toolbar').getByRole('button', { name: 'Reset password', exact: true }).click();
 		await reader.getByLabel('New password', { exact: true }).fill('ux-self-new-password');
 		await reader.getByLabel('Confirm new password').fill('ux-self-new-password');
 		await reader.getByRole('button', { name: 'Save changes' }).click();
@@ -156,7 +162,8 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await login(reader, 'ux-self', 'ux-self-new-password');
 		await reader.goto('/admin/users');
 		reader.once('dialog', (dialog) => dialog.accept());
-		await selfRow.getByRole('button', { name: /^Revoke credentials / }).click();
+		await selfRow.getByRole('checkbox').check();
+		await reader.getByRole('toolbar').getByRole('button', { name: 'Revoke credentials', exact: true }).click();
 		await expect(reader).toHaveURL('/login');
 		await expect.poll(() => reader.evaluate(() => localStorage.getItem('pandalibrary.offline.signed-out'))).toBe('1');
 		expect((await page.request.delete(`/api/v1/admin/users/${self.user.id}`)).ok()).toBe(true);
@@ -306,21 +313,22 @@ test('book-scoped PDF and CFI bookmarks jump, rename, survive offline reload and
 test('real sidebar shelves, automatic rule changes, favorites and bilingual responsive routes', async ({ page }, info) => {
 	test.setTimeout(150_000);
 	await signInRealAdmin(page);
-	const books = await (await page.request.get('/api/v1/books?limit=100')).json() as { items: Array<{ id: number; title: string }> };
+	const books = await (await page.request.get('/api/v1/books?limit=100')).json() as { items: Array<{ id: number; title: string; library_id: number }> };
 	const existing = books.items.find((item) => item.title === 'UXPDF');
 	const imported = existing ? null : await importBook(page, 'UXPDF', pdfFixture());
-	const book = existing ?? { id: imported!.bookID, title: imported!.title };
-	await page.goto('/books');
+	const book = existing ?? { id: imported!.bookID, title: imported!.title, library_id: imported!.libraryID };
+	await page.goto(`/library/${book.library_id}`);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
+	const shelfNavigation = page.getByRole('navigation', { name: 'Browse by shelf' });
+	await shelfNavigation.getByRole('button', { name: 'Shelf actions' }).click();
+	await shelfNavigation.getByRole('menuitem', { name: 'New shelf' }).click();
 	let creator = page.getByRole('dialog', { name: 'Create shelf' });
 	await creator.getByLabel('Shelf name').fill('Manual UX shelf');
 	await creator.getByRole('button', { name: 'Create shelf', exact: true }).click();
 	await expect(creator).toHaveCount(0);
-	await expect(sidebar.getByRole('button', { name: 'Shelf actions' })).toBeFocused();
-	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'Manage shelves' }).click();
+	await expect(shelfNavigation.getByRole('button', { name: 'Shelf actions' })).toBeFocused();
+	await shelfNavigation.getByRole('button', { name: 'Shelf actions' }).click();
+	await shelfNavigation.getByRole('menuitem', { name: 'Manage shelves' }).click();
 	await expect(page).toHaveURL('/shelves');
 	await expect(page.getByRole('main').getByRole('link', { name: 'Manual UX shelf', exact: true })).toBeVisible();
 	await expect(page.getByRole('main').getByRole('button', { name: 'Create shelf', exact: true })).toHaveCount(0);
@@ -333,8 +341,9 @@ test('real sidebar shelves, automatic rule changes, favorites and bilingual resp
 	await sidebar.getByRole('link', { name: 'Manual UX shelf 1', exact: true }).click();
 	await page.getByRole('button', { name: 'Remove “UXPDF” from this shelf' }).click();
 	await expect(sidebar.getByRole('link', { name: 'Manual UX shelf 0', exact: true })).toBeVisible();
-	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
+	await page.goto(`/library/${book.library_id}`);
+	await shelfNavigation.getByRole('button', { name: 'Shelf actions' }).click();
+	await shelfNavigation.getByRole('menuitem', { name: 'New shelf' }).click();
 	creator = page.getByRole('dialog', { name: 'Create shelf' });
 	await creator.getByLabel('Automatic', { exact: true }).check();
 	await creator.getByLabel('Shelf name').fill('Automatic UX shelf with a deliberately long bilingual name 自动书架');

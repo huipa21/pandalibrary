@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"unicode/utf8"
 
 	"pandalibrary/internal/db/sqlc"
@@ -22,10 +23,17 @@ type adminUsersCursor struct {
 	Version  int    `json:"v"`
 	Username string `json:"u"`
 	ID       int64  `json:"i"`
+	Search   string `json:"q,omitempty"`
+	Category string `json:"c,omitempty"`
 }
 
 // AdminListUsers orders case-insensitively by username, then ID.
 func (s *Service) AdminListUsers(ctx context.Context, token string, limit int, cursor string) (AdminUsersPage, error) {
+	return s.AdminSearchUsers(ctx, token, limit, cursor, "", "all")
+}
+
+// AdminSearchUsers filters all accounts before cursor pagination.
+func (s *Service) AdminSearchUsers(ctx context.Context, token string, limit int, cursor, search, category string) (AdminUsersPage, error) {
 	queries := sqlc.New(s.reader)
 	if _, err := s.checkAdmin(ctx, queries, token); err != nil {
 		return AdminUsersPage{}, err
@@ -35,6 +43,18 @@ func (s *Service) AdminListUsers(ctx context.Context, token string, limit int, c
 	}
 	if limit < 1 || limit > 100 {
 		return AdminUsersPage{}, fmt.Errorf("%w: limit must be between 1 and 100", ErrInvalidUser)
+	}
+	search = strings.TrimSpace(search)
+	if len(search) > 256 || !utf8.ValidString(search) {
+		return AdminUsersPage{}, fmt.Errorf("%w: search must be valid UTF-8 and at most 256 bytes", ErrInvalidUser)
+	}
+	if category == "" {
+		category = "all"
+	}
+	switch category {
+	case "all", "username", "display_name", "role", "locale":
+	default:
+		return AdminUsersPage{}, fmt.Errorf("%w: invalid search category", ErrInvalidUser)
 	}
 	var after adminUsersCursor
 	if cursor != "" {
@@ -55,9 +75,17 @@ func (s *Service) AdminListUsers(ctx context.Context, token string, limit int, c
 			after.Username == "" || len(after.Username) > 64 || !utf8.ValidString(after.Username) {
 			return AdminUsersPage{}, fmt.Errorf("%w: cursor is invalid", ErrInvalidUser)
 		}
+		cursorCategory := after.Category
+		if cursorCategory == "" {
+			cursorCategory = "all"
+		}
+		if after.Search != search || cursorCategory != category {
+			return AdminUsersPage{}, fmt.Errorf("%w: cursor does not match the search", ErrInvalidUser)
+		}
 	}
 	rows, err := queries.AdminListUsers(ctx, sqlc.AdminListUsersParams{
 		AfterID: after.ID, AfterUsername: after.Username, PageLimit: int64(limit + 1),
+		Search: search, Category: category,
 	})
 	if err != nil {
 		return AdminUsersPage{}, fmt.Errorf("list managed users: %w", err)
@@ -66,7 +94,7 @@ func (s *Service) AdminListUsers(ctx context.Context, token string, limit int, c
 	for index, row := range rows {
 		if index == limit {
 			last := page.Items[len(page.Items)-1]
-			raw, err := json.Marshal(adminUsersCursor{Version: 1, Username: last.Username, ID: last.ID})
+			raw, err := json.Marshal(adminUsersCursor{Version: 1, Username: last.Username, ID: last.ID, Search: search, Category: category})
 			if err != nil {
 				return AdminUsersPage{}, fmt.Errorf("encode users cursor: %w", err)
 			}

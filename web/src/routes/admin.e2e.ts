@@ -43,9 +43,139 @@ test('administrators reach the admin area in Chinese', async ({ page }) => {
 	await authenticate(page, 'admin', 'zh');
 	await page.goto('/');
 	await page.getByRole('link', { name: '管理', exact: true }).click();
-	await expect(page.getByRole('heading', { level: 1, name: '管理' })).toHaveClass('sr-only');
+	await expect(page).toHaveURL('/admin/users');
+	await expect(page.getByRole('heading', { level: 1, name: '用户', exact: true })).toBeVisible();
 	await expect(page.getByRole('navigation', { name: '管理分区' })).toBeVisible();
 	await expect(page.getByText('pandalibrary user create --username <name>')).toBeVisible();
+});
+
+test('Users searches all pages and exposes selection-aware actions above numbered rows', async ({ page }) => {
+	await authenticate(page);
+	const accounts = [
+		{ id: 20, username: 'alpha', display_name: 'Alpha Person', role: 'user', locale: 'en', disabled: false, created_at: stamp, updated_at: stamp },
+		{ id: 42, username: 'beta', display_name: 'Beta Person', role: 'user', locale: 'zh', disabled: true, created_at: stamp, updated_at: stamp }
+	];
+	const changes: number[] = [];
+	const queries: URLSearchParams[] = [];
+	await page.route('**/api/v1/admin/users?*', (route) => {
+		const params = new URL(route.request().url()).searchParams;
+		queries.push(params);
+		const items = params.get('q') ? accounts.filter((user) => user.display_name.includes(params.get('q')!))
+			: params.has('cursor') ? [accounts[1]] : [accounts[0]];
+		return route.fulfill({ json: { items, next_cursor: params.get('q') || params.has('cursor') ? null : 'second' } });
+	});
+	await page.route('**/api/v1/admin/users/*', (route) => {
+		const id = Number(new URL(route.request().url()).pathname.split('/').pop());
+		changes.push(id);
+		const user = accounts.find((item) => item.id === id)!;
+		user.disabled = route.request().postDataJSON().disabled;
+		return route.fulfill({ json: { user } });
+	});
+	await page.goto('/admin');
+	await expect(page).toHaveURL('/admin/users');
+	const tabs = page.getByRole('navigation', { name: 'Administration sections' });
+	await expect(tabs.getByRole('link', { name: 'Overview', exact: true })).toHaveCount(0);
+	await expect(tabs.getByRole('link', { name: 'Uploads', exact: true })).toBeVisible();
+	await expect(tabs.getByRole('link', { name: 'Backup', exact: true })).toBeVisible();
+	await expect(page.getByText('pandalibrary user create --username <name>')).toBeVisible();
+	await expect(page.getByRole('toolbar')).toHaveCount(0);
+	const alpha = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'alpha', exact: true }) });
+	await expect(alpha.getByRole('cell').first()).toHaveText('1');
+	await page.getByRole('button', { name: 'Load more users' }).click();
+	const beta = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'beta', exact: true }) });
+	await expect(beta.getByRole('cell').first()).toHaveText('2');
+	await page.getByRole('checkbox', { name: 'Select alpha', exact: true }).check();
+	const toolbar = page.getByRole('toolbar');
+	await expect(toolbar.getByRole('button', { name: 'Edit', exact: true })).toBeEnabled();
+	await expect(toolbar.getByRole('button', { name: 'Enable', exact: true })).toBeDisabled();
+	await expect(page.getByRole('checkbox', { name: 'Select all loaded users' })).toHaveJSProperty('indeterminate', true);
+	await page.getByRole('checkbox', { name: 'Select all loaded users' }).check();
+	await expect(toolbar.getByRole('button', { name: 'Edit', exact: true })).toBeDisabled();
+	await expect(toolbar.getByRole('button', { name: 'Reset password', exact: true })).toBeDisabled();
+	await expect(toolbar.getByRole('button', { name: 'Enable', exact: true })).toBeEnabled();
+	await expect(toolbar.getByRole('button', { name: 'Disable', exact: true })).toBeEnabled();
+	page.once('dialog', (dialog) => dialog.accept());
+	await toolbar.getByRole('button', { name: 'Enable', exact: true }).click();
+	await expect(page.getByText('Completed for 1 account(s).')).toBeVisible();
+	expect(changes).toEqual([42]);
+	await page.getByRole('checkbox', { name: 'Select all loaded users' }).uncheck();
+	await expect(page.getByRole('toolbar')).toHaveCount(0);
+	const search = page.getByRole('search', { name: 'Search accounts' });
+	await search.getByLabel('Category').selectOption('display_name');
+	await search.getByRole('searchbox').fill('Beta');
+	await search.getByRole('button', { name: 'Search accounts' }).click();
+	await expect(alpha).toHaveCount(0);
+	await expect(beta.getByRole('cell').first()).toHaveText('1');
+	expect(queries.at(-1)?.get('q')).toBe('Beta');
+	expect(queries.at(-1)?.get('category')).toBe('display_name');
+	expect(queries.at(-1)?.has('cursor')).toBe(false);
+	await page.getByRole('checkbox', { name: 'Select beta', exact: true }).check();
+	await search.getByRole('searchbox').fill('Not found');
+	await search.getByRole('button', { name: 'Search accounts' }).click();
+	await expect(page.getByText('No users found.')).toBeVisible();
+	await expect(page.getByRole('toolbar')).toHaveCount(0);
+});
+
+test('creates a server backup and stages a confirmed replacement restore', async ({ page }) => {
+	await authenticate(page);
+	const backup = { name: 'pandalibrary-test.tar.gz', size_bytes: 1048576, created_at: stamp };
+	let created = false;
+	let pending = false;
+	let restoreBody: unknown;
+	await page.route('**/api/v1/admin/backups', (route) => {
+		if (route.request().method() === 'POST') {
+			created = true;
+			return route.fulfill({ status: 201, json: { backup } });
+		}
+		return route.fulfill({ json: { backups: created ? [backup] : [], restore_pending: pending } });
+	});
+	await page.route('**/api/v1/admin/backups/restore', (route) => {
+		restoreBody = route.request().postDataJSON();
+		pending = true;
+		return route.fulfill({ status: 202, json: { status: 'staged', restore_pending: true, restart_required: true } });
+	});
+	await page.goto('/admin/backup');
+	await expect(page.getByText('No backups saved on this server.')).toBeVisible();
+	await page.getByRole('button', { name: 'Create backup', exact: true }).click();
+	await expect(page.getByText(`Backup saved on the server: ${backup.name}`)).toBeVisible();
+	const row = page.getByRole('row').filter({ hasText: backup.name });
+	await expect(row.getByRole('cell', { name: '1.00 MiB' })).toBeVisible();
+	await expect(row.getByRole('link', { name: `Download ${backup.name}` })).toHaveAttribute('href', `/api/v1/admin/backups/${backup.name}`);
+	page.once('dialog', (dialog) => dialog.dismiss());
+	await row.getByRole('button', { name: `Restore ${backup.name}` }).click();
+	expect(restoreBody).toBeUndefined();
+	page.once('dialog', (dialog) => dialog.accept());
+	await row.getByRole('button', { name: `Restore ${backup.name}` }).click();
+	await expect(page.getByText('Restore is staged. Restart the PandaLibrary server to apply it. Data has not been replaced yet.')).toBeVisible();
+	expect(restoreBody).toEqual({ name: backup.name, confirm: true });
+	await expect(page.getByRole('button', { name: 'Create backup', exact: true })).toBeDisabled();
+	await page.reload();
+	await expect(page.getByText('Restore is staged. Restart the PandaLibrary server to apply it. Data has not been replaced yet.')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Upload and restore', exact: true })).toBeDisabled();
+});
+
+test('uploads a backup for restore and reports invalid archives without staging', async ({ page }) => {
+	await authenticate(page);
+	await page.route('**/api/v1/admin/backups', (route) =>
+		route.fulfill({ json: { backups: [], restore_pending: false } }));
+	let multipart = '';
+	await page.route('**/api/v1/admin/backups/restore', (route) => {
+		multipart = route.request().postData() ?? '';
+		return problem(route, 400);
+	});
+	await page.goto('/admin/backup');
+	await page.getByRole('button', { name: 'Upload and restore', exact: true }).click();
+	await expect(page.getByText('Choose a non-empty PandaLibrary .tar.gz backup file.')).toBeVisible();
+	await page.getByLabel('Backup archive (.tar.gz)').setInputFiles({
+		name: 'saved.tar.gz', mimeType: 'application/gzip', buffer: Buffer.from('not a real archive')
+	});
+	page.once('dialog', (dialog) => dialog.accept());
+	await page.getByRole('button', { name: 'Upload and restore', exact: true }).click();
+	await expect(page.getByRole('alert')).toContainText('This backup is invalid, damaged, incompatible, or cannot be restored safely.');
+	expect(multipart).toContain('name="file"; filename="saved.tar.gz"');
+	expect(multipart).toContain('name="confirm"\r\n\r\ntrue');
+	await expect(page.getByRole('button', { name: 'Create backup', exact: true })).toBeEnabled();
+	await expect(page.getByText('Restore is staged.', { exact: false })).toHaveCount(0);
 });
 
 test('manages libraries and access grants with conflicts', async ({ page }) => {
@@ -207,7 +337,7 @@ test('uploads a book and polls import history until it finishes', async ({ page 
 	await expect(page.getByText('Choose a library.')).toBeVisible();
 	await expect(page.getByText('Choose a file to upload.')).toBeVisible();
 
-	await page.getByLabel('Library').selectOption({ label: 'Main' });
+	await page.getByRole('main').getByLabel('Library', { exact: true }).selectOption({ label: 'Main' });
 	await page.getByLabel('Book file').setInputFiles({ name: 'huge.epub', mimeType: 'application/epub+zip', buffer: Buffer.from('big') });
 	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(page.getByText('This file is larger than the server allows.')).toBeVisible();
@@ -221,14 +351,14 @@ test('uploads a book and polls import history until it finishes', async ({ page 
 	expect(multipart).toContain('name="visibility"\r\n\r\nprivate');
 	const item = page.getByRole('listitem').filter({ hasText: 'Dune.epub' });
 	await expect(item.getByText('Waiting')).toBeVisible();
-	await expect(page.getByText('Some imports are still running')).toBeVisible();
+	await expect(page.getByText('Some uploads are still processing')).toBeVisible();
 
 	await page.clock.runFor(3100);
-	await expect(item.getByText('Importing')).toBeVisible();
+	await expect(item.getByText('Processing')).toBeVisible();
 	await page.clock.runFor(3100);
-	await expect(item.getByText('Imported')).toBeVisible();
+	await expect(item.getByText('Uploaded')).toBeVisible();
 	await expect(item.getByRole('link', { name: 'Open book #77' })).toHaveAttribute('href', '/books/77');
-	await expect(page.getByText('Some imports are still running')).toHaveCount(0);
+	await expect(page.getByText('Some uploads are still processing')).toHaveCount(0);
 	await page.clock.runFor(30_000);
 	expect(polls).toBe(2);
 });

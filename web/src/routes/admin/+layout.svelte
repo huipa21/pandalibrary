@@ -17,13 +17,13 @@
 	let check = 0;
 
 	const sections = [
-		{ href: '/admin', label: m['admin.tabs.overview'] },
 		{ href: '/admin/users', label: m['admin.tabs.users'] },
 		{ href: '/admin/libraries', label: m['admin.tabs.libraries'] },
 		{ href: '/admin/hidden-books', label: m['admin.tabs.hidden_books'] },
 		{ href: '/admin/imports', label: m['admin.tabs.imports'] },
 		{ href: '/admin/providers', label: m['admin.tabs.providers'] },
-		{ href: '/admin/maintenance', label: m['admin.tabs.maintenance'] }
+		{ href: '/admin/maintenance', label: m['admin.tabs.maintenance'] },
+		{ href: '/admin/backup', label: m['admin.tabs.backup'] }
 	];
 
 	onMount(() => {

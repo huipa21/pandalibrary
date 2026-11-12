@@ -11,6 +11,33 @@ menu button. Select the PandaLibrary logo to return to the dashboard.
 The header, sidebar and main content keep the same width and position when
 switching between pages with and without a vertical scrollbar.
 
+## Administration
+
+Administrators open **Admin** to manage **Users**. There is no Overview tab.
+Server CLI account commands are listed at the bottom of Users.
+
+Choose a search category, enter text, and select **Search accounts** to search
+all accounts, not just the loaded rows. An empty search shows all accounts.
+The **#** column numbers the displayed rows; it is not the account ID.
+Select individual checkboxes or use the header checkbox to select or clear all
+loaded users. Loading more rows does not select them automatically.
+
+Actions appear above the table when users are selected. **Edit** and
+**Reset password** require one selected account. **Enable**, **Disable**,
+**Revoke credentials**, and **Delete** support multiple accounts; Enable and
+Disable apply only to accounts that need the change. Destructive operations
+require confirmation. Bulk operations stop on the first failure and report
+how many accounts were changed; completed changes are not rolled back.
+
+**Uploads** handles book uploads and their processing history. **Backup**
+creates and saves a single database-and-media `.tar.gz` archive on the server.
+Download archives for safekeeping, or restore from a saved or uploaded archive.
+Restores are validated and staged first: restart the server to replace all
+application data. The executable and deployment configuration are not replaced.
+Before reconnecting, clear offline data on every client so old queued changes
+cannot overwrite the restored state. Backup-era passwords, sessions and device
+credentials return, including credentials revoked after the backup was created.
+
 ## Dashboard
 
 The dashboard is your home page. It shows reading feeds such as Continue
@@ -36,6 +63,21 @@ real cover is added — from the book file, an upload or a metadata provider —
 replaces the default cover. Badges show each book's formats and your reading
 status.
 
+### Libraries
+
+Select **Library** in the sidebar to see your libraries as cards, each showing
+the number of books you can see. Select a card to open that library: the sidebar
+heading becomes its name and the shelves below it show counts and books from
+that library only. Shelves remain reusable across libraries; this does not move
+books or change shelf membership. **Favorites** in Home remains account-wide.
+
+Use the **⋮** beside the library heading for **New Library**, **Edit Library**
+(the selected library's settings), or **Manage Libraries**. Creating, editing,
+and deleting libraries requires an administrator account. Administrators also
+have edit and delete icons at the bottom right of each library card. Deletion
+requires confirmation; only empty, non-default libraries can be deleted.
+Readers can use **Manage Libraries** to return to the library cards.
+
 ## Book pages
 
 Opening a book shows four tabs:
@@ -52,7 +94,8 @@ Skimmed and Abandoned.
 
 Change your reading status beside the rating in the book header. Below the
 cover, the full-width **Read** or **Resume** button opens the reader. The icons
-under it download the book and add it to a shelf. If you uploaded the book, a
+under it download the book, toggle Favorites with the star beside Download, and
+add it to a shelf. These borderless icons show a shaded square on hover. If you uploaded the book, a
 visibility control directly below **Read** or **Resume** shows its current
 state and lets you make it private or public after confirmation: private means
 only you can see it, while public means any signed-in user can see it, not
@@ -359,10 +402,12 @@ not embedded). Oversized exports fail rather than silently dropping items.
 
 ## Shelves
 
-Open the three-dot menu beside **Shelves** in the sidebar and choose **New shelf**
-to create a shelf, or **Manage shelves** to browse and manage existing shelves.
+Open a library and use **New shelf** to create a shelf, or **Manage shelves**
+to browse and manage existing shelves.
 
-- **Favorites** is created for you and cannot be renamed or deleted.
+- **Favorites** is a special collection under **Home** in the sidebar, not in the
+  library's shelf list. It is created for you and cannot be renamed or deleted.
+  Use the star beside Download on a book page to add or remove a favorite.
 - **Manual shelves** contain the books you add to them.
 - **Automatic shelves** fill themselves from rules. Rules can match title,
   author, series, tag, language, format or reading status, using all or any of

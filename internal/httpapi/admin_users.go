@@ -53,7 +53,7 @@ func (h *adminUsersHTTP) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for key, entries := range values {
-		if (key != "limit" && key != "cursor") || len(entries) != 1 {
+		if (key != "limit" && key != "cursor" && key != "q" && key != "category") || len(entries) != 1 {
 			WriteProblem(w, h.logger, http.StatusBadRequest, "The query is invalid.")
 			return
 		}
@@ -66,7 +66,7 @@ func (h *adminUsersHTTP) list(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	result, err := h.service.AdminListUsers(r.Context(), adminSessionToken(r), limit, values.Get("cursor"))
+	result, err := h.service.AdminSearchUsers(r.Context(), adminSessionToken(r), limit, values.Get("cursor"), values.Get("q"), values.Get("category"))
 	h.respond(w, r, http.StatusOK, result, err)
 }
 

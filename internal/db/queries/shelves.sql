@@ -43,6 +43,7 @@ UPDATE shelves SET updated_at = ? WHERE id = ?;
 SELECT count(*) FROM shelf_books sb
 JOIN books b ON b.id = sb.book_id
 WHERE sb.shelf_id = sqlc.arg(shelf_id)
+AND (CAST(sqlc.arg(library_id) AS INTEGER) = 0 OR b.library_id = sqlc.arg(library_id))
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -55,6 +56,7 @@ AND NOT EXISTS (
 SELECT sb.book_id FROM shelf_books sb
 JOIN books b ON b.id = sb.book_id
 WHERE sb.shelf_id = sqlc.arg(shelf_id)
+AND (CAST(sqlc.arg(library_id) AS INTEGER) = 0 OR b.library_id = sqlc.arg(library_id))
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)

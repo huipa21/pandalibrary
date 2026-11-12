@@ -239,6 +239,10 @@ func (s *Service) dropInfo(name string) (os.FileInfo, error) {
 }
 
 func (s *Service) queueDrop(ctx context.Context, name string, entry candidate) error {
+	if s.options.SnapshotGate != nil {
+		s.options.SnapshotGate.RLock()
+		defer s.options.SnapshotGate.RUnlock()
+	}
 	queries := sqlc.New(s.options.Reader)
 	var libraryErr error
 	if parent := filepath.Dir(name); parent == "." {

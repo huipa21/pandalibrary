@@ -1,27 +1,33 @@
 import { api, type JsonValue } from '#lib/api/client.js';
 import { buildPagePath, MAX_PAGE_SIZE, type PageOptions } from '#lib/catalog/api.js';
 import type { Book, Page } from '#lib/catalog/types.js';
-import type { SessionViewer, Shelf, ShelfInput, ShelfPatch, RuleSet } from './types.js';
+import type { SessionViewer, Shelf, ShelfInput, ShelfPatch, RuleSet, SystemShelf } from './types.js';
 
-type RequestOptions = PageOptions & { signal?: AbortSignal };
+export type ShelfOptions = PageOptions & { library_id?: number };
+type RequestOptions = ShelfOptions & { signal?: AbortSignal };
 
 export const MAX_SHELF_NAME_BYTES = 1024;
 export const MAX_SHELF_DESCRIPTION_BYTES = 1 << 20;
 
-export function buildShelvesPath(options: PageOptions = {}): string {
-	return buildPagePath('/shelves', options);
+function scopedPath(path: string, options: ShelfOptions): string {
+	if (options.library_id === undefined) return path;
+	return `${path}${path.includes('?') ? '&' : '?'}library_id=${encodeURIComponent(options.library_id)}`;
 }
 
-export function buildShelfBooksPath(shelfID: number, options: PageOptions = {}): string {
-	return buildPagePath(`/shelves/${shelfID}/books`, options);
+export function buildShelvesPath(options: ShelfOptions = {}): string {
+	return scopedPath(buildPagePath('/shelves', options), options);
 }
 
-export function buildSystemShelfPath(key: string, options: PageOptions = {}): string {
-	return buildPagePath(`/shelves/system/${key}`, options);
+export function buildShelfBooksPath(shelfID: number, options: ShelfOptions = {}): string {
+	return scopedPath(buildPagePath(`/shelves/${shelfID}/books`, options), options);
 }
 
-export function buildSystemShelfBooksPath(key: string, options: PageOptions = {}): string {
-	return buildPagePath(`/shelves/system/${key}/books`, options);
+export function buildSystemShelfPath(key: string, options: ShelfOptions = {}): string {
+	return scopedPath(buildPagePath(`/shelves/system/${key}`, options), options);
+}
+
+export function buildSystemShelfBooksPath(key: string, options: ShelfOptions = {}): string {
+	return scopedPath(buildPagePath(`/shelves/system/${key}/books`, options), options);
 }
 
 export async function listShelves(options: RequestOptions = {}): Promise<Page<Shelf>> {
@@ -29,12 +35,12 @@ export async function listShelves(options: RequestOptions = {}): Promise<Page<Sh
 }
 
 /** Collects every visible shelf, guarding against a repeated cursor. */
-export async function listAllShelves(signal?: AbortSignal): Promise<Shelf[]> {
+export async function listAllShelves(signal?: AbortSignal, options: ShelfOptions = {}): Promise<Shelf[]> {
 	const shelves: Shelf[] = [];
 	const seen = new Set<string>();
 	let cursor: string | null = null;
 	do {
-		const page: Page<Shelf> = await listShelves({ cursor, limit: MAX_PAGE_SIZE, signal });
+		const page: Page<Shelf> = await listShelves({ ...options, cursor, limit: MAX_PAGE_SIZE, signal });
 		shelves.push(...page.items);
 		cursor = page.next_cursor;
 		if (cursor !== null) {
@@ -45,12 +51,12 @@ export async function listAllShelves(signal?: AbortSignal): Promise<Shelf[]> {
 	return shelves;
 }
 
-export async function getShelf(id: number): Promise<Shelf> {
-	return (await api.request<{ shelf: Shelf }>(`/shelves/${id}`)).shelf;
+export async function getShelf(id: number, options: RequestOptions = {}): Promise<Shelf> {
+	return (await api.request<{ shelf: Shelf }>(scopedPath(`/shelves/${id}`, options), { signal: options.signal })).shelf;
 }
 
-export async function getSystemShelf(key: string): Promise<Shelf> {
-	return (await api.request<{ shelf: Shelf }>(`/shelves/system/${key}`)).shelf;
+export async function getSystemShelf(key: string, options: RequestOptions = {}): Promise<SystemShelf> {
+	return (await api.request<{ shelf: SystemShelf }>(scopedPath(`/shelves/system/${key}`, options), { signal: options.signal })).shelf;
 }
 
 export async function createShelf(input: ShelfInput): Promise<Shelf> {

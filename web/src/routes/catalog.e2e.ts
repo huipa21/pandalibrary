@@ -24,10 +24,12 @@ async function authenticate(page: Page, locale = 'en') {
 test('renders localized loading, API error, and empty library states', async ({ page }) => {
 	await authenticate(page, 'zh');
 	let attempts = 0;
+	let releaseFirstResponse: () => void = () => {};
+	const firstResponse = new Promise<void>((resolve) => { releaseFirstResponse = resolve; });
 	await page.route('**/api/v1/libraries?*', async (route) => {
 		attempts += 1;
 		if (attempts === 1) {
-			await new Promise((resolve) => setTimeout(resolve, 300));
+			await firstResponse;
 			await route.fulfill({
 				status: 503,
 				contentType: 'application/problem+json',
@@ -39,7 +41,11 @@ test('renders localized loading, API error, and empty library states', async ({ 
 	});
 
 	await page.goto('/libraries');
-	await expect(page.getByRole('main').getByRole('status')).toHaveText('正在加载目录…');
+	try {
+		await expect(page.getByRole('main').getByRole('status')).toHaveText('正在加载目录…');
+	} finally {
+		releaseFirstResponse();
+	}
 	await expect(page.getByRole('alert')).toContainText('目录请求失败');
 	await page.getByRole('main').getByRole('button', { name: '重试' }).click();
 	await expect(page.getByText('你的账户目前无法访问任何书库。')).toBeVisible();
@@ -198,7 +204,7 @@ test('All Books remembers filters, sort, and view until manually changed', async
 	await page.locator('button[data-view="grid"]').click();
 	await expect(page.locator('button[data-view="list"]')).toBeVisible();
 
-	await page.getByRole('link', { name: 'Libraries', exact: true }).click();
+	await page.getByRole('link', { name: 'Library', exact: true }).click();
 	await expect(page).toHaveURL(/\/libraries$/);
 	await page.getByRole('link', { name: /^All Books/ }).click();
 	await expect(page.locator('#filter-author')).toHaveValue('4');

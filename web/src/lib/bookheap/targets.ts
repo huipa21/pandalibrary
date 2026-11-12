@@ -1,7 +1,7 @@
 import * as m from '#lib/paraglide/messages.js';
 import { listAllAdminLibraries } from '#lib/admin/api.js';
 import type { Library } from '#lib/admin/types.js';
-import { getSessionViewer, getSystemShelf, listAllShelves } from '#lib/shelves/api.js';
+import { getSessionViewer, listAllShelves } from '#lib/shelves/api.js';
 import type { SessionViewer, Shelf } from '#lib/shelves/types.js';
 
 /**
@@ -34,14 +34,13 @@ export interface AssignTargets {
 
 /** Loads every library and the writable manual shelves for the Assign dialog. */
 export async function loadAssignTargets(signal?: AbortSignal): Promise<AssignTargets> {
-	const [libraries, shelves, favorites, viewer] = await Promise.all([
+	const [libraries, shelves, viewer] = await Promise.all([
 		listAllAdminLibraries(signal),
 		listAllShelves(signal),
-		getSystemShelf('favorites').catch(() => null),
 		getSessionViewer()
 	]);
 	return {
 		libraries: [...libraries].sort((a, b) => a.name.localeCompare(b.name)),
-		shelves: writableManualShelves(favorites ? [favorites, ...shelves] : shelves, viewer)
+		shelves: writableManualShelves(shelves, viewer)
 	};
 }

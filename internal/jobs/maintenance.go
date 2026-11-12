@@ -67,9 +67,10 @@ type jobState struct {
 
 // Maintenance provides bounded maintenance tasks and their on-demand run state.
 type Maintenance struct {
-	writer  *sql.DB
-	dataDir string
-	dropDir string
+	snapshotGate *sync.RWMutex
+	writer       *sql.DB
+	dataDir      string
+	dropDir      string
 	// guarded are extra user-content directories (such as the bookheap) that
 	// must never overlap a storage root swept for orphans.
 	guarded []string
@@ -85,6 +86,10 @@ type Maintenance struct {
 	wg         sync.WaitGroup
 	registered bool
 }
+
+// SetSnapshotGate coordinates scheduled/manual jobs with full-data snapshots.
+// Configure it before registering or running jobs.
+func (m *Maintenance) SetSnapshotGate(gate *sync.RWMutex) { m.snapshotGate = gate }
 
 // NewMaintenance constructs the maintenance service without starting any work.
 func NewMaintenance(parent context.Context, writer, reader *sql.DB, blobs *blobstore.Store, dataDir, dropDir string, logger *slog.Logger) (*Maintenance, error) {
@@ -254,6 +259,10 @@ func (m *Maintenance) runScheduled(ctx context.Context, name string) error {
 }
 
 func (m *Maintenance) execute(name string, parent context.Context, runID string) error {
+	if m.snapshotGate != nil {
+		m.snapshotGate.RLock()
+		defer m.snapshotGate.RUnlock()
+	}
 	m.mu.Lock()
 	state := m.jobs[name]
 	if state == nil {

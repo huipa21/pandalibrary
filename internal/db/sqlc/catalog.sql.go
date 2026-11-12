@@ -827,6 +827,29 @@ func (q *Queries) CatalogLibrarySlugTaken(ctx context.Context, arg CatalogLibrar
 	return count, err
 }
 
+const catalogLibraryVisibleBookCount = `-- name: CatalogLibraryVisibleBookCount :one
+SELECT count(*) FROM books b
+WHERE b.library_id = ?1
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2
+    OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+        SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
+    )))))
+AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2)
+`
+
+type CatalogLibraryVisibleBookCountParams struct {
+	LibraryID int64
+	UserID    int64
+	IsAdmin   int64
+}
+
+func (q *Queries) CatalogLibraryVisibleBookCount(ctx context.Context, arg CatalogLibraryVisibleBookCountParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, catalogLibraryVisibleBookCount, arg.LibraryID, arg.UserID, arg.IsAdmin)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const catalogListAuthors = `-- name: CatalogListAuthors :many
 SELECT a.id, a.name, a.sort_name, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
 FROM authors a JOIN book_authors ba ON ba.author_id = a.id JOIN books b ON b.id = ba.book_id
@@ -1212,10 +1235,18 @@ func (q *Queries) CatalogListHiddenBooks(ctx context.Context, arg CatalogListHid
 }
 
 const catalogListLibraries = `-- name: CatalogListLibraries :many
-SELECT l.id, l.name, l.slug, l.created_at, l.updated_at FROM libraries l
-WHERE (CAST(?1 AS INTEGER) = 1 OR EXISTS (
+SELECT l.id, l.name, l.slug, l.created_at, l.updated_at, (
+    SELECT count(*) FROM books b
+    WHERE b.library_id = l.id
+    AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1
+        OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+            SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
+        )))))
+    AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1)
+) AS visible_book_count FROM libraries l
+WHERE (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = l.id AND la.user_id = ?2
+    WHERE la.library_id = l.id AND la.user_id = ?1
 ))
 AND (CAST(?3 AS INTEGER) = 0
     OR l.name COLLATE NOCASE > CAST(?4 AS TEXT) COLLATE NOCASE
@@ -1226,17 +1257,26 @@ LIMIT CAST(?5 AS INTEGER)
 `
 
 type CatalogListLibrariesParams struct {
-	IsAdmin   int64
 	UserID    int64
+	IsAdmin   int64
 	AfterID   int64
 	AfterName string
 	PageSize  int64
 }
 
-func (q *Queries) CatalogListLibraries(ctx context.Context, arg CatalogListLibrariesParams) ([]Library, error) {
+type CatalogListLibrariesRow struct {
+	ID               int64
+	Name             string
+	Slug             string
+	CreatedAt        int64
+	UpdatedAt        int64
+	VisibleBookCount int64
+}
+
+func (q *Queries) CatalogListLibraries(ctx context.Context, arg CatalogListLibrariesParams) ([]CatalogListLibrariesRow, error) {
 	rows, err := q.db.QueryContext(ctx, catalogListLibraries,
-		arg.IsAdmin,
 		arg.UserID,
+		arg.IsAdmin,
 		arg.AfterID,
 		arg.AfterName,
 		arg.PageSize,
@@ -1245,15 +1285,16 @@ func (q *Queries) CatalogListLibraries(ctx context.Context, arg CatalogListLibra
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Library{}
+	items := []CatalogListLibrariesRow{}
 	for rows.Next() {
-		var i Library
+		var i CatalogListLibrariesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
 			&i.Slug,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.VisibleBookCount,
 		); err != nil {
 			return nil, err
 		}

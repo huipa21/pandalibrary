@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +35,50 @@ func putDrop(t *testing.T, f fixture, name string, data []byte) {
 	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRestoredDropManifestUsesPortablePathsAndRecoversLegacyWindowsPaths(t *testing.T) {
+	f := newFixture(t)
+	name := filepath.Join("other", "restored.epub")
+	putDrop(t, f, name, []byte("failed import"))
+	info, err := f.service.dropInfo(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := manifest{DropPath: name, DropSize: info.Size(), DropMtime: info.ModTime().UnixNano()}
+	job, err := f.service.enqueue(context.Background(), "drop_folder", 2, 0, "restored.epub", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(f.root, manifestName(job.ID)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved manifest
+	if err := json.Unmarshal(data, &saved); err != nil || saved.DropPath != "other/restored.epub" {
+		t.Fatalf("new manifest path is not portable: %q, %v", saved.DropPath, err)
+	}
+	if err := f.service.finish(context.Background(), sqlc.New(f.db.Writer), job.ID, "failed", 0, 0, "restored failure"); err != nil {
+		t.Fatal(err)
+	}
+	input.DropPath = `other\restored.epub`
+	data, err = json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.root, manifestName(job.ID)), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.service.recoverManifests(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.service.options.DropDir, name)); !os.IsNotExist(err) {
+		t.Fatalf("legacy manifest left the restored source behind: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(f.service.options.DropDir, ".failed"))
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("restored failed import was not archived with its error: %v, %v", entries, err)
 	}
 }
 

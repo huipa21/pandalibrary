@@ -97,17 +97,21 @@ administrator setup plan.
 
 Persist `/data` across container replacement. The application stores the SQLite database,
 content-addressed book files, covers and annotation images, import drop folder, Bookheap folder, and backups
-there. The automatic maintenance job retains seven verified database backups; it does not
-replace an off-site backup of both the database and book/cover/image files. Database backups
-include the Bookheap index but not the files waiting in the Bookheap folder; back that
-folder up separately if it holds books you have no other copy of. After a restore, run
-**Scan** on the Bookheap page to re-index it.
+there. The admin full-data backup API creates server-saved `.tar.gz` archives with a
+consistent SQLite snapshot and all managed media, Bookheap, drop and import-staging
+files, including configured external folders. Download an off-site copy: archives
+contain private data and credentials and are not encrypted or automatically pruned.
+The separate automatic maintenance job retains seven database-only backups.
 
-To restore, stop the server, restore the database and matching `files/`, `covers/` and `assets/`
-directories from the same backup point, then start with the matching or a newer binary.
-Never start an older binary against a database already upgraded by a newer release. A
-pre-migration backup is also retained in `/data/backups/`; restoring that backup with the
-previous release is the rollback path.
+Full-data restore validates and stages an uploaded or server-saved archive; **restart
+is required**, and the next startup applies it before opening SQLite or starting workers.
+An offline alternative is `pandalibrary restore --data-dir /data --file full-backup.tar.gz
+--confirm`, followed by normal startup with the same storage configuration. Existing
+backups are preserved. See [administration: backups](docs/user/administration.md#backups)
+for the exact API, limits, lifecycle, disk-space requirements and failure recovery.
+Version-1 archives require a binary with the same database schema. Never start an older
+binary against a database already upgraded by a newer release. Pre-migration
+database-only backups remain the separate migration rollback path.
 
 In a container the default Bookheap folder (`PANDA_BOOKHEAP_DIR`) is inside the `/data`
 volume, owned by UID/GID `65532:65532`. When mounting a separate folder, make it writable

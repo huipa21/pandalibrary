@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import { catalogErrorMessage } from '#lib/catalog/errors.js';
@@ -6,6 +7,7 @@
 	import BookBrowser from '#lib/catalog/BookBrowser.svelte';
 	import ShelfLinks from '#lib/shelves/ShelfLinks.svelte';
 	import type { Library } from '#lib/catalog/types.js';
+	import { selectedLibrary, selectLibrary } from '#lib/libraries/context.js';
 
 	let library = $state<Library | null>(null);
 	let loading = $state(true);
@@ -16,6 +18,8 @@
 		const id = page.params.id ?? '';
 		void loadLibrary(id);
 	});
+
+	onDestroy(() => { requestVersion += 1; });
 
 	async function loadLibrary(id: string) {
 		const request = ++requestVersion;
@@ -29,7 +33,11 @@
 			return;
 		}
 		try {
-			library = await getLibrary(parsedID);
+			selectLibrary(parsedID);
+			const loaded = await getLibrary(parsedID);
+			if (request !== requestVersion) return;
+			library = loaded;
+			selectedLibrary.set({ id: loaded.id, name: loaded.name });
 		} catch (cause) {
 			if (request !== requestVersion) return;
 			error = catalogErrorMessage(cause, {
@@ -57,7 +65,7 @@
 			<a class="text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href="/libraries">{m['catalog.back_to_libraries']()}</a>
 			<h1 class="text-3xl font-semibold tracking-tight">{library.name}</h1>
 		</header>
-		<ShelfLinks />
+		<ShelfLinks libraryID={library.id} />
 		<BookBrowser scope={{ library_id: library.id }} />
 	</section>
 {/if}

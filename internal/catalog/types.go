@@ -24,13 +24,14 @@ type Page[T any] struct {
 	NextCursor *string `json:"next_cursor"`
 }
 
-// Library is an accessible library and its UTC timestamps.
+// Library is an accessible library with its viewer-visible book count and UTC timestamps.
 type Library struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	Slug      string    `json:"slug"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	VisibleBookCount int64     `json:"visible_book_count"`
+	ID               int64     `json:"id"`
+	Name             string    `json:"name"`
+	Slug             string    `json:"slug"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // Author is a book's ordered author or contributor.

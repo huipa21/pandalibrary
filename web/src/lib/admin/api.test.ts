@@ -3,6 +3,7 @@ import { api, ApiError } from '#lib/api/client.js';
 import {
 	buildAccessPath,
 	buildAdminLibrariesPath,
+	buildAdminUsersPath,
 	buildHiddenBooksPath,
 	buildImportsPath,
 	createUser,
@@ -54,6 +55,15 @@ const job: ImportJob = {
 } as ImportJob;
 
 describe('admin paths', () => {
+	it('preserves account search category and query across pages', () => {
+		const params = new URLSearchParams(buildAdminUsersPath({
+			q: '  A&B  ', category: 'display_name', cursor: 'next/+='
+		}).split('?')[1]);
+		expect(params.get('q')).toBe('A&B');
+		expect(params.get('category')).toBe('display_name');
+		expect(params.get('cursor')).toBe('next/+=');
+		expect(buildAdminUsersPath({ q: ' ', category: 'all' })).toBe('/admin/users?limit=50');
+	});
 	it('builds paged paths with a bounded limit and verbatim cursor', () => {
 		expect(buildAdminLibrariesPath()).toBe('/admin/libraries?limit=50');
 		const cursor = 'b3BhcXVl/+==';

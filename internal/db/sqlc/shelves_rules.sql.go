@@ -12,16 +12,17 @@ import (
 
 const shelfAutomaticBookCount = `-- name: ShelfAutomaticBookCount :one
 SELECT count(*) FROM books b
-WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) = 0 OR b.library_id = ?1)
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?1
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
 )))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
-AND (CASE json_extract(CAST(?3 AS TEXT), '$.match')
+AND (CASE json_extract(CAST(?4 AS TEXT), '$.match')
     WHEN 'all' THEN NOT EXISTS (
-        SELECT 1 FROM json_each(CAST(?3 AS TEXT), '$.conditions') c
+        SELECT 1 FROM json_each(CAST(?4 AS TEXT), '$.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
             WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
             WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
@@ -33,10 +34,10 @@ AND (CASE json_extract(CAST(?3 AS TEXT), '$.match')
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
-                WHERE ub.user_id = ?1 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
+                WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 0)
     WHEN 'any' THEN EXISTS (
-        SELECT 1 FROM json_each(CAST(?3 AS TEXT), '$.conditions') c
+        SELECT 1 FROM json_each(CAST(?4 AS TEXT), '$.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
             WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
             WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
@@ -48,19 +49,25 @@ AND (CASE json_extract(CAST(?3 AS TEXT), '$.match')
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
-                WHERE ub.user_id = ?1 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
+                WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 1)
     ELSE 0 END) = 1
 `
 
 type ShelfAutomaticBookCountParams struct {
-	UserID  int64
-	IsAdmin int64
-	Rules   string
+	LibraryID int64
+	UserID    int64
+	IsAdmin   int64
+	Rules     string
 }
 
 func (q *Queries) ShelfAutomaticBookCount(ctx context.Context, arg ShelfAutomaticBookCountParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, shelfAutomaticBookCount, arg.UserID, arg.IsAdmin, arg.Rules)
+	row := q.db.QueryRowContext(ctx, shelfAutomaticBookCount,
+		arg.LibraryID,
+		arg.UserID,
+		arg.IsAdmin,
+		arg.Rules,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -68,16 +75,17 @@ func (q *Queries) ShelfAutomaticBookCount(ctx context.Context, arg ShelfAutomati
 
 const shelfAutomaticBooks = `-- name: ShelfAutomaticBooks :many
 SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
-WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) = 0 OR b.library_id = ?1)
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?1
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
 )))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
-AND (CASE json_extract(CAST(?3 AS TEXT), '$.match')
+AND (CASE json_extract(CAST(?4 AS TEXT), '$.match')
     WHEN 'all' THEN NOT EXISTS (
-        SELECT 1 FROM json_each(CAST(?3 AS TEXT), '$.conditions') c
+        SELECT 1 FROM json_each(CAST(?4 AS TEXT), '$.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
             WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
             WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
@@ -89,10 +97,10 @@ AND (CASE json_extract(CAST(?3 AS TEXT), '$.match')
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
-                WHERE ub.user_id = ?1 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
+                WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 0)
     WHEN 'any' THEN EXISTS (
-        SELECT 1 FROM json_each(CAST(?3 AS TEXT), '$.conditions') c
+        SELECT 1 FROM json_each(CAST(?4 AS TEXT), '$.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
             WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
             WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
@@ -104,17 +112,18 @@ AND (CASE json_extract(CAST(?3 AS TEXT), '$.match')
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
-                WHERE ub.user_id = ?1 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
+                WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 1)
     ELSE 0 END) = 1
-AND (CAST(?4 AS INTEGER) = 0
-    OR b.sort_title > CAST(?5 AS TEXT)
-    OR (b.sort_title = CAST(?5 AS TEXT) AND b.id > ?4))
+AND (CAST(?5 AS INTEGER) = 0
+    OR b.sort_title > CAST(?6 AS TEXT)
+    OR (b.sort_title = CAST(?6 AS TEXT) AND b.id > ?5))
 ORDER BY b.sort_title, b.id
-LIMIT CAST(?6 AS INTEGER)
+LIMIT CAST(?7 AS INTEGER)
 `
 
 type ShelfAutomaticBooksParams struct {
+	LibraryID  int64
 	UserID     int64
 	IsAdmin    int64
 	Rules      string
@@ -125,6 +134,7 @@ type ShelfAutomaticBooksParams struct {
 
 func (q *Queries) ShelfAutomaticBooks(ctx context.Context, arg ShelfAutomaticBooksParams) ([]Book, error) {
 	rows, err := q.db.QueryContext(ctx, shelfAutomaticBooks,
+		arg.LibraryID,
 		arg.UserID,
 		arg.IsAdmin,
 		arg.Rules,
@@ -231,27 +241,29 @@ func (q *Queries) ShelfSystemGet(ctx context.Context, arg ShelfSystemGetParams) 
 
 const shelfUnshelvedBookCount = `-- name: ShelfUnshelvedBookCount :one
 SELECT count(*) FROM books b
-WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) = 0 OR b.library_id = ?1)
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?1
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
 )))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 AND NOT EXISTS (
     SELECT 1 FROM shelf_books sb JOIN shelves s ON s.id = sb.shelf_id
-    WHERE sb.book_id = b.id AND s.kind = 'private' AND s.owner_id = ?1
+    WHERE sb.book_id = b.id AND s.kind = 'private' AND s.owner_id = ?2
     AND s.mode = 'manual' AND s.system_key IS NULL
 )
 `
 
 type ShelfUnshelvedBookCountParams struct {
-	UserID  int64
-	IsAdmin int64
+	LibraryID int64
+	UserID    int64
+	IsAdmin   int64
 }
 
 func (q *Queries) ShelfUnshelvedBookCount(ctx context.Context, arg ShelfUnshelvedBookCountParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, shelfUnshelvedBookCount, arg.UserID, arg.IsAdmin)
+	row := q.db.QueryRowContext(ctx, shelfUnshelvedBookCount, arg.LibraryID, arg.UserID, arg.IsAdmin)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -259,26 +271,28 @@ func (q *Queries) ShelfUnshelvedBookCount(ctx context.Context, arg ShelfUnshelve
 
 const shelfUnshelvedBooks = `-- name: ShelfUnshelvedBooks :many
 SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
-WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+WHERE (CAST(?1 AS INTEGER) = 0 OR b.library_id = ?1)
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?1
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
 )))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
 AND NOT EXISTS (
     SELECT 1 FROM shelf_books sb JOIN shelves s ON s.id = sb.shelf_id
-    WHERE sb.book_id = b.id AND s.kind = 'private' AND s.owner_id = ?1
+    WHERE sb.book_id = b.id AND s.kind = 'private' AND s.owner_id = ?2
     AND s.mode = 'manual' AND s.system_key IS NULL
 )
-AND (CAST(?3 AS INTEGER) = 0
-    OR b.sort_title > CAST(?4 AS TEXT)
-    OR (b.sort_title = CAST(?4 AS TEXT) AND b.id > ?3))
+AND (CAST(?4 AS INTEGER) = 0
+    OR b.sort_title > CAST(?5 AS TEXT)
+    OR (b.sort_title = CAST(?5 AS TEXT) AND b.id > ?4))
 ORDER BY b.sort_title, b.id
-LIMIT CAST(?5 AS INTEGER)
+LIMIT CAST(?6 AS INTEGER)
 `
 
 type ShelfUnshelvedBooksParams struct {
+	LibraryID  int64
 	UserID     int64
 	IsAdmin    int64
 	AfterID    int64
@@ -288,6 +302,7 @@ type ShelfUnshelvedBooksParams struct {
 
 func (q *Queries) ShelfUnshelvedBooks(ctx context.Context, arg ShelfUnshelvedBooksParams) ([]Book, error) {
 	rows, err := q.db.QueryContext(ctx, shelfUnshelvedBooks,
+		arg.LibraryID,
 		arg.UserID,
 		arg.IsAdmin,
 		arg.AfterID,

@@ -59,7 +59,8 @@ const shelf = (id: number, name: string, extra: Partial<Shelf> = {}): Shelf => (
 const shelves = [
 	shelf(41, 'My shelf'),
 	shelf(42, 'Shared shelf', { kind: 'shared', owner_id: null, created_by: 2 }),
-	shelf(43, 'Owned shelf')
+	shelf(43, 'Owned shelf'),
+	shelf(44, 'Favorites', { system_key: 'favorites' })
 ];
 
 function timestamp(value: unknown): string | null {
@@ -97,6 +98,8 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 		members: number[];
 		shelfDeletes: string[];
 		failShelfDelete: boolean;
+		failShelfAdd: boolean;
+		shelfWriteWait: Promise<void> | null;
 		visibilityRequests: ('public' | 'private')[];
 		rejectVisibility: boolean;
 		visibilityWait: Promise<void> | null;
@@ -112,6 +115,8 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 		members: [42, 43],
 		shelfDeletes: [],
 		failShelfDelete: false,
+		failShelfAdd: false,
+		shelfWriteWait: null,
 		visibilityRequests: [],
 		rejectVisibility: false,
 		visibilityWait: null
@@ -176,10 +181,17 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 			return route.fulfill({ json: { items, next_cursor: null } });
 		}
 		if (path === '/libraries/1') return route.fulfill({ json: { library: { id: 1, name: 'Fiction', slug: 'fiction', created_at: stamp, updated_at: stamp } } });
-		if (path.startsWith('/shelves/system/')) return route.fulfill({ json: { shelf: null } });
+		if (path === '/shelves/system/favorites') return route.fulfill({ json: {
+			shelf: { key: 'favorites', name: 'Favorites', mode: 'manual', shelf_id: 44, visible_book_count: Number(state.members.includes(44)) }
+		} });
+		if (path === '/shelves/system/unshelved') return route.fulfill({ json: {
+			shelf: shelf(45, 'Unshelved', { system_key: 'unshelved', mode: 'automatic' })
+		} });
 		const membership = /^\/shelves\/(\d+)\/books\/21$/.exec(path);
 		if (membership && route.request().method() === 'PUT') {
 			state.shelfAdds += 1;
+			if (state.shelfWriteWait) await state.shelfWriteWait;
+			if (state.failShelfAdd) return route.fulfill({ status: 500, json: { title: 'Failed', status: 500 } });
 			state.members.push(Number(membership[1]));
 			return route.fulfill({ json: { saved: true } });
 		}
@@ -319,7 +331,7 @@ for (const label of ['Read', 'Resume']) {
 			expect(Math.abs(visibilityBox!.width - read!.width)).toBeLessThanOrEqual(1);
 			expect(Math.abs(visibilityBox!.x - read!.x)).toBeLessThanOrEqual(1);
 			expect(visibilityBox!.y).toBeGreaterThanOrEqual(read!.y + read!.height);
-			const actions = ['Download', 'Add to shelf'].map((name) =>
+			const actions = ['Download', 'Add to Favorites', 'Add to shelf'].map((name) =>
 				page.getByRole('button', { name, exact: true }));
 			let previousX = -1;
 			for (const action of actions) {
@@ -349,6 +361,117 @@ test('download icon downloads the primary file', async ({ page }) => {
 	await requested;
 	expect((await downloaded).suggestedFilename()).toBe('library.epub');
 	await expect(page).toHaveURL('/books/21');
+});
+
+test('Favorites toggles once while busy, persists, and synchronizes Home and shelf tags', async ({ page }) => {
+	const state = await setup(page);
+	await page.setViewportSize({ width: 1440, height: 1000 });
+	await page.goto('/books/21');
+	const add = page.getByRole('button', { name: 'Add to Favorites', exact: true });
+	await expect(add).toBeEnabled();
+	await expect(add).toHaveAttribute('aria-pressed', 'false');
+	const home = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('region', { name: 'Home' });
+	const count = home.getByRole('link', { name: /^Favorites/ }).locator('[aria-hidden="true"]');
+	await expect(count).toHaveText('0');
+	const pending = Promise.withResolvers<void>();
+	state.shelfWriteWait = pending.promise;
+	try {
+		await add.evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
+		await expect(add).toBeDisabled();
+		await expect(add).toHaveAttribute('aria-busy', 'true');
+		await expect.poll(() => state.shelfAdds).toBe(1);
+	} finally {
+		pending.resolve();
+		state.shelfWriteWait = null;
+	}
+	const toggle = page.locator('button[aria-pressed][title="Remove from Favorites"]');
+	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+	await expect(toggle.locator('path')).not.toHaveCSS('fill', 'none');
+	await expect(count).toHaveText('1');
+	const tags = page.getByRole('list', { name: 'Shelves', exact: true });
+	await expect(tags.getByRole('link', { name: 'Favorites', exact: true })).toBeVisible();
+	await page.reload();
+	await expect(toggle).toBeEnabled();
+	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+	expect(state.shelfAdds).toBe(1);
+	await toggle.click();
+	await expect(add).toBeEnabled();
+	await expect(add).toHaveAttribute('aria-pressed', 'false');
+	await expect(count).toHaveText('0');
+	await expect(tags.getByRole('link', { name: 'Favorites', exact: true })).toHaveCount(0);
+	expect(state.shelfDeletes).toEqual(['/shelves/44/books/21']);
+
+	await add.click();
+	await expect(toggle).toBeEnabled();
+	page.once('dialog', (dialog) => dialog.accept());
+	await tags.getByRole('button', { name: 'Remove from Favorites', exact: true }).click();
+	await expect(add).toBeEnabled();
+	await expect(count).toHaveText('0');
+});
+
+test('Favorites reports failed additions and rolls back failed removals for retry', async ({ page }) => {
+	const state = await setup(page);
+	await page.goto('/books/21');
+	const add = page.locator('button[aria-pressed][title="Add to Favorites"]');
+	await expect(add).toBeEnabled();
+	state.failShelfAdd = true;
+	await add.click();
+	await expect(add.locator('..').getByRole('alert')).toBeVisible();
+	await expect(add).toHaveAttribute('aria-pressed', 'false');
+	expect(state.members).not.toContain(44);
+	state.failShelfAdd = false;
+	await add.click();
+	const remove = page.locator('button[aria-pressed][title="Remove from Favorites"]');
+	await expect(remove).toBeEnabled();
+	state.failShelfDelete = true;
+	await remove.click();
+	await expect(remove.locator('..').getByRole('alert')).toBeVisible();
+	await expect(remove).toHaveAttribute('aria-pressed', 'true');
+	state.failShelfDelete = false;
+	await remove.click();
+	await expect(add).toBeEnabled();
+	await expect(add.locator('..').getByRole('alert')).toHaveCount(0);
+});
+
+test('cover action icons are borderless squares with the header hover and focus styles in both themes', async ({ page }, info) => {
+	await setup(page);
+	await page.emulateMedia({ colorScheme: 'light' });
+	await page.setViewportSize({ width: 1440, height: 1100 });
+	await page.goto('/books/21');
+	await expect(page.getByRole('button', { name: 'Add to Favorites', exact: true })).toBeEnabled();
+	for (const theme of ['light', 'dark']) {
+		if (theme === 'dark') await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+		const header = page.getByRole('button', { name: theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode' });
+		await header.hover();
+		const hover = await header.evaluate((element) => getComputedStyle(element).backgroundColor);
+		const radius = await header.evaluate((element) => getComputedStyle(element).borderRadius);
+		await page.keyboard.press('Tab');
+		await header.focus();
+		const outline = await header.evaluate((element) => getComputedStyle(element).outlineWidth);
+		expect(outline).not.toBe('0px');
+		for (const action of [
+			page.getByRole('button', { name: 'Download', exact: true }),
+			page.getByLabel('Choose a download format'),
+			page.getByRole('button', { name: 'Add to Favorites', exact: true }),
+			page.getByRole('button', { name: 'Add to shelf', exact: true })
+		]) {
+			await header.hover();
+			await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+			for (const side of ['top', 'right', 'bottom', 'left']) {
+				await expect(action).toHaveCSS(`border-${side}-width`, '0px');
+			}
+			await expect(action).toHaveCSS('border-radius', radius);
+			const box = await action.boundingBox();
+			expect(box?.width).toBe(40);
+			expect(box?.height).toBe(40);
+			await action.focus();
+			await expect(action).toHaveCSS('outline-width', outline);
+			await action.evaluate((element) => { if (element instanceof HTMLElement) element.blur(); });
+			await action.hover();
+			await expect(action).toHaveCSS('background-color', hover);
+		}
+		await page.screenshot({ path: info.outputPath(`favorites-${theme}.png`) });
+	}
 });
 
 test('renders details, reading statistics, editions and related books responsively', async ({ page }) => {
@@ -484,7 +607,7 @@ test('focuses the metadata card and places Library below Shelves', async ({ page
 	await expect(identifiers).toContainText('isbn13: 9781234567890');
 	await expect(page.getByText(/6cc2ed23-59f2-4150-936a-2986ffa3e9a9/)).toHaveCount(0);
 
-	const library = page.getByRole('region', { name: 'Library', exact: true });
+	const library = page.getByRole('main').getByRole('region', { name: 'Library', exact: true });
 	await expect(library.getByRole('link', { name: 'Fiction', exact: true })).toHaveAttribute('href', '/library/1');
 	const shelvesBox = await page.getByRole('list', { name: 'Shelves', exact: true }).boundingBox();
 	const libraryBox = await library.boundingBox();

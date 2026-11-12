@@ -97,12 +97,10 @@ test('menu destinations keep accessible titles without repeated visible introduc
 			await page.getByRole('button', { name: 'Account menu', exact: true }).click();
 			await expect(page.getByRole('menuitem', { name: 'Profile', exact: true }))
 				.toHaveAttribute('aria-current', 'page');
-		} else if (destination.path === '/shelves') {
+		} else if (destination.path.startsWith('/shelves') && destination.path !== '/shelves/system/favorites') {
 			const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-			await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
-			await expect(sidebar.getByRole('menuitem', { name: 'Manage shelves' }))
-				.toHaveAttribute('aria-current', 'page');
-			await page.keyboard.press('Escape');
+			await expect(sidebar.getByRole('link', { name: 'Library', exact: true })).toHaveAttribute('href', '/libraries');
+			await expect(sidebar.locator(`a[href="${destination.path}"]`)).toHaveCount(0);
 		} else if (destination.path === '/search') {
 			await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator('a[href="/search"]')).toHaveCount(0);
 		} else {

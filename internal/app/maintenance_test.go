@@ -35,8 +35,10 @@ func TestMaintenanceIsRegisteredBeforeServing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 0 {
-		t.Fatal("maintenance ran before the scheduler started")
+	for _, entry := range entries {
+		if entry.Name() != ".application.lock" {
+			t.Fatal("maintenance ran before the scheduler started")
+		}
 	}
 	if len(app.maintenance.Jobs()) != 7 {
 		t.Fatalf("supported jobs = %d", len(app.maintenance.Jobs()))

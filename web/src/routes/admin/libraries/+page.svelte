@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
 	import UserSelector from '#lib/admin/users/UserSelector.svelte';
@@ -20,6 +22,7 @@
 	import { panelClass, smallDangerButton, smallSecondaryButton, warningBox } from '#lib/admin/ui.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { translate } from '#lib/paging/translate.js';
+	import { getLibrary } from '#lib/catalog/api.js';
 
 	const libraries = new CursorPager<Library>();
 	const access = new CursorPager<AccessEntry>();
@@ -32,12 +35,63 @@
 	let accessError = $state('');
 	let revoking = $state<number | null>(null);
 	let accessHeading = $state<HTMLHeadingElement | null>(null);
+	let linkedLibrary = $state<Library | null>(null);
+	let linkedLoading = $state(false);
+	let linkedError = $state('');
+	let linkRequest = 0;
+
+	$effect(() => {
+		page.url.search;
+		untrack(() => void openDeepLink());
+	});
+
+	async function openDeepLink() {
+		const request = ++linkRequest;
+		const id = page.url.searchParams.get('edit');
+		const creating = page.url.searchParams.get('create') === '1';
+		linkedLibrary = null;
+		linkedError = '';
+		linkedLoading = false;
+		editing = null;
+		if (id !== null) {
+			const libraryID = Number(id);
+			if (!/^\d+$/.test(id) || !Number.isSafeInteger(libraryID) || libraryID < 1) {
+				linkedError = m['catalog.error.not_found']();
+				return;
+			}
+			linkedLoading = true;
+			try {
+				const library = await getLibrary(libraryID);
+				if (request !== linkRequest) return;
+				linkedLibrary = library;
+				await tick();
+				if (request === linkRequest) document.getElementById(`linked-library-${library.id}-name`)?.focus();
+			} catch (cause) {
+				if (request === linkRequest) linkedError = translate(adminErrorKey(cause, 'load'));
+			} finally {
+				if (request === linkRequest) linkedLoading = false;
+			}
+		} else if (creating) {
+			await tick();
+			if (request === linkRequest) document.getElementById('create-library-name')?.focus();
+		}
+	}
+
+	function closeLinkedEditor() {
+		linkedLibrary = null;
+		void goto('/admin/libraries', { replace: true, reset: false });
+	}
+
+	function librariesChanged() {
+		window.dispatchEvent(new CustomEvent('pandalibrary-libraries-changed'));
+	}
 
 	onMount(() => {
 		void libraries.reset((cursor, signal) => listAdminLibraries({ cursor, signal }));
 	});
 
 	onDestroy(() => {
+		linkRequest++;
 		libraries.dispose();
 		access.dispose();
 	});
@@ -58,6 +112,7 @@
 			const library = await createLibrary(name, slug);
 			notice = m['admin.libraries.created']({ name: library.name });
 			void libraries.reload();
+			librariesChanged();
 			return null;
 		} catch (cause) {
 			return translate(adminErrorKey(cause, 'save_library'));
@@ -71,9 +126,11 @@
 		try {
 			const updated = await updateLibrary(library.id, result.patch);
 			editing = null;
+			if (linkedLibrary?.id === library.id) closeLinkedEditor();
 			notice = m['admin.libraries.saved']({ name: updated.name });
 			if (selected?.id === updated.id) selected = updated;
 			void libraries.reload();
+			librariesChanged();
 			return null;
 		} catch (cause) {
 			return translate(adminErrorKey(cause, 'save_library'));
@@ -91,6 +148,7 @@
 			notice = m['admin.libraries.deleted']({ name: library.name });
 			if (selected?.id === library.id) selectLibrary(null);
 			void libraries.reload();
+			librariesChanged();
 		} catch (cause) {
 			setRowError(library.id, translate(adminErrorKey(cause, 'delete_library')));
 		} finally {
@@ -167,6 +225,30 @@
 
 	{#if notice}<p class="text-sm text-green-700" role="status">{notice}</p>{/if}
 
+	{#if linkedLoading}
+		<p class="text-slate-600" role="status">{m['admin.libraries.loading']()}</p>
+	{/if}
+	{#if linkedError}
+		<AdminAlert message={linkedError} onretry={openDeepLink} />
+	{/if}
+	{#if linkedLibrary}
+		{@const library = linkedLibrary}
+		<section class={panelClass} aria-labelledby="linked-library-heading">
+			<h2 id="linked-library-heading" class="text-xl font-semibold">{m['admin.libraries.edit_heading']({ name: library.name })}</h2>
+			{#key library.id}
+				<LibraryForm
+					idPrefix={`linked-library-${library.id}`}
+					submitLabel={m['admin.libraries.save']()}
+					busyLabel={m['admin.libraries.saving']()}
+					initialName={library.name}
+					initialSlug={library.slug}
+					onsave={(name, slug) => save(library, name, slug)}
+					oncancel={closeLinkedEditor}
+				/>
+			{/key}
+		</section>
+	{/if}
+
 	<section class="space-y-4" aria-labelledby="library-list-heading" aria-busy={libraries.status === 'loading'}>
 		<h2 id="library-list-heading" class="text-xl font-semibold">{m['admin.libraries.list_heading']()}</h2>
 		<p class="text-sm text-slate-600">{m['admin.libraries.delete_rule']()}</p>
@@ -207,6 +289,7 @@
 										class={smallSecondaryButton}
 										onclick={() => {
 											clearRowError(library.id);
+											linkedLibrary = null;
 											editing = library.id;
 										}}
 									>{m['admin.libraries.edit']()}<span class="sr-only"> {library.name}</span></button>

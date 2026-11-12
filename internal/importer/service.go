@@ -33,15 +33,16 @@ var ErrStopped = errors.New("importer is stopping")
 var errDropChanged = errors.New("drop source changed; refusing to remove it")
 
 type Options struct {
-	Writer   *sql.DB
-	Reader   *sql.DB
-	Blobs    *blobstore.Store
-	Catalog  *catalog.Service
-	DataDir  string
-	DropDir  string
-	MaxBytes int64
-	DropPoll time.Duration
-	Logger   *slog.Logger
+	SnapshotGate *sync.RWMutex
+	Writer       *sql.DB
+	Reader       *sql.DB
+	Blobs        *blobstore.Store
+	Catalog      *catalog.Service
+	DataDir      string
+	DropDir      string
+	MaxBytes     int64
+	DropPoll     time.Duration
+	Logger       *slog.Logger
 }
 
 type Service struct {
@@ -291,9 +292,17 @@ func (s *Service) worker(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
+		if s.options.SnapshotGate != nil {
+			s.options.SnapshotGate.RLock()
+		}
 		row, err := sqlc.New(s.options.Writer).ImportClaim(ctx)
 		if err == nil {
 			s.process(ctx, row)
+		}
+		if s.options.SnapshotGate != nil {
+			s.options.SnapshotGate.RUnlock()
+		}
+		if err == nil {
 			continue
 		}
 		if !errors.Is(err, sql.ErrNoRows) && ctx.Err() == nil {
@@ -313,6 +322,7 @@ func manifestName(id int64) string {
 }
 
 func (s *Service) writeManifest(id int64, input manifest) (returnErr error) {
+	input.DropPath = filepath.ToSlash(input.DropPath)
 	root, err := os.OpenRoot(s.options.DataDir)
 	if err != nil {
 		return err
@@ -333,6 +343,9 @@ func (s *Service) readManifest(id int64) (input manifest, returnErr error) {
 	}
 	defer func() { returnErr = errors.Join(returnErr, file.Close()) }()
 	err = json.NewDecoder(io.LimitReader(file, 16<<10)).Decode(&input)
+	// Legacy Windows manifests used native separators. Normalize at the read
+	// boundary so a full-data restore can resume cleanup on another platform.
+	input.DropPath = filepath.FromSlash(strings.ReplaceAll(input.DropPath, "\\", "/"))
 	return input, err
 }
 

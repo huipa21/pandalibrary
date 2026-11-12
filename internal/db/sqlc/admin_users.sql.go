@@ -31,21 +31,34 @@ func (q *Queries) AdminDeleteUser(ctx context.Context, id int64) error {
 
 const adminListUsers = `-- name: AdminListUsers :many
 SELECT id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at FROM users
-WHERE CAST(?1 AS INTEGER) = 0
+WHERE (CAST(?1 AS INTEGER) = 0
    OR username > ?2 COLLATE NOCASE
-   OR (username = ?2 COLLATE NOCASE AND id > ?1)
+   OR (username = ?2 COLLATE NOCASE AND id > ?1))
+  AND (CAST(?3 AS TEXT) = ''
+    OR ((CAST(?4 AS TEXT) = 'all' OR ?4 = 'username') AND instr(lower(username), lower(?3)) > 0)
+    OR ((?4 = 'all' OR ?4 = 'display_name') AND instr(lower(display_name), lower(?3)) > 0)
+    OR ((?4 = 'all' OR ?4 = 'role') AND instr(lower(role), lower(?3)) > 0)
+    OR ((?4 = 'all' OR ?4 = 'locale') AND instr(lower(locale), lower(?3)) > 0))
 ORDER BY username COLLATE NOCASE, id
-LIMIT ?3
+LIMIT ?5
 `
 
 type AdminListUsersParams struct {
 	AfterID       int64
 	AfterUsername string
+	Search        string
+	Category      string
 	PageLimit     int64
 }
 
 func (q *Queries) AdminListUsers(ctx context.Context, arg AdminListUsersParams) ([]User, error) {
-	rows, err := q.db.QueryContext(ctx, adminListUsers, arg.AfterID, arg.AfterUsername, arg.PageLimit)
+	rows, err := q.db.QueryContext(ctx, adminListUsers,
+		arg.AfterID,
+		arg.AfterUsername,
+		arg.Search,
+		arg.Category,
+		arg.PageLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

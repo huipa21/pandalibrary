@@ -101,10 +101,10 @@ func checkShelfManager(viewer Viewer, shelf sqlc.Shelf) error {
 	return ErrForbidden
 }
 
-func visibleShelfCount(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelf sqlc.Shelf) (int64, error) {
+func visibleShelfCount(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelf sqlc.Shelf, libraryID int64) (int64, error) {
 	if shelf.Mode == ShelfModeAutomatic {
 		count, err := queries.ShelfAutomaticBookCount(ctx, sqlc.ShelfAutomaticBookCountParams{
-			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, Rules: shelf.Rules.String,
+			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, Rules: shelf.Rules.String, LibraryID: libraryID,
 		})
 		if err != nil {
 			return 0, fmt.Errorf("count automatic shelf books: %w", err)
@@ -112,7 +112,7 @@ func visibleShelfCount(ctx context.Context, queries *sqlc.Queries, viewer Viewer
 		return count, nil
 	}
 	count, err := queries.ShelfVisibleBookCount(ctx, sqlc.ShelfVisibleBookCountParams{
-		ShelfID: shelf.ID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
+		ShelfID: shelf.ID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID, LibraryID: libraryID,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("count visible shelf books: %w", err)
@@ -120,8 +120,12 @@ func visibleShelfCount(ctx context.Context, queries *sqlc.Queries, viewer Viewer
 	return count, nil
 }
 
-func shelfWithCount(ctx context.Context, queries *sqlc.Queries, viewer Viewer, row sqlc.Shelf) (Shelf, error) {
-	count, err := visibleShelfCount(ctx, queries, viewer, row)
+func shelfWithCount(ctx context.Context, queries *sqlc.Queries, viewer Viewer, row sqlc.Shelf, libraryIDs ...int64) (Shelf, error) {
+	libraryID, err := shelfLibraryID(libraryIDs)
+	if err != nil {
+		return Shelf{}, err
+	}
+	count, err := visibleShelfCount(ctx, queries, viewer, row, libraryID)
 	if err != nil {
 		return Shelf{}, err
 	}
@@ -143,12 +147,17 @@ func checkShelfName(ctx context.Context, queries *sqlc.Queries, row sqlc.Shelf, 
 
 // ListShelves lists the viewer's system and private shelves plus shared shelves. Admins
 // also see other accounts' custom private shelves, never their system shelves. System
-// shelves sort first, then shelves by case-insensitive name and ID.
-func (s *Service) ListShelves(ctx context.Context, viewer Viewer, options PageOptions) (Page[Shelf], error) {
+// shelves sort first, then shelves by case-insensitive name and ID. An optional
+// positive library ID scopes counts, not which reusable shelves are returned.
+func (s *Service) ListShelves(ctx context.Context, viewer Viewer, options PageOptions, libraryIDs ...int64) (Page[Shelf], error) {
 	if err := checkViewer(viewer); err != nil {
 		return Page[Shelf]{}, err
 	}
-	scope := viewerScope(viewer)
+	libraryID, err := shelfLibraryID(libraryIDs)
+	if err != nil {
+		return Page[Shelf]{}, err
+	}
+	scope := shelfLibraryScope(viewerScope(viewer), libraryID)
 	limit, after, err := parsePage(options, "shelves", scope, "system,name")
 	if err != nil {
 		return Page[Shelf]{}, err
@@ -168,6 +177,9 @@ func (s *Service) ListShelves(ctx context.Context, viewer Viewer, options PageOp
 		return Page[Shelf]{}, err
 	}
 	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (Page[Shelf], error) {
+		if err := checkShelfLibrary(ctx, queries, viewer, libraryID); err != nil {
+			return Page[Shelf]{}, err
+		}
 		rows, err := queries.ShelfList(ctx, sqlc.ShelfListParams{
 			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, AfterID: after.ID,
 			AfterRank: afterRank, AfterName: afterName, PageSize: int64(limit + 1),
@@ -186,7 +198,7 @@ func (s *Service) ListShelves(ctx context.Context, viewer Viewer, options PageOp
 		}
 		items := make([]Shelf, 0, len(rows))
 		for _, row := range rows {
-			shelf, err := shelfWithCount(ctx, queries, viewer, row)
+			shelf, err := shelfWithCount(ctx, queries, viewer, row, libraryIDs...)
 			if err != nil {
 				return Page[Shelf]{}, err
 			}
@@ -196,20 +208,28 @@ func (s *Service) ListShelves(ctx context.Context, viewer Viewer, options PageOp
 	})
 }
 
-// GetShelf returns accessible shelf metadata and the viewer's visible-book count.
-func (s *Service) GetShelf(ctx context.Context, viewer Viewer, id int64) (Shelf, error) {
+// GetShelf returns accessible shelf metadata and the viewer's visible-book count,
+// optionally intersected with one accessible library.
+func (s *Service) GetShelf(ctx context.Context, viewer Viewer, id int64, libraryIDs ...int64) (Shelf, error) {
 	if err := checkViewer(viewer); err != nil {
 		return Shelf{}, err
 	}
 	if id < 1 {
 		return Shelf{}, invalid("shelf ID is invalid")
 	}
+	libraryID, err := shelfLibraryID(libraryIDs)
+	if err != nil {
+		return Shelf{}, err
+	}
 	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (Shelf, error) {
+		if err := checkShelfLibrary(ctx, queries, viewer, libraryID); err != nil {
+			return Shelf{}, err
+		}
 		row, err := shelfForViewer(ctx, queries, viewer, id)
 		if err != nil {
 			return Shelf{}, err
 		}
-		return shelfWithCount(ctx, queries, viewer, row)
+		return shelfWithCount(ctx, queries, viewer, row, libraryIDs...)
 	})
 }
 

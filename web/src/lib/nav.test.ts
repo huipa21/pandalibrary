@@ -10,12 +10,13 @@ describe('navigationFor', () => {
 		expect(navigationFor('admin').some((item) => item.id === 'admin')).toBe(true);
 		expect(navigationFor('user').some((item) => item.id === 'admin')).toBe(false);
 		expect(navigationFor(null).some((item) => item.id === 'admin')).toBe(false);
-		expect(navigationFor('user').some((item) => item.id === 'libraries')).toBe(true);
+		expect(navigationFor('user').some((item) => item.id === 'libraries')).toBe(false);
 	});
 
-	it('keeps every existing destination reachable from the sidebar', () => {
+	it('keeps browse destinations without duplicating the Library group', () => {
 		const hrefs = [...homeNavigation, ...navigationFor('admin')].map((entry) => entry.href);
-		for (const href of ['/libraries', '/authors', '/series', '/tags', '/read', '/notes', '/stats', '/admin']) {
+		expect(hrefs).not.toContain('/libraries');
+		for (const href of ['/authors', '/series', '/tags', '/read', '/notes', '/stats', '/admin']) {
 			expect(hrefs).toContain(href);
 		}
 	});
@@ -34,18 +35,19 @@ describe('navigationFor', () => {
 });
 
 describe('homeNavigation', () => {
-	it('lists Dashboard, All Books, Bookheap, and Notes in order', () => {
+	it('lists Favorites under Home after All Books', () => {
 		expect(homeNavigation.map((entry) => [entry.id, entry.href])).toEqual([
 			['dashboard', '/'],
 			['books', '/books'],
+			['favorites', '/shelves/system/favorites'],
 			['bookheap', '/bookheap'],
 			['notes', '/notes']
 		]);
 	});
 
-	it('shows Bookheap right after All Books only to administrators', () => {
-		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'bookheap', 'notes']);
-		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'notes']);
+	it('shows Bookheap only to administrators', () => {
+		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'favorites', 'bookheap', 'notes']);
+		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'favorites', 'notes']);
 		expect(homeNavigationFor(null).some((entry) => entry.id === 'bookheap')).toBe(false);
 	});
 });
@@ -67,9 +69,6 @@ describe('isActive', () => {
 		expect(isActive(item('authors'), '/authors/4')).toBe(true);
 		expect(isActive(item('notes'), '/notes')).toBe(true);
 		expect(isActive(item('notes'), '/notesxyz')).toBe(false);
-		expect(isActive(item('libraries'), '/libraries')).toBe(true);
-		expect(isActive(item('libraries'), '/library/3')).toBe(true);
-		expect(isActive(item('libraries'), '/books')).toBe(false);
 		expect(isActive(item('admin'), '/admin/users')).toBe(true);
 		expect(isActive(item('bookheap'), '/bookheap')).toBe(true);
 		expect(isActive(item('bookheap'), '/books')).toBe(false);

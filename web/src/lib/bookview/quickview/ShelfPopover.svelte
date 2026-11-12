@@ -11,7 +11,7 @@
 	let { bookId, memberIds = [], variant = 'icon', placement = 'up' }: {
 		bookId: number;
 		memberIds?: readonly number[];
-		variant?: 'icon' | 'button';
+		variant?: 'icon' | 'button' | 'plain-icon';
 		placement?: 'up' | 'down';
 	} = $props();
 	const panelId = $props.id();
@@ -144,6 +144,7 @@
 		type="button"
 		class={variant === 'button'
 			? 'inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700'
+			: variant === 'plain-icon' ? 'shell-icon-button size-10'
 			: 'inline-flex size-10 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700'}
 		aria-label={m['bv5.add_to_shelf']()}
 		title={m['bv5.add_to_shelf']()}

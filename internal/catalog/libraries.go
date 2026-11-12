@@ -141,8 +141,8 @@ func (s *Service) UpdateLibrary(ctx context.Context, viewer Viewer, id int64, pa
 		if err != nil {
 			return fmt.Errorf("update library: %w", err)
 		}
-		result = libraryDTO(updated)
-		return nil
+		result, err = libraryWithCount(ctx, queries, viewer, updated)
+		return err
 	})
 	return result, err
 }

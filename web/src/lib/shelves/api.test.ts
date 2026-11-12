@@ -7,7 +7,11 @@ import {
 	buildShelvesPath,
 	createShelf,
 	deleteShelf,
+	getShelf,
+	getSystemShelf,
 	listAllShelves,
+	listShelfBooks,
+	listSystemShelfBooks,
 	removeBookFromShelf,
 	updateShelf
 } from './api.js';
@@ -75,6 +79,30 @@ describe('shelf API helpers', () => {
 		request.mockReset();
 		request.mockResolvedValue({ items: [], next_cursor: 'loop' });
 		await expect(listAllShelves()).rejects.toThrow('repeated pagination cursor');
+	});
+
+	it('keeps library scope and cancellation on shelf metadata and book queries', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ shelf: shelf(), items: [], next_cursor: null });
+		const signal = new AbortController().signal;
+		await getShelf(7, { library_id: 2, signal });
+		await getSystemShelf('unshelved', { library_id: 2, signal });
+		await listShelfBooks(7, { library_id: 2, cursor: 'next/+page', signal });
+		await listSystemShelfBooks('unshelved', { library_id: 2, signal });
+		for (const [path, options] of request.mock.calls) {
+			expect(new URLSearchParams(path.split('?')[1]).get('library_id')).toBe('2');
+			expect(options?.signal).toBe(signal);
+		}
+		expect(new URLSearchParams(request.mock.calls[2][0].split('?')[1]).get('cursor')).toBe('next/+page');
+	});
+
+	it('retains the selected library on every shelf-list page', async () => {
+		const request = vi.spyOn(api, 'request')
+			.mockResolvedValueOnce({ items: [shelf({ id: 1 })], next_cursor: 'second' })
+			.mockResolvedValueOnce({ items: [shelf({ id: 2 })], next_cursor: null });
+		expect((await listAllShelves(undefined, { library_id: 2 })).map((item) => item.id)).toEqual([1, 2]);
+		for (const [path] of request.mock.calls) {
+			expect(new URLSearchParams(path.split('?')[1]).get('library_id')).toBe('2');
+		}
 	});
 });
 

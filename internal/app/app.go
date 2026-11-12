@@ -10,11 +10,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"pandalibrary/internal/annotations"
 	"pandalibrary/internal/auth"
+	"pandalibrary/internal/backup"
 	"pandalibrary/internal/blobstore"
 	"pandalibrary/internal/bookheap"
 	"pandalibrary/internal/catalog"
@@ -37,6 +40,7 @@ import (
 const shutdownTimeout = 10 * time.Second
 
 type application struct {
+	dataLock    *backup.Lock
 	databases   *db.DB
 	handler     http.Handler
 	scheduler   *jobs.Scheduler
@@ -57,6 +61,23 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if cfg.BookheapDir == "" {
 		cfg.BookheapDir = filepath.Join(cfg.DataDir, "bookheap")
 	}
+	dataLock, err := backup.Acquire(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if returnErr != nil {
+			returnErr = errors.Join(returnErr, dataLock.Close())
+		}
+	}()
+	snapshotGate := &sync.RWMutex{}
+	backups, err := backup.New(cfg, nil, snapshotGate)
+	if err != nil {
+		return nil, fmt.Errorf("configure backups: %w", err)
+	}
+	if err := backups.ApplyPending(ctx); err != nil {
+		return nil, fmt.Errorf("apply staged restore before startup: %w", err)
+	}
 	for _, directory := range []string{
 		cfg.DataDir, filepath.Join(cfg.DataDir, "files"), filepath.Join(cfg.DataDir, "covers"), filepath.Join(cfg.DataDir, "assets"),
 		filepath.Join(cfg.DataDir, "tmp"), filepath.Join(cfg.DataDir, "backups"), cfg.DropDir, cfg.BookheapDir,
@@ -74,6 +95,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("open application database: %w", err)
 	}
+	backups.Writer = databases.Writer
 	var maintenance *jobs.Maintenance
 	var bookheapService *bookheap.Service
 	defer func() {
@@ -131,6 +153,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure maintenance: %w", err)
 	}
+	maintenance.SetSnapshotGate(snapshotGate)
 	if err := maintenance.Register(scheduler); err != nil {
 		return nil, fmt.Errorf("register maintenance jobs: %w", err)
 	}
@@ -177,20 +200,23 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		return nil, fmt.Errorf("configure OPDS: %w", err)
 	}
 	importService, err := importer.New(importer.Options{
-		Writer: databases.Writer, Reader: databases.Reader, Blobs: blobs, Catalog: catalogService,
+		SnapshotGate: snapshotGate,
+		Writer:       databases.Writer, Reader: databases.Reader, Blobs: blobs, Catalog: catalogService,
 		DataDir: cfg.DataDir, DropDir: cfg.DropDir, MaxBytes: cfg.MaxUploadBytes, DropPoll: cfg.DropPoll, Logger: logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure importer: %w", err)
 	}
 	bookheapService, err = bookheap.New(bookheap.Options{
-		Writer: databases.Writer, Reader: databases.Reader, Blobs: blobs, Dir: cfg.BookheapDir,
+		SnapshotGate: snapshotGate,
+		Writer:       databases.Writer, Reader: databases.Reader, Blobs: blobs, Dir: cfg.BookheapDir,
 		MaxBytes: cfg.MaxUploadBytes, Logger: logger, Importer: importService, Catalog: catalogService,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure bookheap: %w", err)
 	}
 	app := &application{
+		dataLock:    dataLock,
 		databases:   databases,
 		scheduler:   scheduler,
 		maintenance: maintenance,
@@ -202,6 +228,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		Database: databases.Reader, Ready: app.ready.Load, Assets: assets, Logger: logger,
 		TrustedProxies: cfg.TrustedProxies, MaxBodyBytes: cfg.MaxUploadBytes, BaseURL: cfg.BaseURL,
 		Mounts: []httpapi.Mount{
+			httpapi.BackupMount(backups, authentication, logger),
 			httpapi.AuthMount(authentication, logger),
 			httpapi.AdminUsersMount(authentication, logger),
 			httpapi.CatalogMount(catalogService, authentication, logger),
@@ -226,6 +253,16 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure HTTP router: %w", err)
 	}
+	handler := app.handler
+	app.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Backup routes operate only on archives; Create acquires the exclusive
+		// gate itself. Every other request drains before a snapshot starts.
+		if r.URL.Path != "/api/v1/admin/backups" && !strings.HasPrefix(r.URL.Path, "/api/v1/admin/backups/") {
+			snapshotGate.RLock()
+			defer snapshotGate.RUnlock()
+		}
+		handler.ServeHTTP(w, r)
+	})
 	app.ready.Store(true)
 	return app, nil
 }
@@ -249,7 +286,7 @@ func (a *application) close() error {
 	if err := a.databases.Close(); err != nil {
 		return fmt.Errorf("close application database: %w", err)
 	}
-	return nil
+	return a.dataLock.Close()
 }
 
 // Run initializes the application before opening the HTTP listener.

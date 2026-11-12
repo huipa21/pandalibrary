@@ -7,6 +7,7 @@ export interface Library {
 	readonly id: number;
 	readonly name: string;
 	readonly slug: string;
+	readonly visible_book_count: number;
 	readonly created_at: string;
 	readonly updated_at: string;
 }

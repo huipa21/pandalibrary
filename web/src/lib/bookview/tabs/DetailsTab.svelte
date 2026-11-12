@@ -17,6 +17,7 @@
 	import DetailsHero from '../details/DetailsHero.svelte';
 	import DetailsPanel from '../details/DetailsPanel.svelte';
 	import EditionsCard from '../details/EditionsCard.svelte';
+	import FavoriteButton from '../details/FavoriteButton.svelte';
 	import OverviewCard from '../details/OverviewCard.svelte';
 	import RelatedBooks from '../details/RelatedBooks.svelte';
 	import ReviewsCard from '../details/ReviewsCard.svelte';
@@ -160,12 +161,12 @@
 					{#if !offline}
 						{#if primaryFile}
 							<div class="relative flex min-w-0">
-								<button type="button" class="inline-flex size-10 items-center justify-center rounded-l-lg border border-slate-300 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700" class:rounded-r-lg={book.files.length === 1} aria-label={m['catalog.book.download']()} title={m['catalog.book.download']()} onclick={() => { if (primaryFile) window.location.assign(primaryFile.download_url); }}>
+								<button type="button" class="shell-icon-button size-10" aria-label={m['catalog.book.download']()} title={m['catalog.book.download']()} onclick={() => { if (primaryFile) window.location.assign(primaryFile.download_url); }}>
 									<Icon name="download" />
 								</button>
 								{#if book.files.length > 1}
 									<details class="relative">
-										<summary class="flex h-full cursor-pointer list-none items-center rounded-r-lg border border-l-0 border-slate-300 px-2 hover:bg-slate-100" aria-label={m['bv6.download_formats']()} title={m['bv6.download_formats']()}><Icon name="chevron-down" class="size-4" /></summary>
+										<summary class="shell-icon-button size-10 cursor-pointer list-none" aria-label={m['bv6.download_formats']()} title={m['bv6.download_formats']()}><Icon name="chevron-down" class="size-4" /></summary>
 										<ul class="absolute top-full left-0 z-10 mt-1 min-w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
 											{#each book.files as file (file.id)}
 												<li><a class="block rounded px-3 py-2 text-sm hover:bg-slate-100" href={file.download_url} title={file.original_filename}>{m['bv6.download_format']({ format: file.format.toUpperCase() })}</a></li>
@@ -175,7 +176,10 @@
 								{/if}
 							</div>
 						{/if}
-						<ShelfPopover bookId={book.id} placement="down" memberIds={shelves.memberIds} />
+						{#key book.id}
+							<FavoriteButton bookId={book.id} {shelves} />
+						{/key}
+						<ShelfPopover bookId={book.id} variant="plain-icon" placement="down" memberIds={shelves.memberIds} />
 					{/if}
 				</div>
 				{#if !offline || shelves.status !== 'error'}

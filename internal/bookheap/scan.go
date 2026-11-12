@@ -107,6 +107,10 @@ func (s *Service) count(field func(*Scan) *int64) {
 }
 
 func (s *Service) runScan(scan *Scan) {
+	if s.snapshotGate != nil {
+		s.snapshotGate.RLock()
+		defer s.snapshotGate.RUnlock()
+	}
 	err := s.scanHeap(s.ctx, scan)
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()

@@ -26,8 +26,9 @@ func shelfOrderSignature(ids []int64) string {
 // ListShelfBooks returns visible, fully hydrated books. Manual shelves use manual
 // order and a cursor that is invalidated if the viewer's visible membership or order
 // changes. Automatic shelves are evaluated live and ordered by sort title and ID; their
-// cursors are bound to the current rules.
-func (s *Service) ListShelfBooks(ctx context.Context, viewer Viewer, shelfID int64, options PageOptions) (Page[Book], error) {
+// cursors are bound to the current rules. An optional positive library ID intersects
+// membership with that accessible library and binds cursors to that scope.
+func (s *Service) ListShelfBooks(ctx context.Context, viewer Viewer, shelfID int64, options PageOptions, libraryIDs ...int64) (Page[Book], error) {
 	if err := checkViewer(viewer); err != nil {
 		return Page[Book]{}, err
 	}
@@ -37,26 +38,33 @@ func (s *Service) ListShelfBooks(ctx context.Context, viewer Viewer, shelfID int
 	if options.Limit != 0 && (options.Limit < 1 || options.Limit > maximumPageSize) {
 		return Page[Book]{}, invalid("limit must be between 1 and 100")
 	}
+	libraryID, err := shelfLibraryID(libraryIDs)
+	if err != nil {
+		return Page[Book]{}, err
+	}
 	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (Page[Book], error) {
+		if err := checkShelfLibrary(ctx, queries, viewer, libraryID); err != nil {
+			return Page[Book]{}, err
+		}
 		shelf, err := shelfForViewer(ctx, queries, viewer, shelfID)
 		if err != nil {
 			return Page[Book]{}, err
 		}
 		if shelf.Mode == ShelfModeAutomatic {
-			return listAutomaticShelfBooks(ctx, queries, viewer, shelf, options)
+			return listAutomaticShelfBooks(ctx, queries, viewer, shelf, options, libraryID)
 		}
-		return listManualShelfBooks(ctx, queries, viewer, shelfID, options)
+		return listManualShelfBooks(ctx, queries, viewer, shelfID, options, libraryID)
 	})
 }
 
-func listManualShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelfID int64, options PageOptions) (Page[Book], error) {
-	scope := fmt.Sprintf("%s:%d", viewerScope(viewer), shelfID)
+func listManualShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelfID int64, options PageOptions, libraryID int64) (Page[Book], error) {
+	scope := shelfLibraryScope(fmt.Sprintf("%s:%d", viewerScope(viewer), shelfID), libraryID)
 	limit, after, err := parsePage(options, "shelf_books", scope, "manual")
 	if err != nil {
 		return Page[Book]{}, err
 	}
 	ids, err := queries.ShelfVisibleBookIDs(ctx, sqlc.ShelfVisibleBookIDsParams{
-		ShelfID: shelfID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
+		ShelfID: shelfID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID, LibraryID: libraryID,
 	})
 	if err != nil {
 		return Page[Book]{}, fmt.Errorf("list visible shelf books: %w", err)
@@ -96,14 +104,14 @@ func listManualShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Vie
 	return Page[Book]{Items: items, NextCursor: next}, nil
 }
 
-func listAutomaticShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelf sqlc.Shelf, options PageOptions) (Page[Book], error) {
-	scope := fmt.Sprintf("%s:%d:automatic:%s", viewerScope(viewer), shelf.ID, rulesSignature(shelf.Rules.String))
+func listAutomaticShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelf sqlc.Shelf, options PageOptions, libraryID int64) (Page[Book], error) {
+	scope := shelfLibraryScope(fmt.Sprintf("%s:%d:automatic:%s", viewerScope(viewer), shelf.ID, rulesSignature(shelf.Rules.String)), libraryID)
 	limit, after, err := parsePage(options, "shelf_books", scope, "title")
 	if err != nil {
 		return Page[Book]{}, err
 	}
 	rows, err := queries.ShelfAutomaticBooks(ctx, sqlc.ShelfAutomaticBooksParams{
-		IsAdmin: adminFlag(viewer), UserID: viewer.UserID, Rules: shelf.Rules.String,
+		IsAdmin: adminFlag(viewer), UserID: viewer.UserID, Rules: shelf.Rules.String, LibraryID: libraryID,
 		AfterID: after.ID, AfterTitle: after.Text, PageSize: int64(limit + 1),
 	})
 	if err != nil {

@@ -28,6 +28,7 @@
 	import ShelfDescription from '#lib/shelves/ShelfDescription.svelte';
 	import ShelfForm from '#lib/shelves/ShelfForm.svelte';
 	import type { SessionViewer, Shelf } from '#lib/shelves/types.js';
+	import { libraryHref, shelfLibraryID } from '#lib/libraries/context.js';
 
 	const books = new CursorPager<Book>();
 	const candidates = new CursorPager<SearchResult>();
@@ -48,6 +49,8 @@
 	let addNotice = $state('');
 	let addError = $state('');
 	let requestVersion = 0;
+	let libraryID = $state<number | undefined>(undefined);
+	let metadataController: AbortController | null = null;
 
 	const manageable = $derived(shelf !== null && offersShelfManagement(shelf, viewer));
 	const editable = $derived(manageable && !shelf?.system_key);
@@ -55,13 +58,15 @@
 
 	$effect(() => {
 		const id = page.params.id ?? '';
-		untrack(() => void loadShelf(id));
+		const url = page.url;
+		untrack(() => void loadShelf(id, shelfLibraryID(url)));
 	});
 
-	$effect(() => { if (shelf && books.status === 'ready') rememberBrowseContext({ ids: books.items.map((book) => book.id), label: shelf.name, href: `/shelves/${shelf.id}` }); });
+	$effect(() => { if (shelf && books.status === 'ready') rememberBrowseContext({ ids: books.items.map((book) => book.id), label: shelf.name, href: libraryHref(`/shelves/${shelf.id}`, libraryID) }); });
 
 	onDestroy(() => {
 		requestVersion += 1;
+		metadataController?.abort();
 		books.dispose();
 		candidates.dispose();
 	});
@@ -72,8 +77,12 @@
 		return Number.isSafeInteger(id) ? id : null;
 	}
 
-	async function loadShelf(rawID: string) {
+	async function loadShelf(rawID: string, scope: number | undefined | null) {
 		const request = ++requestVersion;
+		metadataController?.abort();
+		metadataController = new AbortController();
+		const signal = metadataController.signal;
+		libraryID = scope ?? undefined;
 		shelf = null;
 		loading = true;
 		loadError = '';
@@ -86,6 +95,11 @@
 		addDraft = '';
 		void candidates.reset(null);
 		void books.reset(null);
+		if (scope === null) {
+			loadError = m['shelves.error.invalid']();
+			loading = false;
+			return;
+		}
 		const id = parseID(rawID);
 		if (id === null) {
 			loadError = m['shelves.error.not_found']();
@@ -94,13 +108,13 @@
 		}
 		try {
 			const [loaded, user] = await Promise.all([
-				getShelf(id),
+				getShelf(id, { library_id: scope, signal }),
 				viewer ? Promise.resolve(viewer) : getSessionViewer().catch(() => null)
 			]);
 			if (request !== requestVersion) return;
 			shelf = loaded;
 			viewer = user;
-			void books.reset((cursor, signal) => listShelfBooks(id, { cursor, signal }));
+			void books.reset((cursor, signal) => listShelfBooks(id, { cursor, signal, library_id: scope }));
 		} catch (cause) {
 			if (request !== requestVersion) return;
 			loadError = translate(shelfErrorKey(cause, 'load'));
@@ -111,10 +125,12 @@
 
 	/** Membership changed, so old cursors are stale: refresh the count and restart from page one. */
 	async function refreshAfterMembershipChange(id: number) {
+		const request = requestVersion;
+		const scope = libraryID;
 		void books.reload();
 		try {
-			const updated = await getShelf(id);
-			if (shelf?.id === id) shelf = updated;
+			const updated = await getShelf(id, { library_id: scope });
+			if (request === requestVersion && shelf?.id === id) shelf = updated;
 		} catch (cause) {
 			console.error('Could not refresh shelf details', cause);
 		}
@@ -124,8 +140,14 @@
 		if (!shelf) return null;
 		notice = '';
 		try {
-			shelf = await updateShelf(shelf.id, { name: value.name, description: value.description });
+			const id = shelf.id;
+			const request = requestVersion;
+			await updateShelf(id, { name: value.name, description: value.description });
 			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
+			if (request !== requestVersion) return null;
+			const updated = await getShelf(id, { library_id: libraryID });
+			if (request !== requestVersion) return null;
+			shelf = updated;
 			editing = false;
 			notice = m['shelves.edit.success']();
 			return null;
@@ -217,7 +239,7 @@
 	<div class="space-y-4" role="alert">
 		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800">{loadError}</p>
 		<div class="flex flex-wrap gap-4">
-			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadShelf(page.params.id ?? '')}>{m['shelves.retry']()}</button>
+			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadShelf(page.params.id ?? '', shelfLibraryID(page.url))}>{m['shelves.retry']()}</button>
 			<a class="underline underline-offset-4 focus-visible:outline-2" href="/shelves">{m['shelves.back']()}</a>
 		</div>
 	</div>

@@ -74,12 +74,17 @@ func (s *Service) ensureFavorites(ctx context.Context, viewer Viewer) (int64, er
 	return id, err
 }
 
-// GetSystemShelf returns metadata for the viewer's own Unshelved or Favorites shelf.
-func (s *Service) GetSystemShelf(ctx context.Context, viewer Viewer, key string) (SystemShelf, error) {
+// GetSystemShelf returns metadata for the viewer's own Unshelved or Favorites shelf,
+// with counts optionally intersected with one accessible library.
+func (s *Service) GetSystemShelf(ctx context.Context, viewer Viewer, key string, libraryIDs ...int64) (SystemShelf, error) {
 	if err := checkViewer(viewer); err != nil {
 		return SystemShelf{}, err
 	}
 	if err := checkSystemKey(key); err != nil {
+		return SystemShelf{}, err
+	}
+	libraryID, err := shelfLibraryID(libraryIDs)
+	if err != nil {
 		return SystemShelf{}, err
 	}
 	if key == SystemShelfFavorites {
@@ -87,7 +92,7 @@ func (s *Service) GetSystemShelf(ctx context.Context, viewer Viewer, key string)
 		if err != nil {
 			return SystemShelf{}, err
 		}
-		shelf, err := s.GetShelf(ctx, viewer, id)
+		shelf, err := s.GetShelf(ctx, viewer, id, libraryIDs...)
 		if err != nil {
 			return SystemShelf{}, err
 		}
@@ -96,8 +101,11 @@ func (s *Service) GetSystemShelf(ctx context.Context, viewer Viewer, key string)
 		}, nil
 	}
 	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (SystemShelf, error) {
+		if err := checkShelfLibrary(ctx, queries, viewer, libraryID); err != nil {
+			return SystemShelf{}, err
+		}
 		count, err := queries.ShelfUnshelvedBookCount(ctx, sqlc.ShelfUnshelvedBookCountParams{
-			IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
+			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, LibraryID: libraryID,
 		})
 		if err != nil {
 			return SystemShelf{}, fmt.Errorf("count unshelved books: %w", err)
@@ -110,11 +118,16 @@ func (s *Service) GetSystemShelf(ctx context.Context, viewer Viewer, key string)
 
 // ListSystemShelfBooks lists the viewer's Unshelved or Favorites books. Favorites use
 // the numeric shelf's manual order and cursors; Unshelved is ordered by sort title and ID.
-func (s *Service) ListSystemShelfBooks(ctx context.Context, viewer Viewer, key string, options PageOptions) (Page[Book], error) {
+// An optional positive library ID scopes both membership and cursors.
+func (s *Service) ListSystemShelfBooks(ctx context.Context, viewer Viewer, key string, options PageOptions, libraryIDs ...int64) (Page[Book], error) {
 	if err := checkViewer(viewer); err != nil {
 		return Page[Book]{}, err
 	}
 	if err := checkSystemKey(key); err != nil {
+		return Page[Book]{}, err
+	}
+	libraryID, err := shelfLibraryID(libraryIDs)
+	if err != nil {
 		return Page[Book]{}, err
 	}
 	if key == SystemShelfFavorites {
@@ -125,16 +138,19 @@ func (s *Service) ListSystemShelfBooks(ctx context.Context, viewer Viewer, key s
 		if err != nil {
 			return Page[Book]{}, err
 		}
-		return s.ListShelfBooks(ctx, viewer, id, options)
+		return s.ListShelfBooks(ctx, viewer, id, options, libraryIDs...)
 	}
-	scope := fmt.Sprintf("%s:%s", viewerScope(viewer), SystemShelfUnshelved)
+	scope := shelfLibraryScope(fmt.Sprintf("%s:%s", viewerScope(viewer), SystemShelfUnshelved), libraryID)
 	limit, after, err := parsePage(options, "system_shelf_books", scope, "title")
 	if err != nil {
 		return Page[Book]{}, err
 	}
 	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (Page[Book], error) {
+		if err := checkShelfLibrary(ctx, queries, viewer, libraryID); err != nil {
+			return Page[Book]{}, err
+		}
 		rows, err := queries.ShelfUnshelvedBooks(ctx, sqlc.ShelfUnshelvedBooksParams{
-			IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
+			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, LibraryID: libraryID,
 			AfterID: after.ID, AfterTitle: after.Text, PageSize: int64(limit + 1),
 		})
 		if err != nil {

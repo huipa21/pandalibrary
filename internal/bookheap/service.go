@@ -58,12 +58,13 @@ const (
 
 // Options configures a Service.
 type Options struct {
-	Writer   *sql.DB
-	Reader   *sql.DB
-	Blobs    *blobstore.Store
-	Dir      string
-	MaxBytes int64
-	Logger   *slog.Logger
+	SnapshotGate *sync.RWMutex
+	Writer       *sql.DB
+	Reader       *sql.DB
+	Blobs        *blobstore.Store
+	Dir          string
+	MaxBytes     int64
+	Logger       *slog.Logger
 	// Importer and Catalog enable assignment; both are optional for heap-only use.
 	Importer *importer.Service
 	Catalog  *catalog.Service
@@ -71,15 +72,16 @@ type Options struct {
 
 // Service owns the heap folder, its index rows and the background scan.
 type Service struct {
-	writer   *sql.DB
-	reader   *sql.DB
-	blobs    *blobstore.Store
-	dir      string
-	maxBytes int64
-	logger   *slog.Logger
-	registry *extract.Registry
-	importer *importer.Service
-	catalog  *catalog.Service
+	snapshotGate *sync.RWMutex
+	writer       *sql.DB
+	reader       *sql.DB
+	blobs        *blobstore.Store
+	dir          string
+	maxBytes     int64
+	logger       *slog.Logger
+	registry     *extract.Registry
+	importer     *importer.Service
+	catalog      *catalog.Service
 
 	// assigned remembers the heap file staged for each job queued by this process so
 	// completion can confirm it removes the same file (os.SameFile).
@@ -131,7 +133,8 @@ func New(options Options) (*Service, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	service := &Service{
-		writer: options.Writer, reader: options.Reader, blobs: options.Blobs, dir: dir,
+		snapshotGate: options.SnapshotGate,
+		writer:       options.Writer, reader: options.Reader, blobs: options.Blobs, dir: dir,
 		maxBytes: options.MaxBytes, logger: options.Logger, registry: registry,
 		importer: options.Importer, catalog: options.Catalog,
 		ctx: ctx, cancel: cancel, now: time.Now, settle: 10 * time.Second,

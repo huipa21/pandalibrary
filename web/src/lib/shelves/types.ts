@@ -1,6 +1,15 @@
 export type ShelfKind = 'private' | 'shared';
 export type ShelfMode = 'manual' | 'automatic';
 
+export interface SystemShelf {
+	readonly key: 'favorites' | 'unshelved';
+	readonly name: string;
+	readonly mode: ShelfMode;
+	readonly visible_book_count: number;
+	readonly shelf_id: number | null;
+	readonly description?: string | null;
+}
+
 export interface RuleCondition {
 	field: string;
 	op: string;

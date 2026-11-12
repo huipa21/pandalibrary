@@ -17,9 +17,15 @@ import type {
 } from './types.js';
 
 type RequestOptions = PageOptions & { signal?: AbortSignal };
+export type UserSearchCategory = 'all' | 'username' | 'display_name' | 'role' | 'locale';
+type UserRequestOptions = RequestOptions & { q?: string; category?: UserSearchCategory };
 
-export function buildAdminUsersPath(options: PageOptions = {}): string {
-	return buildPagePath('/admin/users', options);
+export function buildAdminUsersPath(options: UserRequestOptions = {}): string {
+	const path = buildPagePath('/admin/users', options);
+	const params = new URLSearchParams();
+	if (options.q?.trim()) params.set('q', options.q.trim());
+	if (options.category && options.category !== 'all') params.set('category', options.category);
+	return params.size ? `${path}&${params}` : path;
 }
 
 export function buildAdminLibrariesPath(options: PageOptions = {}): string {
@@ -38,7 +44,7 @@ export function buildImportsPath(options: PageOptions = {}): string {
 	return buildPagePath('/imports', options);
 }
 
-export async function listAdminUsers(options: RequestOptions = {}): Promise<Page<User>> {
+export async function listAdminUsers(options: UserRequestOptions = {}): Promise<Page<User>> {
 	return api.request(buildAdminUsersPath(options), { signal: options.signal });
 }
 

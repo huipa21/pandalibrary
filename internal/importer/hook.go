@@ -120,6 +120,10 @@ func (s *Service) recoverHooks(ctx context.Context) {
 }
 
 func (s *Service) runRecovered(recovered []recoveredJob) {
+	if s.options.SnapshotGate != nil {
+		s.options.SnapshotGate.RLock()
+		defer s.options.SnapshotGate.RUnlock()
+	}
 	for _, job := range recovered {
 		s.hookFinished(job.row, job.input)
 		if err := s.cleanup(job.row, job.input); err != nil {
