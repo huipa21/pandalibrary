@@ -161,6 +161,30 @@ async function bookFrame(page: Page, text?: string): Promise<Frame> {
 	return frame;
 }
 
+async function displayState(page: Page) {
+	let result: { continuous: boolean; columns: string } | undefined;
+	await expect(async () => {
+		result = undefined;
+		for (const frame of page.frames().filter((candidate) => candidate.url().startsWith('blob:'))) {
+			const state = await frame.locator('body').evaluate((body) => {
+				const iframe = body.ownerDocument.defaultView?.frameElement;
+				if (!iframe || !iframe.getBoundingClientRect().width) return null;
+				return {
+					continuous: !!iframe.closest('[data-reader-continuous]'),
+					columns: getComputedStyle(body).columnCount
+				};
+			});
+			if (state) {
+				result = state;
+				break;
+			}
+		}
+		expect(result).toBeDefined();
+	}).toPass({ timeout: 5000 });
+	if (!result) throw new Error('No visible book frame is available.');
+	return result;
+}
+
 async function expectReaderToolbarFits(page: Page) {
 	const toolbar = page.locator('.pv4-toolbar');
 	await expect(toolbar).toHaveCSS('height', '44px');
@@ -560,99 +584,75 @@ test('RP9 EPUB Format changes live typography and background and saves both scop
 	await expect(frame.locator('html')).toHaveCSS('color-scheme', 'dark');
 });
 
-test('EPUB view menus change size and flow without exposing PDF tools', async ({ page }) => {
+test('EPUB shares PDF zoom, display and insertion menus on desktop and mobile', async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	const state = await setupReader(page, 'epub', epubFixture());
 	await page.goto('/read/21/31');
-	const frame = await bookFrame(page, 'First section');
-	const bodySize = () => frame.locator('body').evaluate((body) => parseFloat(getComputedStyle(body).fontSize));
-	const initialSize = await bodySize();
+	await bookFrame(page, 'First section');
 	await expectReaderToolbarFits(page);
 	await expect(page.getByRole('button', { name: 'Select tool', exact: true })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Hand tool', exact: true })).toHaveCount(0);
-	await expect(page.getByRole('button', { name: 'Insert text, drawing or image', exact: true })).toHaveCount(0);
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
-	await expect(page.getByRole('menuitem', { name: 'Highlight selection', exact: true })).toBeDisabled();
+	const insert = page.getByRole('button', { name: 'Insert text, drawing or image', exact: true });
+	await insert.click();
+	const menu = page.getByRole('menu', { name: 'Insert text, drawing or image', exact: true });
+	await expect(menu.getByRole('menuitem')).toHaveText(['Text', 'Draw', 'Image']);
+	const triggerBox = (await insert.boundingBox())!;
+	const menuBox = (await menu.boundingBox())!;
+	expect(menuBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height);
+	expect(menuBox.y - triggerBox.y - triggerBox.height).toBeLessThanOrEqual(8);
+	expect(menuBox.x).toBeLessThan(triggerBox.x + triggerBox.width);
+	expect(menuBox.x + menuBox.width).toBeGreaterThan(triggerBox.x);
+	await expect(page.getByRole('menuitem', { name: 'Save position', exact: true })).toHaveCount(0);
 	await page.keyboard.press('Escape');
-	await frame.evaluate(() => {
-		const passage = document.querySelector('#passage');
-		if (!passage) throw new Error('Missing passage');
-		const range = document.createRange();
-		range.selectNodeContents(passage);
-		const selection = window.getSelection();
-		selection?.removeAllRanges();
-		selection?.addRange(range);
-		document.dispatchEvent(new Event('selectionchange'));
-	});
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
-	await expect(page.getByRole('menuitem', { name: 'Highlight selection', exact: true })).toBeEnabled();
-	await page.getByRole('menuitem', { name: 'Highlight selection', exact: true }).click();
-	await expect.poll(() => state.highlights.map((highlight) => highlight.text)).toEqual(['A passage worth highlighting.']);
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Add book note', exact: true }).click();
-	await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('A private toolbar note');
-	await page.getByRole('button', { name: 'Save note', exact: true }).click();
-	await expect.poll(() => state.notes.some((note) => note.highlight_id === null && note.body_md === 'A private toolbar note')).toBe(true);
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
-	await page.getByRole('menuitem', { name: 'Save position', exact: true }).click();
-	await expect(page.getByRole('tab', { name: 'Bookmarks', exact: true })).toHaveAttribute('aria-selected', 'true');
-	await expect(page.getByRole('heading', { name: 'New bookmark', exact: true })).toBeVisible();
-	await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+	const bookmark = page.getByTestId('reflow-bookmark-toggle');
+	await bookmark.click();
+	await expect(bookmark).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByRole('heading', { name: 'New bookmark', exact: true })).toHaveCount(0);
+	await bookmark.click();
+	await expect(bookmark).toHaveAttribute('aria-pressed', 'false');
 
-	const size = page.getByRole('button', { name: 'Size', exact: true });
-	await size.focus();
-	await size.press('ArrowDown');
-	await expect(page.getByRole('menuitemradio', { name: '50%', exact: true })).toBeFocused();
-	await page.keyboard.press('Enter');
-	await expect.poll(bodySize).toBeCloseTo(initialSize * 0.5, 2);
-	await expect(size).toBeFocused();
-	await size.press('ArrowDown');
-	await expect(page.getByRole('menuitem', { name: 'Decrease font size', exact: true })).toBeDisabled();
-	await expect(page.getByRole('menuitem', { name: 'Increase font size', exact: true })).toBeEnabled();
-	await page.keyboard.press('End');
-	await expect(page.getByRole('menuitem', { name: 'Increase font size', exact: true })).toBeFocused();
-	await page.keyboard.press('ArrowUp');
-	await expect(page.getByRole('menuitemradio', { name: '200%', exact: true })).toBeFocused();
-	await page.keyboard.press('Enter');
-	await expect.poll(bodySize).toBeCloseTo(initialSize * 2, 2);
-	await size.press('ArrowDown');
-	await expect(page.getByRole('menuitem', { name: 'Increase font size', exact: true })).toBeDisabled();
-	await expect(page.getByRole('menuitem', { name: 'Decrease font size', exact: true })).toBeEnabled();
-	await page.getByRole('menuitemradio', { name: '100%', exact: true }).click();
-	await size.click();
-	await page.getByRole('menuitem', { name: 'Increase font size', exact: true }).click();
-	await expect.poll(bodySize).toBeCloseTo(initialSize * 1.1, 2);
-	await page.keyboard.press('Escape');
-	await expect(size).toBeFocused();
+	const zoom = page.getByRole('button', { name: /^Zoom(?: |$)/ });
+	await zoom.press('ArrowDown');
+	for (const label of ['Automatic', 'Actual size', 'Fit page', 'Page width']) {
+		await expect(page.getByRole('menuitemradio', { name: label, exact: true })).toBeVisible();
+	}
+	await page.getByRole('menuitemradio', { name: '150%', exact: true }).click();
+	await expect(zoom).toHaveText('150%');
+	await zoom.click();
+	await expect(page.getByRole('menuitem', { name: 'Zoom in', exact: true })).toBeEnabled();
+	await expect(page.getByRole('menuitem', { name: 'Zoom out', exact: true })).toBeEnabled();
+	await page.getByRole('menuitemradio', { name: 'Actual size', exact: true }).click();
 	await page.getByRole('button', { name: 'Page display', exact: true }).click();
-	await expect(page.getByRole('menuitemradio', { name: 'Pages', exact: true })).toHaveAttribute('aria-checked', 'true');
-	await page.getByRole('menuitemradio', { name: 'Scroll', exact: true }).click();
-	await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('flow'))).toBe('scrolled');
+	await expect(page.getByRole('menuitemradio')).toHaveText(['Single page', 'Single page continuous', 'Split', 'Split continuous']);
+	await page.getByRole('menuitemradio', { name: 'Single page continuous', exact: true }).click();
+	await expect.poll(() => displayState(page)).toMatchObject({ continuous: true, columns: '1' });
 	await page.getByRole('button', { name: 'Page display', exact: true }).click();
-	await expect(page.getByRole('menuitemradio', { name: 'Scroll', exact: true })).toHaveAttribute('aria-checked', 'true');
+	await expect(page.getByRole('menuitemradio', { name: 'Single page continuous', exact: true })).toHaveAttribute('aria-checked', 'true');
 	await expect(page.getByRole('menuitemcheckbox')).toHaveCount(0);
-	await page.getByRole('menuitemradio', { name: 'Pages', exact: true }).click();
-	await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('flow'))).toBe('paginated');
+	await page.getByRole('menuitemradio', { name: 'Split', exact: true }).click();
+	await expect.poll(() => displayState(page)).toMatchObject({ continuous: false });
+	await page.getByRole('button', { name: 'Page display', exact: true }).click();
+	await expect(page.getByRole('menuitemradio', { name: 'Split', exact: true })).toHaveAttribute('aria-checked', 'true');
+	await page.keyboard.press('Escape');
 
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expectReaderToolbarFits(page);
-	await expect(page.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
-	for (const label of ['Size', 'Page display', 'Format', 'Rotate']) {
-		await expect(page.getByRole('button', { name: label, exact: true })).not.toBeVisible();
+	await expect(insert).toBeVisible();
+	for (const label of ['Zoom', 'Page display', 'Format', 'Rotate']) {
+		await expect(page.getByRole('button', { name: label === 'Zoom' ? /^Zoom(?: |$)/ : label, exact: true })).not.toBeVisible();
 		await page.getByRole('button', { name: 'More view options', exact: true }).press('ArrowDown');
-		await page.getByRole('menuitem', { name: label, exact: true }).click();
-		if (label === 'Size') {
-			await page.getByRole('menuitem', { name: 'Decrease font size', exact: true }).click();
-			await expect.poll(bodySize).toBeCloseTo(initialSize, 2);
+		await page.getByRole('menuitem', { name: label === 'Zoom' ? /^Zoom(?: |$)/ : label, exact: true }).click();
+		if (label === 'Zoom') {
+			await page.getByRole('menuitemradio', { name: 'Actual size', exact: true }).click();
 		} else if (label === 'Page display') {
-			await page.getByRole('menuitemradio', { name: 'Scroll', exact: true }).click();
-			await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('flow'))).toBe('scrolled');
+			await page.getByRole('menuitemradio', { name: 'Split continuous', exact: true }).click();
+			await expect.poll(() => displayState(page)).toMatchObject({ continuous: true, columns: '2' });
 		} else if (label === 'Format') {
 			const dialog = page.getByRole('dialog', { name: 'Format', exact: true });
 			await expect(dialog.getByRole('radio', { name: 'Serif', exact: true })).toBeVisible();
 			await dialog.getByRole('button', { name: 'Save settings', exact: true }).click();
 			await expect.poll(() => state.settings.find((setting) => setting.key === 'reader.book.21')?.value)
-				.toMatchObject({ size: 100, flow: 'scrolled', futureOption: { keep: true } });
+				.toMatchObject({ size: 100, reflowZoom: 'page-actual', reflowLayout: 'split-continuous', futureOption: { keep: true } });
 			await dialog.press('Escape');
 			await expect(dialog).not.toBeVisible();
 		} else {
@@ -667,24 +667,30 @@ test('EPUB view menus change size and flow without exposing PDF tools', async ({
 	await expect(page.locator('foliate-view')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
 });
 
-test('CBZ exposes zoom, backgrounds and session rotation without typography or PDF tools', async ({ page }) => {
+test('CBZ shares zoom, page display and insertion without exposing typography or PDF tools', async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	const state = await setupReader(page, 'cbz', cbzFixture());
 	await page.goto('/read/21/31');
 	await expect((await bookFrame(page)).locator('img')).toBeVisible();
 	await expectReaderToolbarFits(page);
-	for (const label of ['Size', 'Format', 'Select tool', 'Hand tool', 'Insert text, drawing or image']) {
+	for (const label of ['Size', 'Select tool', 'Hand tool']) {
 		await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 	}
-	await page.getByRole('button', { name: 'Zoom', exact: true }).click();
+	await page.getByRole('button', { name: /^Zoom(?: |$)/ }).click();
 	await expect(page.getByRole('menuitem', { name: 'Zoom in', exact: true })).toBeVisible();
-	await expect(page.getByRole('menuitemradio', { name: '100%', exact: true })).toHaveAttribute('aria-checked', 'true');
+	for (const label of ['Automatic', 'Actual size', 'Fit page', 'Page width']) {
+		await expect(page.getByRole('menuitemradio', { name: label, exact: true })).toBeVisible();
+	}
 	await page.getByRole('menuitemradio', { name: '150%', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Zoom', exact: true })).toHaveText('150%');
-	await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('zoom'))).toBe('1.5');
+	await expect(page.getByRole('button', { name: /^Zoom(?: |$)/ })).toHaveText('150%');
+	await page.getByRole('button', { name: /^Zoom(?: |$)/ }).click();
+	await expect(page.getByRole('menuitemradio', { name: '150%', exact: true })).toHaveAttribute('aria-checked', 'true');
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Page display', exact: true }).click();
-	const dialog = page.getByRole('dialog', { name: 'Page display', exact: true });
+	await expect(page.getByRole('menuitemradio')).toHaveText(['Single page', 'Single page continuous', 'Split', 'Split continuous']);
+	await page.getByRole('menuitemradio', { name: 'Single page', exact: true }).click();
+	await page.getByRole('button', { name: 'Format', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Format', exact: true });
 	await expect(dialog.getByRole('radio', { name: 'Serif', exact: true })).toHaveCount(0);
 	await expect(dialog.getByRole('button', { name: 'Increase spacing', exact: true })).toHaveCount(0);
 	await expect(dialog.getByRole('menuitemradio', { name: 'Pages', exact: true })).toHaveCount(0);
@@ -696,15 +702,17 @@ test('CBZ exposes zoom, backgrounds and session rotation without typography or P
 	await page.keyboard.press('Escape');
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expectReaderToolbarFits(page);
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
-	await expect(page.getByRole('menuitem', { name: 'Highlight current page', exact: true })).toBeEnabled();
-	await page.getByRole('menuitem', { name: 'Highlight current page', exact: true }).click();
+	await page.getByRole('button', { name: 'Insert text, drawing or image', exact: true }).click();
+	await expect(page.getByRole('menuitem')).toHaveText(['Text', 'Draw', 'Image']);
+	await page.keyboard.press('Escape');
+	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
+	await page.getByRole('button', { name: 'Highlight current page', exact: true }).click();
 	await expect.poll(() => state.highlights.length).toBe(1);
 	await page.getByRole('button', { name: 'More view options', exact: true }).click();
 	await expect(page.getByRole('menuitem', { name: 'Size', exact: true })).toHaveCount(0);
-	await expect(page.getByRole('menuitem', { name: 'Format', exact: true })).toHaveCount(0);
-	await expect(page.getByRole('menuitem', { name: 'Zoom', exact: true })).toBeVisible();
-	await page.getByRole('menuitem', { name: 'Page display', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Format', exact: true })).toBeVisible();
+	await expect(page.getByRole('menuitem', { name: /^Zoom(?: |$)/ })).toBeVisible();
+	await page.getByRole('menuitem', { name: 'Format', exact: true }).click();
 	await expect(dialog.getByRole('radio', { name: 'Sepia', exact: true })).toHaveAttribute('aria-checked', 'true');
 	await page.keyboard.press('Escape');
 	await page.keyboard.press('Escape');
@@ -724,20 +732,25 @@ test('Chinese EPUB header keeps localized view and Add menus usable on mobile', 
 	await page.goto('/read/21/31');
 	await expect(page.getByRole('button', { name: '下一页', exact: true })).toBeEnabled();
 	await expectReaderToolbarFits(page);
-	await page.getByRole('button', { name: '添加', exact: true }).click();
+	await page.getByRole('button', { name: '插入文字、绘图或图片', exact: true }).click();
 	await expect(page.getByRole('menuitem')).toHaveCount(3);
+	await expect(page.getByRole('menuitem')).toHaveText(['文字', '绘画', '图片']);
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: '更多视图选项', exact: true }).click();
-	for (const label of ['字号', '页面显示', '格式', '旋转']) {
-		await expect(page.getByRole('menuitem', { name: label, exact: true })).toBeVisible();
+	for (const label of ['缩放', '页面显示', '格式', '旋转']) {
+		await expect(page.getByRole('menuitem', { name: label === '缩放' ? /^缩放(?: |$)/ : label, exact: true })).toBeVisible();
 	}
 	await page.getByRole('menuitem', { name: '页面显示', exact: true }).focus();
 	await page.keyboard.press('ArrowRight');
-	await expect(page.getByRole('menuitemradio', { name: '翻页', exact: true })).toBeFocused();
+	await expect(page.getByRole('menuitemradio', { name: '单页', exact: true })).toBeFocused();
 	await page.keyboard.press('ArrowDown');
-	await expect(page.getByRole('menuitemradio', { name: '滚动', exact: true })).toBeFocused();
+	await expect(page.getByRole('menuitemradio', { name: '单页连续', exact: true })).toBeFocused();
 	await page.keyboard.press('Enter');
-	await expect.poll(() => page.locator('foliate-view').evaluate((host: View) => host.renderer.getAttribute('flow'))).toBe('scrolled');
+	await expect.poll(() => displayState(page)).toMatchObject({ continuous: true, columns: '1' });
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: '更多视图选项', exact: true }).click();
+	await page.getByRole('menuitem', { name: '页面显示', exact: true }).click();
+	await expect(page.getByRole('menuitemradio', { name: '单页连续', exact: true })).toHaveAttribute('aria-checked', 'true');
 });
 
 test('PDF free zoom preserves rotated text and highlight geometry', async ({ page }) => {

@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
 
 class MockView extends EventTarget {
 	style = {};
+	renderer = { parentNode: null };
 	isFixedLayout = false;
 	highlights = new Set<string>();
 	annotations = new Set<string>();

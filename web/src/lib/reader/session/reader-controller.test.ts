@@ -64,6 +64,31 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('reader controller PDF extensions', () => {
+	it.each(['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz'])('persists CFI inserts for %s and rolls back failed offline writes', async (format) => {
+		vi.mocked(getBook).mockResolvedValue({
+			...book, files: [{ ...book.files[0], format }]
+		});
+		const controller = createReaderController(params);
+		await controller.retry();
+		const cfi: PageAnnotationInput = { ...input, locator: {
+			type: 'cfi', value: 'epubcfi(/6/2!/4/2:5)', rect: input.locator.rect
+		} };
+		vi.mocked(saveMutation).mockResolvedValue('queued');
+		expect(await controller.addPageAnnotation(cfi)).toBe(true);
+		expect(controller.pageAnnotations).toMatchObject([{ ...cfi, book_file_id: 31 }]);
+		expect(saveMutation).toHaveBeenLastCalledWith(expect.objectContaining({
+			entity: 'page_annotations', data: expect.objectContaining({ locator: cfi.locator })
+		}));
+		const saved = controller.pageAnnotations[0];
+		vi.mocked(saveMutation).mockRejectedValueOnce(new Error('Offline storage unavailable'));
+		expect(await controller.updatePageAnnotation(saved, { data: { ...input.data, text: 'Changed' } })).toBe(false);
+		expect(controller.pageAnnotations).toEqual([saved]);
+		expect(controller.actionError).not.toBe('');
+		expect(await controller.addPageAnnotation(input)).toBe(false);
+		expect(controller.pageAnnotations).toEqual([saved]);
+		controller.dispose();
+	});
+
 	it.each(['text', 'ink', 'image'] as const)('opens a linked %s annotation at its rectangle instead of saved progress', async (kind) => {
 		const row = {
 			...input, id: 'target', book_id: 21, book_file_id: 31,

@@ -161,14 +161,13 @@ test('PDF navigation, sidebar, marks, appearance and bookmarks work together', a
 		.toEqual({ open: true, tab: 'pages' });
 
 	await tab(page, 'Bookmarks').click();
-	const bookmarks = panel(page, 'Bookmarks');
-	await bookmarks.getByRole('button', { name: 'Bookmark this page', exact: true }).click();
-	await expect(bookmarks.getByRole('button', { name: 'Remove page bookmark', exact: true })).toBeVisible();
+	await page.getByTestId('pdf-bookmark-toggle').click();
+	await expect(page.getByTestId('pdf-bookmark-toggle')).toHaveAttribute('aria-pressed', 'true');
 	await expect.poll(() => state.bookmarks.length).toBe(1);
 	await page.reload();
 	await openedPdf(page);
-	await expect(panel(page, 'Bookmarks').getByRole('button', { name: 'Remove page bookmark', exact: true })).toBeVisible();
-	await panel(page, 'Bookmarks').getByRole('button', { name: 'Remove page bookmark', exact: true }).click();
+	await expect(page.getByTestId('pdf-bookmark-toggle')).toHaveAttribute('aria-pressed', 'true');
+	await page.getByTestId('pdf-bookmark-toggle').click();
 	await expect.poll(() => state.bookmarks.length).toBe(0);
 
 	await tab(page, 'Annotations').click();
@@ -264,11 +263,11 @@ test('mobile sidebar overlays, navigates and persists its selected tab', async (
 	await expect(pdfPageBox(page)).toHaveValue('1');
 	await expect(panel(page, 'Pages')).toHaveCount(0);
 	await tab(page, 'Bookmarks').click();
-	await panel(page, 'Bookmarks').getByRole('button', { name: 'Bookmark this page', exact: true }).click();
+	await page.getByTestId('pdf-bookmark-toggle').click();
 	await expect.poll(() => state.bookmarks.length).toBe(1);
 	await page.reload();
 	await openedPdf(page);
-	await expect(panel(page, 'Bookmarks').getByRole('button', { name: 'Remove page bookmark', exact: true })).toBeVisible();
+	await expect(page.getByTestId('pdf-bookmark-toggle')).toHaveAttribute('aria-pressed', 'true');
 	await panel(page, 'Bookmarks').focus();
 	await page.keyboard.press('Escape');
 	await expect(panel(page, 'Bookmarks')).toHaveCount(0);

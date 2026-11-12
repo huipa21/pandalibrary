@@ -3,6 +3,9 @@ import * as m from '#lib/paraglide/messages.js';
 import { resolveMarkColor } from './annotations.js';
 import { backgroundFor } from './appearance.js';
 import { fraction } from './progress.js';
+import { firstVisibleLine } from './foliate-bookmarks.js';
+import { FoliateDisplay } from './foliate-display.js';
+import { reflowLayout, reflowScale, reflowZoom } from './reflow-display.js';
 import { captureBookBlobs, isolateBookSections } from './safe-content.js';
 import type { ReaderSearchEngine, ReaderSearchResult } from './search.js';
 import {
@@ -10,10 +13,17 @@ import {
 	type Reader,
 	type ReaderAnnotation,
 	type ReaderEvents,
+	type ReaderLocator,
 	type ReaderSettings,
 	type ReflowableFormat,
 	type Relocation
 } from './types.js';
+import type { PageAnnotationLocator } from './types.js';
+
+export interface ReflowInsertionTarget {
+	locator: Extract<PageAnnotationLocator, { type: 'cfi' }>;
+	position: number;
+}
 
 const MIME_TYPES: Record<ReflowableFormat, string> = {
 	epub: 'application/epub+zip',
@@ -27,6 +37,7 @@ const MIME_TYPES: Record<ReflowableFormat, string> = {
 interface FoliateLocation {
 	fraction?: number;
 	cfi?: string;
+	range?: Range | null;
 }
 
 interface FoliateLoad {
@@ -89,10 +100,13 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	private annotations = new Map<string, ReaderAnnotation>();
 	private documents = new Map<number, Document>();
 	private location: Relocation | null = null;
+	private visibleRange: Range | null = null;
 	private lastLoadError: unknown = null;
 	private disposed = false;
 	private rotation = 0;
 	private rotationObserver: ResizeObserver | null = null;
+	private display: FoliateDisplay | null = null;
+	private displayScale = 1;
 	private rotationMeasurements = new Map<HTMLElement, PropertyDescriptor | undefined>();
 	private readonly listeners = new AbortController();
 	private searchGeneration = 0;
@@ -103,6 +117,7 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	private selectionListeners = new Set<(reason?: 'geometry') => void>();
 	private selectionKeyboardListeners = new Set<(event: KeyboardEvent) => void>();
 	private annotationListeners = new Set<(id: string) => void>();
+	private insertionListeners = new Set<(target: ReflowInsertionTarget) => void>();
 	private notifySelection = (reason?: 'geometry') => {
 		for (const listener of this.selectionListeners) listener(reason);
 	};
@@ -119,6 +134,48 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 
 	get contents() {
 		return this.book?.toc ?? [];
+	}
+
+	get zoomScale(): number { return this.displayScale; }
+
+	isOnCurrentPage(locator: ReaderLocator): boolean {
+		const view = this.view;
+		if (!view || !this.location || !isCfiLocator(this.location.locator) || !isCfiLocator(locator)) return false;
+		if (locator.value === this.location.locator.value) return true;
+		try {
+			const current = view.resolveNavigation(this.location.locator.value);
+			const target = view.resolveNavigation(locator.value);
+			if (!current || !target || current.index !== target.index) return false;
+			if (view.isFixedLayout) return true;
+			const visible = this.visibleRange;
+			const doc = visible?.startContainer.ownerDocument;
+			if (!visible || !doc || !target.anchor) return false;
+			const anchor = target.anchor(doc);
+			if (!anchor) return false;
+			const point = doc.createRange();
+			if ('startContainer' in anchor) {
+				point.setStart(anchor.startContainer, anchor.startOffset);
+				point.collapse(true);
+			} else {
+				point.selectNodeContents(anchor);
+				point.collapse(true);
+			}
+			const end = visible.cloneRange();
+			end.collapse(false);
+			// Compare logical DOM positions, not exact viewport CFIs: reflow changes
+			// the visible range while the saved bookmark anchor remains stable.
+			return point.compareBoundaryPoints(0, visible) >= 0 && point.compareBoundaryPoints(0, end) < 0;
+		} catch {
+			return false;
+		}
+	}
+
+	getBookmarkText(): string {
+		const text = this.visibleRange ? firstVisibleLine(this.visibleRange) : '';
+		if (text) return text;
+		const current = this.location && isCfiLocator(this.location.locator)
+			? this.view?.resolveNavigation(this.location.locator.value) : null;
+		return m['rp8.page']({ page: (current?.index ?? 0) + 1 });
 	}
 
 	async goToContents(href: string): Promise<void> {
@@ -157,13 +214,26 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 		view.addEventListener('relocate', (event) => {
 			const detail = (event as CustomEvent<FoliateLocation>).detail;
 			if (!detail.cfi || !isCfiLocator({ type: 'cfi', value: detail.cfi })) return;
+			this.visibleRange = detail.range ?? null;
 			this.location = { fraction: fraction(detail.fraction ?? 0), locator: { type: 'cfi', value: detail.cfi } };
 			this.events.relocate(this.location);
+			this.notifySelectionGeometry();
 		});
 		view.addEventListener('load', (event) => {
 			const { doc, index } = (event as CustomEvent<FoliateLoad>).detail;
 			this.prepareRotationMeasurements(doc);
 			this.documents.set(index, doc);
+			doc.addEventListener('click', (event) => {
+				if (!this.insertionListeners.size || event.defaultPrevented) return;
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				try {
+					const target = this.insertionTarget(doc, index, event);
+					for (const listener of this.insertionListeners) listener(target);
+				} catch (error) {
+					this.events.error(error);
+				}
+			}, { signal: this.listeners.signal, capture: true });
 			const captureSelection = () => this.captureSelection(doc, index);
 			doc.addEventListener('selectionchange', captureSelection, { signal: this.listeners.signal });
 			doc.addEventListener('mouseup', captureSelection, { signal: this.listeners.signal });
@@ -190,6 +260,7 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 				doc.addEventListener(name, this.events.activity, { signal: this.listeners.signal, passive: true });
 			}
 			if (view.isFixedLayout) this.paintFixedPage(index, doc);
+			this.display?.resize();
 			this.notifySelectionGeometry();
 		});
 		view.addEventListener('create-overlay', () => {
@@ -250,12 +321,20 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 			this.rotationObserver = new ResizeObserver(() => {
 				if (this.disposed) return;
 				this.layoutRotation();
+				this.display?.resize();
 				this.notifySelectionGeometry();
 			});
 			this.rotationObserver.observe(this.container);
 		}
 		await view.open(book);
 		this.prepareRotationMeasurements();
+		if (view.renderer.parentNode && typeof view.renderer.getRootNode === 'function') {
+			this.display = new FoliateDisplay(view.renderer, book, view.isFixedLayout, (scale) => {
+				if (this.displayScale === scale) return;
+				this.displayScale = scale;
+				if (this.location) this.events.relocate({ ...this.location });
+			}, this.events.error);
+		}
 	}
 
 	/** Rotate only the book viewport; orientation lasts for this reader session. */
@@ -263,6 +342,7 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 		this.requireView();
 		this.rotation = (this.rotation + delta + 360) % 360;
 		this.layoutRotation();
+		this.display?.resize();
 		this.notifySelectionGeometry();
 	}
 
@@ -368,12 +448,19 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 		const background = backgroundFor(settings);
 		this.container.style.backgroundColor = background.page;
 		this.container.style.backgroundImage = background.grain ?? 'none';
-		view.renderer.setAttribute('flow', settings.flow);
-		if (view.isFixedLayout) {
-			view.renderer.setAttribute('zoom', settings.size === 100 ? 'fit-page' : String(settings.size / 100));
+		if (this.display) {
+			const locator = this.location?.locator;
+			await this.display.apply(settings, foliateStyles(settings));
+			if (locator && isCfiLocator(locator)) await view.goTo(locator.value);
 			return;
 		}
-		view.renderer.setStyles?.(foliateStyles(settings));
+		const layout = reflowLayout(settings);
+		this.displayScale = reflowScale(reflowZoom(settings, view.isFixedLayout), layout,
+			this.container.clientWidth || 720, this.container.clientHeight || 960);
+		view.renderer.setAttribute('flow', layout.endsWith('continuous') ? 'scrolled' : 'paginated');
+		view.renderer.setAttribute('max-column-count', layout.startsWith('split') ? '2' : '1');
+		if (view.isFixedLayout) view.renderer.setAttribute('zoom', String(this.displayScale));
+		else view.renderer.setStyles?.(foliateStyles(settings));
 	}
 
 	async addAnnotation(annotation: ReaderAnnotation): Promise<void> {
@@ -452,6 +539,123 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	subscribeAnnotation(listener: (id: string) => void): () => void {
 		this.annotationListeners.add(listener);
 		return () => { this.annotationListeners.delete(listener); };
+	}
+
+	subscribeInsertion(listener: (target: ReflowInsertionTarget) => void): () => void {
+		this.insertionListeners.add(listener);
+		return () => { this.insertionListeners.delete(listener); };
+	}
+
+	insertionAt(clientX: number, clientY: number): ReflowInsertionTarget {
+		const contents = this.requireView().renderer.getContents();
+		const candidates = contents.flatMap(({ doc, index }) => {
+			if (index === undefined || !doc?.defaultView) return [];
+			const width = doc.defaultView.innerWidth, height = doc.defaultView.innerHeight;
+			const bounds = this.mapDocumentBounds(doc, { left: 0, top: 0, right: width, bottom: height });
+			if (!bounds?.width || !bounds.height) return [];
+			const distance = Math.max(bounds.left - clientX, 0, clientX - bounds.right) +
+				Math.max(bounds.top - clientY, 0, clientY - bounds.bottom);
+			return [{ doc, index, width, height, bounds, distance }];
+		}).sort((a, b) => a.distance - b.distance);
+		const hit = candidates[0];
+		if (!hit) throw new Error('Insertion page is unavailable.');
+		const u = (clientX - hit.bounds.left) / hit.bounds.width;
+		const v = (clientY - hit.bounds.top) / hit.bounds.height;
+		const [x, y] = this.rotation === 90 ? [v, 1 - u]
+			: this.rotation === 180 ? [1 - u, 1 - v]
+			: this.rotation === 270 ? [1 - v, u] : [u, v];
+		return this.insertionTarget(hit.doc, hit.index, {
+			clientX: Math.max(0, Math.min(hit.width, x * hit.width)),
+			clientY: Math.max(0, Math.min(hit.height, y * hit.height)),
+			target: hit.doc.body ?? hit.doc.documentElement
+		});
+	}
+
+	private insertionTarget(doc: Document, index: number, event: Pick<MouseEvent, 'clientX' | 'clientY' | 'target'>): ReflowInsertionTarget {
+		const viewport = doc.defaultView;
+		if (!viewport?.innerWidth || !viewport.innerHeight) throw new Error('Insertion viewport is unavailable.');
+		const caret = (doc as Document & {
+			caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null;
+			caretRangeFromPoint?(x: number, y: number): Range | null;
+		});
+		const position = caret.caretPositionFromPoint?.(event.clientX, event.clientY);
+		const range = position ? doc.createRange() : caret.caretRangeFromPoint?.(event.clientX, event.clientY) ?? doc.createRange();
+		if (position) {
+			range.setStart(position.offsetNode, position.offset);
+			range.collapse(true);
+		} else if (!range.startContainer || range.startContainer === doc) {
+			const element = event.target as Element;
+			range.selectNodeContents(element?.nodeType === 1 ? element : doc.body);
+			range.collapse(true);
+		}
+		const fixed = this.requireView().isFixedLayout;
+		const value = this.requireView().getCFI(index, fixed ? undefined : range);
+		if (!isCfiLocator({ type: 'cfi', value })) throw new Error('Insertion anchor is unavailable.');
+		const anchor = fixed ? { top: 0 } : range.getBoundingClientRect();
+		return {
+			locator: {
+				type: 'cfi', value,
+				rect: {
+					x: Math.max(0, Math.min(0.75, event.clientX / viewport.innerWidth)),
+					y: Math.max(0, Math.min(0.75, (event.clientY - anchor.top) / viewport.innerHeight)),
+					width: 0.25, height: 0.2
+				}
+			},
+			position: this.location?.fraction ?? 0
+		};
+	}
+
+	/** Rect coordinates use the frame viewport, with vertical offset from the stable CFI anchor. */
+	getInsertionBounds(locator: PageAnnotationLocator): SelectionBounds | null {
+		if (locator.type !== 'cfi' || this.disposed || !this.view) return null;
+		try {
+			const resolved = this.view.resolveNavigation(locator.value);
+			const doc = resolved && (this.view.renderer.getContents?.()
+				.find((item) => item.index === resolved.index)?.doc ?? this.documents.get(resolved.index));
+			const frame = doc?.defaultView?.frameElement as HTMLElement | null;
+			if (!resolved || !doc || !frame?.isConnected) return null;
+			const anchor = this.view.isFixedLayout ? null : resolved.anchor?.(doc);
+			if (!anchor && !this.view.isFixedLayout) return null;
+			const range = doc.createRange();
+			if (anchor && 'startContainer' in anchor) {
+				range.setStart(anchor.startContainer, anchor.startOffset);
+				range.collapse(true);
+			} else if (anchor) range.selectNodeContents(anchor);
+			const rect = this.view.isFixedLayout ? { left: 0, top: 0, right: 0, bottom: 0 } : range.getBoundingClientRect();
+			const width = doc.defaultView!.innerWidth;
+			const height = doc.defaultView!.innerHeight;
+			// A resolved section can remain loaded while outside the rendered spread.
+			if (rect.bottom < 0 || rect.top >= height || rect.right < 0 || rect.left >= width) return null;
+			return this.mapDocumentBounds(doc, {
+				left: locator.rect.x * width, top: rect.top + locator.rect.y * height,
+				right: (locator.rect.x + locator.rect.width) * width,
+				bottom: rect.top + (locator.rect.y + locator.rect.height) * height
+			});
+		} catch {
+			return null;
+		}
+	}
+
+	private mapDocumentBounds(doc: Document, bounds: { left: number; top: number; right: number; bottom: number }): SelectionBounds | null {
+		let { left, top, right, bottom } = bounds;
+		const outer = this.container.ownerDocument;
+		while (doc !== outer) {
+			const frame = doc.defaultView?.frameElement as HTMLElement | null;
+			if (!frame?.isConnected || !frame.offsetWidth || !frame.offsetHeight) return null;
+			const rect = frame.getBoundingClientRect();
+			const rotation = frame.ownerDocument === outer ? this.rotation : 0;
+			const sideways = rotation === 90 || rotation === 270;
+			const sx = (sideways ? rect.height : rect.width) / frame.offsetWidth;
+			const sy = (sideways ? rect.width : rect.height) / frame.offsetHeight;
+			const x1 = (frame.clientLeft + left) * sx, x2 = (frame.clientLeft + right) * sx;
+			const y1 = (frame.clientTop + top) * sy, y2 = (frame.clientTop + bottom) * sy;
+			if (rotation === 90) [left, right, top, bottom] = [rect.right - y2, rect.right - y1, rect.top + x1, rect.top + x2];
+			else if (rotation === 180) [left, right, top, bottom] = [rect.right - x2, rect.right - x1, rect.bottom - y2, rect.bottom - y1];
+			else if (rotation === 270) [left, right, top, bottom] = [rect.left + y1, rect.left + y2, rect.bottom - x2, rect.bottom - x1];
+			else [left, right, top, bottom] = [rect.left + x1, rect.left + x2, rect.top + y1, rect.top + y2];
+			doc = frame.ownerDocument;
+		}
+		return { left, top, right, bottom, width: right - left, height: bottom - top };
 	}
 
 	async search(query: string, signal?: AbortSignal): Promise<ReaderSearchResult[]> {

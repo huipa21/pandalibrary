@@ -211,9 +211,14 @@ test('four layouts, optional OCR, rotate and toggles follow props', async ({ pag
 	expect(await hand.locator('svg').innerHTML()).not.toBe(originalIcon);
 	await hand.click();
 	await expect(select).toHaveAttribute('aria-pressed', 'false');
-	await page.getByRole('button', { name: 'Insert text, drawing or image' }).click();
-	await expectLog(page, 'insert', true);
-	await expect(page.getByRole('button', { name: 'Insert text, drawing or image' })).toHaveAttribute('aria-pressed', 'true');
+	const insert = page.getByRole('button', { name: 'Insert text, drawing or image' });
+	await insert.click();
+	await expect(insert).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByRole('menuitem')).toHaveText(['Text', 'Draw', 'Image']);
+	await page.getByRole('menuitem', { name: 'Text', exact: true }).click();
+	await expectLog(page, 'insert', 'text');
+	await expect(insert).toHaveAttribute('aria-expanded', 'false');
+	await expect(insert).toBeFocused();
 	await expect(page.getByRole('button', { name: 'Annotations', exact: true })).toHaveCount(0);
 });
 
@@ -227,6 +232,25 @@ test('only one desktop menu stays open and Mac hint uses the command key', async
 	await expect(page.getByRole('menu', { name: 'Rotate' })).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('button', { name: 'Rotate', exact: true })).toBeFocused();
+});
+
+test('insert menu skips offline images, selects with the keyboard, and dismisses without a selection', async ({ page }) => {
+	await mount(page);
+	await update(page, { offline: true });
+	const insert = page.getByRole('button', { name: 'Insert text, drawing or image', exact: true });
+	await insert.focus();
+	await insert.press('ArrowUp');
+	await expect(page.getByRole('menuitem', { name: 'Draw', exact: true })).toBeFocused();
+	await expect(page.getByRole('menuitem', { name: 'Image', exact: true })).toBeDisabled();
+	await page.keyboard.press('ArrowDown');
+	await expect(page.getByRole('menuitem', { name: 'Text', exact: true })).toBeFocused();
+	await page.keyboard.press('Enter');
+	await expectLog(page, 'insert', 'text');
+	await expect(insert).toBeFocused();
+	await insert.click();
+	await page.getByText('PDF page fixture').click();
+	await expect(insert).toHaveAttribute('aria-expanded', 'false');
+	await expectLog(page, 'insert', 'text');
 });
 
 test('menus skip disabled items and remain usable in short viewports', async ({ page }) => {

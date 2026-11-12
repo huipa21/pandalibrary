@@ -4,6 +4,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { annotationForReader, highlightColor, HIGHLIGHT_COLORS, type HighlightColor } from '#lib/reader/annotations.js';
 	import { bookmarkForPosition } from '#lib/reader/bookmarks.js';
+	import { bookmarkExcerpt } from '#lib/reader/foliate-bookmarks.js';
 	import StickyNote from '#lib/reader/StickyNote.svelte';
 	import SearchField from '#lib/search/SearchField.svelte';
 	import VirtualList from '#lib/reader/pdf/sidebar/annotations/VirtualList.svelte';
@@ -13,11 +14,12 @@
 	import SearchPanel from '#lib/reader/SearchPanel.svelte';
 	import ReflowSelectionToolbar from './ReflowSelectionToolbar.svelte';
 	import FormatMenu from '#lib/reader/toolbar/FormatMenu.svelte';
-	import ReflowSizeMenu from '#lib/reader/toolbar/ReflowSizeMenu.svelte';
-	import ReflowLayoutMenu from '#lib/reader/toolbar/ReflowLayoutMenu.svelte';
+	import ZoomMenu from '#lib/reader/toolbar/ZoomMenu.svelte';
+	import LayoutMenu from '#lib/reader/toolbar/LayoutMenu.svelte';
+	import { reflowLayout, reflowZoom, stepReflowZoom } from '#lib/reader/reflow-display.js';
 	import RotateMenu from '#lib/reader/toolbar/RotateMenu.svelte';
-	import ToolbarMenu from '#lib/reader/toolbar/ToolbarMenu.svelte';
-	import MenuItem from '#lib/reader/toolbar/MenuItem.svelte';
+	import InsertMenu, { type InsertType } from '#lib/reader/toolbar/InsertMenu.svelte';
+	import ReflowInsertLayer from './ReflowInsertLayer.svelte';
 	import ReaderFrame from '#lib/reader/frame/ReaderFrame.svelte';
 	import ReaderCloseButton from '#lib/reader/frame/ReaderCloseButton.svelte';
 	import ReaderStatusDot from '#lib/reader/frame/ReaderStatusDot.svelte';
@@ -46,6 +48,9 @@
 	let selectedColor = $state<HighlightColor>('yellow');
 	let engine = $state<FoliateReader | null>(null);
 	let announcement = $state('');
+	let insertMode = $state<InsertType | null>(null);
+	let insertMenuOpen = $state(false);
+	let offline = $state(false);
 	let sidebarSelection = $state.raw<ReaderSelection | null>(null);
 	const tabs: readonly SidebarTab[] = untrack(() => controller.format === 'cbz'
 		? ['toc', 'annotations', 'bookmarks']
@@ -54,8 +59,14 @@
 	const sidebarInset = $derived(RAIL_WIDTH + (sidebar.open && sidebar.docked ? PANEL_WIDTH : 0));
 	const background = $derived(backgroundFor(controller.settings));
 	const progressPercent = $derived(Math.round((controller.location?.fraction ?? 0) * 100));
+	const currentBookmarks = $derived.by(() => {
+		// Relocation includes sidebar/typography reflows even when the fraction stays unchanged.
+		if (!controller.location || !engine) return [];
+		return controller.availableBookmarks.filter((bookmark) => engine!.isOnCurrentPage(bookmark.locator));
+	});
 	const annotationList = $derived(buildAnnotationList({
-		highlights: controller.highlights, notes: controller.notes, pageAnnotations: [],
+		highlights: controller.highlights, notes: controller.notes,
+		pageAnnotations: [...controller.pageAnnotations, ...controller.otherPageAnnotations],
 		fileId: controller.file?.id ?? -1, locatorType: 'cfi'
 	}));
 	const entries = $derived(filterEntries(annotationList.entries, query));
@@ -88,6 +99,10 @@
 		});
 	});
 	onMount(() => {
+		const connectionChanged = () => { offline = !navigator.onLine; };
+		connectionChanged();
+		window.addEventListener('online', connectionChanged);
+		window.addEventListener('offline', connectionChanged);
 		if (!surface) throw new Error('The reader surface is unavailable.');
 		readerChrome.set('full');
 		controller.setDraftGuard(() => {
@@ -105,6 +120,8 @@
 			if (!destroyed) readerChrome.set('default');
 		});
 		return () => {
+			window.removeEventListener('online', connectionChanged);
+			window.removeEventListener('offline', connectionChanged);
 			destroyed = true;
 			controller.setDraftGuard(() => true);
 			sidebar.dispose();
@@ -160,16 +177,19 @@
 			announcement = m['reader.error.render']();
 		}
 	}
-	async function addToolbarHighlight() {
-		const created = await controller.addHighlight(controller.selection ?? sidebarSelection, selectedColor);
-		if (created) {
-			clearSelection();
-			sidebar.show('annotations');
+	async function toggleBookmark() {
+		if (!engine || !controller.ready || controller.busy) return;
+		if (currentBookmarks.length) {
+			for (const bookmark of currentBookmarks) {
+				if (!await controller.removeBookmark(bookmark, { confirm: false })) break;
+			}
+			return;
 		}
+		const selected = engine.getSelectionBounds() ? controller.selection?.text : null;
+		await controller.addBookmark({ label: bookmarkExcerpt(selected || engine.getBookmarkText()) });
 	}
-	function addBookmark() {
-		sidebar.show('bookmarks');
-		bookmarkDraft = { id: uuidv7(), label: '', original: '', editing: false };
+	async function jumpBookmark(bookmark: Bookmark) {
+		if (await navigate(() => controller.jumpToBookmark(bookmark)) && !sidebar.docked) sidebar.collapse();
 	}
 	async function cancelNote(body: string) {
 		if (controller.busy) return;
@@ -207,13 +227,25 @@
 		void tick().then(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }); });
 	}
 	async function jumpAnnotation(entry: AnnotationEntry): Promise<boolean> {
-		if (entry.kind !== 'mark' || !controller.file || !controller.format || !annotationForReader(entry.row, controller.file.id, controller.format)) return false;
+		if (entry.kind !== 'mark') {
+			if (entry.row.book_file_id !== controller.file?.id || entry.row.locator.type !== 'cfi' || !engine) return false;
+			try {
+				await engine.goTo(entry.row.locator);
+				if (!sidebar.docked) sidebar.collapse();
+				return true;
+			} catch {
+				announcement = m['ux6.jump_failed']();
+				return false;
+			}
+		}
+		if (!controller.file || !controller.format || !annotationForReader(entry.row, controller.file.id, controller.format)) return false;
 		await navigate(() => controller.goToHighlight(entry.row));
 		if (!sidebar.docked) sidebar.collapse();
 		return true;
 	}
 	async function removeAnnotation(entry: AnnotationEntry): Promise<boolean> {
-		if (entry.kind !== 'mark' || !canOpenNote()) return false;
+		if (entry.kind !== 'mark') return !!await controller.removePageAnnotation(entry.row);
+		if (!canOpenNote()) return false;
 		const removed = !!await controller.removeHighlight(entry.row, { confirm: false });
 		if (removed && detail?.id === entry.id) closeDetail();
 		return removed;
@@ -224,9 +256,7 @@
 	async function saveBookmark() {
 		if (!bookmarkDraft) return;
 		const existing = controller.bookmarks.find((bookmark) => bookmark.id === bookmarkDraft?.id);
-		const saved = existing
-			? await controller.updateBookmark(existing, bookmarkDraft)
-			: await controller.addBookmark(bookmarkDraft);
+		const saved = existing && await controller.updateBookmark(existing, bookmarkDraft);
 		if (saved) bookmarkDraft = null;
 	}
 	function colorLabel(color: HighlightColor): string {
@@ -253,14 +283,19 @@
 				{#snippet status()}<ReaderStatusDot warning={controller.settingsWarning} onretry={() => controller.retryWrites()} />{/snippet}
 				{#snippet centre()}<h1 class="reader-title">{controller.book?.title}</h1>{/snippet}
 				{#snippet overflow()}
-					<ReflowSizeMenu size={controller.settings.size} typography={controller.format !== 'cbz'}
-						disabled={!controller.ready} onsize={(size) => controller.applySettings({ size })} />
-					{#if controller.format !== 'cbz'}
-						<ReflowLayoutMenu flow={controller.settings.flow} disabled={!controller.ready}
-							onflow={(flow) => controller.applySettings({ flow })} />
-					{/if}
+					<ZoomMenu zoom={reflowZoom(controller.settings, controller.format === 'cbz')}
+						scale={controller.location && engine ? engine.zoomScale : 1}
+						includeValueInLabel
+						showHint={false}
+						disabled={!controller.ready}
+						onzoom={(reflowZoom) => controller.applySettings({ reflowZoom })}
+						onstep={(step) => controller.applySettings({ reflowZoom: stepReflowZoom(engine?.zoomScale ?? 1, step) })} />
+					<LayoutMenu layout={reflowLayout(controller.settings)} disabled={!controller.ready}
+						onlayout={(reflowLayout) => controller.applySettings({
+							reflowLayout, flow: reflowLayout.endsWith('continuous') ? 'scrolled' : 'paginated'
+						})} />
 					<FormatMenu typography={controller.format !== 'cbz'}
-						label={controller.format === 'cbz' ? m['pv4.display']() : m['rp2.format']()}
+						label={m['rp2.format']()}
 						icon={controller.format === 'cbz' ? 'layout-single' : undefined}
 						font={controller.settings.font} size={controller.settings.size} spacing={controller.settings.spacing}
 						background={background.id}
@@ -277,15 +312,15 @@
 					<RotateMenu onrotate={rotate} disabled={!engine} />
 				{/snippet}
 				{#snippet right()}
-					<ToolbarMenu label={m['reader.add']()} icon="insert">
-						<MenuItem label={controller.format === 'cbz' ? m['reader.annotations.add_page']() : m['reader.annotations.add_highlight']()}
-							icon="highlighter" disabled={!controller.ready || controller.busy || (!controller.selection && !sidebarSelection && controller.format !== 'cbz')}
-							onchoose={() => void addToolbarHighlight()} />
-						<MenuItem label={m['reader.annotations.add_note']()} icon="message"
-							disabled={!controller.ready || controller.busy} onchoose={() => openNote(null)} />
-						<MenuItem label={m['ux6.save_position']()} icon="bookmark-plus"
-							disabled={!controller.ready || controller.busy} onchoose={addBookmark} />
-					</ToolbarMenu>
+					<InsertMenu bind:open={insertMenuOpen} disabled={!controller.ready || controller.busy} {offline}
+						onselect={(type) => { insertMode = type; clearSelection(); }} />
+					<button class="pv4-button" data-testid="reflow-bookmark-toggle"
+						aria-label={m['rp8.add_page']()} aria-pressed={currentBookmarks.length > 0}
+						title={currentBookmarks.length ? m['rp8.remove_page']() : m['rp8.add_page']()}
+						disabled={!controller.ready || controller.busy}
+						onpointerdown={(event) => event.preventDefault()} onclick={() => void toggleBookmark()}>
+						<Icon name="bookmark" />
+					</button>
 					<span class="reader-divider" aria-hidden="true"></span>
 					<ReaderCloseButton closing={controller.closing} onclose={() => controller.close()} />
 				{/snippet}
@@ -305,6 +340,9 @@
 		{#if engine && surface && controller.format !== 'cbz'}
 			<ReflowSelectionToolbar {engine} {controller} {surface} cancomment={canOpenNote}
 				oncomment={commentOnSelection} onclear={() => sidebarSelection = null} onerror={(message) => announcement = message} />
+		{/if}
+		{#if engine && surface}
+			<ReflowInsertLayer {engine} {controller} {surface} bind:mode={insertMode} announce={(message) => announcement = message} />
 		{/if}
 		<ReaderSidebar {sidebar} {tabs} count={annotationList.count}>
 			{#snippet children(tab)}
@@ -334,6 +372,9 @@
 				<span class="rp7-count">{m['rp7.count']({ count: annotationList.count })}</span>
 			</header>
 			<div class="rp7-content" bind:this={scrollRoot}>
+			<div class="p-3">
+				<button class="reader-action" disabled={!controller.ready || controller.busy} onclick={() => openNote(null)}>{m['reader.annotations.add_note']()}</button>
+			</div>
 			{#if sidebarSelection}
 				<div class="reader-selection p-3">
 					<p class="font-medium">{m['reader.annotations.selected']()}</p>
@@ -375,25 +416,9 @@
 			<div class="flex items-center justify-between">
 				<h2 id="bookmarks-heading" class="text-xl font-semibold">{m['ux6.title']()}</h2>
 			</div>
-			<div class="flex flex-wrap gap-3">
-				<button class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={!controller.ready || controller.busy} onclick={addBookmark}>{m['ux6.save_position']()}</button>
-				{#if controller.availableBookmarks.length > 0}
-					<select aria-label={m['ux6.jump']()} class="rounded-md border border-slate-300 p-2 focus-visible:outline-2" disabled={!controller.ready || controller.busy} onchange={(event) => {
-						const bm = controller.availableBookmarks.find((b) => b.id === event.currentTarget.value);
-						if (bm) void navigate(() => controller.jumpToBookmark(bm));
-						event.currentTarget.value = '';
-					}}>
-						<option value="">{m['ux6.jump']()}</option>
-						{#each controller.availableBookmarks as bookmark (bookmark.id)}
-							<option value={bookmark.id}>{bookmark.label || m['ux6.unnamed']()}</option>
-						{/each}
-					</select>
-				{/if}
-			</div>
-
 			{#if bookmarkDraft}
 				<form class="space-y-3 rounded-md border border-slate-300 bg-slate-50 p-4" onsubmit={(event) => { event.preventDefault(); void saveBookmark(); }}>
-					<h3 class="font-semibold">{bookmarkDraft.editing ? m['ux6.edit_title']() : m['ux6.new_title']()}</h3>
+					<h3 class="font-semibold">{m['ux6.edit_title']()}</h3>
 					<label class="space-y-1 text-sm font-medium">
 						<span>{m['ux6.label']()}</span>
 						<input
@@ -414,27 +439,28 @@
 			{#if !controller.bookmarks.length}
 				<p class="text-slate-600">{m['ux6.empty']()}</p>
 			{:else}
-				<div class="space-y-3">
+				<ul class="space-y-3">
 					{#each controller.bookmarks as bookmark (bookmark.id)}
-						<div class="space-y-2 rounded-md border border-slate-200 bg-white p-4">
-							<div class="flex items-start justify-between">
-								<div class="min-w-0 flex-1">
-									<p class="font-semibold">{bookmark.label || m['ux6.unnamed']()}</p>
-									<p class="text-sm text-slate-600">{(Math.round(bookmark.position * 1000) / 10).toFixed(1)}%{bookmark.chapter ? ` — ${bookmark.chapter}` : ''}</p>
-									{#if !bookmarkForPosition(bookmark, controller.file.id, controller.format)}
-										<p class="text-sm text-amber-800">{m['ux6.unavailable']()}</p>
-									{/if}
-								</div>
-								<time class="whitespace-nowrap text-sm text-slate-600">{new Date(bookmark.created_at).toLocaleDateString()}</time>
+						<li class="reflow-bookmark" data-bookmark-id={bookmark.id}>
+							<button class="reflow-bookmark-jump" data-bookmark-jump
+								disabled={controller.busy || !controller.ready || !bookmarkForPosition(bookmark, controller.file.id, controller.format)}
+								onclick={() => void jumpBookmark(bookmark)}>
+								<span class="reflow-bookmark-meta">
+									<time datetime={bookmark.created_at}>{new Date(bookmark.created_at).toLocaleString()}</time>
+									<span class="reflow-bookmark-progress">{(Math.round(bookmark.position * 1000) / 10).toFixed(1)}%</span>
+								</span>
+								<span class="reflow-bookmark-label" data-bookmark-label title={bookmark.label}>{bookmark.label || m['ux6.unnamed']()}</span>
+							</button>
+							<div class="reflow-bookmark-actions">
+								<button class="pv4-button" aria-label={m['ux6.edit']()} title={m['ux6.edit']()} disabled={controller.busy || bookmark.book_file_id === null} onclick={() => editBookmark(bookmark)}><Icon name="pencil" /></button>
+								<button class="pv4-button" aria-label={m['ux6.delete']()} title={m['ux6.delete']()} disabled={controller.busy} onclick={() => void controller.removeBookmark(bookmark)}><Icon name="trash" /></button>
 							</div>
-							<div class="flex flex-wrap gap-3 text-sm">
-								<button class="underline focus-visible:outline-2" disabled={controller.busy || !bookmarkForPosition(bookmark, controller.file.id, controller.format)} onclick={() => void navigate(() => controller.jumpToBookmark(bookmark))}>{m['ux6.jump']()}</button>
-								<button class="underline focus-visible:outline-2" disabled={controller.busy || bookmark.book_file_id === null} onclick={() => editBookmark(bookmark)}>{m['ux6.edit']()}</button>
-								<button class="underline focus-visible:outline-2" disabled={controller.busy} onclick={() => void controller.removeBookmark(bookmark)}>{m['ux6.delete']()}</button>
-							</div>
-						</div>
+							{#if !bookmarkForPosition(bookmark, controller.file.id, controller.format)}
+								<p class="px-3 pb-2 text-sm text-amber-800">{m['ux6.unavailable']()}</p>
+							{/if}
+						</li>
 					{/each}
-				</div>
+				</ul>
 			{/if}
 		</section>
 				{/if}
@@ -520,6 +546,18 @@
 	.reader-position, .reader-alert { background: var(--pv-chrome); color: var(--shell-text); }
 	.reader-action { border: 1px solid var(--shell-border); border-radius: 6px; padding: 6px 10px; }
 	.reader-action:disabled { opacity: .5; }
+	.reflow-bookmark { position: relative; border: 1px solid var(--shell-border); border-radius: 6px; background: var(--shell-surface); }
+	.reflow-bookmark-jump { display: block; width: 100%; min-width: 0; padding: 10px 12px; text-align: left; border-radius: 6px; }
+	.reflow-bookmark-jump:hover:not(:disabled) { background: color-mix(in srgb, var(--shell-text) 5%, transparent); }
+	.reflow-bookmark-jump:focus-visible { outline: 2px solid var(--shell-accent, #059669); outline-offset: -2px; }
+	.reflow-bookmark-jump:disabled { opacity: .6; }
+	.reflow-bookmark-meta { display: flex; align-items: center; gap: 6px; min-height: 32px; padding-right: 64px; color: var(--shell-muted); font-size: 11px; }
+	.reflow-bookmark-meta time { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+	.reflow-bookmark-progress { margin-left: auto; flex: none; }
+	.reflow-bookmark-label { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+	.reflow-bookmark-actions { position: absolute; top: 10px; right: 8px; display: flex; }
+	.reflow-bookmark-actions .pv4-button { width: 30px; height: 32px; }
+	:global(.pv4-button[aria-pressed='true'][data-testid='reflow-bookmark-toggle']) { background: color-mix(in srgb, var(--shell-accent, #059669) 15%, transparent); color: var(--shell-accent, #059669); }
 	.reader-panel :global(.bg-white), .reader-panel :global(.bg-slate-50) { background: var(--shell-surface); color: var(--shell-text); }
 	.reader-panel :global(.text-slate-600) { color: var(--shell-muted); }
 	.reader-panel :global(select), .reader-panel :global(input) { background: var(--shell-surface); color: var(--shell-text); }

@@ -37,8 +37,12 @@ function positiveInteger(value: unknown, max = Number.MAX_SAFE_INTEGER): value i
 }
 
 function isPageLocator(value: unknown): value is PageAnnotationLocator {
-	if (!isRecord(value) || !hasOnlyKeys(value, ['type', 'page', 'rect']) ||
-		value.type !== 'pdf' || !positiveInteger(value.page) || !isRecord(value.rect) ||
+	if (!isRecord(value) || !(
+		value.type === 'pdf' && hasOnlyKeys(value, ['type', 'page', 'rect']) && positiveInteger(value.page) ||
+		value.type === 'cfi' && hasOnlyKeys(value, ['type', 'value', 'rect']) &&
+			typeof value.value === 'string' && value.value.startsWith('epubcfi(') &&
+			value.value.endsWith(')') && !value.value.includes('\0')
+	) || !isRecord(value.rect) ||
 		!hasOnlyKeys(value.rect, ['x', 'y', 'width', 'height'])) return false;
 	const { x, y, width, height } = value.rect;
 	return inRange(x, 0, 1) && inRange(y, 0, 1) &&

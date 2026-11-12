@@ -32,9 +32,10 @@ type pageAnnotationData struct {
 }
 
 type pageAnnotationLocator struct {
-	Type string             `json:"type"`
-	Page *int64             `json:"page"`
-	Rect *bookmarkRectangle `json:"rect"`
+	Type  string             `json:"type"`
+	Page  *int64             `json:"page"`
+	Value *string            `json:"value"`
+	Rect  *bookmarkRectangle `json:"rect"`
 }
 
 func validPageAnnotationLocator(raw json.RawMessage) bool {
@@ -42,8 +43,20 @@ func validPageAnnotationLocator(raw json.RawMessage) bool {
 		return false
 	}
 	var locator pageAnnotationLocator
-	if err := decodeMutationData(raw, &locator); err != nil || locator.Type != "pdf" ||
-		locator.Page == nil || *locator.Page < 1 || *locator.Page > 1<<53-1 || locator.Rect == nil {
+	if err := decodeMutationData(raw, &locator); err != nil || locator.Rect == nil {
+		return false
+	}
+	switch locator.Type {
+	case "pdf":
+		if locator.Value != nil || locator.Page == nil || *locator.Page < 1 || *locator.Page > 1<<53-1 {
+			return false
+		}
+	case "cfi":
+		if locator.Page != nil || locator.Value == nil || !strings.HasPrefix(*locator.Value, "epubcfi(") ||
+			!strings.HasSuffix(*locator.Value, ")") || strings.ContainsRune(*locator.Value, 0) {
+			return false
+		}
+	default:
 		return false
 	}
 	rect := locator.Rect

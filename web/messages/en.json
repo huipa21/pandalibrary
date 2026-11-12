@@ -148,6 +148,7 @@
 	"pv9.resize": "Resize {corner}",
 	"pv9.discard_drawing": "Discard this drawing?",
 	"pv9.discard_insert": "Discard the unfinished insert?",
+	"pv9.place_prompt": "Click in the book to place the annotation.",
 	"pv9.stroke_limit": "A drawing can contain at most 200 strokes. Undo a stroke or finish this drawing.",
 	"pv9.uploading": "Preparing and uploading image...",
 	"pv9.upload_failed": "Could not upload the image. Please try again.",

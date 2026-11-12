@@ -26,6 +26,32 @@ export function pageBookmark(bookmarks: readonly Bookmark[], fileId: number, pag
 		isPdfLocator(bookmark.locator) && bookmark.locator.page === page && bookmark.locator.rects === undefined);
 }
 
+type PageTextItem = { str?: string; hasEOL?: boolean; transform?: readonly number[] };
+
+export function defaultPdfBookmarkLabel(selected: string, items: readonly PageTextItem[], fallback: string): string {
+	const line: string[] = [];
+	let baseline: number | undefined;
+	for (const item of items) {
+		if (typeof item.str !== 'string') continue;
+		const text = item.str.trim();
+		const y = item.transform?.[5];
+		if (line.length && y !== undefined && baseline !== undefined && Math.abs(y - baseline) > 0.5) break;
+		if (text) {
+			line.push(text);
+			baseline ??= y;
+		}
+		if (item.hasEOL && line.length) break;
+	}
+	const text = (selected.trim() || line.join(' ') || fallback).replace(/\s+/gu, ' ').trim();
+	const encoder = new TextEncoder();
+	let label = '';
+	for (const character of Array.from(text).slice(0, 200)) {
+		if (encoder.encode(label + character).length > 512) break;
+		label += character;
+	}
+	return label;
+}
+
 export function validateBookmarkLabel(value: string):
 	{ label: string; error: null } | { label: null; error: 'length' | 'bytes' } {
 	const label = value.trim();

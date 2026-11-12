@@ -10,6 +10,40 @@ import (
 
 const pageLocator = `{"type":"pdf","page":1,"rect":{"x":0.1,"y":0.2,"width":0.3,"height":0.4}}`
 
+func TestCFIPageAnnotationsPersistAndValidateAnchors(t *testing.T) {
+	fixture := newReadingFixture(t)
+	ctx := context.Background()
+	viewer := Viewer{UserID: 2}
+	locator := `{"type":"cfi","value":"epubcfi(/6/2!/4/2:5)","rect":{"x":0.1,"y":0,"width":0.3,"height":0.2}}`
+	id := "018f0f7e-7b00-7000-8000-000000000001"
+	payload := pagePayload(101, "201", "text", locator, `{"text":"Anchored text","color":"#000000","size":0.02}`, 0.3)
+	response, err := fixture.service.Push(ctx, viewer, PushRequest{Mutations: []Mutation{
+		mutation("page_annotations", id, "", "upsert", payload, 1000),
+	}})
+	if err != nil || response.Results[0].Status != "applied" {
+		t.Fatalf("CFI insert = %+v, %v", response, err)
+	}
+	state, err := fixture.service.GetBookState(ctx, viewer, 101)
+	if err != nil || len(state.PageAnnotations) != 1 || string(state.PageAnnotations[0].Locator) != locator {
+		t.Fatalf("reopened CFI annotation = %+v, %v", state.PageAnnotations, err)
+	}
+	pull, err := fixture.service.Pull(ctx, viewer, 0)
+	if err != nil || len(pull.PageAnnotations) != 1 || string(pull.PageAnnotations[0].Locator) != locator {
+		t.Fatalf("synced CFI annotation = %+v, %v", pull.PageAnnotations, err)
+	}
+	for _, invalid := range []string{
+		strings.Replace(locator, `"value":`, `"page":1,"value":`, 1),
+		strings.Replace(locator, `epubcfi(/6/2!/4/2:5)`, `chapter.xhtml`, 1),
+		strings.Replace(locator, `epubcfi(/6/2!/4/2:5)`, `epubcfi(unclosed`, 1),
+		strings.Replace(locator, `"x":0.1`, `"x":0.9`, 1),
+		strings.Replace(locator, `"value":`, `"extra":1,"value":`, 1),
+	} {
+		if validPageAnnotationLocator(json.RawMessage(invalid)) {
+			t.Errorf("accepted invalid CFI locator: %s", invalid)
+		}
+	}
+}
+
 func pagePayload(bookID int, fileID string, kind, locator, content string, position float64) string {
 	return fmt.Sprintf(`{"book_id":%d,"book_file_id":%s,"kind":%q,"locator":%s,"position":%v,"data":%s}`,
 		bookID, fileID, kind, locator, position, content)

@@ -6,6 +6,7 @@
 
 	interface Props {
 		label: string;
+		triggerLabel?: string;
 		icon?: IconName;
 		text?: string;
 		open?: boolean;
@@ -14,7 +15,7 @@
 		align?: 'start' | 'end';
 	}
 
-	let { label, icon, text, open = $bindable(false), disabled = false, children, align = 'end' }: Props = $props();
+	let { label, triggerLabel, icon, text, open = $bindable(false), disabled = false, children, align = 'end' }: Props = $props();
 	const id = $props.id();
 	const nested = getContext<boolean>('pv4-menu') ?? false;
 	setContext('pv4-menu', true);
@@ -100,7 +101,10 @@
 		}
 		if (!open) return;
 		if (!nested) window.dispatchEvent(new CustomEvent('pv4-menu-open', { detail: id }));
-		void tick().then(position);
+		void tick().then(() => {
+			position();
+			if (open && panel && !panel.contains(document.activeElement)) items()[0]?.focus();
+		});
 		const outside = (event: PointerEvent) => {
 			if (event.target instanceof Node && !root?.contains(event.target)) close();
 		};
@@ -129,7 +133,7 @@
 		{disabled}
 		class={nested ? 'pv4-item' : `pv4-button ${text ? 'pv4-text-button' : ''}`}
 		role={nested ? 'menuitem' : undefined}
-		aria-label={label}
+		aria-label={triggerLabel ?? label}
 		title={label}
 		aria-haspopup="menu"
 		aria-expanded={open}

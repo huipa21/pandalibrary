@@ -10,7 +10,7 @@
 	import FormatMenu from './FormatMenu.svelte';
 	import RotateMenu from './RotateMenu.svelte';
 	import ToolToggle from './ToolToggle.svelte';
-	import InsertToggle from './InsertToggle.svelte';
+	import InsertMenu from './InsertMenu.svelte';
 	import type { BackgroundId } from '../appearance.js';
 	import type { ReaderSettings } from '../types.js';
 	import type { PdfLayout, PdfZoom } from './types.js';
@@ -23,8 +23,9 @@
 	let layout = $state<PdfLayout>('single-continuous');
 	let ocrEnabled = $state(true);
 	let tool = $state<'select' | 'hand'>('select');
-	let active = $state(false);
+	let insertMenuOpen = $state(false);
 	let disabled = $state(false);
+	let offline = $state(false);
 	let showOcr = $state(true);
 	let typography = $state(true);
 	let formatFont = $state<ReaderSettings['font']>('serif');
@@ -38,7 +39,7 @@
 		const update = (event: Event) => {
 			const detail = (event as CustomEvent<{
 				page?: number; pageCount?: number; fraction?: number;
-				disabled?: boolean; showOcr?: boolean;
+				disabled?: boolean; offline?: boolean; showOcr?: boolean;
 				typography?: boolean; formatFont?: ReaderSettings['font']; formatSize?: number;
 				formatSpacing?: number; formatBackground?: BackgroundId;
 			}>).detail;
@@ -46,6 +47,7 @@
 			if (detail.pageCount !== undefined) pageCount = detail.pageCount;
 			if (detail.fraction !== undefined) fraction = detail.fraction;
 			if (detail.disabled !== undefined) disabled = detail.disabled;
+			if (detail.offline !== undefined) offline = detail.offline;
 			if (detail.showOcr !== undefined) showOcr = detail.showOcr;
 			if (detail.typography !== undefined) typography = detail.typography;
 			if (detail.formatFont !== undefined) formatFont = detail.formatFont;
@@ -77,8 +79,8 @@
 		<RotateMenu onrotate={(delta) => log('rotate', delta)} />
 	{/snippet}
 	{#snippet right()}
-		<ToolToggle {tool} ontoggle={() => { tool = tool === 'select' ? 'hand' : 'select'; active = false; log('tool', tool); }} />
-		<InsertToggle {active} {disabled} ontoggle={() => { active = !active; log('insert', active); }} />
+		<ToolToggle {tool} ontoggle={() => { tool = tool === 'select' ? 'hand' : 'select'; insertMenuOpen = false; log('tool', tool); }} />
+		<InsertMenu bind:open={insertMenuOpen} {disabled} {offline} onselect={(type) => log('insert', type)} />
 		<span class="divider" aria-hidden="true"></span>
 		<button type="button" class="pv4-button" aria-label={m['reader.close']()} title={m['reader.close']()} onclick={() => log('close', true)}><Icon name="x" /></button>
 	{/snippet}

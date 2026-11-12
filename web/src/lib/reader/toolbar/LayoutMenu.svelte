@@ -3,13 +3,13 @@
 	import ToolbarMenu from './ToolbarMenu.svelte';
 	import MenuItem from './MenuItem.svelte';
 	import type { PdfLayout } from './types.js';
-	let { layout, ocrEnabled = false, onlayout, onocr }: {
-		layout: PdfLayout; ocrEnabled?: boolean;
+	let { layout, disabled = false, ocrEnabled = false, onlayout, onocr }: {
+		layout: PdfLayout; disabled?: boolean; ocrEnabled?: boolean;
 		onlayout: (layout: PdfLayout) => void; onocr?: (enabled: boolean) => void;
 	} = $props();
 </script>
 
-<ToolbarMenu label={m['pv4.display']()} icon="layout-single">
+<ToolbarMenu label={m['pv4.display']()} icon="layout-single" {disabled}>
 	<MenuItem label={m['pv4.single']()} icon="layout-single" role="menuitemradio" checked={layout === 'single'} onchoose={() => onlayout('single')} />
 	<MenuItem label={m['pv4.single_continuous']()} icon="layout-continuous" role="menuitemradio" checked={layout === 'single-continuous'} onchoose={() => onlayout('single-continuous')} />
 	<MenuItem label={m['pv4.split']()} icon="layout-split" role="menuitemradio" checked={layout === 'split'} onchoose={() => onlayout('split')} />

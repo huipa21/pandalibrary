@@ -30,7 +30,8 @@ async function setup(page: Page, format = 'epub', bytes = epubFixture()) {
 		mutations: [] as Mutation[],
 		highlights: [] as Row[],
 		notes: [] as Row[],
-		bookmarks: [] as Row[]
+		bookmarks: [] as Row[],
+		page_annotations: [] as Row[]
 	};
 	await page.route('**/api/v1/**', async (route) => {
 		const path = new URL(route.request().url()).pathname;
@@ -47,7 +48,7 @@ async function setup(page: Page, format = 'epub', bytes = epubFixture()) {
 		if (path === '/api/v1/me/books/21') {
 			return route.fulfill({ json: {
 				user_book: null, progress: null, highlights: state.highlights, notes: state.notes,
-				bookmarks: state.bookmarks, page_annotations: []
+				bookmarks: state.bookmarks, page_annotations: state.page_annotations
 			} });
 		}
 		if (path === '/api/v1/me/settings') {
@@ -61,7 +62,7 @@ async function setup(page: Page, format = 'epub', bytes = epubFixture()) {
 			return route.fulfill({ json: {
 				cursor: state.rev, user_books: [], reading_progress: [], user_settings: [],
 				highlights: state.highlights.filter(newer), notes: state.notes.filter(newer),
-				bookmarks: state.bookmarks.filter(newer), page_annotations: []
+				bookmarks: state.bookmarks.filter(newer), page_annotations: state.page_annotations.filter(newer)
 			} });
 		}
 		if (path === '/api/v1/sync/push') {
@@ -69,7 +70,7 @@ async function setup(page: Page, format = 'epub', bytes = epubFixture()) {
 			for (const mutation of mutations) {
 				state.rev += 1;
 				state.mutations.push(mutation);
-				if (mutation.entity !== 'highlights' && mutation.entity !== 'notes' && mutation.entity !== 'bookmarks') continue;
+				if (mutation.entity !== 'highlights' && mutation.entity !== 'notes' && mutation.entity !== 'bookmarks' && mutation.entity !== 'page_annotations') continue;
 				const rows = state[mutation.entity];
 				const previous = rows.find((row) => row.id === mutation.id);
 				const remaining = rows.filter((row) => row.id !== mutation.id);
@@ -136,6 +137,57 @@ async function selectPassage(page: Page, text = passage) {
 const selectionToolbar = (page: Page) => page.getByRole('toolbar', { name: 'Selection actions', exact: true });
 const highlights = (state: Awaited<ReturnType<typeof setup>>) =>
 	state.mutations.filter((mutation) => mutation.entity === 'highlights' && mutation.op === 'upsert');
+
+for (const width of [1440, 375]) {
+	test(`EPUB header bookmarks use selected text and support row navigation, edit and delete at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 800 });
+		const state = await setup(page);
+		const toggle = page.getByTestId('reflow-bookmark-toggle');
+		await expect(toggle).toBeVisible();
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+		await selectPassage(page);
+		await toggle.click();
+		await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+		await expect.poll(() => state.bookmarks.length).toBe(1);
+		expect(state.bookmarks[0]).toMatchObject({ label: passage });
+		await page.getByRole('tab', { name: 'Contents', exact: true }).click();
+		await page.getByRole('tabpanel', { name: 'Contents', exact: true })
+			.getByRole('button', { name: 'Second', exact: true }).click();
+		await bookFrame(page, 'Second section');
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+		await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+		const bookmarks = page.getByRole('tabpanel', { name: 'Bookmarks', exact: true });
+		const row = bookmarks.locator('[data-bookmark-id]');
+		await expect(row.locator('[data-bookmark-label]')).toHaveText(passage);
+		await expect(row.getByRole('button', { name: 'Jump', exact: true })).toHaveCount(0);
+		await row.getByRole('button', { name: 'Edit', exact: true }).click();
+		await bookFrame(page, 'Second section');
+		const label = 'A deliberately long bookmark label for checking compact one-line ellipsis rendering '.repeat(2);
+		await bookmarks.getByRole('textbox', { name: /^Label/ }).fill(label);
+		await bookmarks.getByRole('button', { name: 'Save', exact: true }).click();
+		const labelElement = row.locator('[data-bookmark-label]');
+		await expect(labelElement).toHaveText(label);
+		await expect(labelElement).toHaveCSS('white-space', 'nowrap');
+		await expect(labelElement).toHaveCSS('text-overflow', 'ellipsis');
+		expect(await labelElement.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+		await row.locator('[data-bookmark-jump]').click();
+		await bookFrame(page);
+		await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+		if (width < 1024) {
+			await expect(bookmarks).toHaveCount(0);
+			await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
+		}
+		await row.getByRole('button', { name: 'Delete', exact: true }).click();
+		await expect(row).toHaveCount(0);
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+		await expect.poll(() => state.bookmarks.length).toBe(0);
+		await toggle.click();
+		await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+		await toggle.click();
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+		await expect.poll(() => state.bookmarks.length).toBe(0);
+	});
+}
 
 async function openAnnotations(page: Page) {
 	const tab = page.getByRole('tab', { name: 'Annotations', exact: true });
@@ -456,4 +508,153 @@ test('CBZ retains the sidebar page-mark action without a text-selection toolbar'
 	await page.reload();
 	await openAnnotations(page);
 	await expect(page.locator('.rp7-excerpt')).toHaveText('Highlight');
+});
+
+async function chooseInsert(page: Page, type: 'Text' | 'Draw' | 'Image') {
+	await page.getByRole('button', { name: 'Insert text, drawing or image', exact: true }).click();
+	const menu = page.getByRole('menu', { name: 'Insert text, drawing or image', exact: true });
+	await expect(menu.getByRole('menuitem')).toHaveText(['Text', 'Draw', 'Image']);
+	await menu.getByRole('menuitem', { name: type, exact: true }).click();
+	await expect(page.getByText('Click in the book to place the annotation.')).toBeVisible();
+	await expect(page.locator('.reflow-inserts [role="dialog"]')).toHaveCount(0);
+}
+
+async function clickBook(page: Page, format = 'epub') {
+	if (format === 'cbz') {
+		const surface = await page.locator('#reader-surface').boundingBox();
+		if (!surface) throw new Error('Comic reader space is unavailable.');
+		await page.mouse.click(surface.x + surface.width / 2, surface.y + surface.height / 2);
+		return;
+	}
+	const frame = await bookFrame(page);
+	const point = await frame.getByText(passage, { exact: true }).evaluate((element) => {
+		const rect = element.getBoundingClientRect();
+		const frame = window.frameElement as HTMLElement;
+		const viewport = frame.getBoundingClientRect();
+		return { x: viewport.left + (rect.left + 40) * viewport.width / frame.offsetWidth,
+			y: viewport.top + (rect.top + 10) * viewport.height / frame.offsetHeight };
+	});
+	await page.mouse.click(point.x, point.y);
+}
+
+for (const [format, fixture] of [
+	['epub', epubFixture], ['mobi', mobiFixture], ['azw3', azw3Fixture],
+	['fb2', fb2Fixture], ['fbz', fbzFixture], ['cbz', cbzFixture]
+] as const) {
+	test(`${format.toUpperCase()} inserts anchored text only after placement and restores it after navigation and reopen`, async ({ page }) => {
+		const state = await setup(page, format, fixture());
+		if (format === 'cbz') {
+			await page.getByRole('button', { name: /^Zoom/ }).click();
+			await page.getByRole('menuitemradio', { name: 'Fit page', exact: true }).click();
+		}
+		await chooseInsert(page, 'Text');
+		await clickBook(page, format);
+		const draft = page.locator('.reflow-inserts [role="dialog"]');
+		await draft.getByRole('textbox', { name: 'Text', exact: true }).fill(`Placed ${format} text`);
+		await draft.getByRole('button', { name: 'Done', exact: true }).click();
+		await expect.poll(() => state.page_annotations.length).toBe(1);
+		expect(state.page_annotations[0]).toMatchObject({
+			kind: 'text', book_file_id: 31,
+			locator: { type: 'cfi', value: expect.stringMatching(/^epubcfi\(.+\)$/),
+				rect: { x: expect.any(Number), y: expect.any(Number), width: 0.25, height: 0.2 } },
+			data: { text: `Placed ${format} text` }
+		});
+		const inserted = page.getByRole('button', { name: `Text note: Placed ${format} text`, exact: true });
+		await expect(inserted).toBeVisible();
+		await page.getByRole('button', { name: 'Next page', exact: true }).click();
+		if (format === 'epub') await bookFrame(page, 'Second section');
+		await openAnnotations(page);
+		await page.locator('[data-panel-jump]').click();
+		await expect(inserted).toBeVisible();
+		await page.reload();
+		await expect(inserted).toBeVisible();
+		await openAnnotations(page);
+		await expect(page.locator('.rp7-excerpt')).toContainText(`Placed ${format} text`);
+		expect(state.highlights).toHaveLength(0);
+		expect(state.notes).toHaveLength(0);
+	});
+}
+
+test('EPUB draw placements persist real strokes and remain available after reopening', async ({ page }) => {
+	const state = await setup(page);
+	await chooseInsert(page, 'Draw');
+	await clickBook(page);
+	const draft = page.locator('.reflow-inserts [role="dialog"]');
+	const canvas = await draft.getByRole('img', { name: 'Drawing', exact: true }).boundingBox();
+	if (!canvas) throw new Error('Drawing surface is unavailable');
+	await page.mouse.move(canvas.x + 10, canvas.y + 10);
+	await page.mouse.down();
+	await page.mouse.move(canvas.x + 50, canvas.y + 40, { steps: 5 });
+	await page.mouse.up();
+	await draft.getByRole('button', { name: 'Done', exact: true }).click();
+	await expect.poll(() => state.page_annotations.length).toBe(1);
+	expect(state.page_annotations[0]).toMatchObject({
+		kind: 'ink', locator: { type: 'cfi' }, data: { strokes: [expect.any(Array)] }
+	});
+	await expect(page.locator('.reflow-inserts .content polyline')).toHaveCount(1);
+	await page.reload();
+	await expect(page.getByRole('button', { name: 'Drawing', exact: true })).toBeVisible();
+	await expect(page.locator('.reflow-inserts .content polyline')).toHaveCount(1);
+});
+
+test('EPUB image placement reports upload errors without silently discarding the draft and disables offline upload', async ({ page }) => {
+	await setup(page);
+	await page.route('**/api/v1/me/annotation-assets', (route) =>
+		route.fulfill({ status: 500, json: { error: { code: 'internal_error', message: 'Upload failed' } } }));
+	await chooseInsert(page, 'Image');
+	await clickBook(page);
+	const draft = page.locator('.reflow-inserts [role="dialog"]');
+	const png = await page.evaluate(() => {
+		const canvas = document.createElement('canvas');
+		canvas.width = 20; canvas.height = 20;
+		canvas.getContext('2d')!.fillRect(0, 0, 20, 20);
+		return canvas.toDataURL('image/png').split(',')[1];
+	});
+	await draft.getByLabel('Image', { exact: true }).setInputFiles({
+		name: 'pixel.png', mimeType: 'image/png',
+		buffer: Buffer.from(png, 'base64')
+	});
+	await expect(page.getByRole('alert')).toContainText(/upload|try again/i);
+	await expect(draft).toBeVisible();
+	await draft.getByRole('button', { name: 'Cancel', exact: true }).click();
+	await page.evaluate(() => {
+		Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+		window.dispatchEvent(new Event('offline'));
+	});
+	await page.getByRole('button', { name: 'Insert text, drawing or image', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Image', exact: true })).toBeDisabled();
+	await expect(page.getByRole('menuitem', { name: 'Text', exact: true })).toBeEnabled();
+	await expect(page.getByRole('menuitem', { name: 'Draw', exact: true })).toBeEnabled();
+});
+
+test('EPUB image placements persist owned asset references and render after reopening', async ({ page }) => {
+	const state = await setup(page);
+	const png = await page.evaluate(() => {
+		const canvas = document.createElement('canvas');
+		canvas.width = 20; canvas.height = 20;
+		canvas.getContext('2d')!.fillRect(0, 0, 20, 20);
+		return canvas.toDataURL('image/png').split(',')[1];
+	});
+	const hash = 'a'.repeat(64);
+	await page.route('**/api/v1/me/annotation-assets', (route) => route.fulfill({ json: {
+		asset: { sha256: hash, media_type: 'image/png', size: Buffer.from(png, 'base64').length, width: 20, height: 20 }
+	} }));
+	await page.route(`**/api/v1/me/annotation-assets/${hash}`, (route) =>
+		route.fulfill({ contentType: 'image/png', body: Buffer.from(png, 'base64') }));
+	await chooseInsert(page, 'Image');
+	await clickBook(page);
+	const draft = page.locator('.reflow-inserts [role="dialog"]');
+	await draft.getByLabel('Image', { exact: true }).setInputFiles({
+		name: 'pixel.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64')
+	});
+	await expect(draft.getByRole('button', { name: 'Done', exact: true })).toBeEnabled();
+	await draft.getByRole('button', { name: 'Done', exact: true }).click();
+	await expect.poll(() => state.page_annotations.length).toBe(1);
+	expect(state.page_annotations[0]).toMatchObject({
+		kind: 'image', locator: { type: 'cfi' }, data: { asset: hash, media_type: 'image/png', width: 20, height: 20 }
+	});
+	await page.reload();
+	await expect(page.locator('.reflow-inserts .content img')).toBeVisible();
+	await expect.poll(() => page.locator('.reflow-inserts .content img').evaluate((image) =>
+		(image as HTMLImageElement).naturalWidth)).toBe(20);
 });

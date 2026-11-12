@@ -142,7 +142,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	async function refreshPageAnnotations() {
-		if (!book || !file || format !== 'pdf') return;
+		if (!book || !file || !format) return;
 		const version = requestVersion;
 		while (busy && mounted && version === requestVersion) await new Promise((resolve) => setTimeout(resolve, 25));
 		if (!mounted || version !== requestVersion) return;
@@ -725,7 +725,11 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	async function writePageAnnotation(input: PageAnnotationInput, existing?: PageAnnotation) {
-		if (!book || !file || format !== 'pdf' || busy) return false;
+		if (!book || !file || !format || busy) return false;
+		if ((format === 'pdf') !== (input.locator.type === 'pdf')) {
+			actionError = m['ux6.unavailable']();
+			return false;
+		}
 		annotationVersion += 1;
 		const version = requestVersion;
 		const previous = pageAnnotations;
@@ -851,11 +855,13 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			}
 			if (annotationId) {
 				const requested = pageAnnotations.find((item) => item.id === annotationId);
-				if (!requested || selectedFormat !== 'pdf') {
+				if (!requested || (selectedFormat === 'pdf') !== (requested.locator.type === 'pdf')) {
 					actionError = m['ux6.unavailable']();
 				} else {
 					try {
-						await currentReader.goTo({ type: 'pdf', page: requested.locator.page, rects: [requested.locator.rect] });
+						await currentReader.goTo(requested.locator.type === 'pdf'
+							? { type: 'pdf', page: requested.locator.page, rects: [requested.locator.rect] }
+							: { type: 'cfi', value: requested.locator.value });
 					} catch (error) {
 						console.error('Could not open the page annotation', error);
 						actionError = m['ux6.jump_failed']();

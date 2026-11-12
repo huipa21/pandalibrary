@@ -24,6 +24,22 @@ const change = (at: number, status: OutboxEntry['status'] = 'pending'): OutboxEn
 });
 
 describe('offline annotation replay', () => {
+	it('replays CFI text and ink inserts after reopening without changing their anchors', () => {
+		const locator = { type: 'cfi', value: 'epubcfi(/6/2!/4/2:5)', rect: page.locator.rect };
+		const text = change(now);
+		text.mutation.data.locator = locator;
+		const ink: OutboxEntry = { ...change(now + 1), sequence: 2, mutation: {
+			...change(now + 1).mutation, id: '018f0f7e-7b00-7000-8000-000000000002',
+			data: { book_id: 21, book_file_id: 3, kind: 'ink', locator, position: 0.2,
+				data: { color: '#000000', width: 0.003, strokes: [[0, 0, 1, 1]] } }
+		} };
+		const reopened = replayMutations(21, empty, [], [text, ink]).state.page_annotations;
+		expect(reopened).toMatchObject([
+			{ kind: 'text', locator, data: { text: 'Edited' } },
+			{ kind: 'ink', locator, data: { strokes: [[0, 0, 1, 1]] } }
+		]);
+	});
+
 	it('uses LWW for edits and deletes and ignores rejected or stale rows', () => {
 		const base = { ...empty, page_annotations: [page] };
 		expect(replayMutations(21, base, [], [change(now - 1)]).state.page_annotations).toEqual([page]);

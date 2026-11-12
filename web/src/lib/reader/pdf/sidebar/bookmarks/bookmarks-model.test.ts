@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Bookmark } from '../../../types.js';
-import { bookmarkPage, buildBookmarks, pageBookmark, validateBookmarkLabel } from './bookmarks-model.js';
+import { bookmarkPage, buildBookmarks, defaultPdfBookmarkLabel, pageBookmark, validateBookmarkLabel } from './bookmarks-model.js';
 
 const row = (id: string, extra: Partial<Bookmark> = {}): Bookmark => ({
 	id, book_id: 21, book_file_id: 31, locator: { type: 'pdf', page: 1 }, position: 0,
@@ -59,5 +59,39 @@ describe('bookmarks tab model', () => {
 		expect(validateBookmarkLabel('书'.repeat(171)).error).toBe('bytes');
 		expect(validateBookmarkLabel('😀'.repeat(128)).error).toBeNull();
 		expect(validateBookmarkLabel('😀'.repeat(129)).error).toBe('bytes');
+	});
+
+	it('uses the selected text before the actual page opening line', () => {
+		const items = [
+			{ str: ' ' }, { str: 'Opening', transform: [1, 0, 0, 1, 0, 700] },
+			{ str: 'line', transform: [1, 0, 0, 1, 80, 700], hasEOL: true },
+			{ str: 'Second line', transform: [1, 0, 0, 1, 0, 680] }
+		];
+		expect(defaultPdfBookmarkLabel('  Selected\n passage  ', items, 'Page 1')).toBe('Selected passage');
+		expect(defaultPdfBookmarkLabel('', items, 'Page 1')).toBe('Opening line');
+		expect(defaultPdfBookmarkLabel('  ', [], 'Page 1')).toBe('Page 1');
+		expect(defaultPdfBookmarkLabel('', [{ str: ' \t ' }], 'Page 2')).toBe('Page 2');
+	});
+
+	it('recognizes a line break by its PDF baseline when no end-of-line flag exists', () => {
+		expect(defaultPdfBookmarkLabel('', [
+			{ str: 'First line', transform: [1, 0, 0, 1, 0, 700] },
+			{ str: 'Second line', transform: [1, 0, 0, 1, 0, 680] }
+		], 'Page 1')).toBe('First line');
+	});
+
+	it('limits selected or page text to both character and UTF-8 byte limits without splitting Unicode', () => {
+		for (const text of ['a'.repeat(300), '书'.repeat(200), '😀'.repeat(200), 'a'.repeat(199) + '😀']) {
+			for (const label of [
+				defaultPdfBookmarkLabel(text, [], 'Page 1'),
+				defaultPdfBookmarkLabel('', [{ str: text }], 'Page 1')
+			]) {
+				expect(validateBookmarkLabel(label).error).toBeNull();
+				expect(text.startsWith(label)).toBe(true);
+				expect(label).not.toContain('\uFFFD');
+			}
+		}
+		expect(defaultPdfBookmarkLabel('书'.repeat(200), [], 'Page 1')).toHaveLength(170);
+		expect(Array.from(defaultPdfBookmarkLabel('😀'.repeat(200), [], 'Page 1'))).toHaveLength(128);
 	});
 });

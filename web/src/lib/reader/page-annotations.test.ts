@@ -31,6 +31,18 @@ function inkAtBytes(size: number): PageAnnotationInput {
 }
 
 describe('page annotation data', () => {
+	it('accepts CFI anchored rectangles without accepting mixed or invalid locator fields', () => {
+		const cfi = { type: 'cfi', value: 'epubcfi(/6/2!/4/2:5)', rect: locator.rect };
+		expect(validatePageAnnotationInput({ ...input, locator: cfi })).toBe(true);
+		expect(isPageAnnotation({ ...row, locator: cfi })).toBe(true);
+		for (const invalid of [
+			{ ...cfi, page: 1 }, { ...cfi, value: 'chapter.xhtml' },
+			{ ...cfi, value: 'epubcfi(unclosed' }, { ...cfi, value: 'epubcfi(\0)' },
+			{ ...cfi, value: `epubcfi(${'x'.repeat(16384)})` },
+			{ ...cfi, rect: { ...cfi.rect, y: 1 } }, { ...locator, value: cfi.value }
+		]) expect(validatePageAnnotationInput({ ...input, locator: invalid })).toBe(false);
+	});
+
 	it('builds UUIDv7 upserts and deletes, preserving the existing identity and kind', () => {
 		const mutation = makePageAnnotation(7, 3, input);
 		expect(mutation).toMatchObject({

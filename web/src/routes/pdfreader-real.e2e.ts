@@ -155,11 +155,11 @@ async function chooseInsert(page: Page, name: 'Text' | 'Draw' | 'Image', x = 0.2
 	await page.keyboard.press('Escape');
 	await page.locator('#reader-surface').focus();
 	await page.keyboard.press('i');
+	await page.getByRole('menuitem', { name, exact: true }).click();
 	const pdf = page.locator('.reader-pdf-page[data-page="1"]');
 	const box = await pdf.boundingBox();
 	if (!box) throw new Error('The PDF page is unavailable.');
 	await page.mouse.click(box.x + box.width * x, box.y + Math.min(box.height * y, 250));
-	await page.getByRole('menuitem', { name, exact: true }).click();
 }
 
 async function addText(page: Page, text: string) {
@@ -533,11 +533,8 @@ test('downloaded PDF queues marks, text and ink offline and syncs them on reconn
 	await addInk(page);
 	await page.locator('#reader-surface').focus();
 	await page.keyboard.press('i');
-	const box = await page.locator('.reader-pdf-page[data-page="1"]').boundingBox();
-	if (!box) throw new Error('The offline PDF page is unavailable.');
-	await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.7);
 	await expect(page.getByRole('menuitem', { name: 'Image', exact: true })).toBeDisabled();
-	await expect(page.getByText('Attaching images needs a connection')).toBeVisible();
+	await expect(page.getByRole('menuitem', { name: 'Image', exact: true }).locator('..')).toHaveAttribute('title', 'Attaching images needs a connection');
 	await page.keyboard.press('Escape');
 	await page.reload();
 	await openedPdf(page, 1, 'First PDF page text');
@@ -1269,12 +1266,12 @@ test('captures PDF visual, keyboard, reduced-motion and touch QA', async ({ page
 
 			await page.locator('#reader-surface').focus();
 			await page.keyboard.press('i');
-			const box = await page.locator('.reader-pdf-page[data-page="1"]').boundingBox();
-			if (!box) throw new Error('The visual fixture page is unavailable.');
-			await page.mouse.click(box.x + box.width * 0.15, box.y + Math.min(box.height * 0.55, 250));
 			await expect(page.getByRole('menuitem', { name: 'Text', exact: true })).toBeVisible();
 			await shot(`${prefix}-insert-menu`);
 			await page.getByRole('menuitem', { name: 'Text', exact: true }).click();
+			const box = await page.locator('.reader-pdf-page[data-page="1"]').boundingBox();
+			if (!box) throw new Error('The visual fixture page is unavailable.');
+			await page.mouse.click(box.x + box.width * 0.15, box.y + Math.min(box.height * 0.55, 250));
 			const editor = page.getByRole('textbox', { name: 'Text', exact: true });
 			await editor.fill('A visual QA text note');
 			await shot(`${prefix}-text-box`);
@@ -1346,7 +1343,10 @@ test('captures PDF visual, keyboard, reduced-motion and touch QA', async ({ page
 	await page.keyboard.press('v');
 	await expect(surface).toHaveAttribute('data-tool', 'select');
 	await page.keyboard.press('i');
+	await expect(page.getByRole('menuitem', { name: 'Text', exact: true })).toBeFocused();
+	await page.keyboard.press('Enter');
 	await expect(surface).toHaveAttribute('data-tool', 'insert');
+	await surface.focus();
 	await page.keyboard.press('Escape');
 	await expect(surface).toHaveAttribute('data-tool', 'select');
 	for (const name of ['Zoom', 'Page display', 'Rotate', 'Select tool', 'Insert text, drawing or image', 'Close reader']) {
