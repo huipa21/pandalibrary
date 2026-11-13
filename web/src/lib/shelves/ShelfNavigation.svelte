@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
+	import { deLocalizeHref } from '#lib/paraglide/runtime.js';
 	import { listAllLibraries } from '#lib/catalog/api.js';
 	import { catalogErrorMessage } from '#lib/catalog/errors.js';
 	import type { Library } from '#lib/catalog/types.js';
@@ -23,6 +24,10 @@
 	const currentLibraryID = $derived(
 		Number(/^\/library\/([1-9]\d*)\/?$/.exec(pathname)?.[1]) || undefined
 	);
+	const currentShelfID = $derived(
+		Number(/^\/shelves\/([1-9]\d*)\/?$/.exec(deLocalizeHref(pathname))?.[1]) || undefined
+	);
+	const currentShelf = $derived(shelves.find((shelf) => shelf.id === currentShelfID));
 
 	$effect(() => {
 		refreshVersion;
@@ -107,7 +112,7 @@
 		<h2 id="sidebar-shelves-heading" class="shell-heading min-w-0">
 			<a href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined} class="block truncate hover:underline focus-visible:outline-2">{m['organize.collections']()}</a>
 		</h2>
-		<ShelfActionsMenu {pathname} {role} />
+		<ShelfActionsMenu {pathname} {role} {currentShelf} />
 	</div>
 	{#if collectionError}
 		<div class="mt-1 px-3 text-sm text-red-300" role="alert">

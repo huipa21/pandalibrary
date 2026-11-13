@@ -116,6 +116,19 @@ func (h *catalogHTTP) listBooks(w http.ResponseWriter, r *http.Request, viewer c
 	if !ok {
 		return
 	}
+	filters, ok := h.bookFilters(w, values)
+	if !ok {
+		return
+	}
+	result, err := h.service.ListBooks(r.Context(), viewer, filters, page)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, result)
+}
+
+func (h *catalogHTTP) bookFilters(w http.ResponseWriter, values url.Values) (catalog.BookFilters, bool) {
 	var filters catalog.BookFilters
 	for _, field := range []struct {
 		name string
@@ -128,7 +141,7 @@ func (h *catalogHTTP) listBooks(w http.ResponseWriter, r *http.Request, viewer c
 			id, err := strconv.ParseInt(value[0], 10, 64)
 			if err != nil || id < 1 {
 				WriteProblem(w, h.logger, http.StatusBadRequest, "A catalog filter ID is invalid.")
-				return
+				return catalog.BookFilters{}, false
 			}
 			*field.dest = id
 		}
@@ -137,15 +150,10 @@ func (h *catalogHTTP) listBooks(w http.ResponseWriter, r *http.Request, viewer c
 		filters.Sort = value[0]
 		if filters.Sort == "" {
 			WriteProblem(w, h.logger, http.StatusBadRequest, "The sort value is invalid.")
-			return
+			return catalog.BookFilters{}, false
 		}
 	}
-	result, err := h.service.ListBooks(r.Context(), viewer, filters, page)
-	if err != nil {
-		h.writeError(w, r, err)
-		return
-	}
-	h.writeJSON(w, http.StatusOK, result)
+	return filters, true
 }
 
 func (h *catalogHTTP) countBooks(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {

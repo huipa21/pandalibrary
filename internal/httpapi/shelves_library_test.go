@@ -27,6 +27,7 @@ func TestShelfHTTPLibraryScope(t *testing.T) {
 		"/api/v1/shelves/system/unshelved",
 		"/api/v1/shelves/system/unshelved/books",
 	}
+
 	for _, path := range paths {
 		for _, query := range []string{"0", "-1", "abc", "9223372036854775808", "", "10&library_id=20"} {
 			t.Run(path+"/invalid/"+query, func(t *testing.T) {
@@ -71,5 +72,37 @@ func TestShelfHTTPLibraryScope(t *testing.T) {
 		if !strings.Contains(response.Body.String(), `"visible_book_count":1`) {
 			t.Fatalf("library count contract missing: %s", response.Body.String())
 		}
+	}
+}
+
+func TestShelfHTTPFilteredBrowsing(t *testing.T) {
+	f := newShelfHTTPFixture(t)
+	shelf := createHTTPShelf(t, f, f.reader, "private", "Filtered")
+	expectShelfStatus(t, f.request(http.MethodPut, shelfHTTPBookPath(shelf.ID, 101), nil, f.reader, nil), http.StatusOK)
+	paths := []string{
+		shelfHTTPPath(shelf.ID) + "/books",
+		"/api/v1/shelves/system/favorites/books",
+		"/api/v1/shelves/system/unshelved/books",
+	}
+	for _, path := range paths {
+		for _, query := range []string{
+			"author_id=0", "series_id=abc", "tag_id=-1", "sort=unknown",
+			"sort=series", "sort=title&sort=added", "sort=title&library_id=9999",
+		} {
+			want := http.StatusBadRequest
+			if strings.Contains(query, "library_id=9999") {
+				want = http.StatusNotFound
+			}
+			t.Run(path+"/"+query, func(t *testing.T) {
+				expectShelfStatus(t, f.request(http.MethodGet, path+"?"+query, nil, f.reader, nil), want)
+			})
+		}
+		expectShelfStatus(t, f.request(http.MethodGet, path+"?sort=series&series_id=1&author_id=1&tag_id=1&library_id=10", nil, f.reader, nil), http.StatusOK)
+	}
+	response := f.request(http.MethodGet, shelfHTTPPath(shelf.ID)+"/books?sort=title&author_id=1", nil, f.reader, nil)
+	expectShelfStatus(t, response, http.StatusOK)
+	page := decodeBody[catalog.Page[catalog.Book]](t, response.Result())
+	if len(page.Items) != 1 || page.Items[0].ID != 101 {
+		t.Fatalf("filtered shelf books = %+v", page)
 	}
 }

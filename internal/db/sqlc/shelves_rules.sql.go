@@ -80,17 +80,18 @@ func (q *Queries) ShelfAutomaticBookCount(ctx context.Context, arg ShelfAutomati
 
 const shelfAutomaticBooks = `-- name: ShelfAutomaticBooks :many
 SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
-WHERE (CAST(?1 AS INTEGER) = 0 OR b.library_id = ?1)
-AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+CROSS JOIN (SELECT CAST(?1 AS TEXT) AS sort_mode) browse
+WHERE (CAST(?2 AS INTEGER) = 0 OR b.library_id = ?2)
+AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
+    WHERE la.library_id = b.library_id AND la.user_id = ?3
 )))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
 )
 AND (EXISTS (SELECT 1 FROM shelf_books sb
-    WHERE sb.shelf_id = ?4 AND sb.book_id = b.id)
-OR EXISTS (SELECT 1 FROM json_each(CAST(?5 AS TEXT)) g
+    WHERE sb.shelf_id = ?5 AND sb.book_id = b.id)
+OR EXISTS (SELECT 1 FROM json_each(CAST(?6 AS TEXT)) g
 WHERE (CASE json_extract(g.value, '$.rules.match')
     WHEN 'all' THEN NOT EXISTS (
         SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
@@ -105,7 +106,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
-                WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
+                WHERE ub.user_id = ?3 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 0)
     WHEN 'any' THEN EXISTS (
         SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
@@ -120,36 +121,74 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
-                WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
+                WHERE ub.user_id = ?3 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 1)
     ELSE 0 END) = 1))
-AND (CAST(?6 AS INTEGER) = 0
-    OR b.sort_title > CAST(?7 AS TEXT)
-    OR (b.sort_title = CAST(?7 AS TEXT) AND b.id > ?6))
-ORDER BY b.sort_title, b.id
-LIMIT CAST(?8 AS INTEGER)
+AND (CAST(?7 AS INTEGER) = 0 OR b.series_id = ?7)
+AND (CAST(?8 AS INTEGER) = 0 OR EXISTS (
+    SELECT 1 FROM book_authors ba WHERE ba.book_id = b.id AND ba.author_id = ?8
+))
+AND (CAST(?9 AS INTEGER) = 0 OR EXISTS (
+    SELECT 1 FROM book_tags bt WHERE bt.book_id = b.id AND bt.tag_id = ?9
+))
+AND (CAST(?10 AS INTEGER) = 0
+    OR (browse.sort_mode = 'title' AND (
+        b.sort_title > CAST(?11 AS TEXT)
+        OR (b.sort_title = CAST(?11 AS TEXT) AND b.id > ?10)))
+    OR (browse.sort_mode = 'added' AND (
+        b.created_at < CAST(?12 AS INTEGER)
+        OR (b.created_at = CAST(?12 AS INTEGER) AND b.id < ?10)))
+    OR (browse.sort_mode = 'series' AND (
+        (CAST(?13 AS INTEGER) = 0 AND (
+            b.series_index IS NULL
+            OR b.series_index > CAST(?14 AS REAL)
+            OR (b.series_index = CAST(?14 AS REAL) AND b.id > ?10)))
+        OR (CAST(?13 AS INTEGER) = 1
+            AND b.series_index IS NULL AND b.id > ?10))))
+ORDER BY
+    CASE WHEN browse.sort_mode = 'title' THEN b.sort_title END,
+    CASE WHEN browse.sort_mode = 'added' THEN b.created_at END DESC,
+    CASE WHEN browse.sort_mode = 'series' THEN b.series_index IS NULL END,
+    CASE WHEN browse.sort_mode = 'series' THEN b.series_index END,
+    CASE WHEN browse.sort_mode = 'added' THEN b.id END DESC,
+    b.id
+LIMIT CAST(?15 AS INTEGER)
 `
 
 type ShelfAutomaticBooksParams struct {
-	LibraryID  int64
-	UserID     int64
-	IsAdmin    int64
-	ShelfID    int64
-	RuleGroups string
-	AfterID    int64
-	AfterTitle string
-	PageSize   int64
+	SortMode       string
+	LibraryID      int64
+	UserID         int64
+	IsAdmin        int64
+	ShelfID        int64
+	RuleGroups     string
+	SeriesID       int64
+	AuthorID       int64
+	TagID          int64
+	AfterID        int64
+	AfterTitle     string
+	AfterCreatedAt int64
+	AfterNull      int64
+	AfterIndex     float64
+	PageSize       int64
 }
 
 func (q *Queries) ShelfAutomaticBooks(ctx context.Context, arg ShelfAutomaticBooksParams) ([]Book, error) {
 	rows, err := q.db.QueryContext(ctx, shelfAutomaticBooks,
+		arg.SortMode,
 		arg.LibraryID,
 		arg.UserID,
 		arg.IsAdmin,
 		arg.ShelfID,
 		arg.RuleGroups,
+		arg.SeriesID,
+		arg.AuthorID,
+		arg.TagID,
 		arg.AfterID,
 		arg.AfterTitle,
+		arg.AfterCreatedAt,
+		arg.AfterNull,
+		arg.AfterIndex,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -357,42 +396,81 @@ func (q *Queries) ShelfUnshelvedBookCount(ctx context.Context, arg ShelfUnshelve
 
 const shelfUnshelvedBooks = `-- name: ShelfUnshelvedBooks :many
 SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
-WHERE (CAST(?1 AS INTEGER) = 0 OR b.library_id = ?1)
-AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+CROSS JOIN (SELECT CAST(?1 AS TEXT) AS sort_mode) browse
+WHERE (CAST(?2 AS INTEGER) = 0 OR b.library_id = ?2)
+AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
-    WHERE la.library_id = b.library_id AND la.user_id = ?2
+    WHERE la.library_id = b.library_id AND la.user_id = ?3
 )))))
 AND NOT EXISTS (
-    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?3
 )
 AND NOT EXISTS (
     SELECT 1 FROM shelf_books sb JOIN shelves s ON s.id = sb.shelf_id
-    WHERE sb.book_id = b.id AND s.kind = 'private' AND s.owner_id = ?2
+    WHERE sb.book_id = b.id AND s.kind = 'private' AND s.owner_id = ?3
     AND s.system_key IS NULL
 )
-AND (CAST(?4 AS INTEGER) = 0
-    OR b.sort_title > CAST(?5 AS TEXT)
-    OR (b.sort_title = CAST(?5 AS TEXT) AND b.id > ?4))
-ORDER BY b.sort_title, b.id
-LIMIT CAST(?6 AS INTEGER)
+AND (CAST(?5 AS INTEGER) = 0 OR b.series_id = ?5)
+AND (CAST(?6 AS INTEGER) = 0 OR EXISTS (
+    SELECT 1 FROM book_authors ba WHERE ba.book_id = b.id AND ba.author_id = ?6
+))
+AND (CAST(?7 AS INTEGER) = 0 OR EXISTS (
+    SELECT 1 FROM book_tags bt WHERE bt.book_id = b.id AND bt.tag_id = ?7
+))
+AND (CAST(?8 AS INTEGER) = 0
+    OR (browse.sort_mode = 'title' AND (
+        b.sort_title > CAST(?9 AS TEXT)
+        OR (b.sort_title = CAST(?9 AS TEXT) AND b.id > ?8)))
+    OR (browse.sort_mode = 'added' AND (
+        b.created_at < CAST(?10 AS INTEGER)
+        OR (b.created_at = CAST(?10 AS INTEGER) AND b.id < ?8)))
+    OR (browse.sort_mode = 'series' AND (
+        (CAST(?11 AS INTEGER) = 0 AND (
+            b.series_index IS NULL
+            OR b.series_index > CAST(?12 AS REAL)
+            OR (b.series_index = CAST(?12 AS REAL) AND b.id > ?8)))
+        OR (CAST(?11 AS INTEGER) = 1
+            AND b.series_index IS NULL AND b.id > ?8))))
+ORDER BY
+    CASE WHEN browse.sort_mode = 'title' THEN b.sort_title END,
+    CASE WHEN browse.sort_mode = 'added' THEN b.created_at END DESC,
+    CASE WHEN browse.sort_mode = 'series' THEN b.series_index IS NULL END,
+    CASE WHEN browse.sort_mode = 'series' THEN b.series_index END,
+    CASE WHEN browse.sort_mode = 'added' THEN b.id END DESC,
+    b.id
+LIMIT CAST(?13 AS INTEGER)
 `
 
 type ShelfUnshelvedBooksParams struct {
-	LibraryID  int64
-	UserID     int64
-	IsAdmin    int64
-	AfterID    int64
-	AfterTitle string
-	PageSize   int64
+	SortMode       string
+	LibraryID      int64
+	UserID         int64
+	IsAdmin        int64
+	SeriesID       int64
+	AuthorID       int64
+	TagID          int64
+	AfterID        int64
+	AfterTitle     string
+	AfterCreatedAt int64
+	AfterNull      int64
+	AfterIndex     float64
+	PageSize       int64
 }
 
 func (q *Queries) ShelfUnshelvedBooks(ctx context.Context, arg ShelfUnshelvedBooksParams) ([]Book, error) {
 	rows, err := q.db.QueryContext(ctx, shelfUnshelvedBooks,
+		arg.SortMode,
 		arg.LibraryID,
 		arg.UserID,
 		arg.IsAdmin,
+		arg.SeriesID,
+		arg.AuthorID,
+		arg.TagID,
 		arg.AfterID,
 		arg.AfterTitle,
+		arg.AfterCreatedAt,
+		arg.AfterNull,
+		arg.AfterIndex,
 		arg.PageSize,
 	)
 	if err != nil {

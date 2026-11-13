@@ -310,6 +310,72 @@ test('book-scoped PDF and CFI bookmarks jump, rename, survive offline reload and
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
+test('real libraries, collections and Favorites share filtering and series ordering', async ({ page }) => {
+	test.setTimeout(180_000);
+	await signInRealAdmin(page);
+	const imported = await Promise.all([
+		importBook(page, 'BROWSEONE', pdfFixture()),
+		importBook(page, 'BROWSETWO', pdfFixture()),
+		importBook(page, 'BROWSETHREE', pdfFixture())
+	]);
+	const indices = [2, 1, 3];
+	let authorID = 0;
+	let seriesID = 0;
+	let tagID = 0;
+	for (const [index, item] of imported.entries()) {
+		const response = await page.request.patch(`/api/v1/books/${item.bookID}`, { data: {
+			title: `Browse ${String.fromCharCode(65 + index)}`,
+			authors: [{ name: 'Browse Writer', role: 'author' }],
+			series: { name: 'Browse Saga', index: indices[index] },
+			tags: ['Browse Tag', ...(index === 0 ? ['Only First'] : [])]
+		} });
+		expect(response.status()).toBe(200);
+		const { book } = await response.json() as { book: {
+			authors: Array<{ id: number }>; series: { id: number }; tags: Array<{ id: number; name: string }>;
+		} };
+		authorID = book.authors[0].id;
+		seriesID = book.series.id;
+		const tag = book.tags.find((item) => item.name === 'Browse Tag');
+		if (!tag) throw new Error('The saved tag was not returned.');
+		tagID = tag.id;
+	}
+	const created = await page.request.post('/api/v1/shelves', { data: { kind: 'private', name: 'Browse collection' } });
+	expect(created.status()).toBe(201);
+	const { shelf } = await created.json() as { shelf: { id: number } };
+	const automatic = await page.request.post('/api/v1/shelves', { data: {
+		kind: 'private', mode: 'automatic', name: 'Browse automatic',
+		rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: 'Browse' }] }
+	} });
+	expect(automatic.status()).toBe(201);
+	const { shelf: ruleShelf } = await automatic.json() as { shelf: { id: number } };
+	const { shelf: favorites } = await (await page.request.get('/api/v1/shelves/system/favorites')).json() as { shelf: { shelf_id: number } };
+	for (const item of imported.slice(0, 2)) {
+		for (const id of [shelf.id, favorites.shelf_id]) {
+			expect((await page.request.put(`/api/v1/shelves/${id}/books/${item.bookID}`, { data: {} })).status()).toBe(200);
+		}
+	}
+	for (const destination of [
+		{ path: `/library/${imported[0].libraryID}`, ids: [imported[0].bookID] },
+		{ path: `/shelves/${shelf.id}`, ids: [imported[1].bookID, imported[0].bookID] },
+		{ path: `/shelves/${ruleShelf.id}`, ids: [imported[1].bookID, imported[0].bookID, imported[2].bookID] },
+		{ path: '/shelves/system/favorites', ids: [imported[1].bookID, imported[0].bookID] },
+		{ path: '/shelves/system/unshelved', ids: [imported[2].bookID] }
+	]) {
+		await page.goto(destination.path);
+		const main = page.getByRole('main');
+		const author = main.getByRole('combobox', { name: 'Author', exact: true });
+		await expect(author).toBeEnabled();
+		await author.selectOption(String(authorID));
+		await main.getByRole('combobox', { name: 'Series', exact: true }).selectOption(String(seriesID));
+		await main.getByRole('combobox', { name: 'Tag', exact: true }).selectOption(String(tagID));
+		await main.getByRole('combobox', { name: 'Sort', exact: true }).selectOption('series');
+		await expect.poll(() => main.locator('ul.book-grid > li a[title]').evaluateAll((links) =>
+			links.map((link) => Number(link.getAttribute('href')?.split('/').at(-1)))
+		)).toEqual(destination.ids);
+		await expect(main.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
+	}
+});
+
 test('real sidebar shelves, automatic rule changes, favorites and bilingual responsive routes', async ({ page }, info) => {
 	test.setTimeout(150_000);
 	await signInRealAdmin(page);

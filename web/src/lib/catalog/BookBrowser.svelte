@@ -13,8 +13,23 @@
 	import ViewToggle from './ViewToggle.svelte';
 	import BookDisplaySettings from './BookDisplaySettings.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
+	import { requestErrorKind } from '#lib/paging/errors.js';
 
-	let { scope, showHeading = true, rememberSettings = false }: { scope: BookFilters; showHeading?: boolean; rememberSettings?: boolean } = $props();
+	let {
+		scope,
+		showHeading = true,
+		rememberSettings = false,
+		fetchBooks = listBooks,
+		displayStorageKey,
+		bookErrorMessage
+	}: {
+		scope: BookFilters;
+		showHeading?: boolean;
+		rememberSettings?: boolean;
+		fetchBooks?: typeof listBooks;
+		displayStorageKey?: string;
+		bookErrorMessage?: (cause: unknown, more: boolean) => string;
+	} = $props();
 	const filtersKey = 'pandalibrary.books.filters';
 	const viewKey = 'pandalibrary.books.view';
 	const settingKeys = ['author_id', 'series_id', 'tag_id', 'sort'] as const;
@@ -25,6 +40,7 @@
 	let loadingMore = $state(false);
 	let error = $state('');
 	let moreError = $state('');
+	let staleMore = $state(false);
 	let optionsError = $state('');
 	let optionsLoading = $state(false);
 	let authors = $state<CatalogEntity[]>([]);
@@ -100,8 +116,17 @@
 		const search = page.url.searchParams.toString();
 		const currentScope = scope;
 		const refresh = reloadVersion;
-		void loadFirstPage(search, currentScope, refresh);
+		const fetch = fetchBooks;
+		void loadFirstPage(search, currentScope, refresh, fetch);
 	});
+
+	function browseError(cause: unknown, more: boolean): string {
+		return bookErrorMessage?.(cause, more) ?? catalogErrorMessage(cause, {
+			api: m['catalog.error.api'](),
+			connection: m['catalog.error.connection'](),
+			notFound: m['catalog.error.not_found']()
+		});
+	}
 
 	async function loadFilterOptions() {
 		optionsLoading = true;
@@ -123,28 +148,26 @@
 		}
 	}
 
-	async function loadFirstPage(search: string, filters: BookFilters, _refresh: number) {
+	async function loadFirstPage(search: string, filters: BookFilters, _refresh: number, fetch: typeof listBooks) {
 		const request = ++requestVersion;
 		books = [];
 		nextCursor = null;
 		loading = true;
+		loadingMore = false;
 		error = '';
 		moreError = '';
+		staleMore = false;
 		try {
 			const params = new URLSearchParams(search);
 			const effectiveFilters = bookFiltersFromSearch(filters, params);
 			const effectiveSort: BookSort = selectedSort(params, effectiveFilters.series_id);
-			const result = await listBooks(effectiveFilters, effectiveSort);
+			const result = await fetch(effectiveFilters, effectiveSort);
 			if (request !== requestVersion) return;
 			books = result.items;
 			nextCursor = result.next_cursor;
 		} catch (cause) {
 			if (request !== requestVersion) return;
-			error = catalogErrorMessage(cause, {
-				api: m['catalog.error.api'](),
-				connection: m['catalog.error.connection'](),
-				notFound: m['catalog.error.not_found']()
-			});
+			error = browseError(cause, false);
 		} finally {
 			if (request === requestVersion) loading = false;
 		}
@@ -156,21 +179,19 @@
 		const cursor = nextCursor;
 		loadingMore = true;
 		moreError = '';
+		staleMore = false;
 		try {
 			const params = new URLSearchParams(page.url.searchParams.toString());
 			const effectiveFilters = bookFiltersFromSearch(scope, params);
 			const effectiveSort = selectedSort(params, effectiveFilters.series_id);
-			const result = await listBooks(effectiveFilters, effectiveSort, bookPageOptions(cursor));
+			const result = await fetchBooks(effectiveFilters, effectiveSort, bookPageOptions(cursor));
 			if (request !== requestVersion) return;
 			books = [...books, ...result.items];
 			nextCursor = result.next_cursor;
 		} catch (cause) {
 			if (request !== requestVersion) return;
-			moreError = catalogErrorMessage(cause, {
-				api: m['catalog.error.api'](),
-				connection: m['catalog.error.connection'](),
-				notFound: m['catalog.error.not_found']()
-			});
+			moreError = browseError(cause, true);
+			staleMore = requestErrorKind(cause) === 'invalid';
 		} finally {
 			if (request === requestVersion) loadingMore = false;
 		}
@@ -192,8 +213,11 @@
 	}
 
 	async function clearFilters() {
+		const params = new URLSearchParams(page.url.searchParams.toString());
+		for (const key of [...settingKeys, 'cursor']) params.delete(key);
+		const query = params.toString();
 		try {
-			await goto(page.url.pathname, { replaceState: true });
+			await goto(`${page.url.pathname}${query ? `?${query}` : ''}`, { replaceState: true });
 		} catch {
 			error = m['catalog.error.navigation']();
 		}
@@ -269,7 +293,7 @@
 				</select>
 			</label>
 			<ViewToggle view={mode} onchange={(next) => (mode = next)} />
-			<BookDisplaySettings storageKey={scope.library_id ? `library:${scope.library_id}` : 'catalog'} bind:size={coverSize} bind:spacing />
+			<BookDisplaySettings storageKey={displayStorageKey ?? (scope.library_id ? `library:${scope.library_id}` : 'catalog')} bind:size={coverSize} bind:spacing />
 			{#if filterable}
 				<ClearFiltersButton
 					label={m['catalog.books.clear_filters']()}
@@ -307,7 +331,7 @@
 		{#if moreError}
 			<div class="flex flex-wrap items-center gap-3 text-red-800" role="alert">
 				<p>{moreError}</p>
-				<button class="underline underline-offset-4 focus-visible:outline-2" onclick={loadMore}>{m['catalog.retry']()}</button>
+				<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => staleMore ? (reloadVersion += 1) : loadMore()}>{m['catalog.retry']()}</button>
 			</div>
 		{/if}
 		{#if hasNextPage(nextCursor)}

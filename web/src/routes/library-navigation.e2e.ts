@@ -274,33 +274,27 @@ test('library and collection controls are left-aligned without repeated headings
 			const main = page.getByRole('main');
 			await expect(main.getByRole('heading', { name: destination.title, level: 1, exact: true })).toHaveClass('sr-only');
 			await expect(main.getByRole('link', { name: /Back to (libraries|collections)/ })).toHaveCount(0);
-			if (destination.type !== 'system') {
-				const name = destination.type === 'library' ? 'Books' : 'Books in this collection';
-				await expect(main.getByRole('heading', { name, level: 2, exact: true })).toHaveClass('sr-only');
-			}
+			await expect(main.getByRole('heading', { name: 'Books', level: 2, exact: true })).toHaveClass('sr-only');
+			await expect(main.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
+			await expect(main.getByRole('heading', { name: 'Add books to this collection' })).toHaveCount(0);
+			await expect(main.getByText(/\d+ visible books/)).toHaveCount(0);
 
 			const grid = main.locator('ul.book-grid');
 			await expect(grid.locator(':scope > li')).toHaveCount(1);
-			if (destination.type === 'library') {
-				await expect.poll(() => page.evaluate(() => {
-					const saved = sessionStorage.getItem('pandalibrary.browse-context');
-					return saved ? JSON.parse(saved).label : null;
-				})).toBe(destination.title);
-			}
+			await expect.poll(() => page.evaluate(() => {
+				const saved = sessionStorage.getItem('pandalibrary.browse-context');
+				return saved ? JSON.parse(saved).label : null;
+			})).toBe(destination.title);
 			const settings = main.getByRole('button', { name: 'Display settings', exact: true });
-			const controls = destination.type === 'library'
-				? [
-					main.getByRole('combobox', { name: 'Author', exact: true }),
-					main.getByRole('combobox', { name: 'Series', exact: true }),
-					main.getByRole('combobox', { name: 'Tag', exact: true }),
-					main.getByRole('combobox', { name: 'Sort', exact: true }),
-					main.getByRole('button', { name: 'Switch to list view', exact: true }),
-					settings,
-					main.getByRole('button', { name: 'Clear filters', exact: true })
-				]
-				: destination.type === 'collection'
-					? [main.getByRole('button', { name: 'Switch to list view', exact: true }), settings]
-					: [settings];
+			const controls = [
+				main.getByRole('combobox', { name: 'Author', exact: true }),
+				main.getByRole('combobox', { name: 'Series', exact: true }),
+				main.getByRole('combobox', { name: 'Tag', exact: true }),
+				main.getByRole('combobox', { name: 'Sort', exact: true }),
+				main.getByRole('button', { name: 'Switch to list view', exact: true }),
+				settings,
+				main.getByRole('button', { name: 'Clear filters', exact: true })
+			];
 			const gridBox = await grid.boundingBox();
 			expect(gridBox).not.toBeNull();
 			const boxes = await Promise.all(controls.map((control) => control.boundingBox()));
@@ -321,11 +315,9 @@ test('library and collection controls are left-aligned without repeated headings
 			}
 			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 
-			if (destination.type === 'collection') {
-				await controls[0].click();
-				await expect(main.getByRole('button', { name: 'Switch to grid view', exact: true })).toBeVisible();
-				await main.getByRole('button', { name: 'Switch to grid view', exact: true }).click();
-			}
+			await controls[4].click();
+			await expect(main.getByRole('button', { name: 'Switch to grid view', exact: true })).toBeVisible();
+			await main.getByRole('button', { name: 'Switch to grid view', exact: true }).click();
 			await settings.click();
 			const panel = main.getByRole('dialog', { name: 'Display settings', exact: true });
 			await expect(panel).toBeVisible();
@@ -342,6 +334,165 @@ test('library and collection controls are left-aligned without repeated headings
 		}
 	}
 	expect(unexpected).toEqual([]);
+});
+
+test('collections and system collections apply catalog filters, sorting, paging, and scoped clearing', async ({ page }) => {
+	test.setTimeout(90_000);
+	const { requests, unexpected } = await mockLibraries(page);
+	const bookURLs: URL[] = [];
+	const items = [
+		{ ...displayBook, id: 21, title: 'First book', sort_title: 'first book' },
+		{ ...displayBook, id: 22, title: 'Second book', sort_title: 'second book' }
+	];
+	await page.route((url) => /^\/api\/v1\/(?:authors|series|tags)$/.test(url.pathname), (route) => {
+		const kind = new URL(route.request().url()).pathname.split('/').at(-1);
+		const entity = kind === 'authors' ? { id: 4, name: 'Writer' }
+			: kind === 'series' ? { id: 8, name: 'Saga' } : { id: 9, name: 'Adventure' };
+		return route.fulfill({ json: { items: [{ ...entity, visible_book_count: 2 }], next_cursor: null } });
+	});
+	await page.route((url) => /^\/api\/v1\/shelves\/(?:11|12|system\/(?:favorites|unshelved))\/books$/.test(url.pathname), (route) => {
+		const url = new URL(route.request().url());
+		bookURLs.push(url);
+		const matches = url.searchParams.get('tag_id') === '9' ? items.slice(0, 1) : items;
+		const ordered = url.searchParams.get('sort') === 'added' ? [...matches].reverse() : matches;
+		const offset = url.searchParams.has('cursor') ? 1 : 0;
+		return route.fulfill({ json: {
+			items: ordered.slice(offset, offset + 1),
+			next_cursor: offset === 0 && ordered.length > 1 ? 'next/+page' : null
+		} });
+	});
+	for (const destination of [
+		{ path: '/shelves/11?library_id=2', api: '/api/v1/shelves/11', library: '2' },
+		{ path: '/shelves/12', api: '/api/v1/shelves/12', library: null },
+		{ path: '/shelves/system/favorites', api: '/api/v1/shelves/system/favorites', library: null },
+		{ path: '/shelves/system/unshelved?library_id=2', api: '/api/v1/shelves/system/unshelved', library: '2' }
+	]) {
+		await page.goto(destination.path);
+		const main = page.getByRole('main');
+		await expect(main.getByTitle('First book', { exact: true })).toBeVisible();
+		await expect(main.getByRole('combobox', { name: 'Author', exact: true })).toBeEnabled();
+		const metadataCount = requests.filter((url) => url.pathname === destination.api).length;
+		const latest = () => bookURLs.filter((url) => url.pathname === `${destination.api}/books`).at(-1);
+
+		await main.getByRole('button', { name: 'Load more books', exact: true }).click();
+		await expect(main.getByTitle('Second book', { exact: true })).toBeVisible();
+		expect(latest()?.searchParams.get('cursor')).toBe('next/+page');
+		await main.getByRole('combobox', { name: 'Author', exact: true }).selectOption('4');
+		await expect.poll(() => latest()?.searchParams.get('author_id')).toBe('4');
+		await main.getByRole('combobox', { name: 'Series', exact: true }).selectOption('8');
+		await expect.poll(() => latest()?.searchParams.get('series_id')).toBe('8');
+		await main.getByRole('combobox', { name: 'Tag', exact: true }).selectOption('9');
+		await expect.poll(() => latest()?.searchParams.get('tag_id')).toBe('9');
+		await expect(main.getByTitle('First book', { exact: true })).toBeVisible();
+		await expect(main.getByTitle('Second book', { exact: true })).toHaveCount(0);
+		await main.getByRole('combobox', { name: 'Sort', exact: true }).selectOption('series');
+		await expect.poll(() => latest()?.searchParams.get('sort')).toBe('series');
+		await main.getByRole('combobox', { name: 'Sort', exact: true }).selectOption('added');
+		await expect.poll(() => latest()?.searchParams.get('sort')).toBe('added');
+		expect(latest()?.searchParams.get('library_id')).toBe(destination.library);
+		expect(latest()?.searchParams.has('cursor')).toBe(false);
+		expect(requests.filter((url) => url.pathname === destination.api)).toHaveLength(metadataCount);
+
+		await main.getByRole('button', { name: 'Clear filters', exact: true }).click();
+		await expect(main.getByRole('combobox', { name: 'Author', exact: true })).toHaveValue('');
+		await expect(main.getByRole('combobox', { name: 'Series', exact: true })).toHaveValue('');
+		await expect(main.getByRole('combobox', { name: 'Tag', exact: true })).toHaveValue('');
+		await expect(main.getByRole('combobox', { name: 'Sort', exact: true })).toHaveValue('title');
+		await expect.poll(() => latest()?.searchParams.get('sort')).toBe('title');
+		expect(new URL(page.url()).searchParams.get('library_id')).toBe(destination.library);
+		expect(latest()?.searchParams.get('library_id')).toBe(destination.library);
+		expect(latest()?.searchParams.has('author_id')).toBe(false);
+	}
+	expect(unexpected).toEqual([]);
+});
+
+test('empty Favorites reports books rather than missing collections', async ({ page }) => {
+	await mockLibraries(page);
+	await page.goto('/shelves/system/favorites');
+	const main = page.getByRole('main');
+	await expect(main.getByText('No books match these filters.')).toBeVisible();
+	await expect(main.getByText('There are no collections yet.')).toHaveCount(0);
+});
+
+test('a stale collection page can be reloaded from the beginning', async ({ page }) => {
+	await mockLibraries(page);
+	const queries: URLSearchParams[] = [];
+	await page.route('**/api/v1/shelves/11/books?*', (route) => {
+		const params = new URL(route.request().url()).searchParams;
+		queries.push(params);
+		if (params.has('cursor')) {
+			return route.fulfill({ status: 400, contentType: 'application/problem+json', json: { status: 400 } });
+		}
+		return route.fulfill({ json: { items: [displayBook], next_cursor: 'stale' } });
+	});
+	await page.goto('/shelves/11?library_id=2');
+	const main = page.getByRole('main');
+	await main.getByRole('button', { name: 'Load more books' }).click();
+	const alert = main.getByRole('alert');
+	await expect(alert).toContainText('This collection changed while you were browsing.');
+	await alert.getByRole('button', { name: 'Try again' }).click();
+	await expect(main.getByTitle('Display test', { exact: true })).toBeVisible();
+	await expect(alert).toHaveCount(0);
+	expect(queries.at(-1)?.has('cursor')).toBe(false);
+	expect(queries.at(-1)?.get('library_id')).toBe('2');
+});
+
+test('changing collection filters while another page loads starts a fresh pageable result', async ({ page }) => {
+	await mockLibraries(page);
+	await page.route('**/api/v1/authors?*', (route) => route.fulfill({ json: {
+		items: [{ id: 4, name: 'Writer', visible_book_count: 2 }], next_cursor: null
+	} }));
+	let releaseSlow = () => {};
+	let markStarted = () => {};
+	const slow = new Promise<void>((resolve) => { releaseSlow = resolve; });
+	const started = new Promise<void>((resolve) => { markStarted = resolve; });
+	await page.route('**/api/v1/shelves/11/books?*', async (route) => {
+		const params = new URL(route.request().url()).searchParams;
+		if (params.get('cursor') === 'slow') {
+			markStarted();
+			await slow;
+			return route.fulfill({ json: { items: [{ ...displayBook, id: 22, title: 'Old page' }], next_cursor: null } });
+		}
+		if (params.get('author_id') === '4') {
+			return route.fulfill({ json: {
+				items: [{ ...displayBook, id: params.has('cursor') ? 24 : 23, title: params.has('cursor') ? 'Filtered second' : 'Filtered first' }],
+				next_cursor: params.has('cursor') ? null : 'fresh'
+			} });
+		}
+		return route.fulfill({ json: { items: [displayBook], next_cursor: 'slow' } });
+	});
+	try {
+		await page.goto('/shelves/11');
+		const main = page.getByRole('main');
+		await main.getByRole('button', { name: 'Load more books' }).click();
+		await started;
+		await main.getByRole('combobox', { name: 'Author', exact: true }).selectOption('4');
+		await expect(main.getByTitle('Filtered first', { exact: true })).toBeVisible();
+		const loadMore = main.getByRole('button', { name: 'Load more books' });
+		await expect(loadMore).toBeEnabled();
+		releaseSlow();
+		await loadMore.click();
+		await expect(main.getByTitle('Filtered second', { exact: true })).toBeVisible();
+		await expect(main.getByTitle('Old page', { exact: true })).toHaveCount(0);
+	} finally {
+		releaseSlow();
+	}
+});
+
+test('collection management can be opened and closed without losing the library scope', async ({ page }) => {
+	await mockLibraries(page);
+	await page.goto('/shelves/11?library_id=2&author_id=4');
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
+	await expect(page.getByRole('main').getByRole('button', { name: 'Edit details' })).toBeVisible();
+	expect(new URL(page.url()).searchParams.get('library_id')).toBe('2');
+	expect(new URL(page.url()).searchParams.get('author_id')).toBe('4');
+	await page.getByRole('main').getByRole('link', { name: 'Back to books' }).click();
+	await expect(page.getByRole('main').getByRole('combobox', { name: 'Author' })).toBeVisible();
+	expect(new URL(page.url()).searchParams.get('library_id')).toBe('2');
+	expect(new URL(page.url()).searchParams.get('author_id')).toBe('4');
+	expect(new URL(page.url()).searchParams.has('manage')).toBe(false);
 });
 
 test('failed library and collection pages keep retry without back links', async ({ page }) => {

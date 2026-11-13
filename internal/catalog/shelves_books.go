@@ -58,6 +58,59 @@ func (s *Service) ListShelfBooks(ctx context.Context, viewer Viewer, shelfID int
 	})
 }
 
+// ListShelfBooksFiltered browses a shelf using the catalog's filters and sorting.
+func (s *Service) ListShelfBooksFiltered(ctx context.Context, viewer Viewer, shelfID int64, filters BookFilters, options PageOptions) (Page[Book], error) {
+	return s.listShelfBooksFiltered(ctx, viewer, shelfID, filters, options, "shelf_browse_books")
+}
+
+func (s *Service) listShelfBooksFiltered(ctx context.Context, viewer Viewer, shelfID int64, filters BookFilters, options PageOptions, kind string) (Page[Book], error) {
+	if err := checkViewer(viewer); err != nil {
+		return Page[Book]{}, err
+	}
+	if shelfID < 1 {
+		return Page[Book]{}, invalid("shelf ID is invalid")
+	}
+	filters, err := normalizeBookFilters(filters)
+	if err != nil {
+		return Page[Book]{}, err
+	}
+	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (Page[Book], error) {
+		if err := checkShelfLibrary(ctx, queries, viewer, filters.LibraryID); err != nil {
+			return Page[Book]{}, err
+		}
+		shelf, err := shelfForViewer(ctx, queries, viewer, shelfID)
+		if err != nil {
+			return Page[Book]{}, err
+		}
+		ids, err := queries.ShelfVisibleBookIDs(ctx, sqlc.ShelfVisibleBookIDsParams{
+			ShelfID: shelf.ID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID, LibraryID: filters.LibraryID,
+		})
+		if err != nil {
+			return Page[Book]{}, fmt.Errorf("load visible shelf membership: %w", err)
+		}
+		scope := fmt.Sprintf("%s:shelf:%d:rules:%s:members:%s", bookFilterScope(viewer, filters), shelf.ID,
+			rulesSignature(shelf.RuleGroups), shelfOrderSignature(ids))
+		limit, after, err := parsePage(options, kind, scope, filters.Sort)
+		if err != nil {
+			return Page[Book]{}, err
+		}
+		afterNull := int64(0)
+		if after.Null {
+			afterNull = 1
+		}
+		rows, err := queries.ShelfAutomaticBooks(ctx, sqlc.ShelfAutomaticBooksParams{
+			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, RuleGroups: shelf.RuleGroups, ShelfID: shelf.ID,
+			LibraryID: filters.LibraryID, AuthorID: filters.AuthorID, SeriesID: filters.SeriesID, TagID: filters.TagID,
+			SortMode: filters.Sort, AfterID: after.ID, AfterTitle: after.Text, AfterCreatedAt: after.Time,
+			AfterNull: afterNull, AfterIndex: after.Index, PageSize: int64(limit + 1),
+		})
+		if err != nil {
+			return Page[Book]{}, fmt.Errorf("browse shelf books: %w", err)
+		}
+		return browseBookPage(ctx, queries, viewer, rows, limit, kind, scope, filters.Sort)
+	})
+}
+
 func listManualShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelfID int64, options PageOptions, libraryID int64) (Page[Book], error) {
 	scope := shelfLibraryScope(fmt.Sprintf("%s:%d", viewerScope(viewer), shelfID), libraryID)
 	limit, after, err := parsePage(options, "shelf_books", scope, "manual")
@@ -113,7 +166,7 @@ func listAutomaticShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer 
 	}
 	rows, err := queries.ShelfAutomaticBooks(ctx, sqlc.ShelfAutomaticBooksParams{
 		IsAdmin: adminFlag(viewer), UserID: viewer.UserID, RuleGroups: shelf.RuleGroups, ShelfID: shelf.ID, LibraryID: libraryID,
-		AfterID: after.ID, AfterTitle: after.Text, PageSize: int64(limit + 1),
+		SortMode: "title", AfterID: after.ID, AfterTitle: after.Text, PageSize: int64(limit + 1),
 	})
 	if err != nil {
 		return Page[Book]{}, fmt.Errorf("list automatic shelf books: %w", err)

@@ -4,6 +4,7 @@ import { api, ApiError } from '#lib/api/client.js';
 import {
 	addBookToShelf,
 	buildShelfBooksPath,
+	buildSystemShelfBooksPath,
 	buildShelvesPath,
 	collectionLibraryID,
 	createShelf,
@@ -47,6 +48,7 @@ describe('shelf API helpers', () => {
 			expect(collectionLibraryID(new URL('http://localhost/shelves/7?library_id=3'))).toBe(3);
 			expect(collectionLibraryID(new URL('http://localhost/shelves/7?library_id=bad'))).toBeNull();
 			expect(collectionLibraryID(new URL('http://localhost/shelves/system/favorites?library_id=3'))).toBeUndefined();
+			expect(collectionLibraryID(new URL('http://localhost/zh/shelves/system/favorites?library_id=3'))).toBeUndefined();
 		} finally { selectedLibrary.set(null); }
 	});
 
@@ -68,6 +70,19 @@ describe('shelf API helpers', () => {
 		expect(buildShelfBooksPath(4).startsWith('/shelves/4/books?')).toBe(true);
 		expect(params.get('cursor')).toBe(cursor);
 		expect(params.get('limit')).toBe('100');
+	});
+
+	it('sends catalog filters and sort to collection and system book endpoints', () => {
+		const options = { library_id: 2, author_id: 3, series_id: 4, tag_id: 5, sort: 'series' as const, cursor: 'next/+page' };
+		for (const path of [buildShelfBooksPath(7, options), buildSystemShelfBooksPath('favorites', options)]) {
+			const params = new URLSearchParams(path.split('?')[1]);
+			expect(Object.fromEntries(params)).toEqual({
+				limit: '50', cursor: 'next/+page', sort: 'series',
+				library_id: '2', author_id: '3', series_id: '4', tag_id: '5'
+			});
+		}
+		expect(new URLSearchParams(buildShelfBooksPath(7, { author_id: 3 }).split('?')[1]).get('sort')).toBe('title');
+		expect(new URLSearchParams(buildShelfBooksPath(7, { library_id: 2 }).split('?')[1]).has('sort')).toBe(false);
 	});
 
 	it('sends the exact create, update, delete, and membership request shapes', async () => {

@@ -18,6 +18,8 @@ async function expectNativeSearchCancelHidden(page: Page, search: Locator) {
 async function authenticate(page: Page, role = 'user', locale = 'en') {
 	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route((url) => /^\/api\/v1\/(?:authors|series|tags)$/.test(url.pathname),
+		(route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
@@ -252,6 +254,9 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await expect(page.getByRole('button', { name: /Remove “A Book”/ })).toHaveCount(0);
 
 	await page.goto('/shelves/7');
+	await expect(page.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
+	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
 	await page.getByText('Collection details', { exact: true }).click();
 	await expect(page.getByText('Old notes')).toBeVisible();
 	await page.getByRole('button', { name: 'Edit details' }).click();
@@ -362,6 +367,10 @@ test('manual and system shelves use the standard tile grid', async ({ page }) =>
 	await page.goto('/shelves/7');
 	await expect(page.getByTitle('Shelf Book 1', { exact: true })).toHaveAttribute('href', '/books/61');
 	await expectStandardTiles(page, books.length);
+	await expect(page.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' })).toHaveCount(0);
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
 	const tile = page.locator('ul.book-grid > li').first();
 	const remove = tile.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' });
 	await expect(remove).toHaveText('Remove manual membership');

@@ -1,17 +1,20 @@
 import { api, type JsonValue } from '#lib/api/client.js';
-import { buildPagePath, MAX_PAGE_SIZE, type PageOptions } from '#lib/catalog/api.js';
-import type { Book, Page } from '#lib/catalog/types.js';
+import { buildBookQueryPath, buildPagePath, MAX_PAGE_SIZE, type PageOptions } from '#lib/catalog/api.js';
+import type { Book, BookFilters, BookSort, Page } from '#lib/catalog/types.js';
 import type { SessionViewer, Shelf, ShelfInput, ShelfPatch, SystemShelf } from './types.js';
 import { parseLibraryID } from '#lib/libraries/context.js';
+import { deLocalizeHref } from '#lib/paraglide/runtime.js';
 
 /** Collections are global unless an old link explicitly requests a valid library filter. */
 export function collectionLibraryID(url: { readonly pathname: string; readonly searchParams: Pick<URLSearchParams, 'get' | 'has'> }): number | undefined | null {
-	if (url.pathname.replace(/\/+$/, '') === '/shelves/system/favorites') return undefined;
+	if (deLocalizeHref(url.pathname).replace(/\/+$/, '') === '/shelves/system/favorites') return undefined;
 	return url.searchParams.has('library_id') ? parseLibraryID(url.searchParams.get('library_id')) ?? null : undefined;
 }
 
 export type ShelfOptions = PageOptions & { library_id?: number };
+export type ShelfBookOptions = ShelfOptions & BookFilters & { sort?: BookSort };
 type RequestOptions = ShelfOptions & { signal?: AbortSignal };
+type BookRequestOptions = ShelfBookOptions & { signal?: AbortSignal };
 
 export const MAX_SHELF_NAME_BYTES = 1024;
 export const MAX_SHELF_DESCRIPTION_BYTES = 1 << 20;
@@ -25,16 +28,24 @@ export function buildShelvesPath(options: ShelfOptions = {}): string {
 	return scopedPath(buildPagePath('/shelves', options), options);
 }
 
-export function buildShelfBooksPath(shelfID: number, options: ShelfOptions = {}): string {
-	return scopedPath(buildPagePath(`/shelves/${shelfID}/books`, options), options);
+function shelfBooksPath(path: string, options: ShelfBookOptions): string {
+	if (options.sort !== undefined || options.author_id !== undefined ||
+		options.series_id !== undefined || options.tag_id !== undefined) {
+		return buildBookQueryPath(path, options, options.sort ?? 'title', options);
+	}
+	return scopedPath(buildPagePath(path, options), options);
+}
+
+export function buildShelfBooksPath(shelfID: number, options: ShelfBookOptions = {}): string {
+	return shelfBooksPath(`/shelves/${shelfID}/books`, options);
 }
 
 export function buildSystemShelfPath(key: string, options: ShelfOptions = {}): string {
 	return scopedPath(buildPagePath(`/shelves/system/${key}`, options), options);
 }
 
-export function buildSystemShelfBooksPath(key: string, options: ShelfOptions = {}): string {
-	return scopedPath(buildPagePath(`/shelves/system/${key}/books`, options), options);
+export function buildSystemShelfBooksPath(key: string, options: ShelfBookOptions = {}): string {
+	return shelfBooksPath(`/shelves/system/${key}/books`, options);
 }
 
 export async function listShelves(options: RequestOptions = {}): Promise<Page<Shelf>> {
@@ -92,11 +103,11 @@ export async function deleteShelf(id: number): Promise<void> {
 	await api.request<{ deleted: boolean }>(`/shelves/${id}`, { method: 'DELETE' });
 }
 
-export async function listShelfBooks(shelfID: number, options: RequestOptions = {}): Promise<Page<Book>> {
+export async function listShelfBooks(shelfID: number, options: BookRequestOptions = {}): Promise<Page<Book>> {
 	return api.request(buildShelfBooksPath(shelfID, options), { signal: options.signal });
 }
 
-export async function listSystemShelfBooks(key: string, options: RequestOptions = {}): Promise<Page<Book>> {
+export async function listSystemShelfBooks(key: string, options: BookRequestOptions = {}): Promise<Page<Book>> {
 	return api.request(buildSystemShelfBooksPath(key, options), { signal: options.signal });
 }
 

@@ -57,8 +57,8 @@ longer a sidebar menu item. You can:
 - filter by author, series or tag and change the sort order;
 - clear filters with the clear-filters button.
 
-On library and collection pages, including Favorites, the available controls
-are left-aligned above the books. Use the sidebar to switch between them.
+Libraries and collections, including Favorites and Uncollected, use the same
+left-aligned filters, sort and view controls. Use the sidebar to switch between them.
 
 Use the settings gear in a library or collection's content toolbar to adjust
 cover size and spacing. Both use the same controls. Settings are saved on this
@@ -419,6 +419,9 @@ not embedded). Oversized exports fail rather than silently dropping items.
 Use the **Collections** section in the sidebar to browse collections across
 all libraries. Its **⋮** menu creates or manages collections. Existing shelves
 are preserved as collections; older `/shelves` links and API routes still work.
+To edit a collection, manage its rules, or add and remove books, open that
+collection and choose **Manage collection** from the **⋮** menu beside
+**Collections**. Choose **Back to books** to return to browsing.
 
 - **Favorites** is a special collection under **Home** in the sidebar, not in the
   collection list. It is created for you and cannot be renamed or deleted.
@@ -436,6 +439,10 @@ Administrators can also create shared collections that other readers can see.
 Collections never bypass book visibility or library access restrictions.
 
 For API clients, the existing `/api/v1/shelves` endpoints remain supported.
+The collection and system-collection book endpoints accept `author_id`,
+`series_id`, `tag_id` and `sort` (`title`, `added` or `series`); series sorting
+requires `series_id`. Without these options, existing manual ordering and cursor
+behavior remain unchanged. `library_id` can additionally scope either mode.
 Collection metadata includes `rule_groups`, an array of
 `{id, name, rules: {match: "all" | "any", conditions}}`. Conditions retain the
 existing `{field, op, value}` shape. Creating or patching a collection accepts

@@ -151,11 +151,60 @@ func (s *Service) ListSystemShelfBooks(ctx context.Context, viewer Viewer, key s
 		}
 		rows, err := queries.ShelfUnshelvedBooks(ctx, sqlc.ShelfUnshelvedBooksParams{
 			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, LibraryID: libraryID,
-			AfterID: after.ID, AfterTitle: after.Text, PageSize: int64(limit + 1),
+			SortMode: "title", AfterID: after.ID, AfterTitle: after.Text, PageSize: int64(limit + 1),
 		})
 		if err != nil {
 			return Page[Book]{}, fmt.Errorf("list unshelved books: %w", err)
 		}
 		return titlePage(ctx, queries, viewer, rows, limit, "system_shelf_books", scope)
+	})
+}
+
+// ListSystemShelfBooksFiltered browses Favorites or Unshelved with catalog filters and sorting.
+func (s *Service) ListSystemShelfBooksFiltered(ctx context.Context, viewer Viewer, key string, filters BookFilters, options PageOptions) (Page[Book], error) {
+	if err := checkViewer(viewer); err != nil {
+		return Page[Book]{}, err
+	}
+	if err := checkSystemKey(key); err != nil {
+		return Page[Book]{}, err
+	}
+	filters, err := normalizeBookFilters(filters)
+	if err != nil {
+		return Page[Book]{}, err
+	}
+	const kind = "system_shelf_browse_books"
+	if key == SystemShelfFavorites {
+		if options.Limit != 0 && (options.Limit < 1 || options.Limit > maximumPageSize) {
+			return Page[Book]{}, invalid("limit must be between 1 and 100")
+		}
+		id, err := s.ensureFavorites(ctx, viewer)
+		if err != nil {
+			return Page[Book]{}, err
+		}
+		return s.listShelfBooksFiltered(ctx, viewer, id, filters, options, kind)
+	}
+	scope := fmt.Sprintf("%s:system:%s", bookFilterScope(viewer, filters), key)
+	limit, after, err := parsePage(options, kind, scope, filters.Sort)
+	if err != nil {
+		return Page[Book]{}, err
+	}
+	return readSnapshot(ctx, s.reader, func(queries *sqlc.Queries) (Page[Book], error) {
+		if err := checkShelfLibrary(ctx, queries, viewer, filters.LibraryID); err != nil {
+			return Page[Book]{}, err
+		}
+		afterNull := int64(0)
+		if after.Null {
+			afterNull = 1
+		}
+		rows, err := queries.ShelfUnshelvedBooks(ctx, sqlc.ShelfUnshelvedBooksParams{
+			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, LibraryID: filters.LibraryID,
+			AuthorID: filters.AuthorID, SeriesID: filters.SeriesID, TagID: filters.TagID,
+			SortMode: filters.Sort, AfterID: after.ID, AfterTitle: after.Text, AfterCreatedAt: after.Time,
+			AfterNull: afterNull, AfterIndex: after.Index, PageSize: int64(limit + 1),
+		})
+		if err != nil {
+			return Page[Book]{}, fmt.Errorf("browse unshelved books: %w", err)
+		}
+		return browseBookPage(ctx, queries, viewer, rows, limit, kind, scope, filters.Sort)
 	})
 }

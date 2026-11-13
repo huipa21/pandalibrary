@@ -80,6 +80,8 @@ async function mockApi(page: Page, role = 'user') {
 		route.fulfill({ json: { mine: null, items: [], next_cursor: null, total: 0 } })
 	);
 	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: books, next_cursor: null } }));
+	await page.route((url) => /^\/api\/v1\/(?:authors|series|tags)$/.test(url.pathname),
+		(route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route((url) => /^\/api\/v1\/books\/\d+\/files\/\d+$/.test(url.pathname), (route) =>
 		route.fulfill({ status: 200, contentType: 'application/octet-stream', body: epubFixture() })
 	);
@@ -242,10 +244,10 @@ test('previous and next step through the list the book was opened from', async (
 	await expect(page.getByTitle('Shell Book 3', { exact: true })).toBeVisible();
 });
 
-test('shelf → book → reader → Back to book details → back icon returns to the shelf', async ({ page }) => {
+test('shelf → book → reader → close → back icon returns to the shelf', async ({ page }) => {
 	await mockApi(page);
 	await page.goto('/shelves/5');
-	await expect(page.getByRole('heading', { name: 'Shelf Five' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Shelf Five' })).toHaveClass('sr-only');
 	await openTile(page, 1);
 	await expect(page).toHaveURL('/books/1');
 	await expect(backIcon(page)).toHaveAccessibleName('Back to Shelf Five');
@@ -253,7 +255,7 @@ test('shelf → book → reader → Back to book details → back icon returns t
 	await page.getByRole('button', { name: /^(Read|Resume)$/ }).click();
 	await expect(page).toHaveURL('/read/1/10');
 	await expect(page.getByRole('heading', { name: 'Shell Book 1' })).toBeVisible();
-	await page.getByRole('link', { name: 'Back to book details' }).click();
+	await page.getByRole('button', { name: 'Close reader' }).click();
 	await expect(page).toHaveURL('/books/1');
 	await expect(bookHeading(page, 1)).toBeVisible();
 
@@ -261,7 +263,7 @@ test('shelf → book → reader → Back to book details → back icon returns t
 	await expect(page.getByText('1 / 3', { exact: true })).toBeVisible();
 	await backIcon(page).click();
 	await expect(page).toHaveURL('/shelves/5');
-	await expect(page.getByRole('heading', { name: 'Shelf Five' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Shelf Five' })).toHaveClass('sr-only');
 });
 
 test('All Books with a query → tabs → back returns to the same URL', async ({ page }) => {

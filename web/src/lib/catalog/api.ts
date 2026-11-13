@@ -36,13 +36,22 @@ export function buildBooksPath(
 	sort: BookSort,
 	options: PageOptions = {}
 ): string {
+	return buildBookQueryPath('/books', filters, sort, options);
+}
+
+export function buildBookQueryPath(
+	path: string,
+	filters: BookFilters,
+	sort: BookSort,
+	options: PageOptions = {}
+): string {
 	const params = pageParams(options);
 	params.set('sort', sort);
 	for (const key of ['library_id', 'author_id', 'series_id', 'tag_id'] as const) {
 		const value = filters[key];
 		if (value !== undefined) params.set(key, String(value));
 	}
-	return `/books?${params.toString()}`;
+	return `${path}?${params.toString()}`;
 }
 
 export async function listLibraries(options: PageOptions = {}, signal?: AbortSignal): Promise<Page<Library>> {

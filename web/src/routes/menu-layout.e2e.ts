@@ -119,10 +119,15 @@ test('shelf descriptions remain available without showing introductory text by d
 	const unexpected = await mockApi(page, { locale: 'en' });
 	await page.goto('/shelves/11');
 	await expect(page.getByText('Picked for weekends.')).toBeHidden();
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
 	await page.getByText('Collection details', { exact: true }).click();
 	await expect(page.getByText('Picked for weekends.')).toBeVisible();
 	await page.goto('/shelves/system/favorites');
 	await expect(page.getByText('Books marked as favorites.')).toBeHidden();
+	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'Collection details', exact: true }).click();
 	await page.getByText('Collection details', { exact: true }).click();
 	await expect(page.getByText('Books marked as favorites.')).toBeVisible();
 	expect(unexpected).toEqual([]);

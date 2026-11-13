@@ -115,7 +115,7 @@ for (const theme of ['light', 'dark']) {
 		for (const destination of [
 			{ path: '/bookheap', label: 'Search', button: 'Search' },
 			{ path: '/notes', label: 'Search annotations', button: 'Search' },
-			{ path: '/shelves/7', label: 'Find a book to add', button: 'Find' },
+			{ path: '/shelves/7?manage=1', label: 'Find a book to add', button: 'Find' },
 			{ path: '/books/21/highlights', label: 'Search annotations', button: 'Search' }
 		]) {
 			await page.goto(destination.path);
@@ -211,7 +211,7 @@ for (const theme of ['light', 'dark']) {
 		await expect(page.getByRole('main').getByRole('button', { name: 'Search', exact: true })).toHaveCSS('background-color', 'rgb(4, 120, 87)');
 		await checkNarrowLayout(page, notes);
 
-		await page.goto('/shelves/7');
+		await page.goto('/shelves/7?manage=1');
 		const shelfSearch = page.locator('#add-book-query');
 		expect.soft(await fieldStyle(shelfSearch), 'Shelf search').toEqual(standardSearch);
 		await checkNarrowLayout(page, shelfSearch);

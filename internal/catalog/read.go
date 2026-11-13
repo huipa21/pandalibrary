@@ -121,20 +121,11 @@ func (s *Service) ListBooks(ctx context.Context, viewer Viewer, filters BookFilt
 	if err := checkViewer(viewer); err != nil {
 		return Page[Book]{}, err
 	}
-	if filters.LibraryID < 0 || filters.AuthorID < 0 || filters.SeriesID < 0 || filters.TagID < 0 {
-		return Page[Book]{}, invalid("book filter IDs must be positive")
+	filters, err := normalizeBookFilters(filters)
+	if err != nil {
+		return Page[Book]{}, err
 	}
-	if filters.Sort == "" {
-		filters.Sort = "title"
-	}
-	if filters.Sort != "title" && filters.Sort != "added" && filters.Sort != "series" {
-		return Page[Book]{}, invalid("book sort is invalid")
-	}
-	if filters.Sort == "series" && filters.SeriesID == 0 {
-		return Page[Book]{}, invalid("series sorting requires a series filter")
-	}
-	scope := fmt.Sprintf("%s:%d:%d:%d:%d", viewerScope(viewer),
-		filters.LibraryID, filters.AuthorID, filters.SeriesID, filters.TagID)
+	scope := bookFilterScope(viewer, filters)
 	limit, after, err := parsePage(options, "books", scope, filters.Sort)
 	if err != nil {
 		return Page[Book]{}, err
@@ -170,26 +161,51 @@ func (s *Service) ListBooks(ctx context.Context, viewer Viewer, filters BookFilt
 		if err != nil {
 			return Page[Book]{}, fmt.Errorf("list books: %w", err)
 		}
-		rows, next, err := paginate(rows, limit, func(row sqlc.Book) cursor {
-			return cursor{
-				Version: 1, Kind: "books", Scope: scope, Sort: filters.Sort, ID: row.ID,
-				Text: row.SortTitle, Time: row.CreatedAt, Index: row.SeriesIndex.Float64,
-				Null: !row.SeriesIndex.Valid,
-			}
-		})
+		return browseBookPage(ctx, queries, viewer, rows, limit, "books", scope, filters.Sort)
+	})
+}
+
+func normalizeBookFilters(filters BookFilters) (BookFilters, error) {
+	if filters.LibraryID < 0 || filters.AuthorID < 0 || filters.SeriesID < 0 || filters.TagID < 0 {
+		return BookFilters{}, invalid("book filter IDs must be positive")
+	}
+	if filters.Sort == "" {
+		filters.Sort = "title"
+	}
+	if filters.Sort != "title" && filters.Sort != "added" && filters.Sort != "series" {
+		return BookFilters{}, invalid("book sort is invalid")
+	}
+	if filters.Sort == "series" && filters.SeriesID == 0 {
+		return BookFilters{}, invalid("series sorting requires a series filter")
+	}
+	return filters, nil
+}
+
+func bookFilterScope(viewer Viewer, filters BookFilters) string {
+	return fmt.Sprintf("%s:%d:%d:%d:%d", viewerScope(viewer),
+		filters.LibraryID, filters.AuthorID, filters.SeriesID, filters.TagID)
+}
+
+func browseBookPage(ctx context.Context, queries *sqlc.Queries, viewer Viewer, rows []sqlc.Book, limit int, kind, scope, sort string) (Page[Book], error) {
+	rows, next, err := paginate(rows, limit, func(row sqlc.Book) cursor {
+		return cursor{
+			Version: 1, Kind: kind, Scope: scope, Sort: sort, ID: row.ID,
+			Text: row.SortTitle, Time: row.CreatedAt, Index: row.SeriesIndex.Float64,
+			Null: !row.SeriesIndex.Valid,
+		}
+	})
+	if err != nil {
+		return Page[Book]{}, err
+	}
+	items := make([]Book, 0, len(rows))
+	for _, row := range rows {
+		book, err := hydrateBook(ctx, queries, viewer, row)
 		if err != nil {
 			return Page[Book]{}, err
 		}
-		items := make([]Book, 0, len(rows))
-		for _, row := range rows {
-			book, err := hydrateBook(ctx, queries, viewer, row)
-			if err != nil {
-				return Page[Book]{}, err
-			}
-			items = append(items, book)
-		}
-		return Page[Book]{Items: items, NextCursor: next}, nil
-	})
+		items = append(items, book)
+	}
+	return Page[Book]{Items: items, NextCursor: next}, nil
 }
 
 // CountBooks returns the number of books visible to the viewer across all libraries.

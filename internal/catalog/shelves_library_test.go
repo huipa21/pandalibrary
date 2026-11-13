@@ -140,6 +140,199 @@ func TestShelfLibraryScope(t *testing.T) {
 	}
 }
 
+func TestShelfFilteredBrowsing(t *testing.T) {
+	f := newCatalogFixture(t)
+	ctx := context.Background()
+	reader := Viewer{UserID: 2}
+	if _, err := f.db.Writer.ExecContext(ctx, `
+		INSERT INTO library_access (library_id, user_id, granted_at) VALUES (20, 2, 1);
+		INSERT INTO books (id, library_id, title, sort_title, series_id, series_index, created_at, updated_at) VALUES
+			(105, 10, 'Tie C', 'tie', 1, 1, 150, 150),
+			(106, 10, 'Tie D', 'tie', 1, NULL, 150, 150),
+			(107, 10, 'Tie E', 'tie', 1, 2, 200, 200),
+			(108, 10, 'Tie F', 'tie', 1, NULL, 200, 200);
+		INSERT INTO book_authors (book_id, author_id, role, position) VALUES
+			(105, 1, 'author', 0), (106, 2, 'author', 0), (107, 1, 'author', 0), (108, 1, 'author', 0);
+		INSERT INTO book_tags (book_id, tag_id) VALUES (105, 1), (106, 2), (107, 1), (108, 1);`); err != nil {
+		t.Fatal(err)
+	}
+	manual := createTestShelf(t, f.service, reader, "private", "Browse")
+	automatic := createAutomaticShelf(t, f.service, reader, "Rule browse",
+		rules("all", condition("title", "contains", `"Tie"`)))
+	favorites := favoritesID(t, f.service, reader)
+	for _, shelfID := range []int64{manual.ID, favorites} {
+		for _, id := range []int64{104, 101, 105, 106} {
+			if err := f.service.PutShelfBook(ctx, reader, shelfID, id, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := f.db.Writer.ExecContext(ctx, `INSERT INTO shelf_books (shelf_id, book_id, position, added_at) VALUES (?, 102, 99, 1)`, shelfID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.service.PutShelfBook(ctx, reader, automatic.ID, 103, nil); err != nil {
+		t.Fatal(err)
+	}
+	type listBooks func(BookFilters, PageOptions) (Page[Book], error)
+	manualBooks := func(filters BookFilters, options PageOptions) (Page[Book], error) {
+		return f.service.ListShelfBooksFiltered(ctx, reader, manual.ID, filters, options)
+	}
+	automaticBooks := func(filters BookFilters, options PageOptions) (Page[Book], error) {
+		return f.service.ListShelfBooksFiltered(ctx, reader, automatic.ID, filters, options)
+	}
+	systemBooks := func(key string) listBooks {
+		return func(filters BookFilters, options PageOptions) (Page[Book], error) {
+			return f.service.ListSystemShelfBooksFiltered(ctx, reader, key, filters, options)
+		}
+	}
+	for _, source := range []struct {
+		name string
+		list listBooks
+	}{
+		{"manual", manualBooks},
+		{"favorites", systemBooks(SystemShelfFavorites)},
+	} {
+		for _, test := range []struct {
+			name    string
+			filters BookFilters
+			want    []int64
+		}{
+			{"title", BookFilters{Sort: "title"}, []int64{101, 104, 105, 106}},
+			{"added", BookFilters{Sort: "added"}, []int64{106, 105, 104, 101}},
+			{"series", BookFilters{Sort: "series", SeriesID: 1}, []int64{101, 105, 104, 106}},
+			{"combined filters", BookFilters{LibraryID: 10, AuthorID: 1, SeriesID: 1, TagID: 1}, []int64{101, 104, 105}},
+			{"different tag", BookFilters{TagID: 2}, []int64{106}},
+			{"different library", BookFilters{LibraryID: 20}, []int64{}},
+		} {
+			t.Run(source.name+"/"+test.name, func(t *testing.T) {
+				got := []int64{}
+				options := PageOptions{Limit: 1}
+				for pageNumber := 0; ; pageNumber++ {
+					if pageNumber > 10 {
+						t.Fatal("pagination did not terminate")
+					}
+					page, err := source.list(test.filters, options)
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, book := range page.Items {
+						got = append(got, book.ID)
+					}
+					if page.NextCursor == nil {
+						break
+					}
+					options.Cursor = *page.NextCursor
+				}
+				if !reflect.DeepEqual(got, test.want) {
+					t.Fatalf("books = %v, want %v", got, test.want)
+				}
+			})
+		}
+	}
+	for _, test := range []struct {
+		name    string
+		list    listBooks
+		filters BookFilters
+		want    []int64
+	}{
+		{"automatic union", automaticBooks, BookFilters{Sort: "title"}, []int64{103, 101, 104, 105, 106, 107, 108}},
+		{"automatic filtered", automaticBooks, BookFilters{AuthorID: 2, TagID: 2, Sort: "added"}, []int64{106, 103}},
+		{"unshelved series", systemBooks(SystemShelfUnshelved), BookFilters{SeriesID: 1, Sort: "series"}, []int64{107, 108}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := []int64{}
+			options := PageOptions{Limit: 1}
+			for {
+				page, err := test.list(test.filters, options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, book := range page.Items {
+					got = append(got, book.ID)
+				}
+				if page.NextCursor == nil {
+					break
+				}
+				options.Cursor = *page.NextCursor
+			}
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("books = %v, want %v", got, test.want)
+			}
+		})
+	}
+	first, err := manualBooks(BookFilters{Sort: "title"}, PageOptions{Limit: 1})
+	if err != nil || first.NextCursor == nil {
+		t.Fatalf("first page = %+v, %v", first, err)
+	}
+	for name, list := range map[string]func() error{
+		"sort": func() error {
+			_, err := manualBooks(BookFilters{Sort: "added"}, PageOptions{Cursor: *first.NextCursor})
+			return err
+		},
+		"filter": func() error {
+			_, err := manualBooks(BookFilters{TagID: 1}, PageOptions{Cursor: *first.NextCursor})
+			return err
+		},
+		"collection": func() error {
+			_, err := automaticBooks(BookFilters{}, PageOptions{Cursor: *first.NextCursor})
+			return err
+		},
+		"system endpoint": func() error {
+			_, err := systemBooks(SystemShelfFavorites)(BookFilters{}, PageOptions{Cursor: *first.NextCursor})
+			return err
+		},
+		"viewer": func() error {
+			_, err := f.service.ListShelfBooksFiltered(ctx, Viewer{UserID: 1, IsAdmin: true}, manual.ID, BookFilters{}, PageOptions{Cursor: *first.NextCursor})
+			return err
+		},
+		"invalid series sort": func() error {
+			_, err := manualBooks(BookFilters{Sort: "series"}, PageOptions{})
+			return err
+		},
+	} {
+		if err := list(); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("%s error = %v, want invalid", name, err)
+		}
+	}
+	if _, err := f.service.ListShelfBooksFiltered(ctx, Viewer{UserID: 3}, manual.ID, BookFilters{}, PageOptions{}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other user's private collection = %v", err)
+	}
+	favoritePage, err := systemBooks(SystemShelfFavorites)(BookFilters{}, PageOptions{Limit: 1})
+	if err != nil || favoritePage.NextCursor == nil {
+		t.Fatalf("favorites page = %+v, %v", favoritePage, err)
+	}
+	if _, err := f.service.ListShelfBooksFiltered(ctx, reader, favorites, BookFilters{}, PageOptions{Cursor: *favoritePage.NextCursor}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("system cursor on numeric shelf = %v", err)
+	}
+	if _, err := systemBooks(SystemShelfUnshelved)(BookFilters{}, PageOptions{Cursor: *favoritePage.NextCursor}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("favorites cursor on unshelved = %v", err)
+	}
+	if err := f.service.PutShelfBook(ctx, reader, favorites, 107, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := systemBooks(SystemShelfFavorites)(BookFilters{}, PageOptions{Cursor: *favoritePage.NextCursor}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("changed favorites cursor = %v", err)
+	}
+	if err := f.service.RemoveShelfBook(ctx, reader, manual.ID, 106); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manualBooks(BookFilters{}, PageOptions{Cursor: *first.NextCursor}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("changed membership cursor = %v", err)
+	}
+	rulePage, err := automaticBooks(BookFilters{}, PageOptions{Limit: 1})
+	if err != nil || rulePage.NextCursor == nil {
+		t.Fatalf("rule page = %+v, %v", rulePage, err)
+	}
+	if _, err := f.service.UpdateShelf(ctx, reader, automatic.ID, ShelfPatch{
+		Rules: Optional[RuleSet]{Set: true, Value: rules("all", condition("title", "contains", `"changed"`))},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := automaticBooks(BookFilters{}, PageOptions{Cursor: *rulePage.NextCursor}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("changed rules cursor = %v", err)
+	}
+}
+
 func TestLibraryVisibleBookCounts(t *testing.T) {
 	f := newCatalogFixture(t)
 	ctx := context.Background()

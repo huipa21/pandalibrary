@@ -4,10 +4,12 @@
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
+	import BookBrowser from '#lib/catalog/BookBrowser.svelte';
 	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import Icon from '#lib/bookview/Icon.svelte';
-	import type { Book } from '#lib/catalog/types.js';
+	import type { PageOptions } from '#lib/catalog/api.js';
+	import type { Book, BookFilters, BookSort } from '#lib/catalog/types.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { requestErrorKind } from '#lib/paging/errors.js';
 	import { translate } from '#lib/paging/translate.js';
@@ -61,14 +63,34 @@
 	const editable = $derived(manageable && !shelf?.system_key);
 	const membershipEditable = $derived(manageable && shelf?.system_key !== 'unshelved');
 	const initialRuleGroups = $derived(shelf ? shelfRuleGroups(shelf, m['ux3.shelves.rules_label']()) : []);
-
-	$effect(() => {
-		const id = page.params.id ?? '';
-		const url = page.url;
-		untrack(() => void loadShelf(id, collectionLibraryID(url)));
+	const currentID = $derived(page.params.id ?? '');
+	const libraryScope = $derived(collectionLibraryID(page.url));
+	const browseScope = $derived({ library_id: libraryID });
+	const managing = $derived(page.url.searchParams.get('manage') === '1');
+	const loadedShelfID = $derived(shelf?.id);
+	const browseHref = $derived.by(() => {
+		const params = new URLSearchParams(page.url.searchParams.toString());
+		params.delete('manage');
+		const query = params.toString();
+		return `${page.url.pathname}${query ? `?${query}` : ''}`;
 	});
 
-	$effect(() => { if (shelf && books.status === 'ready') rememberBrowseContext({ ids: books.items.map((book) => book.id), label: shelf.name, href: libraryHref(`/shelves/${shelf.id}`, libraryID) }); });
+	$effect(() => {
+		const id = currentID;
+		const scope = libraryScope;
+		untrack(() => void loadShelf(id, scope));
+	});
+
+	$effect(() => {
+		const id = loadedShelfID;
+		const scope = libraryID;
+		const active = managing;
+		untrack(() => {
+			void books.reset(active && id ? (cursor, signal) => listShelfBooks(id, { cursor, signal, library_id: scope }) : null);
+		});
+	});
+
+	$effect(() => { if (managing && shelf && books.status === 'ready') rememberBrowseContext({ ids: books.items.map((book) => book.id), label: shelf.name, href: libraryHref(`/shelves/${shelf.id}`, libraryID) }); });
 
 	onDestroy(() => {
 		requestVersion += 1;
@@ -100,7 +122,6 @@
 		addQuery = '';
 		addDraft = '';
 		void candidates.reset(null);
-		void books.reset(null);
 		if (scope === null) {
 			loadError = m['shelves.error.invalid']();
 			loading = false;
@@ -120,13 +141,21 @@
 			if (request !== requestVersion) return;
 			shelf = loaded;
 			viewer = user;
-			void books.reset((cursor, signal) => listShelfBooks(id, { cursor, signal, library_id: scope }));
 		} catch (cause) {
 			if (request !== requestVersion) return;
 			loadError = translate(shelfErrorKey(cause, 'load'));
 		} finally {
 			if (request === requestVersion) loading = false;
 		}
+	}
+
+	function fetchBooks(filters: BookFilters, sort: BookSort, options: PageOptions = {}) {
+		if (!shelf) throw new Error('The collection is unavailable.');
+		return listShelfBooks(shelf.id, { ...filters, ...options, sort });
+	}
+
+	function bookErrorMessage(cause: unknown, more: boolean): string {
+		return translate(shelfErrorKey(cause, more ? 'more_books' : 'load_books'));
 	}
 
 	/** Membership changed, so old cursors are stale: refresh the count and restart from page one. */
@@ -250,18 +279,24 @@
 {:else if loading}
 	<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 {:else if shelf}
-	<article class="space-y-10" aria-labelledby="shelf-heading">
+	<article class={managing ? 'space-y-10' : ''} aria-labelledby="shelf-heading">
 		<header class="space-y-3">
 			<h1 id="shelf-heading" class="sr-only">{shelf.name}</h1>
-			<div class="flex flex-wrap items-center gap-3">
-				<span class="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">
-					{shelf.kind === 'shared' ? m['shelves.kind.shared']() : m['shelves.kind.private']()}
-				</span>
-				<p class="text-sm text-slate-500">{m['shelves.book_count']({ count: shelf.visible_book_count })}</p>
-			</div>
-			{#if shelf.description}<ShelfDescription description={shelf.description} />{/if}
+			{#if managing}
+				<a class="inline-block text-sm underline underline-offset-4 focus-visible:outline-2" href={browseHref}>{m['collections.back_to_books']()}</a>
+				<div class="flex flex-wrap items-center gap-3">
+					<span class="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">
+						{shelf.kind === 'shared' ? m['shelves.kind.shared']() : m['shelves.kind.private']()}
+					</span>
+					<p class="text-sm text-slate-500">{m['shelves.book_count']({ count: shelf.visible_book_count })}</p>
+				</div>
+				{#if shelf.description}<ShelfDescription description={shelf.description} />{/if}
+			{/if}
 		</header>
 
+		{#if !managing}
+			<BookBrowser scope={browseScope} showHeading={false} {fetchBooks} {bookErrorMessage} displayStorageKey={`collection:${shelf.id}`} />
+		{:else}
 		{#if notice}<p class="rounded-md bg-green-50 p-3 text-green-800" role="status">{notice}</p>{/if}
 		{#if actionError}<p class="rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">{actionError}</p>{/if}
 
@@ -423,6 +458,7 @@
 					{/if}
 				{/if}
 			</section>
+		{/if}
 		{/if}
 	</article>
 {/if}

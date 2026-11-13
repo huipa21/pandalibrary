@@ -1876,6 +1876,8 @@
 	"pv8.deleted": "Mark deleted",
 	"pv8.undo": "Undo",
 	"pv8.restored": "Mark restored",
+	"collections.manage": "Manage collection",
+	"collections.back_to_books": "Back to books",
 	"collections.rules.heading": "Automatic rules",
 	"collections.rules.help": "Each named rule works independently. Books matching any rule are included alongside books you add manually, across all accessible libraries.",
 	"collections.rules.group": "Rule {number}",

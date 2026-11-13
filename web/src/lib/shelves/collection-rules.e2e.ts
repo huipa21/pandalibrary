@@ -65,6 +65,10 @@ test('edits several independent all/any rules while allowing manual additions to
 	const server = await mockCollection(page);
 	await page.goto('/shelves/7');
 	const main = page.getByRole('main');
+	await expect(main.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
 	await main.getByRole('button', { name: 'Edit details' }).click();
 	await main.getByRole('button', { name: 'Add automatic rule' }).click();
 	await page.getByLabel('Rule name', { exact: true }).nth(1).fill('Authors');
@@ -89,7 +93,7 @@ test('edits several independent all/any rules while allowing manual additions to
 for (const remove of [false, true]) {
 	test(`deleting a rule explicitly ${remove ? 'removes' : 'retains'} mapped books`, async ({ page }) => {
 		const server = await mockCollection(page);
-		await page.goto('/shelves/7');
+		await page.goto('/shelves/7?manage=1');
 		await page.getByRole('button', { name: 'Edit details' }).click();
 		await page.getByRole('button', { name: 'Delete rule', exact: true }).click();
 		await expect(page.getByText('What happens to books mapped by deleted rules?')).toBeVisible();
@@ -106,6 +110,9 @@ for (const remove of [false, true]) {
 test('Chinese collection rule controls and deletion choices are localized', async ({ page }) => {
 	await mockCollection(page, 'zh');
 	await page.goto('/shelves/7');
+	const sidebar = page.getByRole('navigation', { name: '主导航' });
+	await sidebar.getByRole('button', { name: '合集操作' }).click();
+	await sidebar.getByRole('menuitem', { name: '管理当前合集', exact: true }).click();
 	await page.getByRole('button', { name: '编辑详情' }).click();
 	await expect(page.getByRole('heading', { name: '编辑合集' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: '自动规则' })).toBeVisible();
@@ -116,7 +123,7 @@ test('Chinese collection rule controls and deletion choices are localized', asyn
 
 test('explicit legacy library filters affect detail only, not manual candidate search', async ({ page }) => {
 	const server = await mockCollection(page);
-	await page.goto('/shelves/7?library_id=3');
+	await page.goto('/shelves/7?library_id=3&manage=1');
 	await page.getByLabel('Find a book to add').fill('another library');
 	await page.getByRole('button', { name: 'Find', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Add “From another library” to this collection', exact: true })).toBeVisible();

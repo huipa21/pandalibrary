@@ -1876,6 +1876,8 @@
 	"pv8.deleted": "标记已删除",
 	"pv8.undo": "撤销",
 	"pv8.restored": "标记已恢复",
+	"collections.manage": "管理当前合集",
+	"collections.back_to_books": "返回图书",
 	"collections.rules.heading": "自动规则",
 	"collections.rules.help": "每条命名规则独立运行。任一规则匹配的图书与手动添加的图书共同组成合集，范围涵盖所有可访问的书库。",
 	"collections.rules.group": "规则 {number}",
