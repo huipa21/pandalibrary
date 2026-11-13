@@ -6,12 +6,15 @@ UPDATE bookheap_items SET status = 'queued', error = NULL, duplicate_of_book_id 
     duplicate_of_item_id = NULL, target_library_id = sqlc.arg(target_library_id),
     target_shelf_ids = sqlc.arg(target_shelf_ids), import_job_id = sqlc.arg(import_job_id),
     updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id) AND status IN ('ready', 'failed')
+WHERE id = sqlc.arg(id) AND (status IN ('ready', 'failed')
+    OR (status = 'duplicate' AND duplicate_of_book_id IS NOT NULL
+        AND (target_library_id IS NULL OR target_library_id != sqlc.arg(target_library_id))))
   AND size_bytes = sqlc.arg(size_bytes) AND mtime_ns = sqlc.arg(mtime_ns);
 
 -- name: BookheapAssignMarkChanged :exec
 UPDATE bookheap_items SET error = sqlc.arg(error), updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id) AND status IN ('ready', 'failed');
+WHERE id = sqlc.arg(id) AND (status IN ('ready', 'failed')
+    OR (status = 'duplicate' AND duplicate_of_book_id IS NOT NULL));
 
 -- name: BookheapAssignStarted :execrows
 UPDATE bookheap_items SET status = 'importing', updated_at = sqlc.arg(updated_at)

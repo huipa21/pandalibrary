@@ -136,7 +136,7 @@ func (s *Service) Commit(ctx context.Context, viewer catalog.Viewer, pending *Pe
 	if s.isStopped() {
 		return Item{}, ErrStopped
 	}
-	if err := uploadDuplicate(ctx, sqlc.New(s.reader), viewer, pending.sha256); err != nil {
+	if err := duplicateOf(ctx, sqlc.New(s.reader), pending.sha256, math.MaxInt64); err != nil {
 		return Item{}, err
 	}
 	root, err := os.OpenRoot(s.dir)
@@ -162,7 +162,7 @@ func (s *Service) Commit(ctx context.Context, viewer catalog.Viewer, pending *Pe
 	final := ""
 	err = db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
-		if err := uploadDuplicate(ctx, queries, viewer, pending.sha256); err != nil {
+		if err := duplicateOf(ctx, queries, pending.sha256, math.MaxInt64); err != nil {
 			return err
 		}
 		var err error
@@ -229,31 +229,9 @@ func (s *Service) placeUpload(ctx context.Context, root *os.Root, queries *sqlc.
 	return "", fmt.Errorf("%w: no free file name for the upload", catalog.ErrConflict)
 }
 
-func uploadDuplicate(ctx context.Context, queries *sqlc.Queries, viewer catalog.Viewer, sha string) error {
-	err := duplicateOf(ctx, queries, sha, math.MaxInt64)
-	var duplicate *DuplicateError
-	if !errors.As(err, &duplicate) || duplicate.BookID == 0 {
-		return err
-	}
-	if _, accessErr := queries.CatalogGetBook(ctx, sqlc.CatalogGetBookParams{
-		BookID: duplicate.BookID, UserID: viewer.UserID, IsAdmin: 1,
-	}); errors.Is(accessErr, sql.ErrNoRows) {
-		return &DuplicateError{}
-	} else if accessErr != nil {
-		return accessErr
-	}
-	return err
-}
-
-// duplicateOf returns a *DuplicateError when sha matches a library file or a heap item with a smaller ID.
+// duplicateOf checks only unassigned heap items: assigned files may be destined
+// for a different library, whose duplicates are checked by the importer.
 func duplicateOf(ctx context.Context, queries *sqlc.Queries, sha string, beforeID int64) error {
-	bookID, err := queries.BookheapDuplicateBook(ctx, sha)
-	if err == nil {
-		return &DuplicateError{BookID: bookID}
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
 	itemID, err := queries.BookheapDuplicateItem(ctx, sqlc.BookheapDuplicateItemParams{Sha256: text(sha), BeforeID: beforeID})
 	if err == nil {
 		return &DuplicateError{ItemID: itemID}

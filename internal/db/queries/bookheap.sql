@@ -25,12 +25,10 @@ WHERE id = sqlc.arg(id) AND status NOT IN ('queued', 'importing');
 -- name: BookheapDeleteIdle :execrows
 DELETE FROM bookheap_items WHERE id = ? AND status NOT IN ('queued', 'importing');
 
--- name: BookheapDuplicateBook :one
-SELECT book_id FROM book_files WHERE sha256 = ?;
-
 -- name: BookheapDuplicateItem :one
 SELECT id FROM bookheap_items
 WHERE sha256 = sqlc.arg(sha256) AND id < sqlc.arg(before_id)
+  AND status NOT IN ('queued', 'importing')
 ORDER BY id LIMIT 1;
 
 -- name: BookheapList :many

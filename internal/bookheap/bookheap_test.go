@@ -245,8 +245,8 @@ func TestUploadRejections(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := f.service.Upload(ctx, admin, "lib.epub", bytes.NewReader(library)); !errors.As(err, &duplicate) || duplicate.BookID != 7 {
-		t.Fatalf("library duplicate: %v", err)
+	if item, err := f.service.Upload(ctx, admin, "lib.epub", bytes.NewReader(library)); err != nil || item.Status != StatusReady || item.DuplicateOfBookID != nil {
+		t.Fatalf("library file should wait for a target library: %+v, %v", item, err)
 	}
 	if _, err := f.service.Upload(ctx, admin, "big.epub", bytes.NewReader(make([]byte, 1<<20+1))); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("too large: %v", err)
@@ -265,7 +265,7 @@ func TestUploadRejections(t *testing.T) {
 	if _, err := f.service.Upload(ctx, catalog.Viewer{UserID: 2}, "x.epub", bytes.NewReader(data)); !errors.Is(err, catalog.ErrForbidden) {
 		t.Fatalf("non-admin: %v", err)
 	}
-	if names := f.visibleFiles(t); len(names) != 1 || names[0] != "first.epub" {
+	if names := f.visibleFiles(t); len(names) != 2 || names[0] != "first.epub" || names[1] != "lib.epub" {
 		t.Fatalf("heap files: %v", names)
 	}
 }

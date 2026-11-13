@@ -151,7 +151,8 @@ func (q *Queries) BookheapAssignFinish(ctx context.Context, arg BookheapAssignFi
 
 const bookheapAssignMarkChanged = `-- name: BookheapAssignMarkChanged :exec
 UPDATE bookheap_items SET error = ?1, updated_at = ?2
-WHERE id = ?3 AND status IN ('ready', 'failed')
+WHERE id = ?3 AND (status IN ('ready', 'failed')
+    OR (status = 'duplicate' AND duplicate_of_book_id IS NOT NULL))
 `
 
 type BookheapAssignMarkChangedParams struct {
@@ -171,7 +172,9 @@ UPDATE bookheap_items SET status = 'queued', error = NULL, duplicate_of_book_id 
     duplicate_of_item_id = NULL, target_library_id = ?1,
     target_shelf_ids = ?2, import_job_id = ?3,
     updated_at = ?4
-WHERE id = ?5 AND status IN ('ready', 'failed')
+WHERE id = ?5 AND (status IN ('ready', 'failed')
+    OR (status = 'duplicate' AND duplicate_of_book_id IS NOT NULL
+        AND (target_library_id IS NULL OR target_library_id != ?1)))
   AND size_bytes = ?6 AND mtime_ns = ?7
 `
 

@@ -81,20 +81,10 @@ func (q *Queries) BookheapDeleteIdle(ctx context.Context, id int64) (int64, erro
 	return result.RowsAffected()
 }
 
-const bookheapDuplicateBook = `-- name: BookheapDuplicateBook :one
-SELECT book_id FROM book_files WHERE sha256 = ?
-`
-
-func (q *Queries) BookheapDuplicateBook(ctx context.Context, sha256 string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, bookheapDuplicateBook, sha256)
-	var book_id int64
-	err := row.Scan(&book_id)
-	return book_id, err
-}
-
 const bookheapDuplicateItem = `-- name: BookheapDuplicateItem :one
 SELECT id FROM bookheap_items
 WHERE sha256 = ?1 AND id < ?2
+  AND status NOT IN ('queued', 'importing')
 ORDER BY id LIMIT 1
 `
 
