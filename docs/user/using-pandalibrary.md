@@ -462,9 +462,23 @@ short queries such as two-character titles.
 
 The sidebar groups **Books**, **Reading** and **History** under **Statistics**.
 Books shows ended reading cycles per month and time per book; Reading shows
-time, sessions, active days and streaks; History shows daily session totals and
-per-book reading time. Choose a date range in any view. Days follow your time
-zone. The combined view remains available at `/stats`.
+time, sessions, active days and streaks. Choose a date range in those views.
+The combined view remains available at `/stats`.
+
+**History** shows a newest-first waterfall for the selected year, separated by
+month. Each row includes the date, cover, title, author and reading cycle.
+Sessions for the same book, cycle and local date are combined. The last row of
+each complete day shows that day's total time and session count. Month headings
+show distinct books, sessions and total time; durations use `123 h 04 m`.
+Days follow your browser's time zone, with sessions assigned to their start date.
+
+History loads 50 rows at a time and requests the next page as you scroll; **Load
+more history** is also available. Requested pages are cached locally for your
+account. **Refresh** clears the history cache and fetches fresh data, for example
+after editing reading sessions. The right-hand yearly summary always covers the
+whole year, not just loaded rows: totals, monthly time and book counts, the busiest
+day, longest session and the book with the most sessions. On narrow screens the
+summary appears below the waterfall. Use the year controls to browse older years.
 
 ## Settings
 
