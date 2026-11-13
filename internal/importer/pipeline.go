@@ -50,12 +50,13 @@ func (s *Service) process(ctx context.Context, row sqlc.ImportJob) {
 }
 
 func (s *Service) importBook(ctx context.Context, row sqlc.ImportJob, input manifest) error {
-	queries := sqlc.New(s.options.Reader)
-	duplicate, err := queries.ImportDuplicate(ctx, input.Staged.SHA256)
-	if err == nil {
-		return s.finish(ctx, sqlc.New(s.options.Writer), row.ID, "duplicate", 0, duplicate, "")
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	var duplicate bool
+	err := db.WithTx(ctx, s.options.Writer, func(tx *sql.Tx) error {
+		var err error
+		duplicate, err = s.finishDuplicate(ctx, sqlc.New(tx), row, input)
+		return err
+	})
+	if err != nil || duplicate {
 		return err
 	}
 	file, err := s.options.Blobs.OpenStaged(input.Staged.Token)
@@ -91,11 +92,8 @@ func (s *Service) importBook(ctx context.Context, row sqlc.ImportJob, input mani
 	}
 	return db.WithTx(ctx, s.options.Writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
-		duplicate, err := queries.ImportDuplicate(ctx, input.Staged.SHA256)
-		if err == nil {
-			return s.finish(ctx, queries, row.ID, "duplicate", 0, duplicate, "")
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		duplicate, err := s.finishDuplicate(ctx, queries, row, input)
+		if err != nil || duplicate {
 			return err
 		}
 		bookID := input.BookID
@@ -117,8 +115,6 @@ func (s *Service) importBook(ctx context.Context, row sqlc.ImportJob, input mani
 					return err
 				}
 			}
-		} else if _, err := queries.ImportTarget(ctx, sqlc.ImportTargetParams{BookID: bookID, LibraryID: row.LibraryID, UserID: row.UserID.Int64}); err != nil {
-			return fmt.Errorf("attachment target changed: %w", err)
 		}
 		if err := queries.ImportFile(ctx, sqlc.ImportFileParams{BookID: bookID, Sha256: input.Staged.SHA256,
 			Format: string(format), SizeBytes: input.Staged.Size, OriginalFilename: row.OriginalName,
@@ -135,6 +131,25 @@ func (s *Service) importBook(ctx context.Context, row sqlc.ImportJob, input mani
 		}
 		return s.finish(ctx, queries, row.ID, "imported", bookID, 0, "")
 	})
+}
+
+// Duplicate resolution and its persisted result share a transaction with moves.
+func (s *Service) finishDuplicate(ctx context.Context, queries *sqlc.Queries, row sqlc.ImportJob, input manifest) (bool, error) {
+	if input.BookID != 0 {
+		if _, err := queries.ImportTarget(ctx, sqlc.ImportTargetParams{BookID: input.BookID, LibraryID: row.LibraryID, UserID: row.UserID.Int64}); err != nil {
+			return false, fmt.Errorf("attachment target changed: %w", err)
+		}
+	}
+	duplicate, err := queries.ImportDuplicate(ctx, sqlc.ImportDuplicateParams{
+		Sha256: input.Staged.SHA256, LibraryID: row.LibraryID,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, s.finish(ctx, queries, row.ID, "duplicate", 0, duplicate, "")
 }
 
 func createBook(ctx context.Context, queries *sqlc.Queries, row sqlc.ImportJob, metadata extract.Metadata, coverHash string) (int64, error) {

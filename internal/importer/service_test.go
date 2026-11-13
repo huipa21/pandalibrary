@@ -224,6 +224,86 @@ func TestImportAtomicMetadataCoverAndConcurrentDuplicate(t *testing.T) {
 	}
 }
 
+func TestIdenticalImportsAreScopedToOwningLibrary(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	data := []byte(`<FictionBook><description><title-info><book-title>Shared bytes</book-title></title-info></description></FictionBook>`)
+	var jobs []Job
+	for range 4 {
+		for _, libraryID := range []int64{1, 2} {
+			staged, err := f.service.Stage(ctx, bytes.NewReader(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			job, err := f.service.QueueUpload(ctx, admin, libraryID, 0, "book.fb2", staged)
+			if err != nil {
+				t.Fatal(err)
+			}
+			jobs = append(jobs, job)
+		}
+	}
+	if err := f.service.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	books := make(map[int64]int64)
+	imported, duplicates := 0, 0
+	for _, job := range jobs {
+		row := f.wait(t, job.ID)
+		var bookID int64
+		switch row.Status {
+		case "imported":
+			imported++
+			bookID = row.BookID.Int64
+			books[job.LibraryID] = bookID
+		case "duplicate":
+			duplicates++
+			bookID = row.DuplicateOfBookID.Int64
+		default:
+			t.Fatalf("job failed: %+v", row)
+		}
+		var libraryID int64
+		if err := f.db.Reader.QueryRow(`SELECT library_id FROM books WHERE id = ?`, bookID).Scan(&libraryID); err != nil || libraryID != job.LibraryID {
+			t.Fatalf("job library=%d resolved to library=%d: %v", job.LibraryID, libraryID, err)
+		}
+	}
+	if imported != 2 || duplicates != 6 || books[1] == books[2] {
+		t.Fatalf("imported=%d duplicates=%d books=%v", imported, duplicates, books)
+	}
+	var hash string
+	if err := f.db.Reader.QueryRow(`SELECT sha256 FROM book_files WHERE book_id = ?`, books[1]).Scan(&hash); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.service.options.Catalog.DeleteBook(ctx, admin, books[1]); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := f.service.options.Catalog.GetBook(ctx, admin, books[2])
+	if err != nil || remaining.LibraryID != 2 || len(remaining.Files) != 1 {
+		t.Fatalf("other library copy changed: %+v, %v", remaining, err)
+	}
+	file, err := f.blobs.OpenBook(hash, "fb2")
+	if err != nil {
+		t.Fatalf("shared blob removed: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Writer.Exec(`INSERT INTO books (id,library_id,title,sort_title,created_at,updated_at)
+		VALUES (100,1,'Attachment target','attachment target',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	staged, err := f.service.Stage(ctx, bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.service.QueueUpload(ctx, admin, 1, 100, "attached.fb2", staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row := f.wait(t, job.ID); row.Status != "imported" || row.BookID.Int64 != 100 {
+		t.Fatalf("another library's copy claimed attachment: %+v", row)
+	}
+}
+
 func TestRollbackAndCorruptInput(t *testing.T) {
 	f := newFixture(t)
 	if _, err := f.db.Writer.Exec(`CREATE TRIGGER reject_import_file BEFORE INSERT ON book_files BEGIN SELECT RAISE(ABORT,'forced rollback'); END`); err != nil {
@@ -480,6 +560,39 @@ func TestCancellationPreservesActiveJobForRestart(t *testing.T) {
 	}
 	if err := restarted.Stop(stopCtx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAttachmentRejectsMovedTargetBeforeResolvingDuplicate(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	data := []byte(`<FictionBook><description><title-info/></description></FictionBook>`)
+	staged, err := f.service.Stage(ctx, bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Writer.Exec(`INSERT INTO books (id,library_id,title,sort_title,created_at,updated_at)
+		VALUES (1,1,'Target','target',1,1),(2,1,'Duplicate','duplicate',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Writer.Exec(`INSERT INTO book_files (book_id,sha256,format,size_bytes,original_filename,created_at)
+		VALUES (2,?,'fb2',?,'copy.fb2',1)`, staged.SHA256, staged.Size); err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.service.QueueUpload(ctx, admin, 1, 1, "attachment.fb2", staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.service.options.Catalog.UpdateBook(ctx, admin, 1, catalog.BookPatch{
+		LibraryID: catalog.Optional[int64]{Set: true, Value: pointer(int64(2), true)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.service.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if row := f.wait(t, job.ID); row.Status != "failed" {
+		t.Fatalf("moved target resolved in original library: %+v", row)
 	}
 }
 

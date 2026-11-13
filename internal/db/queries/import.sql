@@ -22,7 +22,9 @@ ORDER BY id DESC LIMIT sqlc.arg(page_limit);
 UPDATE import_jobs SET status = ?, error = ?, book_id = ?, duplicate_of_book_id = ?, finished_at = ? WHERE id = ?;
 
 -- name: ImportDuplicate :one
-SELECT book_id FROM book_files WHERE sha256 = ?;
+SELECT f.book_id FROM book_files f JOIN books b ON b.id = f.book_id
+WHERE f.sha256 = sqlc.arg(sha256) AND b.library_id = sqlc.arg(library_id)
+ORDER BY f.book_id LIMIT 1;
 
 -- name: ImportLibrarySlug :one
 SELECT id FROM libraries WHERE slug = ?;

@@ -73,7 +73,8 @@ func (e errAssignSkipped) Error() string { return e.code }
 
 // Assign queues 1..500 unique ready or failed items as bookheap import jobs into
 // libraryID, optionally adding each imported book to the given manual shelves. Library
-// and shelves are validated for the whole request before anything is queued.
+// duplicates may be retried into a different library. Library and shelves are
+// validated for the whole request before anything is queued.
 func (s *Service) Assign(ctx context.Context, viewer catalog.Viewer, ids []int64, libraryID int64, shelfIDs []int64) ([]AssignResult, error) {
 	if err := checkAdmin(viewer); err != nil {
 		return nil, err
@@ -159,7 +160,7 @@ func (s *Service) assignItem(ctx context.Context, viewer catalog.Viewer, itemID,
 	if err != nil {
 		return 0, "", fmt.Errorf("get bookheap item: %w", err)
 	}
-	if (row.Status != StatusReady && row.Status != StatusFailed) || !row.Sha256.Valid {
+	if !assignable(row, libraryID) || !row.Sha256.Valid {
 		return 0, AssignNotAssignable, nil
 	}
 	staged, info, code, err := s.stageItem(ctx, row)
@@ -185,7 +186,7 @@ func (s *Service) assignItem(ctx context.Context, viewer catalog.Viewer, itemID,
 				return fmt.Errorf("queue bookheap item: %w", err)
 			}
 			if updated == 0 {
-				return s.queueSkipped(ctx, tx, row.ID)
+				return s.queueSkipped(ctx, tx, row.ID, libraryID)
 			}
 			return nil
 		})
@@ -202,18 +203,24 @@ func (s *Service) assignItem(ctx context.Context, viewer catalog.Viewer, itemID,
 }
 
 // queueSkipped explains why the conditional queue update matched no row.
-func (s *Service) queueSkipped(ctx context.Context, tx *sql.Tx, itemID int64) error {
+func (s *Service) queueSkipped(ctx context.Context, tx *sql.Tx, itemID, libraryID int64) error {
 	current, err := sqlc.New(tx).BookheapGet(ctx, itemID)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return errAssignSkipped{AssignNotFound}
 	case err != nil:
 		return err
-	case current.Status != StatusReady && current.Status != StatusFailed:
+	case !assignable(current, libraryID):
 		return errAssignSkipped{AssignNotAssignable}
 	default:
 		return errAssignSkipped{AssignChanged}
 	}
+}
+
+func assignable(row sqlc.BookheapItem, libraryID int64) bool {
+	return row.Status == StatusReady || row.Status == StatusFailed ||
+		row.Status == StatusDuplicate && row.DuplicateOfBookID.Valid &&
+			(!row.TargetLibraryID.Valid || row.TargetLibraryID.Int64 != libraryID)
 }
 
 // stageItem copies the heap file into import staging after checking it is still the

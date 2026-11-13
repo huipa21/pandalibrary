@@ -285,4 +285,44 @@ func TestLibraryMoveDoesNotCreateFieldProvenance(t *testing.T) {
 	if _, err := fixture.service.GetBook(ctx, Viewer{UserID: 2}, 101); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("reader sees moved book: %v", err)
 	}
+	if moved, err := fixture.service.GetBook(ctx, Viewer{UserID: 3}, 101); err != nil || moved.LibraryID != 20 {
+		t.Fatalf("destination reader cannot see moved book: %+v, %v", moved, err)
+	}
+	assertCount(t, fixture.db.Reader, `SELECT count(*) FROM books WHERE id = 101 AND library_id = 10`, 0)
+	assertCount(t, fixture.db.Reader, `SELECT count(*) FROM book_files WHERE id = 201 AND book_id = 101`, 1)
+}
+
+func TestLibraryMoveRejectsDuplicateAndInvalidTargets(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	ctx := context.Background()
+	admin := Viewer{UserID: 1, IsAdmin: true}
+	if _, err := fixture.db.Writer.Exec(`INSERT INTO books (id,library_id,title,sort_title,created_at,updated_at)
+		VALUES (105,20,'Copy','copy',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.db.Writer.Exec(`INSERT INTO book_files (book_id,sha256,format,size_bytes,original_filename,created_at)
+		SELECT 105,sha256,format,size_bytes,original_filename,created_at FROM book_files WHERE book_id = 101`); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		viewer  Viewer
+		patch   string
+		wantErr error
+	}{
+		{"duplicate", admin, `{"library_id":20,"title":"Changed"}`, ErrConflict},
+		{"missing", admin, `{"library_id":999}`, ErrNotFound},
+		{"null", admin, `{"library_id":null}`, ErrInvalid},
+		{"reader", Viewer{UserID: 2}, `{"library_id":30}`, ErrForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := fixture.service.UpdateBook(ctx, tc.viewer, 101, bookPatch(t, tc.patch)); !errors.Is(err, tc.wantErr) {
+				t.Fatalf("move error=%v, want %v", err, tc.wantErr)
+			}
+			book, err := fixture.service.GetBook(ctx, admin, 101)
+			if err != nil || book.LibraryID != 10 || book.Title != "Tie A" {
+				t.Fatalf("rejected move changed source: %+v, %v", book, err)
+			}
+		})
+	}
 }

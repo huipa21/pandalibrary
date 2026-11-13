@@ -78,6 +78,17 @@ func (s *Service) updateBookWithManualPatch(ctx context.Context, viewer Viewer, 
 			if _, err := libraryInTx(ctx, queries, viewer, *patch.LibraryID.Value); err != nil {
 				return err
 			}
+			if row.LibraryID != *patch.LibraryID.Value {
+				duplicate, err := queries.CatalogMoveFileConflict(ctx, sqlc.CatalogMoveFileConflictParams{
+					BookID: id, LibraryID: *patch.LibraryID.Value,
+				})
+				if err != nil {
+					return fmt.Errorf("check destination files: %w", err)
+				}
+				if duplicate {
+					return conflict("destination library already contains this book's file")
+				}
+			}
 			row.LibraryID = *patch.LibraryID.Value
 		}
 		if patch.Title.Set {

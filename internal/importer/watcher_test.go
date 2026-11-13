@@ -86,7 +86,8 @@ func TestWatcherStartupScanAndOutcomes(t *testing.T) {
 	f := newFixture(t)
 	data := testEPUB(t)
 	putDrop(t, f, "book.epub", data)
-	putDrop(t, f, filepath.Join("other", "duplicate.epub"), data)
+	putDrop(t, f, "duplicate.epub", data)
+	putDrop(t, f, filepath.Join("other", "copy.epub"), data)
 	putDrop(t, f, "corrupt.epub", []byte("invalid epub"))
 	for _, name := range []string{".hidden.epub", "pending.part", "pending.crdownload", "pending.tmp", filepath.Join("unknown", "ignored.epub")} {
 		putDrop(t, f, name, data)
@@ -96,7 +97,7 @@ func TestWatcherStartupScanAndOutcomes(t *testing.T) {
 	}
 	eventually(t, func() bool {
 		rows, err := sqlc.New(f.db.Reader).ImportHistory(context.Background(), sqlc.ImportHistoryParams{PageLimit: 10})
-		if err != nil || len(rows) != 3 {
+		if err != nil || len(rows) != 4 {
 			return false
 		}
 		for _, row := range rows {
@@ -104,7 +105,7 @@ func TestWatcherStartupScanAndOutcomes(t *testing.T) {
 				return false
 			}
 		}
-		for _, name := range []string{"book.epub", filepath.Join("other", "duplicate.epub"), "corrupt.epub"} {
+		for _, name := range []string{"book.epub", "duplicate.epub", filepath.Join("other", "copy.epub"), "corrupt.epub"} {
 			if _, err := os.Stat(filepath.Join(f.service.options.DropDir, name)); !os.IsNotExist(err) {
 				return false
 			}
@@ -118,11 +119,11 @@ func TestWatcherStartupScanAndOutcomes(t *testing.T) {
 	outcomes := map[string]int{}
 	for _, row := range rows {
 		outcomes[row.Status]++
-		if row.OriginalName == "duplicate.epub" && row.LibraryID != 2 {
+		if row.OriginalName == "copy.epub" && row.LibraryID != 2 {
 			t.Fatalf("wrong subfolder library: %+v", row)
 		}
 	}
-	if outcomes["imported"] != 1 || outcomes["duplicate"] != 1 || outcomes["failed"] != 1 {
+	if outcomes["imported"] != 2 || outcomes["duplicate"] != 1 || outcomes["failed"] != 1 {
 		t.Fatal(outcomes)
 	}
 	for _, folder := range []string{".duplicates", ".failed"} {

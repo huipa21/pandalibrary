@@ -1,6 +1,7 @@
 package bookheap
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -312,6 +313,77 @@ func TestAssignDuplicateFailureAndRetry(t *testing.T) {
 	})
 }
 
+func TestAssignLibraryDuplicateToDifferentLibrary(t *testing.T) {
+	f := newAssignFixture(t)
+	ctx := context.Background()
+	if _, err := f.db.Writer.Exec(`INSERT INTO libraries (id,name,slug,created_at,updated_at) VALUES (2,'Other','other',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	data := testEPUB(t, "copy.epub")
+	if _, err := f.db.Writer.Exec(`INSERT INTO books (id,library_id,title,sort_title,created_at,updated_at)
+		VALUES (77,1,'Original','original',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Writer.Exec(`INSERT INTO book_files (book_id,sha256,format,size_bytes,original_filename,created_at)
+		VALUES (77,?,'epub',?,'copy.epub',1)`, sum(data), len(data)); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "copy.epub", data, time.Hour)
+	f.scan(t)
+	var itemID int64
+	if err := f.db.Reader.QueryRow(`SELECT id FROM bookheap_items WHERE rel_path = 'copy.epub' AND status = 'ready'`).Scan(&itemID); err != nil {
+		t.Fatalf("scan rejected an untargeted library duplicate: %v", err)
+	}
+	ids := []int64{itemID}
+	f.start(t)
+	result, err := f.service.Assign(ctx, admin, ids, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertAllOK(t, result, ids)
+	f.waitStatus(t, ids[0], StatusDuplicate)
+	result, err = f.service.Assign(ctx, admin, ids, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertAllOK(t, result, ids)
+	f.waitGone(t, ids[0], "copy.epub")
+	if got := f.count(t, `SELECT count(*) FROM books WHERE library_id = 2`); got != 1 {
+		t.Fatalf("destination books=%d", got)
+	}
+	if got := f.count(t, `SELECT count(*) FROM book_files WHERE sha256 = ?`, sum(data)); got != 2 {
+		t.Fatalf("shared file references=%d", got)
+	}
+}
+
+func TestQueuedAssignmentDoesNotBlockAnotherLibraryUpload(t *testing.T) {
+	f := newAssignFixture(t)
+	ctx := context.Background()
+	if _, err := f.db.Writer.Exec(`INSERT INTO libraries (id,name,slug,created_at,updated_at) VALUES (2,'Other','other',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	data := testEPUB(t, "concurrent copies")
+	var ids []int64
+	for _, libraryID := range []int64{1, 2} {
+		item, err := f.service.Upload(ctx, admin, "copy.epub", bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, item.ID)
+		result, err := f.service.Assign(ctx, admin, []int64{item.ID}, libraryID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertAllOK(t, result, []int64{item.ID})
+	}
+	f.start(t)
+	f.waitGone(t, ids[0], "copy.epub")
+	f.waitGone(t, ids[1], "copy (2).epub")
+	if got := f.count(t, `SELECT count(DISTINCT b.library_id) FROM books b JOIN book_files f ON f.book_id = b.id WHERE f.sha256 = ?`, sum(data)); got != 2 {
+		t.Fatalf("owning libraries=%d", got)
+	}
+}
+
 func TestAssignRejectsWholeRequest(t *testing.T) {
 	f := newAssignFixture(t)
 	ctx := context.Background()
@@ -343,7 +415,6 @@ func TestAssignRejectsWholeRequest(t *testing.T) {
 		{"unshelved", admin, ids, 1, []int64{0}, catalog.ErrInvalid, 0},
 		{"missing library", admin, ids, 99, nil, catalog.ErrNotFound, 0},
 		{"missing shelf", admin, ids, 1, []int64{shared, 9999}, catalog.ErrNotFound, 9999},
-		{"automatic shelf", admin, ids, 1, []int64{shared, automatic}, catalog.ErrConflict, automatic},
 		{"other user's private shelf", admin, ids, 1, []int64{other}, catalog.ErrForbidden, other},
 	} {
 		_, err := f.service.Assign(ctx, test.viewer, test.ids, test.library, test.shelves)
@@ -369,8 +440,8 @@ func TestAssignRejectsWholeRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if results, err := f.service.Assign(ctx, admin, ids, 1, []int64{*favorites.ShelfID, shared}); err != nil || !results[0].OK {
-		t.Fatalf("favorites assignment = %+v, %v", results, err)
+	if results, err := f.service.Assign(ctx, admin, ids, 1, []int64{*favorites.ShelfID, shared, automatic}); err != nil || !results[0].OK {
+		t.Fatalf("favorites/shared/rule collection assignment = %+v, %v", results, err)
 	}
 }
 

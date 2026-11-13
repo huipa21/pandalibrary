@@ -55,6 +55,23 @@ It appears directly below **Read** or **Resume** and shows the current visibilit
 Books without a recorded uploader retain library-based access; administrators
 cannot take ownership or change another uploader's visibility with this control.
 
+## Library ownership
+
+Each book belongs to exactly one library. Changing its library moves the book
+and all its formats; it does not add a second library membership. Collections
+are logical groups and can include books from different libraries.
+
+Identical files imported into different libraries create separate books.
+Duplicate detection applies within the selected destination library. A move
+is rejected if that library already contains one of the book's files.
+Library-based access follows the destination; private ownership, public sharing
+and per-reader hidden-book restrictions remain unchanged.
+
+On disk, immutable content-addressed files and covers are shared between library
+copies, rather than duplicated into per-library folders. Moving a book does not
+rename its blobs. Deleting a book never immediately deletes shared media;
+orphan cleanup retains blobs while any book still references them.
+
 ## Bookheap
 
 The Bookheap is a staging area for books that are not in a library yet. Readers
@@ -73,6 +90,11 @@ Select items (across pages if needed), then:
 Duplicates and failures stay in the heap with a reason. Failed items can be
 assigned again. Bookheap and collection counters refresh automatically while queued
 imports finish, including when a status filter hides those books.
+
+Uploading or scanning into the heap checks for duplicates among unassigned heap items.
+Existing library copies are checked only after a destination library is chosen.
+An item found to duplicate a book in one library can be reassigned to a different
+library through the assignment API.
 
 ## Admin pages
 

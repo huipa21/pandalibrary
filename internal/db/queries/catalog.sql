@@ -434,3 +434,12 @@ WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 );
+
+-- name: CatalogMoveFileConflict :one
+SELECT EXISTS (
+    SELECT 1 FROM book_files source
+    JOIN book_files destination ON destination.sha256 = source.sha256
+    JOIN books b ON b.id = destination.book_id
+    WHERE source.book_id = sqlc.arg(book_id)
+      AND b.library_id = sqlc.arg(library_id) AND b.id != sqlc.arg(book_id)
+);

@@ -1480,6 +1480,28 @@ func (q *Queries) CatalogListTags(ctx context.Context, arg CatalogListTagsParams
 	return items, nil
 }
 
+const catalogMoveFileConflict = `-- name: CatalogMoveFileConflict :one
+SELECT EXISTS (
+    SELECT 1 FROM book_files source
+    JOIN book_files destination ON destination.sha256 = source.sha256
+    JOIN books b ON b.id = destination.book_id
+    WHERE source.book_id = ?1
+      AND b.library_id = ?2 AND b.id != ?1
+)
+`
+
+type CatalogMoveFileConflictParams struct {
+	BookID    int64
+	LibraryID int64
+}
+
+func (q *Queries) CatalogMoveFileConflict(ctx context.Context, arg CatalogMoveFileConflictParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, catalogMoveFileConflict, arg.BookID, arg.LibraryID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const catalogRevokeLibraryAccess = `-- name: CatalogRevokeLibraryAccess :exec
 DELETE FROM library_access WHERE library_id = ? AND user_id = ?
 `

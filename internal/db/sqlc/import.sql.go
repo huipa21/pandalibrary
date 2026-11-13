@@ -157,11 +157,18 @@ func (q *Queries) ImportDefaultLibrary(ctx context.Context) (int64, error) {
 }
 
 const importDuplicate = `-- name: ImportDuplicate :one
-SELECT book_id FROM book_files WHERE sha256 = ?
+SELECT f.book_id FROM book_files f JOIN books b ON b.id = f.book_id
+WHERE f.sha256 = ?1 AND b.library_id = ?2
+ORDER BY f.book_id LIMIT 1
 `
 
-func (q *Queries) ImportDuplicate(ctx context.Context, sha256 string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, importDuplicate, sha256)
+type ImportDuplicateParams struct {
+	Sha256    string
+	LibraryID int64
+}
+
+func (q *Queries) ImportDuplicate(ctx context.Context, arg ImportDuplicateParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, importDuplicate, arg.Sha256, arg.LibraryID)
 	var book_id int64
 	err := row.Scan(&book_id)
 	return book_id, err
