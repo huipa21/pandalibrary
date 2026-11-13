@@ -16,6 +16,8 @@
 	const initialYear = new Date().getFullYear();
 	let year = $state(initialYear);
 	let requestedYear = $state(initialYear);
+	let search = $state('');
+	const years = Array.from({ length: initialYear }, (_, index) => initialYear - index);
 	let rows = $state<HistoryRow[]>([]);
 	let summary = $state<HistorySummary | null>(null);
 	let nextCursor = $state<string | null>(null);
@@ -27,9 +29,11 @@
 	let destroyed = false;
 	const cursors = new Set<string>();
 	const locale = $derived(getLocale());
+	const query = $derived(search.trim().toLocaleLowerCase(locale));
 	const months = $derived.by(() => {
 		const groups: { month: string; rows: HistoryRow[] }[] = [];
 		for (const row of rows) {
+			if (query && ![row.title, ...row.authors].some((value) => value.toLocaleLowerCase(locale).includes(query))) continue;
 			const month = row.date.slice(0, 7);
 			let group = groups[groups.length - 1];
 			if (!group || group.month !== month) {
@@ -41,6 +45,10 @@
 		return groups;
 	});
 	const peakMonth = $derived(Math.max(1, ...(summary?.months.map((month) => month.active_seconds) ?? [])));
+
+	$effect(() => {
+		if (query && nextCursor !== null && !loading && !error) void loadMore();
+	});
 
 	onMount(() => void initialize());
 	onDestroy(() => {
@@ -67,11 +75,10 @@
 		}
 	}
 
-	async function reset(refresh = false) {
+	async function reset() {
 		if (!cache) return;
 		controller?.abort();
 		generation++;
-		if (refresh) cache.clear();
 		requestedYear = year;
 		rows = [];
 		summary = null;
@@ -117,14 +124,8 @@
 		return { destroy: () => observer.disconnect() };
 	}
 
-	function changeYear(event: SubmitEvent) {
-		event.preventDefault();
+	function changeYear() {
 		if (Number.isInteger(year) && year >= 1 && year <= 9998) void reset();
-	}
-
-	function stepYear(step: number) {
-		year = requestedYear + step;
-		void reset();
 	}
 
 	function retry() {
@@ -145,23 +146,20 @@
 	<title>{m['organize.history']()} · {m['common.app_name']()}</title>
 </svelte:head>
 
-<section class="history" aria-labelledby="history-heading">
-	<header class="history-toolbar">
-		<div>
-			<h1 id="history-heading">{m['organize.history']()}</h1>
-			<p class="muted">{m['history.subtitle']({ timezone: timeZone })}</p>
-		</div>
-		<form class="year-controls" onsubmit={changeYear}>
-			<button type="button" aria-label={m['history.previous_year']()} disabled={loading || requestedYear <= 1} onclick={() => stepYear(-1)}>&larr;</button>
-			<label for="history-year" class="sr-only">{m['history.year']()}</label>
-			<input id="history-year" type="number" min="1" max="9998" required bind:value={year} />
-			<button type="submit" disabled={loading}>{m['history.go']()}</button>
-			<button type="button" aria-label={m['history.next_year']()} disabled={loading || requestedYear >= 9998} onclick={() => stepYear(1)}>&rarr;</button>
-			<button type="button" disabled={loading} onclick={() => cache ? reset(true) : initialize()}>{m['history.refresh']()}</button>
-		</form>
-	</header>
-
+<section class="history">
 	<div class="history-layout">
+		<section class="history-container card" aria-labelledby="history-heading">
+			<header class="history-toolbar">
+				<h1 id="history-heading">{m['organize.history']()}</h1>
+				<label for="history-search" class="sr-only">{m['history.search']()}</label>
+				<input id="history-search" type="search" placeholder={m['history.search']()} bind:value={search} />
+				<label for="history-year" class="sr-only">{m['history.year']()}</label>
+				<select id="history-year" bind:value={year} onchange={changeYear}>
+					{#each years as option (option)}
+						<option value={option}>{option}</option>
+					{/each}
+				</select>
+			</header>
 		<div class="waterfall" aria-busy={loading}>
 			{#each months as group (group.month)}
 				{@const monthSummary = summary?.months.find((month) => month.month === group.month)}
@@ -186,7 +184,7 @@
 									<span class="cycle">{m['history.cycle']({ cycle: row.cycle })}</span>
 								</div>
 								<div class="row-total">
-									{#if lastOfDay}
+									{#if lastOfDay && !query}
 										<span class="muted">{m['history.day_total']()}</span>
 										<strong>{formatHistoryDuration(row.day_active_seconds)}</strong>
 										<span class="muted">{m['history.sessions']({ count: number(row.day_session_count) })}</span>
@@ -214,6 +212,8 @@
 				<p role="status" class="history-status">{m['stats.loading']()}</p>
 			{:else if summary && rows.length === 0}
 				<p role="status" class="history-status">{m['history.empty']({ year: requestedYear })}</p>
+			{:else if summary && months.length === 0}
+				<p role="status" class="history-status">{m['history.search_empty']()}</p>
 			{/if}
 
 			{#if nextCursor !== null && !error}
@@ -226,6 +226,7 @@
 				<p class="history-status muted">{m['history.end']({ year: requestedYear })}</p>
 			{/if}
 		</div>
+		</section>
 
 		{#if summary}
 			<aside class="year-summary card" aria-labelledby="year-summary-heading">
@@ -285,19 +286,20 @@
 
 <style>
 	.history { color: var(--shell-text); }
-	.history-toolbar, .year-controls, .month-heading { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
-	.history-toolbar { justify-content: space-between; margin-bottom: 1.5rem; }
-	h1 { font-size: 1.35rem; font-weight: 650; }
+	.history-toolbar, .month-heading { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+	.history-toolbar { border-bottom: 1px solid var(--shell-border); padding: .75rem 1rem; }
+	h1 { font-size: .85rem; font-weight: 700; }
 	.muted { color: var(--shell-muted); }
-	.history-toolbar p { font-size: .75rem; margin-top: .25rem; }
-	button, input { border: 1px solid var(--shell-border); border-radius: .375rem; background: var(--shell-surface); padding: .4rem .65rem; font-size: .8rem; }
+	button, input, select { border: 1px solid var(--shell-border); border-radius: .375rem; background: var(--shell-surface); color: var(--shell-text); padding: .4rem .65rem; font-size: .8rem; }
 	button { cursor: pointer; }
 	button:hover:not(:disabled) { background: var(--shell-hover); }
 	button:disabled { opacity: .5; cursor: default; }
-	button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--shell-active); outline-offset: 3px; }
-	input { width: 5.5rem; }
+	button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--shell-active); outline-offset: 3px; }
+	input { flex: 1; min-width: 8rem; width: 100%; }
+	select { width: 6rem; margin-left: auto; }
 	.history-layout { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: 1.25rem; align-items: start; }
-	.waterfall { min-width: 0; }
+	.history-container { min-width: 0; overflow: hidden; }
+	.waterfall { min-width: 0; padding: 0 1rem; }
 	.history-month { margin-bottom: 1.5rem; }
 	.month-heading { justify-content: space-between; border-bottom: 1px solid var(--shell-border); padding: .5rem 0; gap: .25rem 1rem; }
 	.month-heading h2 { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
@@ -350,7 +352,9 @@
 		.year-summary { max-width: 36rem; width: 100%; }
 	}
 	@media (max-width: 30rem) {
-		.year-controls { gap: .35rem; }
+		.history-toolbar { gap: .5rem; padding: .75rem; }
+		.history-toolbar h1 { width: 100%; }
+		.waterfall { padding: 0 .75rem; }
 		.history-row { grid-template-columns: 2.5rem minmax(0, 1fr) 5.7rem; padding: .75rem .25rem; }
 		time { grid-column: 1 / -1; padding: 0; }
 		.book-title { font-size: .8rem; }

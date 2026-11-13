@@ -926,6 +926,8 @@
 	"history.previous_year": "Previous year",
 	"history.next_year": "Next year",
 	"history.year": "Year",
+	"history.search": "Search history",
+	"history.search_empty": "No history matches your search.",
 	"history.go": "Go",
 	"history.refresh": "Refresh",
 	"history.month_summary": "{books} books · {sessions} sessions · {duration}",

@@ -92,8 +92,72 @@ test('history groups months, completes split days, and reuses locally cached pag
 	if (await moreButton.count()) await moreButton.scrollIntoViewIfNeeded();
 	await expect(page.getByTestId('history-row')).toHaveCount(53);
 	expect(state.requests).toHaveLength(2);
-	await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-	await expect.poll(() => state.requests.length).toBeGreaterThan(2);
+});
+
+test('history card contains its heading, search, and year selector without old controls', async ({ page }) => {
+	await setup(page);
+	await page.goto('/stats/history');
+	const history = page.getByRole('region', { name: 'History', exact: true });
+	await expect(history).toHaveClass(/\bcard\b/);
+	await expect(history).toHaveAttribute('aria-labelledby', 'history-heading');
+	const header = history.locator('header').filter({
+		has: page.getByRole('heading', { name: 'History', exact: true })
+	});
+	await expect(header.getByRole('heading', { name: 'History', exact: true })).toBeVisible();
+	const search = header.getByRole('searchbox', { name: 'Search history', exact: true });
+	await expect(search).toHaveAttribute('type', 'search');
+	await expect(search).toBeVisible();
+	const yearSelect = header.getByRole('combobox', { name: 'Year', exact: true });
+	await expect(yearSelect).toBeVisible();
+	await expect(yearSelect).toHaveValue(String(year));
+	await expect(page.getByRole('button', {
+		name: /^(Previous year|Next year|Go|Refresh)$/i
+	})).toHaveCount(0);
+	await expect(page.getByText(/^Newest first · Days in /)).toHaveCount(0);
+	await expect(history.getByTestId('history-row')).toHaveCount(50);
+	const cardBox = await history.boundingBox();
+	const headerBox = await header.boundingBox();
+	const firstRowBox = await history.getByTestId('history-row').first().boundingBox();
+	expect(cardBox).not.toBeNull();
+	expect(headerBox).not.toBeNull();
+	expect(firstRowBox).not.toBeNull();
+	expect(headerBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
+	expect(headerBox!.y).toBeGreaterThanOrEqual(cardBox!.y);
+	expect(headerBox!.x + headerBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
+	expect(firstRowBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height);
+	expect(await history.evaluate((element) => {
+		const style = getComputedStyle(element);
+		return Number.parseFloat(style.borderTopWidth) > 0 && style.borderTopStyle !== 'none';
+	})).toBe(true);
+});
+
+test('history search loads later pages and matches titles and authors without filtering the summary', async ({ page }) => {
+	const state = await setup(page);
+	await page.goto('/stats/history');
+	const history = page.getByRole('region', { name: 'History', exact: true });
+	const search = history.getByRole('searchbox', { name: 'Search history', exact: true });
+	const rows = history.getByTestId('history-row');
+	const panel = page.getByRole('complementary', { name: `${year} in numbers` });
+	await expect(rows).toHaveCount(50);
+	expect(state.requests).toHaveLength(1);
+	await search.fill('hIsToRy BoOk 53');
+	await expect(rows).toHaveCount(1);
+	await expect(rows.getByRole('link', { name: 'History book 53', exact: true })).toBeVisible();
+	expect(state.requests).toHaveLength(2);
+	expect(new URLSearchParams(state.requests[1]).get('cursor')).toBe('next-page');
+	await expect(panel.getByText('60', { exact: true })).toBeVisible();
+	await expect(panel.getByText('10 h 20 m', { exact: true })).toBeVisible();
+	await search.fill('aUtHoR 51');
+	await expect(rows).toHaveCount(1);
+	await expect(rows.getByRole('link', { name: 'History book 51', exact: true })).toBeVisible();
+	await search.fill('no matching title or author');
+	await expect(rows).toHaveCount(0);
+	await expect(history.getByText('No history matches your search.', { exact: true })).toBeVisible();
+	await expect(panel.getByText('60', { exact: true })).toBeVisible();
+	await search.fill('');
+	await expect(rows).toHaveCount(53);
+	await expect(history.getByText('No history matches your search.', { exact: true })).toHaveCount(0);
+	expect(state.requests).toHaveLength(2);
 });
 
 test('failed next page is retryable without losing rows; year switching shows empty state', async ({ page }) => {
@@ -106,7 +170,7 @@ test('failed next page is retryable without losing rows; year switching shows em
 	await expect(page.getByTestId('history-row')).toHaveCount(50);
 	await page.getByRole('button', { name: 'Try again', exact: true }).click();
 	await expect(page.getByTestId('history-row')).toHaveCount(53);
-	await page.getByRole('button', { name: 'Previous year', exact: true }).click();
+	await page.getByRole('combobox', { name: 'Year', exact: true }).selectOption(String(year - 1));
 	await expect(page.getByText(`No reading sessions in ${year - 1}.`)).toBeVisible();
 	await expect(page.getByTestId('history-row')).toHaveCount(0);
 	await expect(page.getByRole('complementary', { name: `${year - 1} in numbers` })).toBeVisible();
@@ -117,6 +181,16 @@ test('history fits mobile and exposes accessible content', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/stats/history');
 	await expect(page.getByTestId('history-row')).toHaveCount(50);
+	const history = page.getByRole('region', { name: 'History', exact: true });
+	const search = history.getByRole('searchbox', { name: 'Search history', exact: true });
+	const yearSelect = history.getByRole('combobox', { name: 'Year', exact: true });
+	await expect(search).toBeVisible();
+	await expect(yearSelect).toBeVisible();
+	await search.fill('AUTHOR 53');
+	await expect(history.getByTestId('history-row')).toHaveCount(1);
+	await expect(history.getByTestId('history-row').getByRole('link', { name: 'History book 53', exact: true })).toBeVisible();
+	await search.fill('');
+	await expect(history.getByTestId('history-row')).toHaveCount(53);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 	for (const theme of ['light', 'dark']) {
 		await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
@@ -124,4 +198,7 @@ test('history fits mobile and exposes accessible content', async ({ page }) => {
 		const result = await new AxeBuilder({ page }).include('.history').exclude('.cover-link').analyze();
 		expect(result.violations.map(({ id, nodes }) => ({ id, targets: nodes.map((node) => node.target) }))).toEqual([]);
 	}
+	await yearSelect.selectOption(String(year - 1));
+	await expect(page.getByText(`No reading sessions in ${year - 1}.`)).toBeVisible();
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

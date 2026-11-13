@@ -476,11 +476,15 @@ Days follow your browser's time zone, with sessions assigned to their start date
 
 History loads 50 rows at a time and requests the next page as you scroll; **Load
 more history** is also available. Requested pages are cached locally for your
-account. **Refresh** clears the history cache and fetches fresh data, for example
-after editing reading sessions. The right-hand yearly summary always covers the
+account for five minutes. The history container's header includes a scrollable
+**Year** selector and **Search history** field. Selecting a year updates both the
+history and summary. Search matches book titles and authors, ignoring case, and
+loads remaining pages to search the entire selected year. Clear the search to
+restore all rows. Filtered rows show individual reading time and session counts
+rather than day totals. The right-hand yearly summary always covers the
 whole year, not just loaded rows: totals, monthly time and book counts, the busiest
 day, longest session and the book with the most sessions. On narrow screens the
-summary appears below the waterfall. Use the year controls to browse older years.
+summary appears below the waterfall.
 
 ## Settings
 

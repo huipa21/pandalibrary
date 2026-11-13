@@ -926,6 +926,8 @@
 	"history.previous_year": "上一年",
 	"history.next_year": "下一年",
 	"history.year": "年份",
+	"history.search": "搜索阅读记录",
+	"history.search_empty": "没有符合搜索条件的阅读记录。",
 	"history.go": "查看",
 	"history.refresh": "刷新",
 	"history.month_summary": "{books} 本书 · {sessions} 次阅读 · {duration}",
