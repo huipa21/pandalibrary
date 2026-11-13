@@ -415,7 +415,6 @@ func TestAssignRejectsWholeRequest(t *testing.T) {
 		{"unshelved", admin, ids, 1, []int64{0}, catalog.ErrInvalid, 0},
 		{"missing library", admin, ids, 99, nil, catalog.ErrNotFound, 0},
 		{"missing shelf", admin, ids, 1, []int64{shared, 9999}, catalog.ErrNotFound, 9999},
-		{"automatic shelf", admin, ids, 1, []int64{shared, automatic}, catalog.ErrConflict, automatic},
 		{"other user's private shelf", admin, ids, 1, []int64{other}, catalog.ErrForbidden, other},
 	} {
 		_, err := f.service.Assign(ctx, test.viewer, test.ids, test.library, test.shelves)
@@ -441,8 +440,8 @@ func TestAssignRejectsWholeRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if results, err := f.service.Assign(ctx, admin, ids, 1, []int64{*favorites.ShelfID, shared}); err != nil || !results[0].OK {
-		t.Fatalf("favorites assignment = %+v, %v", results, err)
+	if results, err := f.service.Assign(ctx, admin, ids, 1, []int64{*favorites.ShelfID, shared, automatic}); err != nil || !results[0].OK {
+		t.Fatalf("favorites/shared/rule collection assignment = %+v, %v", results, err)
 	}
 }
 
