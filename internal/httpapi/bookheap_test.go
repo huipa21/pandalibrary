@@ -146,8 +146,8 @@ func TestBookheapHTTPUploadListCoverDelete(t *testing.T) {
 	}
 	library := f.heapUpload(t, uploadPart{name: "file", filename: "lib.epub", data: string(f.data)})
 	problem = decodeBody[map[string]any](t, library)
-	if library.StatusCode != http.StatusConflict || problem["duplicate_of_book_id"] != float64(101) {
-		t.Fatalf("library duplicate %d %v", library.StatusCode, problem)
+	if library.StatusCode != http.StatusUnsupportedMediaType || problem["duplicate_of_book_id"] != nil {
+		t.Fatalf("catalog bytes without a destination must still be validated: %d %v", library.StatusCode, problem)
 	}
 	for _, test := range []struct {
 		name  string

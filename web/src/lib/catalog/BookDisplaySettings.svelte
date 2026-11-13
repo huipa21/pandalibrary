@@ -3,7 +3,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import HeaderMenu from '#lib/shell/HeaderMenu.svelte';
 
-	let { storageKey, size = $bindable(160), spacing = $bindable(16) }: {
+	let { storageKey, size = $bindable(208), spacing = $bindable(20) }: {
 		storageKey: string;
 		size?: number;
 		spacing?: number;
@@ -14,8 +14,8 @@
 	$effect(() => {
 		const key = `pandalibrary.display:${storageKey}`;
 		untrack(() => {
-			size = 160;
-			spacing = 16;
+			size = 208;
+			spacing = 20;
 			error = '';
 			try {
 				const stored = localStorage.getItem(key);
@@ -63,7 +63,7 @@
 				<h3 class="font-semibold">{m['organize.display']()}</h3>
 				<label class="grid gap-2 text-sm">
 					<span>{m['organize.cover_size']()} <output>{size}px</output></span>
-					<input type="range" min="100" max="280" step="10" value={size} oninput={(event) => { size = Number(event.currentTarget.value); save(); }} />
+					<input type="range" min="100" max="280" step="1" value={size} oninput={(event) => { size = Number(event.currentTarget.value); save(); }} />
 				</label>
 				<label class="grid gap-2 text-sm">
 					<span>{m['organize.spacing']()} <output>{spacing}px</output></span>

@@ -31,8 +31,8 @@
 	let series = $state<CatalogEntity[]>([]);
 	let tags = $state<CatalogEntity[]>([]);
 	let mode = $state<'grid' | 'list'>('grid');
-	let coverSize = $state(160);
-	let spacing = $state(16);
+	let coverSize = $state(208);
+	let spacing = $state(20);
 	let reloadVersion = $state(0);
 	let requestVersion = 0;
 	const selectedAuthor = $derived(page.url.searchParams.get('author_id') ?? '');

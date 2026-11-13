@@ -222,7 +222,7 @@ test('shared display controls change cover width and spacing and persist indepen
 	await expect(grid.locator(':scope > li')).toHaveCSS('width', '200px');
 	await expect(grid).toHaveCSS('column-gap', '30px');
 	await page.goto('/shelves/11');
-	await expect(grid.locator(':scope > li')).toHaveCSS('width', '160px');
+	await expect(grid.locator(':scope > li')).toHaveCSS('width', '208px');
 	await settings.click();
 	await setRange(panel.getByRole('slider', { name: /Cover size/ }), 220);
 	await setRange(panel.getByRole('slider', { name: /Spacing/ }), 8);

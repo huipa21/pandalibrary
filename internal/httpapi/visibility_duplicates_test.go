@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestPrivateDuplicateUploadDoesNotExposeBookID(t *testing.T) {
+func TestPrivateLibraryCopyCanBeStagedWithoutExposingBookID(t *testing.T) {
 	f, _ := bookheapFixture(t, 1<<20)
 	data := heapEPUB(t, "private-existing")
 	sum := sha256.Sum256([]byte(data))
@@ -18,8 +18,8 @@ func TestPrivateDuplicateUploadDoesNotExposeBookID(t *testing.T) {
 	}
 	response := f.heapUpload(t, uploadPart{name: "file", filename: "Duplicate.epub", data: data}, uploadPart{name: "visibility", data: "public"})
 	defer response.Body.Close()
-	if response.StatusCode != 409 {
-		t.Fatalf("duplicate=%d", response.StatusCode)
+	if response.StatusCode != 201 {
+		t.Fatalf("staging=%d", response.StatusCode)
 	}
 	var problem map[string]any
 	if err := json.NewDecoder(response.Body).Decode(&problem); err != nil {
@@ -27,6 +27,10 @@ func TestPrivateDuplicateUploadDoesNotExposeBookID(t *testing.T) {
 	}
 	if _, ok := problem["duplicate_of_book_id"]; ok {
 		t.Fatalf("private duplicate leaked: %v", problem)
+	}
+	item, ok := problem["item"].(map[string]any)
+	if !ok || item["status"] != "ready" || item["duplicate_of_book_id"] != nil {
+		t.Fatalf("staged item exposed a library copy: %v", problem)
 	}
 	var owner int64
 	var visibility string

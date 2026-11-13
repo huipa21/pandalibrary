@@ -166,8 +166,8 @@ test('searches only from the header, with a clear icon, opaque cursors, empty, a
 	await search.fill('dune');
 	await search.press('Enter');
 	await expect(clear).toBeVisible();
-	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'All Books' }).click();
-	await expect(page).toHaveURL(/\/books$/);
+	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Annotations', exact: true }).click();
+	await expect(page).toHaveURL(/\/notes$/);
 	await expect(search).toHaveValue('');
 	await expect(submit).toBeVisible();
 	await expect(clear).toHaveCount(0);
@@ -221,24 +221,24 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await page.goto('/shelves');
 	await expect(page.getByRole('main').getByRole('link', { name: 'Favorites' })).toBeVisible();
 	await expect(page.getByText('Shared', { exact: true })).toBeVisible();
-	await expect(page.getByRole('main').getByRole('button', { name: 'Create shelf' })).toHaveCount(0);
+	await expect(page.getByRole('main').getByRole('button', { name: 'Create collection' })).toHaveCount(0);
 
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
-	const creator = page.getByRole('dialog', { name: 'Create shelf' });
+	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'New collection' }).click();
+	const creator = page.getByRole('dialog', { name: 'Create collection' });
 	await expect(creator.getByLabel('Shared', { exact: true })).toHaveCount(0);
-	await creator.getByRole('button', { name: 'Create shelf' }).click();
-	await expect(creator.getByText('Enter a shelf name.')).toBeVisible();
+	await creator.getByRole('button', { name: 'Create collection' }).click();
+	await expect(creator.getByText('Enter a collection name.')).toBeVisible();
 	expect(created).toHaveLength(0);
 
-	await creator.getByLabel('Shelf name').fill('Favorites');
-	await creator.getByRole('button', { name: 'Create shelf' }).click();
-	await expect(creator.getByRole('alert')).toContainText('A shelf with this name already exists.');
+	await creator.getByLabel('Collection name').fill('Favorites');
+	await creator.getByRole('button', { name: 'Create collection' }).click();
+	await expect(creator.getByRole('alert')).toContainText('A collection with this name already exists.');
 
-	await creator.getByLabel('Shelf name').fill('  To read  ');
-	await creator.getByRole('button', { name: 'Create shelf' }).click();
-	await expect(page.getByRole('status').filter({ hasText: 'Shelf created.' })).toBeVisible();
+	await creator.getByLabel('Collection name').fill('  To read  ');
+	await creator.getByRole('button', { name: 'Create collection' }).click();
+	await expect(page.getByRole('status').filter({ hasText: 'Collection created.' })).toBeVisible();
 	expect(created.at(-1)).toEqual({ kind: 'private', name: 'To read', description: null, mode: 'manual' });
 	await expect(creator).toHaveCount(0);
 	await expect(page.getByRole('main').getByRole('link', { name: 'To read', exact: true })).toHaveCount(2);
@@ -250,7 +250,7 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await expect(page.getByRole('button', { name: /Remove “A Book”/ })).toHaveCount(0);
 
 	await page.goto('/shelves/7');
-	await page.getByText('Shelf details', { exact: true }).click();
+	await page.getByText('Collection details', { exact: true }).click();
 	await expect(page.getByText('Old notes')).toBeVisible();
 	await page.getByRole('button', { name: 'Edit details' }).click();
 	await expect(page.getByLabel('Name')).toHaveValue('Favorites');
@@ -258,29 +258,29 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await page.getByLabel('Description (optional)').fill('');
 	await page.getByRole('button', { name: 'Save changes' }).click();
 	await expect(page.getByRole('heading', { name: 'Best books', level: 1 })).toHaveClass('sr-only');
-	await expect(page.getByText('Shelf updated.')).toBeVisible();
+	await expect(page.getByText('Collection updated.')).toBeVisible();
 	await expect(page.getByText('Old notes')).toHaveCount(0);
 	expect(patches).toEqual([{ name: 'Best books', description: null }]);
 
 	await expect(page.getByTitle('A Book', { exact: true })).toHaveAttribute('href', '/books/21');
 	await page.getByRole('button', { name: 'Load more books' }).click();
-	await expect(page.getByRole('alert')).toContainText('This shelf changed while you were browsing.');
+	await expect(page.getByRole('alert')).toContainText('This collection changed while you were browsing.');
 	expect(bookQueries.at(-1)?.get('cursor')).toBe('shelf-cursor');
 
-	await page.getByRole('button', { name: 'Remove “A Book” from this shelf' }).click();
-	await expect(page.getByText('This shelf has no books you can see.')).toBeVisible();
+	await page.getByRole('button', { name: 'Remove “A Book” from this collection' }).click();
+	await expect(page.getByText('This collection has no books you can see.')).toBeVisible();
 	await expect(page.getByText('The book itself was not deleted.')).toBeVisible();
 	expect(bookQueries.at(-1)?.has('cursor')).toBe(false);
 
-	await expect(page.getByText('Deleting a shelf removes only the shelf, not the books on it.')).toBeVisible();
+	await expect(page.getByText('Deleting a collection removes only the collection, not the books in it.')).toBeVisible();
 	page.once('dialog', (dialog) => dialog.dismiss());
-	await page.getByRole('button', { name: 'Delete shelf' }).click();
+	await page.getByRole('button', { name: 'Delete collection' }).click();
 	expect(deleted).toBe(false);
 	page.once('dialog', (dialog) => {
 		expect(dialog.message()).toContain('will not be deleted');
 		void dialog.accept();
 	});
-	await page.getByRole('button', { name: 'Delete shelf' }).click();
+	await page.getByRole('button', { name: 'Delete collection' }).click();
 	await expect(page).toHaveURL(/\/shelves$/);
 	expect(deleted).toBe(true);
 });
@@ -361,8 +361,8 @@ test('manual and system shelves use the standard tile grid', async ({ page }) =>
 	await expect(page.getByTitle('Shelf Book 1', { exact: true })).toHaveAttribute('href', '/books/61');
 	await expectStandardTiles(page, books.length);
 	const tile = page.locator('ul.book-grid > li').first();
-	const remove = tile.getByRole('button', { name: 'Remove “Shelf Book 1” from this shelf' });
-	await expect(remove).toHaveText('Remove from shelf');
+	const remove = tile.getByRole('button', { name: 'Remove “Shelf Book 1” from this collection' });
+	await expect(remove).toHaveText('Remove from collection');
 	await expect(remove).toHaveCSS('font-size', '12px');
 	const [tileBox, removeBox] = await Promise.all([tile.boundingBox(), remove.boundingBox()]);
 	if (!tileBox || !removeBox) throw new Error('Missing shelf tile layout.');

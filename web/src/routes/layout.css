@@ -98,8 +98,17 @@ body {
 	}
 
 	.book-grid-configurable {
-		grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--book-cover-size)), var(--book-cover-size)));
 		gap: var(--book-cover-spacing);
+	}
+
+	.book-grid-configurable > li {
+		width: min(100%, var(--book-cover-size));
+	}
+
+	@media (min-width: 40rem) {
+		.book-grid-configurable {
+			grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--book-cover-size)), var(--book-cover-size)));
+		}
 	}
 
 	.book-tile-lift {

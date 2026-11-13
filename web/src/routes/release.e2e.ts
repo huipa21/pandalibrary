@@ -123,11 +123,11 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 
 	await page.goto('/shelves');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
-	const creator = page.getByRole('dialog', { name: 'Create shelf' });
-	await creator.getByLabel('Shelf name').fill('Release Shelf');
-	await creator.getByRole('button', { name: 'Create shelf' }).click();
+	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'New collection' }).click();
+	const creator = page.getByRole('dialog', { name: 'Create collection' });
+	await creator.getByLabel('Collection name').fill('Release Shelf');
+	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(page.getByRole('link', { name: 'Release Shelf' }).first()).toBeVisible();
 
 	await page.getByRole('button', { name: 'Account menu' }).click();

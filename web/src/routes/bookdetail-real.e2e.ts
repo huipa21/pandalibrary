@@ -165,8 +165,8 @@ test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private no
 			await expect(reader.locator(`[data-shelf-id="${data.shelf.id}"]`)).toBeVisible();
 			await expect(reader.locator(`[data-shelf-id="${data.shelf.id}"] button`)).toHaveCount(0);
 			for (const name of ['BD8 Private', 'Favorites']) {
-				await reader.getByRole('button', { name: 'Add to shelf', exact: true }).click();
-				await reader.getByRole('dialog', { name: 'Add to shelf' }).getByRole('button', { name: new RegExp(`^${name}`) }).click();
+				await reader.getByRole('button', { name: 'Add to collection', exact: true }).click();
+				await reader.getByRole('dialog', { name: 'Add to collection' }).getByRole('button', { name: new RegExp(`^${name}`) }).click();
 				const tag = reader.locator('.shelf-chip').filter({ has: reader.getByRole('link', { name, exact: true }) });
 				await expect(tag).toBeVisible();
 				await reader.reload();
@@ -392,10 +392,10 @@ test('BD8 visual matrix: light/dark 360/768/1440, keyboard and reduced motion', 
 			await screenshot(page, info, `${prefix}-status`);
 			await page.keyboard.press('Escape');
 			await expect(heroStatus(page)).toBeFocused();
-			const add = page.getByRole('button', { name: 'Add to shelf', exact: true });
+			const add = page.getByRole('button', { name: 'Add to collection', exact: true });
 			await keyboardFocus(page, add);
 			await page.keyboard.press('Enter');
-			await expect(page.getByRole('dialog', { name: 'Add to shelf' })).toBeVisible();
+			await expect(page.getByRole('dialog', { name: 'Add to collection' })).toBeVisible();
 			await screenshot(page, info, `${prefix}-shelf`);
 			await page.keyboard.press('Escape');
 			await expect(add).toBeFocused();

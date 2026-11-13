@@ -61,7 +61,7 @@ test('stats use local inclusive dates and the browser timezone, with accessible 
 	});
 
 	await page.goto('/');
-	await page.getByRole('link', { name: 'Stats', exact: true }).click();
+	await page.goto('/stats');
 	await expect(page).toHaveURL(/\/stats$/);
 	await expect(page.getByRole('heading', { name: 'Reading stats' })).toHaveClass('sr-only');
 
