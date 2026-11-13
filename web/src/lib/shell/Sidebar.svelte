@@ -4,7 +4,6 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { homeNavigationFor, isActive, navigationFor, type NavigationItem } from '#lib/nav.js';
 	import BookheapCount from '#lib/bookheap/BookheapCount.svelte';
-	import AllBooksCount from '#lib/catalog/AllBooksCount.svelte';
 	import AnnotationsCount from '#lib/notes/AnnotationsCount.svelte';
 	import FavoritesCount from '#lib/shelves/FavoritesCount.svelte';
 	import { requestDashboardConfigure } from '#lib/dashboard/configure.svelte.js';
@@ -37,9 +36,6 @@
 					{#if item.id === 'bookheap'}
 						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
 						<BookheapCount />
-					{:else if item.id === 'books'}
-						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
-						<AllBooksCount {pathname} />
 					{:else if item.id === 'notes'}
 						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
 						<AnnotationsCount {pathname} />
@@ -72,7 +68,7 @@
 			<SidebarShelves {pathname} {role} />
 		{/if}
 		<section class="shell-section" aria-labelledby="sidebar-browse-heading">
-			<h2 id="sidebar-browse-heading" class="shell-heading">{m['ux1.nav.browse_heading']()}</h2>
+			<h2 id="sidebar-browse-heading" class="shell-heading">{m['organize.statistics']()}</h2>
 			{@render links(navigationFor(role))}
 		</section>
 	</nav>

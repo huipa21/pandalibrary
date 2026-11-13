@@ -24,12 +24,12 @@ There are four ways to add books:
 
 - **Upload to a library:** upload books on **Admin → Uploads**.
 - **Header upload:** the **Upload** button in the header opens the upload dialog.
-  Choose a library (required), optionally select a manual shelf, and choose
+  Choose a library (required), optionally select a collection, and choose
   **Public** (the default) or **Private**. Every uploaded book is staged in the
-  Bookheap and automatically queued for import into the selected library and shelf.
+  Bookheap and automatically queued for import into the selected library and collection.
   Completed uploads have a green checkmark and a results summary. If library
   assignment fails after upload, retry it without uploading the file again,
-  or assign it from the Bookheap. Retries keep the original library, shelf and
+  or assign it from the Bookheap. Retries keep the original library, collection and
   visibility choices.
 - **Bookheap folder:** copy files into the Bookheap folder (subfolders are
   fine), then select **Scan** on the Bookheap page.
@@ -66,12 +66,12 @@ and list view.
 
 Select items (across pages if needed), then:
 
-- **Assign…** them to a library and, optionally, manual shelves. Assigned books
+- **Assign…** them to one library and, optionally, collections. Assigned books
   are imported and leave the heap.
 - **Delete…** them.
 
 Duplicates and failures stay in the heap with a reason. Failed items can be
-assigned again. Bookheap and shelf counters refresh automatically while queued
+assigned again. Bookheap and collection counters refresh automatically while queued
 imports finish, including when a status filter hides those books.
 
 ## Admin pages

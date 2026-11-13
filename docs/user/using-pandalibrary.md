@@ -5,7 +5,7 @@
 Sign in with the account your administrator gave you. The header holds the
 search box, language, theme (light or dark) and your account menu. Search is
 only in the header; the sidebar has no Search entry. The sidebar holds
-navigation and your shelves; on small screens it opens as a drawer from the
+navigation, libraries and collections; on small screens it opens as a drawer from the
 menu button. Select the PandaLibrary logo to return to the dashboard.
 
 The header, sidebar and main content keep the same width and position when
@@ -41,21 +41,25 @@ credentials return, including credentials revoked after the backup was created.
 ## Dashboard
 
 The dashboard is your home page. It shows reading feeds such as Continue
-Reading, Recently Added and Read, plus any shelves you add.
+Reading, Recently Added and Read, plus any collections you add.
 
 To change it, use the **⋮** button next to **Dashboard** in the sidebar. You can
-add, remove and reorder sections, add a shelf as a section, or save an empty
+add, remove and reorder sections, add a collection as a section, or save an empty
 dashboard. The layout is saved to your account.
 
 ## Browsing books
 
-**All Books** and the library, author, series and tag pages list the books you
-can see. The **All Books** entry in the sidebar shows how many books you can
-see across all your libraries, like the counts next to your shelves. You can:
+Library, collection, author, series and tag pages list the books you can see.
+The computed **All Books** page remains available at `/books`, but is no
+longer a sidebar menu item. You can:
 
 - switch between grid and list view with the view button;
 - filter by author, series or tag and change the sort order;
 - clear filters with the clear-filters button.
+
+Use the settings gear in a library or collection's content toolbar to adjust
+cover size and spacing. Both use the same controls. Settings are saved on this
+device separately for each library and collection.
 
 Books without a cover automatically get a generated default cover showing the
 title and authors, whatever the book's format. There is nothing to run: once a
@@ -65,11 +69,14 @@ status.
 
 ### Libraries
 
-Select **Library** in the sidebar to see your libraries as cards, each showing
-the number of books you can see. Select a card to open that library: the sidebar
-heading becomes its name and the shelves below it show counts and books from
-that library only. Shelves remain reusable across libraries; this does not move
-books or change shelf membership. **Favorites** in Home remains account-wide.
+The **Libraries** heading and its arrow expand or collapse the complete list
+of available libraries; the **⋮** actions stay visible when collapsed. Select
+a library to browse only its books. **Manage Libraries** opens the library
+cards, each showing its visible book count.
+
+Every catalog book belongs to exactly one library. A library is its physical
+ownership boundary, while a collection is a logical grouping that can span
+libraries. Adding a book to a collection never copies or moves it.
 
 Use the **⋮** beside the library heading for **New Library**, **Edit Library**
 (the selected library's settings), or **Manage Libraries**. Creating, editing,
@@ -84,7 +91,7 @@ Opening a book shows four tabs:
 
 | Tab | What it shows |
 |---|---|
-| **Details** | Description and metadata, your reading status and rating, shelves, and reviews |
+| **Details** | Description and metadata, your reading status and rating, collections, and reviews |
 | **Files** | The book's files. Read, download or save a file for offline reading |
 | **Activities** | Your reading progress, reading sessions and summary. You can add a session by hand |
 | **Annotations** | Your reviews, comments, private notes, highlights, underlines, strikeouts, inserted text, drawings and images for this book only |
@@ -95,14 +102,14 @@ Skimmed and Abandoned.
 Change your reading status beside the rating in the book header. Below the
 cover, the full-width **Read** or **Resume** button opens the reader. The icons
 under it download the book, toggle Favorites with the star beside Download, and
-add it to a shelf. These borderless icons show a shaded square on hover. If you uploaded the book, a
+add it to a collection. These borderless icons show a shaded square on hover. If you uploaded the book, a
 visibility control directly below **Read** or **Resume** shows its current
 state and lets you make it private or public after confirmation: private means
 only you can see it, while public means any signed-in user can see it, not
 anonymous visitors. Books without a recorded uploader, such as older books
 and folder imports, keep library-based access and do not show this control.
 
-The book's **Library** is shown below **Shelves**. Tags remain above the overview,
+The book's **Library** is shown below **Collections**. Tags remain above the overview,
 separate from the metadata card. Publication dates show only the date; file sizes
 and added dates are in **Files**, and reading dates are in **Activities**.
 Technical UUID identifiers are hidden on **Details** but remain stored.
@@ -405,20 +412,26 @@ Older highlights retain the normal highlight style. Exports label underline and 
 inserted text, drawings and images with their page numbers (images are listed,
 not embedded). Oversized exports fail rather than silently dropping items.
 
-## Shelves
+## Collections
 
-Open a library and use **New shelf** to create a shelf, or **Manage shelves**
-to browse and manage existing shelves.
+Use the **Collections** section in the sidebar to browse collections across
+all libraries. Its **⋮** menu creates or manages collections. Existing shelves
+are preserved as collections; older `/shelves` links and API routes still work.
 
 - **Favorites** is a special collection under **Home** in the sidebar, not in the
-  library's shelf list. It is created for you and cannot be renamed or deleted.
+  collection list. It is created for you and cannot be renamed or deleted.
   Use the star beside Download on a book page to add or remove a favorite.
-- **Manual shelves** contain the books you add to them.
-- **Automatic shelves** fill themselves from rules. Rules can match title,
-  author, series, tag, language, format or reading status, using all or any of
-  the conditions. A shelf's type cannot be changed after it is created.
+- Add books manually, automatically with rules, or both in the same collection.
+- Rules can match title, author, series, tag, language, format or reading status.
+  Each named rule has its own all/any conditions and works independently:
+  a book matching any rule appears in the collection.
+- Removing a rule asks whether to remove its matching books or retain them
+  as manually added books. Removing rule-mapped books does not remove manual
+  additions or books still matched by another rule, and never deletes books
+  from their libraries.
 
-Administrators can also create shared shelves that other readers can see.
+Administrators can also create shared collections that other readers can see.
+Collections never bypass book visibility or library access restrictions.
 
 ## Search
 
@@ -430,10 +443,13 @@ magnifier back so you can search again.
 Search works with Chinese and other languages that do not use spaces, and with
 short queries such as two-character titles.
 
-## Stats
+## Statistics
 
-**Stats** shows daily reading time, a calendar heatmap, streaks, reading cycles ended
-per month and time per book for a date range. Days follow your time zone.
+The sidebar groups **Books**, **Reading** and **History** under **Statistics**.
+Books shows ended reading cycles per month and time per book; Reading shows
+time, sessions, active days and streaks; History shows daily session totals and
+per-book reading time. Choose a date range in any view. Days follow your time
+zone. The combined view remains available at `/stats`.
 
 ## Settings
 

@@ -16,14 +16,13 @@ export interface NavigationItem {
 }
 
 /**
- * Primary sidebar entries, in product order. All Books matches only `/books` itself: individual
- * book pages (`/books/<id>`) are reached from many places and do not imply the All Books list.
+ * Primary sidebar entries, in product order. The computed all-book list remains
+ * available at `/books` but is not a physical library or a sidebar destination.
  */
 export const homeNavigation: readonly NavigationItem[] = [
 	{ id: 'dashboard', href: '/', label: m['ux1.nav.dashboard'], match: 'exact' },
-	{ id: 'books', href: '/books', label: m['ux1.nav.all_books'], match: 'exact' },
-	{ id: 'favorites', href: '/shelves/system/favorites', label: m['ux3.shelves.favorites'] },
 	{ id: 'bookheap', href: '/bookheap', label: m['bh4.nav.bookheap'], role: 'admin' },
+	{ id: 'favorites', href: '/shelves/system/favorites', label: m['ux3.shelves.favorites'] },
 	{ id: 'notes', href: '/notes', label: m['notes.nav'] }
 ];
 
@@ -31,14 +30,11 @@ export function homeNavigationFor(role: string | null | undefined): readonly Nav
 	return homeNavigation.filter((item) => item.role === undefined || item.role === role);
 }
 
-/** Secondary destinations that keep every existing feature reachable from the sidebar. */
+/** Statistics are distinct views of the same visible reading data. */
 export const navigation: readonly NavigationItem[] = [
-	{ id: 'authors', href: '/authors', label: m['catalog.nav.authors'] },
-	{ id: 'series', href: '/series', label: m['catalog.nav.series'] },
-	{ id: 'tags', href: '/tags', label: m['catalog.nav.tags'] },
-	{ id: 'reader', href: '/read', label: m['reader.nav'] },
-	{ id: 'stats', href: '/stats', label: m['stats.nav'] },
-	{ id: 'admin', href: '/admin', label: m['admin.nav'], role: 'admin' }
+	{ id: 'stats-books', href: '/stats/books', label: m['organize.books'] },
+	{ id: 'stats-reading', href: '/stats/reading', label: m['organize.reading'] },
+	{ id: 'stats-history', href: '/stats/history', label: m['organize.history'] }
 ];
 
 export function navigationFor(role: string | null | undefined): readonly NavigationItem[] {

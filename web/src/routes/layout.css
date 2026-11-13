@@ -97,6 +97,11 @@ body {
 		}
 	}
 
+	.book-grid-configurable {
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--book-cover-size)), var(--book-cover-size)));
+		gap: var(--book-cover-spacing);
+	}
+
 	.book-tile-lift {
 		border-radius: 0.375rem;
 		transition: transform 150ms ease-out, box-shadow 150ms;

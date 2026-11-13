@@ -45,8 +45,24 @@ export function buildBooksPath(
 	return `/books?${params.toString()}`;
 }
 
-export async function listLibraries(options: PageOptions = {}): Promise<Page<Library>> {
-	return api.request(buildPagePath('/libraries', options));
+export async function listLibraries(options: PageOptions = {}, signal?: AbortSignal): Promise<Page<Library>> {
+	return api.request(buildPagePath('/libraries', options), { signal });
+}
+
+export async function listAllLibraries(signal?: AbortSignal): Promise<Library[]> {
+	const libraries: Library[] = [];
+	const seen = new Set<string>();
+	let cursor: string | null = null;
+	do {
+		const page = await listLibraries({ cursor, limit: MAX_PAGE_SIZE }, signal);
+		libraries.push(...page.items);
+		cursor = page.next_cursor;
+		if (cursor !== null) {
+			if (seen.has(cursor)) throw new Error('The libraries API returned a repeated pagination cursor.');
+			seen.add(cursor);
+		}
+	} while (cursor !== null);
+	return libraries;
 }
 
 export async function getLibrary(id: number): Promise<Library> {

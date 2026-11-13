@@ -10,7 +10,7 @@ browser reader can open depends on your browser.
 
 | Guide | For | Covers |
 |---|---|---|
-| [Using PandaLibrary](./using-pandalibrary.md) | Everyone | Dashboard, browsing, book pages, the reader, offline reading, bookmarks, notes, shelves, search, stats, settings |
+| [Using PandaLibrary](./using-pandalibrary.md) | Everyone | Dashboard, browsing, book pages, the reader, offline reading, bookmarks, notes, collections, search, statistics, settings |
 | [Reading apps and devices](./devices.md) | Everyone | OPDS apps and KOReader progress sync |
 | [Administration](./administration.md) | Administrators | Adding books, the Bookheap, accounts, libraries and access, metadata providers, maintenance |
 
@@ -21,18 +21,18 @@ Installation, configuration, backups and upgrades are in the
 
 | Part | Where | What it does |
 |---|---|---|
-| Dashboard | Sidebar → **Dashboard** | Your home page: reading feeds and the shelves you choose to show |
-| All Books | Sidebar → **All Books** | Every book you can see, in a grid or list, with filters and sorting |
+| Dashboard | Sidebar → **Home → Dashboard** | Your home page: reading feeds and the collections you choose to show |
+| All Books | `/books` (not a sidebar item) | Computed list of every book you can see, with filters and sorting |
 | Favorites | Sidebar → **Home → Favorites** | Your special collection of favorite books |
-| Libraries | Sidebar → **Library** | Library cards with visible book counts; select one to browse its books and shelves |
-| Authors, Series, Tags | Sidebar → **Browse** | Browse the catalog by collection |
-| Book page | Open any book | Details, reading status, rating, reviews, shelves, files, activity and book-scoped annotations |
+| Libraries | Sidebar → **Libraries** | Expand or collapse all available libraries; each book belongs to one library |
+| Authors, Series, Tags | Book metadata links or catalog filters | Browse by author, series or tag |
+| Book page | Open any book | Details, reading status, rating, reviews, collections, files, activity and book-scoped annotations |
 | Reader | **Read** on a book | Read in the browser and add highlights, passage comments and bookmarks |
 | Bookmarks | Open a book in the reader | Saved reading positions for that book |
 | Annotations | Sidebar → **Annotations** | Reviews, comments, highlights, inserted text and drawings in date order; consistent search results and direct navigation |
-| Shelves | Select a library → sidebar shelf list | Unshelved books, manual shelves and automatic (rule-based) shelves scoped to that library |
-| Search | Header search, or Sidebar → **Search** | Find books by title, author or series |
-| Stats | Sidebar → **Stats** | Daily reading time, finished books and reading streaks |
+| Collections | Sidebar → **Collections** | Logical containers across libraries, with manual additions and independent automatic rules |
+| Search | Header search | Find books by title, author or series |
+| Statistics | Sidebar → **Statistics → Books, Reading, History** | Per-book and monthly totals, daily reading time, streaks and reading history |
 | Settings | Account menu → **Profile** | Profile, language, app passwords for devices, and offline storage |
 | Bookheap | Sidebar → **Bookheap** (admins) | Staging area for books that are not in a library yet |
-| Admin | Sidebar → **Admin** (admins) | Accounts, libraries and access, hidden books, imports, metadata providers, maintenance |
+| Admin | Header administration button (admins) | Accounts, libraries and access, hidden books, imports, metadata providers, maintenance |

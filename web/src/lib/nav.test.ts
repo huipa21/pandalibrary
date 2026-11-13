@@ -6,18 +6,11 @@ import { homeNavigation, homeNavigationFor, isActive, isImmersiveRoute, navigati
 const item = (id: string) => [...homeNavigation, ...navigation].find((entry) => entry.id === id)!;
 
 describe('navigationFor', () => {
-	it('shows the admin entry only to administrators', () => {
-		expect(navigationFor('admin').some((item) => item.id === 'admin')).toBe(true);
-		expect(navigationFor('user').some((item) => item.id === 'admin')).toBe(false);
-		expect(navigationFor(null).some((item) => item.id === 'admin')).toBe(false);
-		expect(navigationFor('user').some((item) => item.id === 'libraries')).toBe(false);
-	});
-
-	it('keeps browse destinations without duplicating the Library group', () => {
-		const hrefs = [...homeNavigation, ...navigationFor('admin')].map((entry) => entry.href);
-		expect(hrefs).not.toContain('/libraries');
-		for (const href of ['/authors', '/series', '/tags', '/read', '/notes', '/stats', '/admin']) {
-			expect(hrefs).toContain(href);
+	it('shows only Books, Reading and History under Statistics for every role', () => {
+		for (const role of ['admin', 'user', null]) {
+			expect(navigationFor(role).map((entry) => entry.href)).toEqual([
+				'/stats/books', '/stats/reading', '/stats/history'
+			]);
 		}
 	});
 
@@ -35,19 +28,18 @@ describe('navigationFor', () => {
 });
 
 describe('homeNavigation', () => {
-	it('lists Favorites under Home after All Books', () => {
+	it('lists Home destinations without the computed All Books entry', () => {
 		expect(homeNavigation.map((entry) => [entry.id, entry.href])).toEqual([
 			['dashboard', '/'],
-			['books', '/books'],
-			['favorites', '/shelves/system/favorites'],
 			['bookheap', '/bookheap'],
+			['favorites', '/shelves/system/favorites'],
 			['notes', '/notes']
 		]);
 	});
 
 	it('shows Bookheap only to administrators', () => {
-		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'favorites', 'bookheap', 'notes']);
-		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'books', 'favorites', 'notes']);
+		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'bookheap', 'favorites', 'notes']);
+		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'favorites', 'notes']);
 		expect(homeNavigationFor(null).some((entry) => entry.id === 'bookheap')).toBe(false);
 	});
 });
@@ -58,18 +50,17 @@ describe('isActive', () => {
 		expect(isActive(item('dashboard'), '/books')).toBe(false);
 	});
 
-	it('marks All Books on the list but not on individual book pages', () => {
-		expect(isActive(item('books'), '/books')).toBe(true);
-		expect(isActive(item('books'), '/books/')).toBe(true);
-		expect(isActive(item('books'), '/books/21')).toBe(false);
-		expect(isActive(item('books'), '/books/21/edit')).toBe(false);
+	it('does not imply a sidebar destination for computed or individual book pages', () => {
+		for (const path of ['/books', '/books/21', '/books/21/edit']) {
+			expect([...homeNavigation, ...navigation].some((entry) => isActive(entry, path))).toBe(false);
+		}
 	});
 
 	it('marks section entries on their descendants without prefix collisions', () => {
-		expect(isActive(item('authors'), '/authors/4')).toBe(true);
+		expect(isActive(item('stats-reading'), '/stats/reading/')).toBe(true);
+		expect(isActive(item('stats-reading'), '/stats/history')).toBe(false);
 		expect(isActive(item('notes'), '/notes')).toBe(true);
 		expect(isActive(item('notes'), '/notesxyz')).toBe(false);
-		expect(isActive(item('admin'), '/admin/users')).toBe(true);
 		expect(isActive(item('bookheap'), '/bookheap')).toBe(true);
 		expect(isActive(item('bookheap'), '/books')).toBe(false);
 	});

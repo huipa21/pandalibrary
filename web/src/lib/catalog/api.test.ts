@@ -3,7 +3,7 @@ import zh from '../../../messages/zh.json';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '#lib/api/client.js';
 import type { Shelf } from '#lib/shelves/types.js';
-import { buildBooksPath, buildPagePath, countBooks, DEFAULT_PAGE_SIZE, getBookShelves, MAX_PAGE_SIZE } from './api';
+import { buildBooksPath, buildPagePath, countBooks, DEFAULT_PAGE_SIZE, getBookShelves, listAllLibraries, MAX_PAGE_SIZE } from './api';
 import { allowsCatalogFilters, bookFiltersFromSearch, hasNextPage, selectedSort, setCatalogFilter } from './query';
 
 afterEach(() => vi.restoreAllMocks());
@@ -59,6 +59,17 @@ describe('getBookShelves', () => {
 });
 
 describe('catalog API helpers', () => {
+	it('loads every sidebar library page without repeating a cursor', async () => {
+		const request = vi.spyOn(api, 'request')
+			.mockResolvedValueOnce({ items: [{ id: 1 }], next_cursor: 'next' })
+			.mockResolvedValueOnce({ items: [{ id: 2 }], next_cursor: null });
+		await expect(listAllLibraries()).resolves.toEqual([{ id: 1 }, { id: 2 }]);
+		expect(request.mock.calls[1][0]).toContain('cursor=next');
+
+		request.mockReset().mockResolvedValue({ items: [], next_cursor: 'loop' });
+		await expect(listAllLibraries()).rejects.toThrow('repeated pagination cursor');
+	});
+
 	it('uses the bounded default page size and preserves opaque cursors', () => {
 		const cursor = 'eyJzY29wZSI6ImE/bis+==';
 		const path = buildPagePath('/libraries', { cursor });

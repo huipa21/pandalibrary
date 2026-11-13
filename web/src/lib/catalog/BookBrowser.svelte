@@ -11,6 +11,7 @@
 	import BookCard from './BookCard.svelte';
 	import ClearFiltersButton from './ClearFiltersButton.svelte';
 	import ViewToggle from './ViewToggle.svelte';
+	import BookDisplaySettings from './BookDisplaySettings.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 
 	let { scope, showHeading = true, rememberSettings = false }: { scope: BookFilters; showHeading?: boolean; rememberSettings?: boolean } = $props();
@@ -30,6 +31,8 @@
 	let series = $state<CatalogEntity[]>([]);
 	let tags = $state<CatalogEntity[]>([]);
 	let mode = $state<'grid' | 'list'>('grid');
+	let coverSize = $state(160);
+	let spacing = $state(16);
 	let reloadVersion = $state(0);
 	let requestVersion = 0;
 	const selectedAuthor = $derived(page.url.searchParams.get('author_id') ?? '');
@@ -266,6 +269,7 @@
 				</select>
 			</label>
 			<ViewToggle view={mode} onchange={(next) => (mode = next)} />
+			<BookDisplaySettings storageKey={scope.library_id ? `library:${scope.library_id}` : 'catalog'} bind:size={coverSize} bind:spacing />
 			{#if filterable}
 				<ClearFiltersButton
 					label={m['catalog.books.clear_filters']()}
@@ -295,7 +299,7 @@
 	{:else if books.length === 0}
 		<p class="card p-6 text-slate-600">{m['catalog.books.empty']()}</p>
 	{:else}
-		<ul class={mode === 'grid' ? 'book-grid' : 'space-y-3'}>
+		<ul class={mode === 'grid' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${coverSize}px; --book-cover-spacing: ${spacing}px`}>
 			{#each books as book (book.id)}
 				<BookCard {book} {mode} />
 			{/each}

@@ -5,7 +5,6 @@
 	import { catalogErrorMessage } from '#lib/catalog/errors.js';
 	import { getLibrary } from '#lib/catalog/api.js';
 	import BookBrowser from '#lib/catalog/BookBrowser.svelte';
-	import ShelfLinks from '#lib/shelves/ShelfLinks.svelte';
 	import type { Library } from '#lib/catalog/types.js';
 	import { selectedLibrary, selectLibrary } from '#lib/libraries/context.js';
 
@@ -65,7 +64,6 @@
 			<a class="text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href="/libraries">{m['catalog.back_to_libraries']()}</a>
 			<h1 class="text-3xl font-semibold tracking-tight">{library.name}</h1>
 		</header>
-		<ShelfLinks libraryID={library.id} />
 		<BookBrowser scope={{ library_id: library.id }} />
 	</section>
 {/if}

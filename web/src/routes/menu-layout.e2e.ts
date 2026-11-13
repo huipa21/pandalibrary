@@ -73,7 +73,7 @@ test('menu destinations keep accessible titles without repeated visible introduc
 		{ path: '/books', heading: 'All Books', description: 'Every book you can access, across all of your libraries.' },
 		{ path: '/bookheap', heading: 'Bookheap', description: 'Files waiting to be added to a library. Scan the server folder or upload files, then assign them to a library and shelves.' },
 		{ path: '/notes', heading: 'Annotations', description: 'Browse your reviews, comments and reader annotations.' },
-		{ path: '/shelves', heading: 'Shelves', description: 'Organize books on your private shelves and browse shared shelves.' },
+		{ path: '/shelves', heading: 'Collections', description: 'Organize books on your private shelves and browse shared shelves.' },
 		{ path: '/shelves/11', heading: 'Weekend reads' },
 		{ path: '/shelves/system/unshelved', heading: 'Unshelved' },
 		{ path: '/shelves/system/favorites', heading: 'Favorites' },
@@ -97,15 +97,11 @@ test('menu destinations keep accessible titles without repeated visible introduc
 			await page.getByRole('button', { name: 'Account menu', exact: true }).click();
 			await expect(page.getByRole('menuitem', { name: 'Profile', exact: true }))
 				.toHaveAttribute('aria-current', 'page');
-		} else if (destination.path.startsWith('/shelves') && destination.path !== '/shelves/system/favorites') {
-			const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-			await expect(sidebar.getByRole('link', { name: 'Library', exact: true })).toHaveAttribute('href', '/libraries');
-			await expect(sidebar.locator(`a[href="${destination.path}"]`)).toHaveCount(0);
-		} else if (destination.path === '/search') {
-			await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator('a[href="/search"]')).toHaveCount(0);
-		} else {
+		} else if (['/', '/bookheap', '/notes', '/shelves', '/shelves/11', '/shelves/system/favorites'].includes(destination.path)) {
 			await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator(`a[href="${destination.path}"]`))
 				.toHaveAttribute('aria-current', 'page');
+		} else {
+			await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator(`a[href="${destination.path}"]`)).toHaveCount(0);
 		}
 	}
 
@@ -121,11 +117,11 @@ test('shelf descriptions remain available without showing introductory text by d
 	const unexpected = await mockApi(page, { locale: 'en' });
 	await page.goto('/shelves/11');
 	await expect(page.getByText('Picked for weekends.')).toBeHidden();
-	await page.getByText('Shelf details', { exact: true }).click();
+	await page.getByText('Collection details', { exact: true }).click();
 	await expect(page.getByText('Picked for weekends.')).toBeVisible();
 	await page.goto('/shelves/system/favorites');
 	await expect(page.getByText('Books marked as favorites.')).toBeHidden();
-	await page.getByText('Shelf details', { exact: true }).click();
+	await page.getByText('Collection details', { exact: true }).click();
 	await expect(page.getByText('Books marked as favorites.')).toBeVisible();
 	expect(unexpected).toEqual([]);
 });
