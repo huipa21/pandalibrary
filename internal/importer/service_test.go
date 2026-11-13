@@ -163,6 +163,44 @@ func testEPUB(t *testing.T) []byte {
 	return makeArchive(t, files)
 }
 
+func TestImportSkipsUnsupportedIdentifierSchemes(t *testing.T) {
+	f := newFixture(t)
+	files := map[string][]byte{"mimetype": []byte("application/epub+zip"), "OPS/cover.png": testCover(t)}
+	container, err := os.ReadFile(filepath.Join("..", "extract", "testdata", "epub2", "container.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opf, err := os.ReadFile(filepath.Join("..", "extract", "testdata", "epub2", "package.opf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["META-INF/container.xml"] = container
+	files["OPS/package.opf"] = bytes.Replace(opf, []byte("<dc:subject>"), []byte(
+		`<dc:identifier>http://www.gutenberg.org/11</dc:identifier>`+
+			`<dc:identifier opf:scheme="calibre">abc</dc:identifier>`+
+			`<dc:identifier>urn:uuid:0b3e8f4c-1111-4222-8333-944455556666</dc:identifier>`+
+			`<dc:subject>`), 1)
+	job := f.queue(t, makeArchive(t, files), "pg11-images-3.epub")
+	if err := f.service.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	row := f.wait(t, job.ID)
+	if row.Status != "imported" {
+		t.Fatalf("job: %+v", row)
+	}
+	book, err := f.service.options.Catalog.GetBook(context.Background(), admin, row.BookID.Int64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, identifier := range book.Identifiers {
+		got[identifier.Scheme] = identifier.Value
+	}
+	if len(got) != 2 || got["isbn13"] != "9780306406157" || got["uuid"] != "0b3e8f4c-1111-4222-8333-944455556666" {
+		t.Fatalf("identifiers: %+v", book.Identifiers)
+	}
+}
+
 func TestImportAtomicMetadataCoverAndConcurrentDuplicate(t *testing.T) {
 	f := newFixture(t)
 	data := testEPUB(t)

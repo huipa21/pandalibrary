@@ -131,6 +131,38 @@ test('history card contains its heading, search, and year selector without old c
 	})).toBe(true);
 });
 
+test('year summary text is readable and fits at desktop and mobile widths', async ({ page }) => {
+	await setup(page);
+	for (const width of [1280, 1100, 390]) {
+		await page.setViewportSize({ width, height: 844 });
+		await page.goto('/stats/history');
+		const panel = page.getByRole('complementary', { name: `${year} in numbers` });
+		await expect(panel).toBeVisible();
+		for (const selector of ['h3', '.total-grid dt', '.month-table', '.records dt', '.records strong']) {
+			const size = await panel.locator(selector).first().evaluate((element) =>
+				Number.parseFloat(getComputedStyle(element).fontSize)
+			);
+			expect(size).toBeGreaterThanOrEqual(12);
+		}
+		expect(await panel.locator('.chart-column span').first().evaluate((element) =>
+			Number.parseFloat(getComputedStyle(element).fontSize)
+		)).toBeGreaterThanOrEqual(10);
+		expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+		const labels = await panel.locator('.chart-column span').evaluateAll((elements) =>
+			elements.map((element) => {
+				const range = document.createRange();
+				range.selectNodeContents(element);
+				const { left, right } = range.getBoundingClientRect();
+				return { left, right };
+			})
+		);
+		for (let index = 1; index < labels.length; index++) {
+			expect(labels[index].left).toBeGreaterThanOrEqual(labels[index - 1].right);
+		}
+	}
+});
+
 test('history search loads later pages and matches titles and authors without filtering the summary', async ({ page }) => {
 	const state = await setup(page);
 	await page.goto('/stats/history');

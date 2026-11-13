@@ -73,7 +73,7 @@
 <section class="shell-section" aria-labelledby="sidebar-libraries-heading" data-slot="sidebar-libraries">
 	<div class="flex items-center justify-between gap-2 pr-1">
 		<h2 id="sidebar-libraries-heading" class="shell-heading min-w-0 flex-1">
-			<button type="button" class="flex w-full items-center justify-between gap-2 text-left" aria-expanded={expanded} aria-controls="sidebar-library-list" onclick={() => { expanded = !expanded; }}>
+			<button type="button" class="flex w-full items-center justify-between gap-2 text-left uppercase" aria-expanded={expanded} aria-controls="sidebar-library-list" onclick={() => { expanded = !expanded; }}>
 				{m['organize.libraries']()}
 				<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" class="size-4 shrink-0" style:transform={expanded ? 'rotate(180deg)' : undefined}>
 					<path d="m5 7 5 5 5-5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />

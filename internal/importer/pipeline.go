@@ -240,12 +240,18 @@ func createBook(ctx context.Context, queries *sqlc.Queries, row sqlc.ImportJob, 
 	if len(metadata.Tags) > 0 {
 		fields = append(fields, "tags")
 	}
-	for _, identifier := range metadata.Identifiers {
+	importedIdentifiers := 0
+	for _, raw := range metadata.Identifiers {
+		identifier, ok := normalizeIdentifier(raw)
+		if !ok {
+			continue
+		}
 		if err := queries.ImportIdentifier(ctx, sqlc.ImportIdentifierParams{BookID: bookID, Scheme: identifier.Scheme, Value: identifier.Value}); err != nil {
 			return 0, err
 		}
+		importedIdentifiers++
 	}
-	if len(metadata.Identifiers) > 0 {
+	if importedIdentifiers > 0 {
 		fields = append(fields, "identifiers")
 	}
 	for _, field := range fields {
@@ -286,4 +292,41 @@ func (s *Service) cleanup(row sqlc.ImportJob, input manifest) (returnErr error) 
 		return err
 	}
 	return nil
+}
+
+// normalizeIdentifier maps extracted identifiers onto the schemes accepted by
+// book_identifiers; identifiers with unsupported schemes (e.g. Project Gutenberg
+// URLs) are dropped instead of failing the import.
+func normalizeIdentifier(identifier extract.Identifier) (extract.Identifier, bool) {
+	value := strings.TrimSpace(identifier.Value)
+	if value == "" || len(value) > 2048 {
+		return extract.Identifier{}, false
+	}
+	lower := strings.ToLower(value)
+	scheme := strings.ToLower(strings.TrimSpace(identifier.Scheme))
+	switch {
+	case strings.HasPrefix(lower, "urn:uuid:"):
+		scheme, value = "uuid", strings.TrimSpace(value[len("urn:uuid:"):])
+	case strings.HasPrefix(lower, "urn:doi:"):
+		scheme, value = "doi", strings.TrimSpace(value[len("urn:doi:"):])
+	case strings.HasPrefix(lower, "doi:"):
+		scheme, value = "doi", strings.TrimSpace(value[len("doi:"):])
+	case strings.HasPrefix(lower, "urn:isbn:"), strings.HasPrefix(lower, "isbn:"):
+		return extract.Identifier{}, false
+	}
+	switch scheme {
+	case "amazon", "mobi-asin":
+		scheme = "asin"
+	case "google":
+		scheme = "googlebooks"
+	}
+	switch scheme {
+	case "isbn13", "isbn10", "asin", "doi", "uuid", "openlibrary", "googlebooks", "neodb", "hardcover", "douban":
+	default:
+		return extract.Identifier{}, false
+	}
+	if value == "" {
+		return extract.Identifier{}, false
+	}
+	return extract.Identifier{Scheme: scheme, Value: value}, true
 }

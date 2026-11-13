@@ -96,6 +96,7 @@ test('Libraries expands all physical libraries while Collections remains global'
 	await page.goto('/libraries');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	const toggle = sidebar.getByRole('button', { name: 'Libraries', exact: true });
+	await expect(toggle).toHaveCSS('text-transform', 'uppercase');
 	await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 	await expect(sidebar.getByRole('link', { name: /^Fiction/ })).toBeVisible();
 	await expect(sidebar.locator('a[href="/library/2"]')).toBeVisible();
