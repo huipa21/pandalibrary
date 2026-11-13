@@ -44,6 +44,8 @@ export interface BookFile {
 	readonly original_filename: string;
 	/** RFC3339 UTC time the file was added. */
 	readonly created_at: string;
+	/** Whether an admin chose this file as the book's default. Absent on books saved offline before it existed. */
+	readonly is_default?: boolean;
 }
 
 export interface FieldSource {

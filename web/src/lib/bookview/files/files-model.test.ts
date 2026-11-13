@@ -69,8 +69,14 @@ describe('files model', () => {
 		expect(missing.primaryFileId).toBe(1);
 		expect(missing.groups.flatMap((group) => group.files).every((item) => item.progress === null)).toBe(true);
 		expect(buildFilesModel({ ...book, files: [] }, progress, [])).toEqual({
-			groups: [], totalBytes: 0, formats: [], primaryFileId: null
+			groups: [], totalBytes: 0, formats: [], primaryFileId: null, defaultFileId: null
 		});
+	});
+
+	it('prefers the default file over format order but keeps the file being read primary', () => {
+		const withDefault = { ...book, files: files.map((item) => ({ ...item, is_default: item.id === 3 })) };
+		expect(buildFilesModel(withDefault, null, [])).toMatchObject({ primaryFileId: 3, defaultFileId: 3 });
+		expect(buildFilesModel(withDefault, progress, [])).toMatchObject({ primaryFileId: 2, defaultFileId: 3 });
 	});
 
 	it('sorts only the supplied group and handles older offline snapshots with missing metadata', () => {

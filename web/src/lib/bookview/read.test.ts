@@ -35,6 +35,15 @@ describe('readTarget', () => {
 		await expect(readTarget(book, 4)).resolves.toEqual({ bookId: 21, fileId: 12 });
 	});
 
+	it('uses a readable default file before format order, ignoring unreadable defaults', async () => {
+		vi.mocked(resumeFile).mockRejectedValue(new ResumeFileUnavailableError());
+		const withDefault = (id: number): Book => ({
+			...book, files: book.files.map((file) => ({ ...file, is_default: file.id === id }))
+		});
+		await expect(readTarget(withDefault(11), 4)).resolves.toEqual({ bookId: 21, fileId: 11 });
+		await expect(readTarget(withDefault(13), 4)).resolves.toEqual({ bookId: 21, fileId: 12 });
+	});
+
 	it('does not make a request when no format is readable', async () => {
 		await expect(readTarget({ ...book, files: [book.files[2]] }, 4)).resolves.toBeNull();
 		await expect(readTarget({ ...book, files: [] }, 4)).resolves.toBeNull();

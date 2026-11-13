@@ -323,6 +323,7 @@ func hydrateBook(ctx context.Context, queries *sqlc.Queries, viewer Viewer, row 
 			DownloadURL:      fmt.Sprintf("/api/v1/books/%d/files/%d?v=%s", row.ID, file.ID, file.Sha256),
 			OriginalFilename: fileBaseName(file.OriginalFilename, row.Title, file.Format),
 			CreatedAt:        utcMillis(file.CreatedAt),
+			IsDefault:        file.IsDefault == 1,
 		})
 	}
 	sources, err := queries.CatalogBookFieldSources(ctx, sqlc.CatalogBookFieldSourcesParams{

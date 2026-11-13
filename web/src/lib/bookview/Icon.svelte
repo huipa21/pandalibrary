@@ -10,7 +10,7 @@
 		| 'text-cursor' | 'insert'
 		| 'highlighter' | 'underline' | 'strikethrough' | 'message' | 'bookmark-plus'
 		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move'
-		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe' | 'maximize';
+		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe' | 'maximize' | 'upload';
 </script>
 
 <script lang="ts">
@@ -46,6 +46,8 @@
 		<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 10v6m-3-3h6" />
 	{:else if name === 'download'}
 		<path d="M12 3v12m-4-4 4 4 4-4M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
+	{:else if name === 'upload'}
+		<path d="M12 15V3m-4 4 4-4 4 4M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
 	{:else if name === 'x'}
 		<path d="M6 6l12 12M18 6 6 18" />
 	{:else if name === 'chevron-left'}

@@ -58,6 +58,10 @@ export function preferredFormat(files: readonly Pick<BookFile, 'format'>[]): str
 	return sortedFormats(files)[0] ?? null;
 }
 
+export function defaultFile<T extends Pick<BookFile, 'is_default'>>(files: readonly T[]): T | null {
+	return files.find((file) => file.is_default === true) ?? null;
+}
+
 export function formatTone(format: string): string {
 	switch (format.trim().toLowerCase()) {
 		case 'epub': return 'bg-emerald-800 text-white';

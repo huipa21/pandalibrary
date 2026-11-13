@@ -70,6 +70,7 @@ type BookFile struct {
 	DownloadURL      string    `json:"download_url"`
 	OriginalFilename string    `json:"original_filename"`
 	CreatedAt        time.Time `json:"created_at"`
+	IsDefault        bool      `json:"is_default"`
 }
 
 // FieldSource describes provenance. SourceRef and ChosenBy may be null.

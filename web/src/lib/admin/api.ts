@@ -143,7 +143,7 @@ export async function listImports(options: RequestOptions = {}): Promise<Page<Im
 	return api.request(buildImportsPath(options), { signal: options.signal });
 }
 
-async function problemFromResponse(response: Response): Promise<ApiError> {
+export async function problemFromResponse(response: Response): Promise<ApiError> {
 	const body = await response.text();
 	const mediaType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
 	let problem: ProblemDetails | undefined;

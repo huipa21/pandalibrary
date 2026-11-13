@@ -73,7 +73,7 @@ func TestBookFileNameAndAddedDate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(string(encoded), `{"id":201,"format":"epub","size_bytes":8,"download_url":"/api/v1/books/101/files/201?v=`) ||
-		!strings.HasSuffix(string(encoded), `","original_filename":"Tie A.epub","created_at":"2023-11-14T22:13:20.123Z"}`) {
+		!strings.HasSuffix(string(encoded), `","original_filename":"Tie A.epub","created_at":"2023-11-14T22:13:20.123Z","is_default":false}`) {
 		t.Fatalf("file JSON = %s", encoded)
 	}
 }

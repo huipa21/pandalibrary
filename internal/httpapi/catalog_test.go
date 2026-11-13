@@ -262,7 +262,7 @@ func TestCatalogHTTPVisibilityAndRouting(t *testing.T) {
 	}
 	detail := fixture.request(http.MethodGet, "/api/v1/books/101", nil, fixture.reader, nil)
 	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(),
-		`"original_filename":"evil__Injected.epub","created_at":"1970-01-01T00:00:00.001Z"}`) {
+		`"original_filename":"evil__Injected.epub","created_at":"1970-01-01T00:00:00.001Z","is_default":false}`) {
 		t.Fatalf("book detail file fields = %d %s", detail.Code, detail.Body.String())
 	}
 	authors := fixture.request(http.MethodGet, "/api/v1/authors", nil, fixture.reader, nil)

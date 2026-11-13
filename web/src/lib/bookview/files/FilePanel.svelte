@@ -18,9 +18,12 @@
 		onSave: (file: FileItem) => void;
 		onRemove: (file: FileItem) => void;
 		onCopy: (file: FileItem) => void;
+		canSetDefault?: boolean;
+		defaultBusy?: boolean;
+		onToggleDefault?: (file: FileItem) => void;
 	}
 
-	let { bookId, file, primary, progressUpdatedAt, online, offlineAvailable, busy, onSave, onRemove, onCopy }: Props = $props();
+	let { bookId, file, primary, progressUpdatedAt, online, offlineAvailable, busy, onSave, onRemove, onCopy, canSetDefault = false, defaultBusy = false, onToggleDefault }: Props = $props();
 </script>
 
 <section class="min-w-0 card p-4 sm:p-6 lg:self-start" aria-labelledby="file-panel-heading">
@@ -31,6 +34,7 @@
 			<h3 class="break-words font-semibold text-slate-900">{file.original_filename}</h3>
 			<div class="mt-2 flex flex-wrap gap-1.5">
 				{#if primary}<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold uppercase text-emerald-800">{m['bv7.primary']()}</span>{/if}
+				{#if file.is_default}<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase text-amber-800">{m['bv8.default']()}</span>{/if}
 				{#if file.saved}<span class="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold uppercase text-sky-800">{m['bv7.offline']()}</span>{/if}
 			</div>
 		</div>
@@ -78,4 +82,14 @@
 		{/if}
 		<FileMenu {file} {online} {offlineAvailable} {busy} {onSave} {onRemove} {onCopy} />
 	</div>
+	{#if canSetDefault && onToggleDefault}
+		<button
+			type="button"
+			class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-60"
+			disabled={!online || defaultBusy}
+			aria-busy={defaultBusy}
+			title={file.is_default ? m['bv8.clear_default_hint']() : m['bv8.set_default_hint']()}
+			onclick={() => onToggleDefault(file)}
+		><Icon name={file.is_default ? 'x' : 'check'} class="size-4" />{file.is_default ? m['bv8.clear_default']() : m['bv8.set_default']()}</button>
+	{/if}
 </section>

@@ -60,6 +60,7 @@ func CatalogMount(service *catalog.Service, authentication *auth.Service, logger
 				admin.With(cookieProtection).Patch("/api/v1/books/{id}", handler.withViewer(handler.updateBook))
 				admin.With(cookieProtection).Delete("/api/v1/books/{id}", handler.withViewer(handler.deleteBook))
 				admin.With(cookieProtection).Put("/api/v1/books/{id}/cover", handler.withViewer(handler.updateCover))
+				admin.With(cookieProtection).Put("/api/v1/books/{id}/default-file", handler.withViewer(handler.setDefaultFile))
 			})
 		})
 	}
@@ -191,6 +192,25 @@ func (h *catalogHTTP) setVisibility(w http.ResponseWriter, r *http.Request, view
 		return
 	}
 	book, err := h.service.SetVisibility(r.Context(), viewer, id, body.Visibility)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]catalog.Book{"book": book})
+}
+
+func (h *catalogHTTP) setDefaultFile(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	id, ok := h.pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var body struct {
+		FileID *int64 `json:"file_id"`
+	}
+	if !h.decodeJSON(w, r, &body) {
+		return
+	}
+	book, err := h.service.SetDefaultFile(r.Context(), viewer, id, body.FileID)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

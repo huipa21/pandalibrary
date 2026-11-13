@@ -7,11 +7,12 @@
 	import BookCover from '../BookCover.svelte';
 	import Icon from '../Icon.svelte';
 	import { getBookContext } from '../book-context.svelte.js';
-	import { sortedFormats } from '../cover.js';
+	import { defaultFile, sortedFormats } from '../cover.js';
 	import { BOOK_STATE_CHANGED_EVENT, type BookStateChangedDetail } from '../events.js';
 	import { detailsVisibleIdentifiers } from '../identifiers.js';
 	import { readTarget } from '../read.js';
 	import BookLibrary from '../details/BookLibrary.svelte';
+	import AddFileButton from '../details/AddFileButton.svelte';
 	import BookShelfTags from '../details/BookShelfTags.svelte';
 	import BookVisibilityButton from '../details/BookVisibilityButton.svelte';
 	import DetailsHero from '../details/DetailsHero.svelte';
@@ -45,6 +46,8 @@
 	const readable = $derived(book?.files.some((file) => readerFormat(file.format) !== null) ?? false);
 	const primaryFile = $derived.by(() => {
 		if (!book) return null;
+		const chosen = defaultFile(book.files);
+		if (chosen) return chosen;
 		const preferred = sortedFormats(book.files)[0];
 		return book.files.find((file) => file.format.trim().toLowerCase() === preferred) ?? book.files[0] ?? null;
 	});
@@ -181,6 +184,11 @@
 					{#key book.id}
 						<BookVisibilityButton {book} {offline} onUpdate={(updated) => { context.book = updated; }} />
 					{/key}
+					{#if context.canEditMetadata}
+						{#key book.id}
+							<AddFileButton {book} {offline} onAdded={() => context.reload()} />
+						{/key}
+					{/if}
 				</div>
 				{#if !offline || shelves.status !== 'error'}
 					<BookShelfTags {shelves} bookTitle={book.title} {offline} />

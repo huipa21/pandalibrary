@@ -1900,5 +1900,21 @@
 	"collections.rules.remove_books": "Remove the deleted rules’ mapped books from the collection",
 	"collections.rules.removal_required": "Choose whether to retain or remove books mapped by the deleted rules.",
 	"collections.membership.help": "Search across all visible libraries. Manual additions work alongside automatic rules. Removing manual membership does not exclude books that still match a rule.",
-	"collections.membership.remove_help": "Remove actions clear only manual membership. Books matching any automatic rule remain in this collection."
+	"collections.membership.remove_help": "Remove actions clear only manual membership. Books matching any automatic rule remain in this collection.",
+	"bv8.add_file": "Add file",
+	"bv8.add_file_hint": "Upload another format or edition of this book",
+	"bv8.add_file_offline": "Reconnect to add files",
+	"bv8.add_file_progress": "Adding {name} ({current} of {total})…",
+	"bv8.add_file_success": "Added {count} file(s) to this book.",
+	"bv8.add_file_already_attached": "{name} is already attached to this book.",
+	"bv8.add_file_duplicate": "{name} already belongs to another book in this library.",
+	"bv8.add_file_failed": "Could not add {name}: {reason}",
+	"bv8.default": "Default",
+	"bv8.set_default": "Set as default",
+	"bv8.set_default_hint": "Open and download this file by default",
+	"bv8.clear_default": "Clear default",
+	"bv8.clear_default_hint": "Stop using this file as the default",
+	"bv8.default_set": "{name} is now the default file.",
+	"bv8.default_cleared": "The default file was cleared.",
+	"bv8.default_failure": "Could not change the default file."
 }

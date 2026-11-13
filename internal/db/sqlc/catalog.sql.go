@@ -139,7 +139,7 @@ func (q *Queries) CatalogBookFieldSources(ctx context.Context, arg CatalogBookFi
 }
 
 const catalogBookFile = `-- name: CatalogBookFile :one
-SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at FROM book_files f JOIN books b ON b.id = f.book_id
+SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default FROM book_files f JOIN books b ON b.id = f.book_id
 WHERE b.id = ?1 AND f.id = ?2
 AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -174,12 +174,13 @@ func (q *Queries) CatalogBookFile(ctx context.Context, arg CatalogBookFileParams
 		&i.OriginalFilename,
 		&i.KoreaderMd5,
 		&i.CreatedAt,
+		&i.IsDefault,
 	)
 	return i, err
 }
 
 const catalogBookFiles = `-- name: CatalogBookFiles :many
-SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at FROM book_files f JOIN books b ON b.id = f.book_id
+SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default FROM book_files f JOIN books b ON b.id = f.book_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -215,6 +216,7 @@ func (q *Queries) CatalogBookFiles(ctx context.Context, arg CatalogBookFilesPara
 			&i.OriginalFilename,
 			&i.KoreaderMd5,
 			&i.CreatedAt,
+			&i.IsDefault,
 		); err != nil {
 			return nil, err
 		}

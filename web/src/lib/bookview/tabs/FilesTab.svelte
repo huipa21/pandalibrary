@@ -14,6 +14,7 @@
 	import FilePanel from '../files/FilePanel.svelte';
 	import FilesSummary from '../files/FilesSummary.svelte';
 	import { buildFilesModel, type FileItem, type FileSort } from '../files/files-model.js';
+	import { setDefaultFile } from '../files/files-api.js';
 
 	const context = getBookContext();
 	const book = $derived(context.book);
@@ -27,6 +28,7 @@
 	let sort = $state<FileSort>('format');
 	let busyFileId = $state<number | null>(null);
 	let busyAction = $state<'save' | 'remove' | null>(null);
+	let defaultBusy = $state(false);
 	let notice = $state('');
 	let actionError = $state('');
 	let activeBookId: number | null = null;
@@ -189,6 +191,25 @@
 		}
 	}
 
+	async function toggleDefault(file: FileItem) {
+		if (!book || defaultBusy || !online) return;
+		const id = book.id;
+		defaultBusy = true;
+		notice = '';
+		actionError = '';
+		try {
+			const updated = await setDefaultFile(id, file.is_default ? null : file.id);
+			if (context.book?.id !== id) return;
+			context.book = updated;
+			notice = file.is_default ? m['bv8.default_cleared']() : m['bv8.default_set']({ name: file.original_filename });
+		} catch (cause) {
+			console.error('Could not change the default file', cause);
+			if (context.book?.id === id) actionError = m['bv8.default_failure']();
+		} finally {
+			defaultBusy = false;
+		}
+	}
+
 	async function copyName(file: FileItem) {
 		notice = '';
 		actionError = '';
@@ -231,6 +252,7 @@
 						progressUpdatedAt={selected.progress !== null ? progress?.updated_at ?? null : null}
 						{online} offlineAvailable={$offlineStatus.available} busy={busyAction !== null}
 						onSave={saveOffline} onRemove={removeOffline} onCopy={copyName}
+						canSetDefault={context.canEditMetadata && !context.offline} {defaultBusy} onToggleDefault={toggleDefault}
 					/>
 				{/if}
 			</div>

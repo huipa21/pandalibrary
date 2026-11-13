@@ -1,6 +1,6 @@
 import type { Book, BookFile } from '#lib/catalog/types.js';
 import { readerFormat, type Progress } from '#lib/reader/types.js';
-import { FORMAT_ORDER, sortedFormats } from '../cover.js';
+import { defaultFile, FORMAT_ORDER, sortedFormats } from '../cover.js';
 
 export type ReaderGroup = 'ebook' | 'document' | 'comic' | 'other';
 export type FileSort = 'format' | 'name' | 'size' | 'added';
@@ -23,6 +23,7 @@ export interface FilesModel {
 	readonly totalBytes: number;
 	readonly formats: { format: string; count: number }[];
 	readonly primaryFileId: number | null;
+	readonly defaultFileId: number | null;
 }
 
 const GROUP_ORDER: readonly ReaderGroup[] = ['ebook', 'document', 'comic', 'other'];
@@ -123,7 +124,8 @@ export function buildFilesModel(
 			bytes: groupFiles.reduce((total, file) => total + file.size_bytes, 0)
 		}] : [];
 	});
-	const primary = files.find((file) => file.id === progress?.book_file_id) ?? sortFiles(files, 'format')[0];
+	const chosen = defaultFile(files);
+	const primary = files.find((file) => file.id === progress?.book_file_id) ?? chosen ?? sortFiles(files, 'format')[0];
 	return {
 		groups,
 		totalBytes: files.reduce((total, file) => total + file.size_bytes, 0),
@@ -131,6 +133,7 @@ export function buildFilesModel(
 			format,
 			count: files.filter((file) => normalizedFormat(file.format) === format).length
 		})),
-		primaryFileId: primary?.id ?? null
+		primaryFileId: primary?.id ?? null,
+		defaultFileId: chosen?.id ?? null
 	};
 }

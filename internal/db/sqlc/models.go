@@ -82,6 +82,7 @@ type BookFile struct {
 	OriginalFilename string
 	KoreaderMd5      sql.NullString
 	CreatedAt        int64
+	IsDefault        int64
 }
 
 type BookHidden struct {
