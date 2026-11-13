@@ -201,7 +201,7 @@
 </script>
 
 <section class="space-y-5" aria-labelledby="book-results-heading">
-	<div class="flex flex-wrap items-end justify-between gap-4">
+	<div class="flex flex-wrap items-end gap-4" class:justify-between={showHeading}>
 		<h2 id="book-results-heading" class={showHeading ? 'text-xl font-semibold' : 'sr-only'}>{m['catalog.books.title']()}</h2>
 		<div class="flex flex-wrap items-end gap-3">
 			{#if filterable}

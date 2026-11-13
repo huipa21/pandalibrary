@@ -110,8 +110,8 @@ test('menu destinations keep accessible titles without repeated visible introduc
 	await page.goto('/books');
 	await expect(page.getByRole('main').getByRole('heading', { name: 'Books', level: 2 })).toHaveClass('sr-only');
 	await page.goto('/library/1');
-	await expect(page.getByRole('main').getByRole('heading', { name: 'Fiction', level: 1 })).toBeVisible();
-	await expect(page.getByRole('main').getByRole('heading', { name: 'Books', level: 2 })).toBeVisible();
+	await expect(page.getByRole('main').getByRole('heading', { name: 'Fiction', level: 1 })).toHaveClass('sr-only');
+	await expect(page.getByRole('main').getByRole('heading', { name: 'Books', level: 2 })).toHaveClass('sr-only');
 	expect(unexpected).toEqual([]);
 });
 

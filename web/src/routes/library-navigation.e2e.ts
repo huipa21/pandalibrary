@@ -7,12 +7,28 @@ const libraries = [
 	{ id: 1, name: 'Fiction', slug: 'fiction', visible_book_count: 7, created_at: timestamp, updated_at: timestamp },
 	{ id: 2, name: 'History', slug: 'history', visible_book_count: 2, created_at: timestamp, updated_at: timestamp }
 ];
+const displayBook = {
+	id: 21, library_id: 1, title: 'Display test', sort_title: 'Display test', subtitle: null,
+	description: null, language: 'en', publisher: null, published_date: null, page_count: null,
+	cover_url: null, cover_source: null, authors: [], series: null, tags: [], identifiers: [],
+	files: [], field_sources: [], created_at: timestamp, updated_at: timestamp
+};
 
 async function setRange(slider: Locator, value: number) {
 	await slider.evaluate((element, next) => {
 		(element as HTMLInputElement).value = String(next);
 		element.dispatchEvent(new Event('input', { bubbles: true }));
 	}, value);
+}
+
+async function expectPanelInViewport(page: Page, panel: Locator) {
+	const width = await page.evaluate(() => document.documentElement.clientWidth);
+	await expect.poll(async () => (await panel.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
+	await expect.poll(async () => {
+		const box = await panel.boundingBox();
+		return box ? box.x + box.width : width + 1;
+	}).toBeLessThanOrEqual(width);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 }
 
 async function mockLibraries(page: Page, role = 'admin', locale = 'en') {
@@ -203,14 +219,8 @@ test('statistics menu links open distinct Books, Reading and History views', asy
 
 test('shared display controls change cover width and spacing and persist independently', async ({ page }) => {
 	const { unexpected } = await mockLibraries(page);
-	const book = {
-		id: 21, library_id: 1, title: 'Display test', sort_title: 'Display test', subtitle: null,
-		description: null, language: 'en', publisher: null, published_date: null, page_count: null,
-		cover_url: null, cover_source: null, authors: [], series: null, tags: [], identifiers: [],
-		files: [], field_sources: [], created_at: timestamp, updated_at: timestamp
-	};
-	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: [book], next_cursor: null } }));
-	await page.route('**/api/v1/shelves/11/books?*', (route) => route.fulfill({ json: { items: [book], next_cursor: null } }));
+	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: [displayBook], next_cursor: null } }));
+	await page.route('**/api/v1/shelves/11/books?*', (route) => route.fulfill({ json: { items: [displayBook], next_cursor: null } }));
 	await page.goto('/library/1');
 	const main = page.getByRole('main');
 	const settings = main.getByRole('button', { name: 'Display settings', exact: true });
@@ -238,6 +248,111 @@ test('shared display controls change cover width and spacing and persist indepen
 	await expect(grid.locator(':scope > li')).toHaveCSS('width', '200px');
 	await expect(grid).toHaveCSS('column-gap', '30px');
 	expect(unexpected).toEqual([]);
+});
+
+test('library and collection controls are left-aligned without repeated headings', async ({ page }) => {
+	test.setTimeout(90_000);
+	const { unexpected } = await mockLibraries(page);
+	await page.route((url) =>
+		url.pathname === '/api/v1/books' ||
+		/^\/api\/v1\/shelves\/(?:11|12|system\/(?:favorites|unshelved))\/books$/.test(url.pathname),
+		(route) => route.fulfill({ json: { items: [displayBook], next_cursor: null } })
+	);
+	const destinations = [
+		{ path: '/library/1', title: 'Fiction', type: 'library' },
+		{ path: '/library/2', title: 'History', type: 'library' },
+		{ path: '/shelves/11', title: 'Weekend reads', type: 'collection' },
+		{ path: '/shelves/12', title: 'Second-page shelf', type: 'collection' },
+		{ path: '/shelves/system/favorites', title: 'Favorites', type: 'system' },
+		{ path: '/shelves/system/unshelved', title: 'Uncollected', type: 'system' }
+	] as const;
+
+	for (const width of [1440, 320]) {
+		await page.setViewportSize({ width, height: 900 });
+		for (const destination of destinations) {
+			await page.goto(destination.path);
+			const main = page.getByRole('main');
+			await expect(main.getByRole('heading', { name: destination.title, level: 1, exact: true })).toHaveClass('sr-only');
+			await expect(main.getByRole('link', { name: /Back to (libraries|collections)/ })).toHaveCount(0);
+			if (destination.type !== 'system') {
+				const name = destination.type === 'library' ? 'Books' : 'Books in this collection';
+				await expect(main.getByRole('heading', { name, level: 2, exact: true })).toHaveClass('sr-only');
+			}
+
+			const grid = main.locator('ul.book-grid');
+			await expect(grid.locator(':scope > li')).toHaveCount(1);
+			if (destination.type === 'library') {
+				await expect.poll(() => page.evaluate(() => {
+					const saved = sessionStorage.getItem('pandalibrary.browse-context');
+					return saved ? JSON.parse(saved).label : null;
+				})).toBe(destination.title);
+			}
+			const settings = main.getByRole('button', { name: 'Display settings', exact: true });
+			const controls = destination.type === 'library'
+				? [
+					main.getByRole('combobox', { name: 'Author', exact: true }),
+					main.getByRole('combobox', { name: 'Series', exact: true }),
+					main.getByRole('combobox', { name: 'Tag', exact: true }),
+					main.getByRole('combobox', { name: 'Sort', exact: true }),
+					main.getByRole('button', { name: 'Switch to list view', exact: true }),
+					settings,
+					main.getByRole('button', { name: 'Clear filters', exact: true })
+				]
+				: destination.type === 'collection'
+					? [main.getByRole('button', { name: 'Switch to list view', exact: true }), settings]
+					: [settings];
+			const gridBox = await grid.boundingBox();
+			expect(gridBox).not.toBeNull();
+			const boxes = await Promise.all(controls.map((control) => control.boundingBox()));
+			for (const box of boxes) {
+				expect(box).not.toBeNull();
+				expect(box!.x).toBeGreaterThanOrEqual(gridBox!.x - 1);
+				expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+			}
+			expect(Math.abs(boxes[0]!.x - gridBox!.x)).toBeLessThanOrEqual(1);
+			if (width === 1440) {
+				for (let index = 1; index < boxes.length; index += 1) {
+					const gap = boxes[index]!.x - boxes[index - 1]!.x - boxes[index - 1]!.width;
+					expect(gap).toBeGreaterThanOrEqual(0);
+					expect(gap).toBeLessThanOrEqual(13);
+					expect(Math.abs((boxes[index]!.y + boxes[index]!.height) -
+						(boxes[0]!.y + boxes[0]!.height))).toBeLessThanOrEqual(1);
+				}
+			}
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+			if (destination.type === 'collection') {
+				await controls[0].click();
+				await expect(main.getByRole('button', { name: 'Switch to grid view', exact: true })).toBeVisible();
+				await main.getByRole('button', { name: 'Switch to grid view', exact: true }).click();
+			}
+			await settings.click();
+			const panel = main.getByRole('dialog', { name: 'Display settings', exact: true });
+			await expect(panel).toBeVisible();
+			await expectPanelInViewport(page, panel);
+			if (width === 320 && destination.title === 'Favorites') {
+				await page.setViewportSize({ width: 375, height: 900 });
+				await expectPanelInViewport(page, panel);
+				await page.setViewportSize({ width: 320, height: 900 });
+				await expectPanelInViewport(page, panel);
+			}
+			await expect(panel.getByRole('slider', { name: /Cover size/ })).toBeVisible();
+			await page.keyboard.press('Escape');
+			await expect(settings).toBeFocused();
+		}
+	}
+	expect(unexpected).toEqual([]);
+});
+
+test('failed library and collection pages keep retry without back links', async ({ page }) => {
+	await mockLibraries(page);
+	for (const path of ['/library/invalid', '/shelves/invalid']) {
+		await page.goto(path);
+		const main = page.getByRole('main');
+		await expect(main.getByRole('alert')).toBeVisible();
+		await expect(main.getByRole('button', { name: 'Try again' })).toBeVisible();
+		await expect(main.getByRole('link', { name: /Back to (libraries|collections)/ })).toHaveCount(0);
+	}
 });
 
 test('invalid library scope shows an error rather than unscoped shelf books', async ({ page }) => {

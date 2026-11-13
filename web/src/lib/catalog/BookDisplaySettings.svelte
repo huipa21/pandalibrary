@@ -47,10 +47,26 @@
 			error = m['organize.display_error']();
 		}
 	}
+
+	function positionPanel() {
+		const popup = panel?.parentElement;
+		if (!popup) return;
+		popup.style.right = '0px';
+		const bounds = popup.getBoundingClientRect();
+		const left = Math.max(8, Math.min(bounds.left, window.innerWidth - bounds.width - 8));
+		popup.style.right = `${bounds.left - left}px`;
+	}
+
+	function openPanel() {
+		positionPanel();
+		panel?.querySelector('input')?.focus();
+	}
 </script>
 
+<svelte:window onresize={positionPanel} />
+
 <div class="space-y-2">
-	<HeaderMenu menuId={`book-display-${storageKey}`} popup="dialog" label={m['organize.display']()} panelClass="w-72 max-w-[calc(100vw-2rem)]" onopen={() => panel?.querySelector('input')?.focus()}>
+	<HeaderMenu menuId={`book-display-${storageKey}`} popup="dialog" label={m['organize.display']()} panelClass="w-72 max-w-[calc(100vw-2rem)]" onopen={openPanel}>
 		{#snippet trigger({ expanded, controls, popup, toggle, onkeydown })}
 			<button type="button" class="inline-flex size-9 items-center justify-center rounded-md border border-slate-300 hover:bg-slate-100 focus-visible:outline-2" aria-label={m['organize.display']()} title={m['organize.display']()} aria-haspopup={popup} aria-expanded={expanded} aria-controls={controls} onclick={toggle} onkeydown={onkeydown}>
 				<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="size-5">

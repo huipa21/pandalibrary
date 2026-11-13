@@ -245,17 +245,13 @@
 {#if loadError}
 	<div class="space-y-4" role="alert">
 		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800">{loadError}</p>
-		<div class="flex flex-wrap gap-4">
-			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadShelf(page.params.id ?? '', collectionLibraryID(page.url))}>{m['shelves.retry']()}</button>
-			<a class="underline underline-offset-4 focus-visible:outline-2" href="/shelves">{m['shelves.back']()}</a>
-		</div>
+		<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadShelf(page.params.id ?? '', collectionLibraryID(page.url))}>{m['shelves.retry']()}</button>
 	</div>
 {:else if loading}
 	<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 {:else if shelf}
 	<article class="space-y-10" aria-labelledby="shelf-heading">
 		<header class="space-y-3">
-			<a class="text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2" href="/shelves">{m['shelves.back']()}</a>
 			<h1 id="shelf-heading" class="sr-only">{shelf.name}</h1>
 			<div class="flex flex-wrap items-center gap-3">
 				<span class="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">
@@ -302,8 +298,8 @@
 		{/if}
 
 		<section class="space-y-5" aria-labelledby="shelf-books-heading" aria-busy={books.status === 'loading'}>
-			<div class="flex flex-wrap items-end justify-between gap-4">
-				<h2 id="shelf-books-heading" class="text-xl font-semibold">{m['shelves.books.heading']()}</h2>
+			<div class="flex flex-wrap items-end gap-3">
+				<h2 id="shelf-books-heading" class="sr-only">{m['shelves.books.heading']()}</h2>
 				<ViewToggle view={mode} onchange={(next) => (mode = next)} />
 				<BookDisplaySettings storageKey={`collection:${shelf.id}`} bind:size={coverSize} bind:spacing />
 			</div>
