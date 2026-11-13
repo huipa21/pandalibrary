@@ -255,7 +255,7 @@ func hydrateBook(ctx context.Context, queries *sqlc.Queries, viewer Viewer, row 
 	book := Book{
 		ID: row.ID, LibraryID: row.LibraryID, Title: row.Title, SortTitle: row.SortTitle,
 		OwnerID: intPointer(row.OwnerID), Visibility: row.Visibility,
-		CanManageVisibility: row.OwnerID.Valid && row.OwnerID.Int64 == viewer.UserID,
+		CanManageVisibility: (row.OwnerID.Valid && row.OwnerID.Int64 == viewer.UserID) || (!row.OwnerID.Valid && viewer.IsAdmin),
 		Subtitle:            stringPointer(row.Subtitle), Description: stringPointer(row.Description),
 		Language: stringPointer(row.Language), Publisher: stringPointer(row.Publisher),
 		PublishedDate: stringPointer(row.PublishedDate), PageCount: intPointer(row.PageCount),

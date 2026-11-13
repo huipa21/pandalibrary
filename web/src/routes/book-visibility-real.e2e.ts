@@ -1,7 +1,9 @@
 import { expect, request, test, type APIRequestContext } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { mkdir, utimes, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { Book } from '../lib/catalog/types.js';
-import { pdfFixture } from '../lib/reader/fixtures.js';
+import { epubFixture, pdfFixture } from '../lib/reader/fixtures.js';
 import { signInRealAdmin } from '../lib/real-auth.js';
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled real server');
@@ -97,6 +99,7 @@ test('upload visibility persists and confirmed owner toggles control authenticat
 		await reader.goto(`/books/${book.id}`);
 		await expect(reader.getByRole('heading', { name: book.title, exact: true })).toBeVisible();
 		await expect(reader.getByRole('button', { name: /^Make (private|public)$/ })).toHaveCount(0);
+		await expect(reader.getByRole('button', { name: 'Book visibility: Public — all signed-in users', exact: true })).toBeDisabled();
 
 		page.once('dialog', (dialog) => dialog.accept());
 		await makePrivate.click();
@@ -118,6 +121,116 @@ test('upload visibility persists and confirmed owner toggles control authenticat
 		expect((await reader.request.get(`/api/v1/books/${staged.id}`)).status()).toBe(404);
 	} finally {
 		await anonymous.dispose();
+		await readerContext.close();
+	}
+});
+
+test('administrators can claim scanned PDF and EPUB books and control their visibility', async ({ page, browser }) => {
+	test.setTimeout(120_000);
+	await signInRealAdmin(page);
+	const suffix = randomUUID().slice(0, 8);
+	const created = await checked(await page.request.post('/api/v1/admin/libraries', {
+		data: { name: `Scanned visibility ${suffix}`, slug: `scanned-visibility-${suffix}` }
+	}), 201);
+	const { library } = await created.json() as { library: { id: number } };
+	const username = `scanned-reader-${suffix}`;
+	const password = 'scanned-visibility-test-password';
+	const userResponse = await checked(await page.request.post('/api/v1/admin/users', {
+		data: { username, display_name: 'Scanned book reader', password, role: 'user', locale: 'en' }
+	}), 201);
+	const { user } = await userResponse.json() as { user: { id: number } };
+	await checked(await page.request.put(`/api/v1/admin/libraries/${library.id}/access/${user.id}`, { data: {} }));
+
+	const dataDir = process.env.PANDA_E2E_DATA_DIR;
+	if (!dataDir) throw new Error('Real-server data directory is not configured.');
+	const heapDir = join(dataDir, 'bookheap');
+	await mkdir(heapDir, { recursive: true });
+	const files = [
+		{ name: `Scanned ${suffix}.pdf`, bytes: file(`Scanned ${suffix}`).buffer },
+		{ name: `Scanned ${suffix}.epub`, bytes: epubFixture(`Scanned ${suffix}`) }
+	];
+	for (const fixture of files) {
+		const path = join(heapDir, fixture.name);
+		await writeFile(path, fixture.bytes);
+		const settled = new Date(Date.now() - 60_000);
+		await utimes(path, settled, settled);
+	}
+	await checked(await page.request.post('/api/v1/admin/bookheap/scan'), 202);
+	await expect.poll(async () => {
+		const response = await checked(await page.request.get('/api/v1/admin/bookheap/scan'));
+		const { scan } = await response.json() as { scan: { status: string; error: string | null } };
+		if (scan.status === 'failed') throw new Error(`Scan failed: ${scan.error}`);
+		return scan.status;
+	}, { timeout: 60_000 }).toBe('completed');
+	const list = await checked(await page.request.get('/api/v1/admin/bookheap/items?limit=100'));
+	const { items } = await list.json() as { items: Array<{ id: number; rel_path: string; status: string }> };
+	const ids = files.map(({ name }) => {
+		const item = items.find((entry) => entry.rel_path === name);
+		if (!item || item.status !== 'ready') throw new Error(`Scanned file is not ready: ${name}`);
+		return item.id;
+	});
+	const assignment = await checked(await page.request.post('/api/v1/admin/bookheap/assign', {
+		data: { ids, library_id: library.id, shelf_ids: [] }
+	}), 202);
+	const { results } = await assignment.json() as {
+		results: Array<{ id: number; ok: boolean; import_job_id: number | null; error: string | null }>;
+	};
+	const origin = new URL(page.url()).origin;
+	const readerContext = await browser.newContext({ baseURL: origin, serviceWorkers: 'block' });
+	try {
+		const reader = await readerContext.newPage();
+		await reader.goto('/login');
+		await reader.getByLabel('Username', { exact: true }).fill(username);
+		await reader.getByLabel('Password', { exact: true }).fill(password);
+		await reader.getByRole('button', { name: 'Sign in', exact: true }).click();
+		await expect(reader).toHaveURL('/');
+
+		for (const id of ids) {
+			const result = results.find((entry) => entry.id === id);
+			if (!result?.ok || !result.import_job_id) throw new Error(`Assignment failed: ${JSON.stringify(result)}`);
+			const book = await imported(page.request, result.import_job_id);
+			expect(book.owner_id).toBeNull();
+			expect(book.visibility).toBe('library');
+			expect(book.can_manage_visibility).toBe(true);
+			await checked(await reader.request.get(`/api/v1/books/${book.id}`));
+			await reader.goto(`/books/${book.id}`);
+			await expect(reader.getByRole('button', {
+				name: 'Book visibility: Library access — based on library permissions', exact: true
+			})).toBeDisabled();
+
+			await page.goto(`/books/${book.id}`);
+			const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
+			await expect(makePrivate).toHaveAccessibleDescription('Library access — based on library permissions');
+			page.once('dialog', async (dialog) => {
+				expect(dialog.message()).toContain('You will become its owner');
+				expect(dialog.message()).toContain('library-based access cannot be restored');
+				await dialog.dismiss();
+			});
+			await makePrivate.click();
+			expect((await reader.request.get(`/api/v1/books/${book.id}`)).status()).toBe(200);
+			page.once('dialog', (dialog) => dialog.accept());
+			await makePrivate.click();
+			const makePublic = page.getByRole('button', { name: 'Make public', exact: true });
+			await expect(makePublic).toBeVisible();
+			expect((await reader.request.get(`/api/v1/books/${book.id}`)).status()).toBe(404);
+			expect((await reader.request.get(book.files[0].download_url)).status()).toBe(404);
+			await page.reload();
+			await expect(makePublic).toBeVisible();
+			page.once('dialog', (dialog) => dialog.accept());
+			await makePublic.click();
+			await expect(makePrivate).toBeVisible();
+			const publicResponse = await checked(await reader.request.get(`/api/v1/books/${book.id}`));
+			const { book: publicBook } = await publicResponse.json() as { book: Book };
+			expect(publicBook.owner_id).toBeGreaterThan(0);
+			expect(publicBook.visibility).toBe('public');
+			expect(publicBook.can_manage_visibility).toBe(false);
+			await checked(await reader.request.get(book.files[0].download_url));
+			const denied = await reader.request.put(`/api/v1/books/${book.id}/visibility`, {
+				data: { visibility: 'private' }, headers: { Origin: origin }
+			});
+			expect(denied.status()).toBe(403);
+		}
+	} finally {
 		await readerContext.close();
 	}
 });

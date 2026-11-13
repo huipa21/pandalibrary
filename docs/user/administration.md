@@ -43,17 +43,20 @@ providers.
 
 When uploading, choose **Public** (the default) or **Private**. Public books are
 visible to all signed-in users, even without access to the destination library;
-they are never available anonymously. Private books are visible only to the
-account that uploaded them. The choice follows a Bookheap upload when it is
-later assigned to a library. Retrying an upload keeps its original choice.
-Existing books and books discovered in folders retain library-based access.
+they are never available anonymously. Private books are visible only to their
+owner, normally the account that uploaded them. The choice follows a Bookheap
+upload when it is later assigned to a library. Retrying an upload keeps its
+original choice.
+Existing books and books discovered in folders retain library-based access
+unless an administrator changes their visibility.
 Per-reader hidden-book restrictions still apply to public books.
 
-The uploader can change a book's visibility from its **Details** tab, using the
-visibility icon below the cover and confirming the change.
-It appears directly below **Read** or **Resume** and shows the current visibility.
-Books without a recorded uploader retain library-based access; administrators
-cannot take ownership or change another uploader's visibility with this control.
+The owner can change a book's visibility from its **Details** tab using the
+eye icon among the actions below **Read** or **Resume**, then confirming the
+change. An administrator can also change an ownerless book: confirmation
+assigns them ownership and replaces any library-based access with the chosen
+visibility. The control cannot restore library-based access. Administrators
+cannot change another owner's visibility.
 
 ## Library ownership
 

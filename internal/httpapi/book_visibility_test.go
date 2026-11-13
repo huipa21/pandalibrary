@@ -58,6 +58,51 @@ func TestBookVisibilityHTTP(t *testing.T) {
 	}
 }
 
+func TestOwnerlessBookVisibilityHTTP(t *testing.T) {
+	f := newCatalogHTTPFixture(t)
+	for _, test := range []struct {
+		name      string
+		cookie    *http.Cookie
+		canManage bool
+	}{
+		{"reader", f.reader, false},
+		{"admin", f.admin, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := f.request(http.MethodGet, "/api/v1/books/101", nil, test.cookie, nil)
+			var body struct {
+				Book catalog.Book `json:"book"`
+			}
+			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil ||
+				body.Book.OwnerID != nil || body.Book.Visibility != "library" || body.Book.CanManageVisibility != test.canManage {
+				t.Fatalf("response=%d book=%+v", response.Code, body.Book)
+			}
+		})
+	}
+	change := func(cookie *http.Cookie, visibility string) int {
+		response := f.request(http.MethodPut, "/api/v1/books/101/visibility",
+			strings.NewReader(`{"visibility":"`+visibility+`"}`), cookie, map[string]string{"Content-Type": "application/json"})
+		return response.Code
+	}
+	if code := change(f.reader, "private"); code != http.StatusForbidden {
+		t.Fatalf("reader claimed ownerless book: %d", code)
+	}
+	if code := change(f.admin, "private"); code != http.StatusOK {
+		t.Fatalf("admin could not claim book: %d", code)
+	}
+	for _, suffix := range []string{"", "/cover", "/files/201"} {
+		if response := f.request(http.MethodGet, "/api/v1/books/101"+suffix, nil, f.reader, nil); response.Code != http.StatusNotFound {
+			t.Fatalf("private %s: %d %s", suffix, response.Code, response.Body.String())
+		}
+	}
+	if code := change(f.admin, "public"); code != http.StatusOK {
+		t.Fatalf("admin could not republish book: %d", code)
+	}
+	if response := f.request(http.MethodGet, "/api/v1/books/101", nil, f.reader, nil); response.Code != http.StatusOK {
+		t.Fatalf("republished book: %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestUploadHTTPVisibilityPersistence(t *testing.T) {
 	for _, visibility := range []string{"public", "private", ""} {
 		t.Run("direct-"+visibility, func(t *testing.T) {

@@ -153,9 +153,6 @@
 						{details?.progress && details.progress.percentage > 0 ? m['bv6.resume']() : m['bv6.read']()}
 					</button>
 				</div>
-				{#key book.id}
-					<BookVisibilityButton {book} {offline} onUpdate={(updated) => { context.book = updated; }} />
-				{/key}
 				{#if readError}<p class="text-sm text-red-800" role="alert">{readError}</p>{/if}
 				<div class="flex flex-wrap items-start gap-2">
 					{#if !offline}
@@ -181,6 +178,9 @@
 						{/key}
 						<ShelfPopover bookId={book.id} variant="plain-icon" placement="down" memberIds={shelves.memberIds} />
 					{/if}
+					{#key book.id}
+						<BookVisibilityButton {book} {offline} onUpdate={(updated) => { context.book = updated; }} />
+					{/key}
 				</div>
 				{#if !offline || shelves.status !== 'error'}
 					<BookShelfTags {shelves} bookTitle={book.title} {offline} />

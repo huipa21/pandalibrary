@@ -104,13 +104,14 @@ Skimmed and Abandoned.
 
 Change your reading status beside the rating in the book header. Below the
 cover, the full-width **Read** or **Resume** button opens the reader. The icons
-under it download the book, toggle Favorites with the star beside Download, and
-add it to a collection. These borderless icons show a shaded square on hover. If you uploaded the book, a
-visibility control directly below **Read** or **Resume** shows its current
-state and lets you make it private or public after confirmation: private means
-only you can see it, while public means any signed-in user can see it, not
-anonymous visitors. Books without a recorded uploader, such as older books
-and folder imports, keep library-based access and do not show this control.
+under it download the book, toggle Favorites, add it to a collection, and show
+its visibility with an eye icon. These borderless icons show a shaded square on
+hover. The owner can use the visibility icon to make the book private or public
+after confirmation: private means only the owner can see it, while public means
+any signed-in user can see it, not anonymous visitors. Other readers see a
+read-only icon. For an older or folder-imported book without an owner, an
+administrator can change its visibility and become its owner; this replaces
+library-based access, which the icon cannot restore.
 
 The book's **Library** is shown below **Collections**. Tags remain above the overview,
 separate from the metadata card. Publication dates show only the date; file sizes

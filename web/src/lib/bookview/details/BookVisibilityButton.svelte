@@ -18,18 +18,27 @@
 	const id = $props.id();
 	const disconnected = $derived(offline || !$offlineStatus.online);
 	const makePublic = $derived(book.visibility === 'private');
-	const currentVisibility = $derived(makePublic ? m['bh.visibility.private']() : m['bh.visibility.public']());
-	const label = $derived(makePublic ? m['bv.visibility.make_public']() : m['bv.visibility.make_private']());
+	const currentVisibility = $derived(book.visibility === 'library'
+		? m['bv.visibility.library']()
+		: makePublic ? m['bv.visibility.private']() : m['bh.visibility.public']());
+	const actionLabel = $derived(makePublic ? m['bv.visibility.make_public']() : m['bv.visibility.make_private']());
+	const label = $derived(book.can_manage_visibility ? actionLabel : m['bv.visibility.view_only']({ state: currentVisibility }));
 	const description = $derived(makePublic ? m['bv.visibility.public_description']() : m['bv.visibility.private_description']());
+	const disabledReason = $derived(!book.can_manage_visibility
+		? book.owner_id === null ? m['bv.visibility.admin_only']() : m['bv.visibility.owner_only']()
+		: disconnected ? m['bv.visibility.offline']() : '');
 
 	onDestroy(() => controller?.abort());
 
 	async function toggle() {
 		if (!book.can_manage_visibility || disconnected || busy) return;
 		const visibility = makePublic ? 'public' : 'private';
-		const confirmation = makePublic
+		let confirmation: string = makePublic
 			? m['bv.visibility.confirm_public']({ title: book.title })
 			: m['bv.visibility.confirm_private']({ title: book.title });
+		if (book.owner_id === null) {
+			confirmation += `\n\n${book.visibility === 'library' ? m['bv.visibility.claim_library']() : m['bv.visibility.claim_owner']()}`;
+		}
 		if (!window.confirm(confirmation)) return;
 		const bookId = book.id;
 		const account = currentAccount();
@@ -53,26 +62,21 @@
 	}
 </script>
 
-{#if book.can_manage_visibility}
-	<div class="w-full min-w-0">
-		<button
-			type="button"
-			class="inline-flex w-full min-w-0 items-center gap-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-left text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-60"
-			aria-label={label}
-			aria-describedby={`${id}-state${disconnected ? ` ${id}-offline` : ''}`}
-			title={disconnected ? m['bv.visibility.offline']() : `${label}: ${description}`}
-			disabled={disconnected || busy}
-			aria-busy={busy}
-			onclick={() => void toggle()}
-		>
-			<Icon name={busy ? 'refresh' : makePublic ? 'lock' : 'globe'} class={busy ? 'size-5 shrink-0 animate-spin motion-reduce:animate-none' : 'size-5 shrink-0'} />
-			<span class="min-w-0">
-				<span id={`${id}-state`} class="block text-xs">{currentVisibility}</span>
-				<span class="block text-sm font-semibold">{label}</span>
-			</span>
-		</button>
-		{#if disconnected}<p id={`${id}-offline`} class="mt-2 text-xs text-slate-500">{m['bv.visibility.offline']()}</p>{/if}
-		{#if error}<p class="mt-2 text-sm text-red-800" role="alert">{error}</p>{/if}
-		{#if notice}<p class="sr-only" role="status">{notice}</p>{/if}
-	</div>
+<button
+	type="button"
+	class="shell-icon-button size-10 disabled:opacity-60"
+	aria-label={label}
+	aria-describedby={`${id}-state${disabledReason ? ` ${id}-reason` : ''}`}
+	title={disabledReason ? `${currentVisibility}: ${disabledReason}` : `${currentVisibility}; ${actionLabel}: ${description}`}
+	disabled={!book.can_manage_visibility || disconnected || busy}
+	aria-busy={busy}
+	onclick={() => void toggle()}
+>
+	<Icon name={busy ? 'refresh' : makePublic ? 'eye-off' : 'eye'} class={busy ? 'size-5 shrink-0 animate-spin motion-reduce:animate-none' : 'size-5 shrink-0'} />
+</button>
+<span id={`${id}-state`} class="sr-only">{currentVisibility}</span>
+{#if disabledReason}
+	<span id={`${id}-reason`} class={disconnected && book.can_manage_visibility ? 'basis-full text-xs text-slate-500' : 'sr-only'}>{disabledReason}</span>
 {/if}
+{#if error}<p class="basis-full text-sm text-red-800" role="alert">{error}</p>{/if}
+{#if notice}<p class="sr-only" role="status">{notice}</p>{/if}

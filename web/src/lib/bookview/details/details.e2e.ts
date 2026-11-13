@@ -171,7 +171,7 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 			state.visibilityRequests.push(visibility);
 			if (state.visibilityWait) await state.visibilityWait;
 			if (state.rejectVisibility) return route.fulfill({ status: 500, json: { title: 'Failed', status: 500 } });
-			state.book = { ...state.book, visibility };
+			state.book = { ...state.book, owner_id: state.book.owner_id ?? 1, visibility };
 			return route.fulfill({ json: { book: state.book } });
 		}
 		if (path === '/books/21/files/31') return route.fulfill({ contentType: 'application/epub+zip', body: 'book fixture' });
@@ -217,11 +217,10 @@ test('visibility confirms before requests, supports cancellation and updates aft
 	const state = await setup(page);
 	await page.goto('/books/21');
 	const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
-	await expect(makePrivate).toContainText('Public — all signed-in users');
-	await expect(makePrivate).toContainText('Make private');
+	await expect(makePrivate).toHaveText('');
 	await expect(makePrivate).toHaveAccessibleDescription('Public — all signed-in users');
-	await expect(makePrivate.locator('svg ellipse')).toHaveCount(1);
-	await expect(makePrivate).toHaveAttribute('title', 'Make private: only you');
+	await expect(makePrivate.locator('svg path')).toHaveCount(1);
+	await expect(makePrivate).toHaveAttribute('title', 'Public — all signed-in users; Make private: only you');
 	page.once('dialog', async (dialog) => {
 		expect(dialog.message()).toContain('only you');
 		expect(state.visibilityRequests).toEqual([]);
@@ -238,11 +237,10 @@ test('visibility confirms before requests, supports cancellation and updates aft
 	await makePrivate.click();
 	const makePublic = page.getByRole('button', { name: 'Make public', exact: true });
 	await expect(makePublic).toBeVisible();
-	await expect(makePublic).toContainText('Private — only you (the uploader)');
-	await expect(makePublic).toContainText('Make public');
-	await expect(makePublic).toHaveAccessibleDescription('Private — only you (the uploader)');
-	await expect(makePublic.locator('svg rect')).toHaveCount(1);
-	await expect(makePublic).toHaveAttribute('title', 'Make public: visible to all signed-in users');
+	await expect(makePublic).toHaveText('');
+	await expect(makePublic).toHaveAccessibleDescription('Private — only you');
+	await expect(makePublic.locator('svg path')).toHaveCount(2);
+	await expect(makePublic).toHaveAttribute('title', 'Private — only you; Make public: visible to all signed-in users');
 	expect(state.visibilityRequests).toEqual(['private']);
 	await expect(page.getByRole('status').filter({ hasText: 'This book is now private: only you can see it.' })).toBeAttached();
 	page.once('dialog', async (dialog) => {
@@ -255,22 +253,59 @@ test('visibility confirms before requests, supports cancellation and updates aft
 });
 
 for (const role of ['user', 'admin']) {
-	test(`visibility control is hidden from non-owner ${role}`, async ({ page }) => {
+	test(`visibility is read-only for non-owner ${role}`, async ({ page }) => {
 		const state = await setup(page, role);
 		state.book = { ...book, owner_id: 2, can_manage_visibility: false };
 		await page.goto('/books/21');
 		await expect(page.getByRole('heading', { name: book.title, exact: true })).toBeVisible();
 		await expect(page.getByRole('button', { name: /^Make (private|public)$/ })).toHaveCount(0);
+		const indicator = page.getByRole('button', { name: 'Book visibility: Public — all signed-in users', exact: true });
+		await expect(indicator).toBeVisible();
+		await expect(indicator).toBeDisabled();
+		await expect(indicator).toHaveAccessibleDescription("Public — all signed-in users Only the book's owner can change visibility.");
 		expect(state.visibilityRequests).toEqual([]);
 	});
+}
 
-	test(`ownerless legacy books have no visibility toggle for ${role}`, async ({ page }) => {
-		const state = await setup(page, role);
-		state.book = { ...book, owner_id: null, visibility: 'library', can_manage_visibility: false };
+test('ownerless legacy books show a read-only indicator to readers', async ({ page }) => {
+	const state = await setup(page);
+	state.book = { ...book, owner_id: null, visibility: 'library', can_manage_visibility: false };
+	await page.goto('/books/21');
+	const indicator = page.getByRole('button', { name: 'Book visibility: Library access — based on library permissions', exact: true });
+	await expect(indicator).toBeVisible();
+	await expect(indicator).toBeDisabled();
+	await expect(indicator).toHaveAccessibleDescription('Library access — based on library permissions Only an administrator can change visibility when no owner is recorded.');
+	expect(state.visibilityRequests).toEqual([]);
+});
+
+for (const format of ['epub', 'pdf']) {
+	test(`an administrator can claim an ownerless ${format} book after confirmation`, async ({ page }) => {
+		const state = await setup(page, 'admin');
+		state.book = {
+			...book, owner_id: null, visibility: 'library', can_manage_visibility: true,
+			files: book.files.filter((file) => file.format === format)
+		};
 		await page.goto('/books/21');
-		await expect(page.getByRole('heading', { name: book.title, exact: true })).toBeVisible();
-		await expect(page.getByRole('button', { name: /^Make (private|public)$/ })).toHaveCount(0);
+		const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
+		await expect(makePrivate).toHaveAccessibleDescription('Library access — based on library permissions');
+		page.once('dialog', async (dialog) => {
+			expect(dialog.message()).toContain('You will become its owner');
+			expect(dialog.message()).toContain('library-based access cannot be restored');
+			await dialog.dismiss();
+		});
+		await makePrivate.click();
 		expect(state.visibilityRequests).toEqual([]);
+		page.once('dialog', (dialog) => dialog.accept());
+		await makePrivate.click();
+		const makePublic = page.getByRole('button', { name: 'Make public', exact: true });
+		await expect(makePublic).toBeVisible();
+		expect(state.book.owner_id).toBe(1);
+		await page.reload();
+		await expect(makePublic).toBeVisible();
+		page.once('dialog', (dialog) => dialog.accept());
+		await makePublic.click();
+		await expect(makePrivate).toBeVisible();
+		expect(state.visibilityRequests).toEqual(['private', 'public']);
 	});
 }
 
@@ -298,12 +333,12 @@ test('visibility is disabled while saving or offline and preserves state on fail
 	release();
 	await expect(page.getByRole('alert').filter({ hasText: 'Could not change visibility. Please try again.' })).toBeVisible();
 	await expect(makePrivate).toBeEnabled();
-	await expect(makePrivate).toContainText('Public — all signed-in users');
+	await expect(makePrivate).toHaveAccessibleDescription('Public — all signed-in users');
 	expect(state.visibilityRequests).toEqual(['private']);
 
 	await context.setOffline(true);
 	await expect(makePrivate).toBeDisabled();
-	await expect(makePrivate).toHaveAttribute('title', 'Connect to the internet to change visibility.');
+	await expect(makePrivate).toHaveAttribute('title', 'Public — all signed-in users: Connect to the internet to change visibility.');
 	await expect(makePrivate).toHaveAccessibleDescription('Public — all signed-in users Connect to the internet to change visibility.');
 	await expect(page.getByText('Connect to the internet to change visibility.', { exact: true })).toBeVisible();
 	expect(state.visibilityRequests).toEqual(['private']);
@@ -312,7 +347,7 @@ test('visibility is disabled while saving or offline and preserves state on fail
 });
 
 for (const label of ['Read', 'Resume']) {
-	test(`visibility is discoverable directly below ${label}, before the icon-only cover actions`, async ({ page }) => {
+	test(`visibility is an icon alongside the cover actions below ${label}`, async ({ page }) => {
 		const state = await setup(page);
 		if (label === 'Read') state.progress = { ...state.progress, percentage: 0 };
 		await page.goto('/books/21');
@@ -325,27 +360,39 @@ for (const label of ['Read', 'Resume']) {
 			const read = await readButton.boundingBox();
 			expect(Math.abs(read!.width - cover!.width)).toBeLessThanOrEqual(1);
 			expect(Math.abs(read!.x - cover!.x)).toBeLessThanOrEqual(1);
-			const visibility = page.getByRole('button', { name: 'Make private', exact: true });
-			await expect(visibility).toContainText('Public — all signed-in users');
-			await expect(visibility).toContainText('Make private');
-			const visibilityBox = await visibility.boundingBox();
-			expect(Math.abs(visibilityBox!.width - read!.width)).toBeLessThanOrEqual(1);
-			expect(Math.abs(visibilityBox!.x - read!.x)).toBeLessThanOrEqual(1);
-			expect(visibilityBox!.y).toBeGreaterThanOrEqual(read!.y + read!.height);
-			const actions = ['Download', 'Add to Favorites', 'Add to shelf'].map((name) =>
+			const actions = ['Download', 'Add to Favorites', 'Add to collection', 'Make private'].map((name) =>
 				page.getByRole('button', { name, exact: true }));
 			let previousX = -1;
+			let rowY = -1;
 			for (const action of actions) {
 				await expect(action).toHaveText('');
 				await expect(action).toHaveAttribute('title', /.+/);
 				const bounds = await action.boundingBox();
-				expect(bounds!.y).toBeGreaterThanOrEqual(visibilityBox!.y + visibilityBox!.height);
+				expect(bounds!.y).toBeGreaterThanOrEqual(read!.y + read!.height);
+				if (rowY < 0) rowY = bounds!.y;
+				expect(Math.abs(bounds!.y - rowY)).toBeLessThanOrEqual(1);
 				expect(bounds!.x).toBeGreaterThan(previousX);
 				previousX = bounds!.x;
 			}
 		}
 	});
 }
+
+test('localizes the ownerless visibility control and confirmation', async ({ page }) => {
+	const state = await setup(page, 'admin', 'zh');
+	state.book = { ...book, owner_id: null, visibility: 'library', can_manage_visibility: true };
+	await page.goto('/books/21');
+	const makePrivate = page.getByRole('button', { name: '设为私密', exact: true });
+	await expect(makePrivate).toHaveAccessibleDescription('书库访问 — 根据书库权限');
+	page.once('dialog', async (dialog) => {
+		expect(dialog.message()).toContain('你将成为其所有者');
+		expect(dialog.message()).toContain('无法通过此控件恢复');
+		await dialog.accept();
+	});
+	await makePrivate.click();
+	await expect(page.getByRole('button', { name: '设为公开', exact: true })).toBeVisible();
+	expect(state.visibilityRequests).toEqual(['private']);
+});
 
 test('download icon downloads the primary file', async ({ page }) => {
 	await setup(page);

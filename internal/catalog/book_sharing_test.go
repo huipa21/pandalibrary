@@ -83,3 +83,76 @@ func TestOwnerOnlySharingUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAdminClaimsOwnerlessBook(t *testing.T) {
+	for _, visibility := range []string{"private", "public"} {
+		t.Run(visibility, func(t *testing.T) {
+			f := newCatalogFixture(t)
+			ctx := context.Background()
+			admin := Viewer{UserID: 1, IsAdmin: true}
+			reader := Viewer{UserID: 2}
+
+			legacy, err := f.service.GetBook(ctx, admin, 101)
+			if err != nil || legacy.OwnerID != nil || legacy.Visibility != "library" || !legacy.CanManageVisibility {
+				t.Fatalf("admin legacy=%+v err=%v", legacy, err)
+			}
+			readerBook, err := f.service.GetBook(ctx, reader, 101)
+			if err != nil || readerBook.CanManageVisibility {
+				t.Fatalf("reader legacy=%+v err=%v", readerBook, err)
+			}
+			if _, err := f.service.SetVisibility(ctx, reader, 101, visibility); !errors.Is(err, ErrForbidden) {
+				t.Fatalf("reader claimed ownerless book: %v", err)
+			}
+
+			claimed, err := f.service.SetVisibility(ctx, admin, 101, visibility)
+			if err != nil || claimed.OwnerID == nil || *claimed.OwnerID != admin.UserID ||
+				claimed.Visibility != visibility || !claimed.CanManageVisibility {
+				t.Fatalf("claimed=%+v err=%v", claimed, err)
+			}
+			_, err = f.service.GetBook(ctx, reader, 101)
+			if visibility == "private" && !errors.Is(err, ErrNotFound) {
+				t.Fatalf("reader saw private book: %v", err)
+			}
+			if visibility == "public" && err != nil {
+				t.Fatalf("reader could not see public book: %v", err)
+			}
+			if _, err := f.service.SetVisibility(ctx, admin, 101, "public"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.service.GetBook(ctx, reader, 101); err != nil {
+				t.Fatalf("reader could not see republished book: %v", err)
+			}
+			otherAdmin := Viewer{UserID: 3, IsAdmin: true}
+			otherBook, err := f.service.GetBook(ctx, otherAdmin, 101)
+			if err != nil || otherBook.CanManageVisibility {
+				t.Fatalf("other admin book=%+v err=%v", otherBook, err)
+			}
+			if _, err := f.service.SetVisibility(ctx, otherAdmin, 101, "private"); !errors.Is(err, ErrForbidden) {
+				t.Fatalf("other admin changed claimed book: %v", err)
+			}
+		})
+	}
+}
+
+func TestConcurrentAdminClaimsHaveOneOwner(t *testing.T) {
+	f := newCatalogFixture(t)
+	ctx := context.Background()
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, id := range []int64{1, 3} {
+		go func() {
+			<-start
+			_, err := f.service.SetVisibility(ctx, Viewer{UserID: id, IsAdmin: true}, 101, "public")
+			results <- err
+		}()
+	}
+	close(start)
+	first, second := <-results, <-results
+	if !((first == nil && errors.Is(second, ErrForbidden)) || (second == nil && errors.Is(first, ErrForbidden))) {
+		t.Fatalf("claims returned %v and %v", first, second)
+	}
+	book, err := f.service.GetBook(ctx, Viewer{UserID: 2}, 101)
+	if err != nil || book.OwnerID == nil || (*book.OwnerID != 1 && *book.OwnerID != 3) || book.Visibility != "public" {
+		t.Fatalf("claimed book=%+v err=%v", book, err)
+	}
+}

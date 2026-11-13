@@ -1,6 +1,6 @@
 <script lang="ts" module>
 	export type IconName =
-		| 'info' | 'play' | 'book-open' | 'external' | 'eye' | 'folder-plus'
+		| 'info' | 'play' | 'book-open' | 'external' | 'eye' | 'eye-off' | 'folder-plus'
 		| 'download' | 'x' | 'chevron-left' | 'chevron-right' | 'chevron-down'
 		| 'trash' | 'copy' | 'more' | 'star' | 'star-half' | 'pencil'
 		| 'search' | 'plus' | 'refresh' | 'file' | 'arrow-left'
@@ -35,8 +35,9 @@
 		<path d="M12 6.5c-2-2-5-2.5-9-1.5v13c4-1 7-.5 9 1.5m0-13c2-2 5-2.5 9-1.5v13c-4-1-7-.5-9 1.5m0-13v13" />
 	{:else if name === 'external'}
 		<path d="M13 5h6v6m0-6-9 9M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4" />
-	{:else if name === 'eye'}
+	{:else if name === 'eye' || name === 'eye-off'}
 		<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" />
+		{#if name === 'eye-off'}<path d="M4 4l16 16" />{/if}
 	{:else if name === 'lock'}
 		<rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
 	{:else if name === 'globe'}
