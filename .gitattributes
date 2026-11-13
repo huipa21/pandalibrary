@@ -1,1 +1,3 @@
 .dockerignore text eol=lf
+internal/db/migrations/00011_collection_rules.sql text eol=lf
+internal/db/migrations/00012_library_book_files.sql text eol=lf

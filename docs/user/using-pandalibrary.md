@@ -433,6 +433,21 @@ are preserved as collections; older `/shelves` links and API routes still work.
 Administrators can also create shared collections that other readers can see.
 Collections never bypass book visibility or library access restrictions.
 
+For API clients, the existing `/api/v1/shelves` endpoints remain supported.
+Collection metadata includes `rule_groups`, an array of
+`{id, name, rules: {match: "all" | "any", conditions}}`. Conditions retain the
+existing `{field, op, value}` shape. Creating or patching a collection accepts
+`rule_groups`; a patch replaces the complete array. Group IDs are stable:
+editing a group's conditions updates its live matches immediately.
+
+When deleting group IDs, send `remove_rule_books: true` to stop including their
+rule-only matches, or `false` (the default) to retain their currently
+actor-visible matches as manual membership. Other groups and existing manual
+membership are unaffected. `PUT /api/v1/shelves/{id}/books/{bookID}` adds manual
+membership even when rules exist. The corresponding `DELETE` removes only
+manual membership; a book still matched by a rule remains in the collection.
+These operations never delete the library's book or file.
+
 ## Search
 
 Search finds books by title, author or series. Type in the search box in the
