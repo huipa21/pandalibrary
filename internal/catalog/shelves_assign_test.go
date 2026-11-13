@@ -39,7 +39,7 @@ func TestAssignableShelves(t *testing.T) {
 		{"admin favorites", admin, adminFavorites, nil},
 		{"admin other private", admin, readerPrivate, ErrForbidden},
 		{"admin other favorites", admin, readerFavorites, ErrNotFound},
-		{"admin automatic", admin, automatic, ErrConflict},
+		{"admin automatic", admin, automatic, nil},
 		{"admin missing", admin, 99999, ErrNotFound},
 		{"admin invalid", admin, 0, ErrInvalid},
 		{"reader shared", reader, shared, ErrForbidden},
@@ -73,7 +73,7 @@ func TestAssignableShelves(t *testing.T) {
 	if err := add(reader, shared, 101); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("reader add to shared shelf = %v", err)
 	}
-	if err := add(admin, automatic, 101); !errors.Is(err, ErrConflict) {
+	if err := add(admin, automatic, 101); err != nil {
 		t.Fatalf("add to automatic shelf = %v", err)
 	}
 	if err := add(reader, readerPrivate, 103); !errors.Is(err, ErrNotFound) {

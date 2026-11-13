@@ -358,6 +358,7 @@ type Shelf struct {
 	Mode        string
 	SystemKey   sql.NullString
 	Rules       sql.NullString
+	RuleGroups  string
 }
 
 type ShelfBook struct {

@@ -20,9 +20,12 @@ AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR 
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
-AND (CASE json_extract(CAST(?4 AS TEXT), '$.match')
+AND (EXISTS (SELECT 1 FROM shelf_books sb
+    WHERE sb.shelf_id = ?4 AND sb.book_id = b.id)
+OR EXISTS (SELECT 1 FROM json_each(CAST(?5 AS TEXT)) g
+WHERE (CASE json_extract(g.value, '$.rules.match')
     WHEN 'all' THEN NOT EXISTS (
-        SELECT 1 FROM json_each(CAST(?4 AS TEXT), '$.conditions') c
+        SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
             WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
             WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
@@ -37,7 +40,7 @@ AND (CASE json_extract(CAST(?4 AS TEXT), '$.match')
                 WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 0)
     WHEN 'any' THEN EXISTS (
-        SELECT 1 FROM json_each(CAST(?4 AS TEXT), '$.conditions') c
+        SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
             WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
             WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
@@ -51,14 +54,15 @@ AND (CASE json_extract(CAST(?4 AS TEXT), '$.match')
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 1)
-    ELSE 0 END) = 1
+    ELSE 0 END) = 1))
 `
 
 type ShelfAutomaticBookCountParams struct {
-	LibraryID int64
-	UserID    int64
-	IsAdmin   int64
-	Rules     string
+	LibraryID  int64
+	UserID     int64
+	IsAdmin    int64
+	ShelfID    int64
+	RuleGroups string
 }
 
 func (q *Queries) ShelfAutomaticBookCount(ctx context.Context, arg ShelfAutomaticBookCountParams) (int64, error) {
@@ -66,7 +70,8 @@ func (q *Queries) ShelfAutomaticBookCount(ctx context.Context, arg ShelfAutomati
 		arg.LibraryID,
 		arg.UserID,
 		arg.IsAdmin,
-		arg.Rules,
+		arg.ShelfID,
+		arg.RuleGroups,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -83,9 +88,12 @@ AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR 
 AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
 )
-AND (CASE json_extract(CAST(?4 AS TEXT), '$.match')
+AND (EXISTS (SELECT 1 FROM shelf_books sb
+    WHERE sb.shelf_id = ?4 AND sb.book_id = b.id)
+OR EXISTS (SELECT 1 FROM json_each(CAST(?5 AS TEXT)) g
+WHERE (CASE json_extract(g.value, '$.rules.match')
     WHEN 'all' THEN NOT EXISTS (
-        SELECT 1 FROM json_each(CAST(?4 AS TEXT), '$.conditions') c
+        SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
             WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
             WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
@@ -100,7 +108,7 @@ AND (CASE json_extract(CAST(?4 AS TEXT), '$.match')
                 WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 0)
     WHEN 'any' THEN EXISTS (
-        SELECT 1 FROM json_each(CAST(?4 AS TEXT), '$.conditions') c
+        SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
             WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
             WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
@@ -114,19 +122,20 @@ AND (CASE json_extract(CAST(?4 AS TEXT), '$.match')
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = ?2 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = 1)
-    ELSE 0 END) = 1
-AND (CAST(?5 AS INTEGER) = 0
-    OR b.sort_title > CAST(?6 AS TEXT)
-    OR (b.sort_title = CAST(?6 AS TEXT) AND b.id > ?5))
+    ELSE 0 END) = 1))
+AND (CAST(?6 AS INTEGER) = 0
+    OR b.sort_title > CAST(?7 AS TEXT)
+    OR (b.sort_title = CAST(?7 AS TEXT) AND b.id > ?6))
 ORDER BY b.sort_title, b.id
-LIMIT CAST(?7 AS INTEGER)
+LIMIT CAST(?8 AS INTEGER)
 `
 
 type ShelfAutomaticBooksParams struct {
 	LibraryID  int64
 	UserID     int64
 	IsAdmin    int64
-	Rules      string
+	ShelfID    int64
+	RuleGroups string
 	AfterID    int64
 	AfterTitle string
 	PageSize   int64
@@ -137,7 +146,8 @@ func (q *Queries) ShelfAutomaticBooks(ctx context.Context, arg ShelfAutomaticBoo
 		arg.LibraryID,
 		arg.UserID,
 		arg.IsAdmin,
-		arg.Rules,
+		arg.ShelfID,
+		arg.RuleGroups,
 		arg.AfterID,
 		arg.AfterTitle,
 		arg.PageSize,
@@ -183,6 +193,80 @@ func (q *Queries) ShelfAutomaticBooks(ctx context.Context, arg ShelfAutomaticBoo
 	return items, nil
 }
 
+const shelfRuleMatchingBookIDs = `-- name: ShelfRuleMatchingBookIDs :many
+SELECT b.id FROM books b
+WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = ?1
+)))))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
+)
+AND EXISTS (SELECT 1 FROM json_each(CAST(?3 AS TEXT)) g
+WHERE (CASE json_extract(g.value, '$.rules.match')
+    WHEN 'all' THEN NOT EXISTS (
+        SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
+        WHERE COALESCE(CASE json_extract(c.value, '$.field')
+            WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
+            WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
+                WHERE ba.book_id = b.id AND ba.author_id = json_extract(c.value, '$.value'))
+            WHEN 'tag_id' THEN EXISTS (SELECT 1 FROM book_tags bt
+                WHERE bt.book_id = b.id AND bt.tag_id = json_extract(c.value, '$.value'))
+            WHEN 'series_id' THEN b.series_id = json_extract(c.value, '$.value')
+            WHEN 'language' THEN lower(b.language) = lower(json_extract(c.value, '$.value'))
+            WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
+                WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
+            WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
+                WHERE ub.user_id = ?1 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
+            ELSE 0 END, 0) = 0)
+    WHEN 'any' THEN EXISTS (
+        SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
+        WHERE COALESCE(CASE json_extract(c.value, '$.field')
+            WHEN 'title' THEN instr(lower(b.title), lower(json_extract(c.value, '$.value'))) > 0
+            WHEN 'author_id' THEN EXISTS (SELECT 1 FROM book_authors ba
+                WHERE ba.book_id = b.id AND ba.author_id = json_extract(c.value, '$.value'))
+            WHEN 'tag_id' THEN EXISTS (SELECT 1 FROM book_tags bt
+                WHERE bt.book_id = b.id AND bt.tag_id = json_extract(c.value, '$.value'))
+            WHEN 'series_id' THEN b.series_id = json_extract(c.value, '$.value')
+            WHEN 'language' THEN lower(b.language) = lower(json_extract(c.value, '$.value'))
+            WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
+                WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
+            WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
+                WHERE ub.user_id = ?1 AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
+            ELSE 0 END, 0) = 1)
+    ELSE 0 END) = 1)
+ORDER BY b.sort_title, b.id
+`
+
+type ShelfRuleMatchingBookIDsParams struct {
+	UserID     int64
+	IsAdmin    int64
+	RuleGroups string
+}
+
+func (q *Queries) ShelfRuleMatchingBookIDs(ctx context.Context, arg ShelfRuleMatchingBookIDsParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, shelfRuleMatchingBookIDs, arg.UserID, arg.IsAdmin, arg.RuleGroups)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const shelfSystemEnsure = `-- name: ShelfSystemEnsure :exec
 INSERT OR IGNORE INTO shelves (kind, owner_id, name, description, created_by, created_at, updated_at, mode, system_key)
 VALUES ('private', ?1, ?2, NULL, ?1, ?3, ?3,
@@ -208,7 +292,7 @@ func (q *Queries) ShelfSystemEnsure(ctx context.Context, arg ShelfSystemEnsurePa
 
 const shelfSystemGet = `-- name: ShelfSystemGet :one
 
-SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules FROM shelves s
+SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules, s.rule_groups FROM shelves s
 WHERE s.owner_id = ?1 AND s.system_key = ?2
 `
 
@@ -219,7 +303,8 @@ type ShelfSystemGetParams struct {
 
 // UX2 system and automatic shelf queries. Every book query repeats the catalog
 // visibility predicate (library grant or admin, and not hidden for the viewer).
-// sqlc.arg(rules) is canonical RuleSet JSON validated by the catalog service.
+// sqlc.arg(rule_groups) is canonical RuleGroup JSON validated by the catalog service.
+// Rule provenance is live, viewer-scoped, and unioned with manual shelf_books.
 func (q *Queries) ShelfSystemGet(ctx context.Context, arg ShelfSystemGetParams) (Shelf, error) {
 	row := q.db.QueryRowContext(ctx, shelfSystemGet, arg.OwnerID, arg.SystemKey)
 	var i Shelf
@@ -235,6 +320,7 @@ func (q *Queries) ShelfSystemGet(ctx context.Context, arg ShelfSystemGetParams) 
 		&i.Mode,
 		&i.SystemKey,
 		&i.Rules,
+		&i.RuleGroups,
 	)
 	return i, err
 }
@@ -252,7 +338,7 @@ AND NOT EXISTS (
 AND NOT EXISTS (
     SELECT 1 FROM shelf_books sb JOIN shelves s ON s.id = sb.shelf_id
     WHERE sb.book_id = b.id AND s.kind = 'private' AND s.owner_id = ?2
-    AND s.mode = 'manual' AND s.system_key IS NULL
+    AND s.system_key IS NULL
 )
 `
 
@@ -282,7 +368,7 @@ AND NOT EXISTS (
 AND NOT EXISTS (
     SELECT 1 FROM shelf_books sb JOIN shelves s ON s.id = sb.shelf_id
     WHERE sb.book_id = b.id AND s.kind = 'private' AND s.owner_id = ?2
-    AND s.mode = 'manual' AND s.system_key IS NULL
+    AND s.system_key IS NULL
 )
 AND (CAST(?4 AS INTEGER) = 0
     OR b.sort_title > CAST(?5 AS TEXT)

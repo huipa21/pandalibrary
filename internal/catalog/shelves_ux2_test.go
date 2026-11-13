@@ -344,11 +344,11 @@ func TestAutomaticShelfValidation(t *testing.T) {
 	if err != nil || same.Mode != ShelfModeAutomatic {
 		t.Fatalf("unchanged mode patch = %+v, %v", same, err)
 	}
-	if err := fixture.service.PutShelfBook(ctx, reader, shelf.ID, 101, nil); !errors.Is(err, ErrConflict) {
-		t.Fatalf("put automatic membership = %v, want conflict", err)
+	if err := fixture.service.PutShelfBook(ctx, reader, shelf.ID, 101, nil); err != nil {
+		t.Fatalf("put automatic membership = %v", err)
 	}
-	if err := fixture.service.RemoveShelfBook(ctx, reader, shelf.ID, 101); !errors.Is(err, ErrConflict) {
-		t.Fatalf("remove automatic membership = %v, want conflict", err)
+	if err := fixture.service.RemoveShelfBook(ctx, reader, shelf.ID, 101); err != nil {
+		t.Fatalf("remove automatic membership = %v", err)
 	}
 	var stored int
 	if err := fixture.db.Writer.QueryRowContext(ctx, "SELECT count(*) FROM shelf_books WHERE shelf_id = ?", shelf.ID).Scan(&stored); err != nil || stored != 0 {

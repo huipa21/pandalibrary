@@ -11,9 +11,9 @@ import (
 )
 
 const shelfCreate = `-- name: ShelfCreate :one
-INSERT INTO shelves (kind, owner_id, name, description, created_by, created_at, updated_at, mode, rules)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at, mode, system_key, rules
+INSERT INTO shelves (kind, owner_id, name, description, created_by, created_at, updated_at, mode, rules, rule_groups)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at, mode, system_key, rules, rule_groups
 `
 
 type ShelfCreateParams struct {
@@ -26,6 +26,7 @@ type ShelfCreateParams struct {
 	UpdatedAt   int64
 	Mode        string
 	Rules       sql.NullString
+	RuleGroups  string
 }
 
 func (q *Queries) ShelfCreate(ctx context.Context, arg ShelfCreateParams) (Shelf, error) {
@@ -39,6 +40,7 @@ func (q *Queries) ShelfCreate(ctx context.Context, arg ShelfCreateParams) (Shelf
 		arg.UpdatedAt,
 		arg.Mode,
 		arg.Rules,
+		arg.RuleGroups,
 	)
 	var i Shelf
 	err := row.Scan(
@@ -53,6 +55,7 @@ func (q *Queries) ShelfCreate(ctx context.Context, arg ShelfCreateParams) (Shelf
 		&i.Mode,
 		&i.SystemKey,
 		&i.Rules,
+		&i.RuleGroups,
 	)
 	return i, err
 }
@@ -70,7 +73,7 @@ func (q *Queries) ShelfDelete(ctx context.Context, id int64) (int64, error) {
 }
 
 const shelfGet = `-- name: ShelfGet :one
-SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules FROM shelves s
+SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules, s.rule_groups FROM shelves s
 WHERE s.id = ?1
 AND (CAST(?2 AS INTEGER) = 1 OR s.kind = 'shared'
     OR (s.kind = 'private' AND s.owner_id = CAST(?3 AS INTEGER)))
@@ -98,6 +101,7 @@ func (q *Queries) ShelfGet(ctx context.Context, arg ShelfGetParams) (Shelf, erro
 		&i.Mode,
 		&i.SystemKey,
 		&i.Rules,
+		&i.RuleGroups,
 	)
 	return i, err
 }
@@ -127,7 +131,7 @@ func (q *Queries) ShelfInsertBook(ctx context.Context, arg ShelfInsertBookParams
 }
 
 const shelfList = `-- name: ShelfList :many
-SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules FROM shelves s
+SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules, s.rule_groups FROM shelves s
 WHERE (CAST(?1 AS INTEGER) = 1 OR s.kind = 'shared'
     OR (s.kind = 'private' AND s.owner_id = CAST(?2 AS INTEGER)))
 AND (s.system_key IS NULL OR s.owner_id = CAST(?2 AS INTEGER))
@@ -178,6 +182,7 @@ func (q *Queries) ShelfList(ctx context.Context, arg ShelfListParams) ([]Shelf, 
 			&i.Mode,
 			&i.SystemKey,
 			&i.Rules,
+			&i.RuleGroups,
 		); err != nil {
 			return nil, err
 		}
@@ -193,9 +198,8 @@ func (q *Queries) ShelfList(ctx context.Context, arg ShelfListParams) ([]Shelf, 
 }
 
 const shelfListContainingBook = `-- name: ShelfListContainingBook :many
-SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules FROM shelves s
-WHERE s.mode = 'manual'
-AND (CAST(?1 AS INTEGER) = 1 OR s.kind = 'shared'
+SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules, s.rule_groups FROM shelves s
+WHERE (CAST(?1 AS INTEGER) = 1 OR s.kind = 'shared'
     OR (s.kind = 'private' AND s.owner_id = CAST(?2 AS INTEGER)))
 AND (s.system_key IS NULL OR s.owner_id = CAST(?2 AS INTEGER))
 AND EXISTS (
@@ -238,6 +242,7 @@ func (q *Queries) ShelfListContainingBook(ctx context.Context, arg ShelfListCont
 			&i.Mode,
 			&i.SystemKey,
 			&i.Rules,
+			&i.RuleGroups,
 		); err != nil {
 			return nil, err
 		}
@@ -359,14 +364,15 @@ func (q *Queries) ShelfTouch(ctx context.Context, arg ShelfTouchParams) error {
 }
 
 const shelfUpdate = `-- name: ShelfUpdate :one
-UPDATE shelves SET name = ?, description = ?, rules = ?, updated_at = ? WHERE id = ?
-RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at, mode, system_key, rules
+UPDATE shelves SET name = ?, description = ?, rules = ?, rule_groups = ?, updated_at = ? WHERE id = ?
+RETURNING id, kind, owner_id, name, description, created_by, created_at, updated_at, mode, system_key, rules, rule_groups
 `
 
 type ShelfUpdateParams struct {
 	Name        string
 	Description sql.NullString
 	Rules       sql.NullString
+	RuleGroups  string
 	UpdatedAt   int64
 	ID          int64
 }
@@ -376,6 +382,7 @@ func (q *Queries) ShelfUpdate(ctx context.Context, arg ShelfUpdateParams) (Shelf
 		arg.Name,
 		arg.Description,
 		arg.Rules,
+		arg.RuleGroups,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -392,6 +399,7 @@ func (q *Queries) ShelfUpdate(ctx context.Context, arg ShelfUpdateParams) (Shelf
 		&i.Mode,
 		&i.SystemKey,
 		&i.Rules,
+		&i.RuleGroups,
 	)
 	return i, err
 }

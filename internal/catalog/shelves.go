@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -17,37 +18,44 @@ import (
 // OwnerID, Description, CreatedBy, SystemKey, and Rules are null when not present;
 // Mode is "manual" or "automatic"; timestamps are UTC.
 type Shelf struct {
-	ID               int64     `json:"id"`
-	Kind             string    `json:"kind"`
-	Mode             string    `json:"mode"`
-	SystemKey        *string   `json:"system_key"`
-	Rules            *RuleSet  `json:"rules"`
-	OwnerID          *int64    `json:"owner_id"`
-	Name             string    `json:"name"`
-	Description      *string   `json:"description"`
-	CreatedBy        *int64    `json:"created_by"`
-	VisibleBookCount int64     `json:"visible_book_count"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               int64       `json:"id"`
+	Kind             string      `json:"kind"`
+	Mode             string      `json:"mode"`
+	SystemKey        *string     `json:"system_key"`
+	Rules            *RuleSet    `json:"rules"`
+	RuleGroups       []RuleGroup `json:"rule_groups"`
+	OwnerID          *int64      `json:"owner_id"`
+	Name             string      `json:"name"`
+	Description      *string     `json:"description"`
+	CreatedBy        *int64      `json:"created_by"`
+	VisibleBookCount int64       `json:"visible_book_count"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
 }
 
-// ShelfInput creates a private or shared shelf; Description may be null. An omitted
-// Mode means manual. Automatic shelves must be private and require Rules.
+// ShelfInput creates a private or shared collection. An omitted Mode means manual;
+// legacy automatic mode remains private. RuleGroups may supplement either mode's
+// manual membership; legacy Rules cannot be combined with RuleGroups.
 type ShelfInput struct {
-	Kind        string   `json:"kind"`
-	Mode        string   `json:"mode"`
-	Name        string   `json:"name"`
-	Description *string  `json:"description"`
-	Rules       *RuleSet `json:"rules"`
+	Kind        string      `json:"kind"`
+	Mode        string      `json:"mode"`
+	Name        string      `json:"name"`
+	Description *string     `json:"description"`
+	Rules       *RuleSet    `json:"rules"`
+	RuleGroups  []RuleGroup `json:"rule_groups"`
 }
 
 // ShelfPatch distinguishes omitted fields from an explicit null description.
-// Mode may only repeat the current mode; Rules may only change on automatic shelves.
+// Mode may only repeat the current mode; legacy Rules update the first automatic
+// group. RuleGroups replaces all groups. Deleted groups retain current actor-visible
+// matches as manual books unless RemoveRuleBooks is true.
 type ShelfPatch struct {
-	Name        Optional[string]  `json:"name"`
-	Description Optional[string]  `json:"description"`
-	Mode        Optional[string]  `json:"mode"`
-	Rules       Optional[RuleSet] `json:"rules"`
+	Name            Optional[string]      `json:"name"`
+	Description     Optional[string]      `json:"description"`
+	Mode            Optional[string]      `json:"mode"`
+	Rules           Optional[RuleSet]     `json:"rules"`
+	RuleGroups      Optional[[]RuleGroup] `json:"rule_groups"`
+	RemoveRuleBooks bool                  `json:"remove_rule_books"`
 }
 
 func shelfDTO(row sqlc.Shelf, count int64) (Shelf, error) {
@@ -57,12 +65,13 @@ func shelfDTO(row sqlc.Shelf, count int64) (Shelf, error) {
 		CreatedBy: intPointer(row.CreatedBy), VisibleBookCount: count,
 		CreatedAt: utcMillis(row.CreatedAt), UpdatedAt: utcMillis(row.UpdatedAt),
 	}
-	if row.Rules.Valid {
-		rules, err := decodeStoredRules(row.Rules.String)
-		if err != nil {
-			return Shelf{}, err
+	if err := json.Unmarshal([]byte(row.RuleGroups), &shelf.RuleGroups); err != nil {
+		return Shelf{}, fmt.Errorf("decode collection rule groups: %w", err)
+	}
+	if row.Mode == ShelfModeAutomatic {
+		if len(shelf.RuleGroups) > 0 {
+			shelf.Rules = &shelf.RuleGroups[0].Rules
 		}
-		shelf.Rules = rules
 	}
 	return shelf, nil
 }
@@ -102,9 +111,9 @@ func checkShelfManager(viewer Viewer, shelf sqlc.Shelf) error {
 }
 
 func visibleShelfCount(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelf sqlc.Shelf, libraryID int64) (int64, error) {
-	if shelf.Mode == ShelfModeAutomatic {
+	if shelf.Mode == ShelfModeAutomatic || shelf.RuleGroups != "[]" {
 		count, err := queries.ShelfAutomaticBookCount(ctx, sqlc.ShelfAutomaticBookCountParams{
-			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, Rules: shelf.Rules.String, LibraryID: libraryID,
+			IsAdmin: adminFlag(viewer), UserID: viewer.UserID, RuleGroups: shelf.RuleGroups, ShelfID: shelf.ID, LibraryID: libraryID,
 		})
 		if err != nil {
 			return 0, fmt.Errorf("count automatic shelf books: %w", err)
@@ -236,10 +245,9 @@ func (s *Service) GetShelf(ctx context.Context, viewer Viewer, id int64, library
 // maximumBookShelves caps the shelves returned by ListBookShelves.
 const maximumBookShelves = 200
 
-// ListBookShelves returns the manual shelves visible to the viewer (as in ListShelves)
-// that contain a visible book, sorted by case-insensitive name and ID. Automatic
-// shelves and the virtual Unshelved view are excluded. A missing or invisible book
-// is ErrNotFound.
+// ListBookShelves returns collections with manual provenance for a visible book,
+// sorted by case-insensitive name and ID. Rule-only membership and the virtual
+// Unshelved view are excluded. A missing or invisible book is ErrNotFound.
 func (s *Service) ListBookShelves(ctx context.Context, viewer Viewer, bookID int64) ([]Shelf, error) {
 	if err := checkViewer(viewer); err != nil {
 		return nil, err
@@ -271,7 +279,7 @@ func (s *Service) ListBookShelves(ctx context.Context, viewer Viewer, bookID int
 }
 
 // CreateShelf creates a private shelf for the viewer, or a shared shelf for an admin.
-// Automatic shelves must be private and are populated live from their rules.
+// Rule groups are populated live and supplement manual membership.
 func (s *Service) CreateShelf(ctx context.Context, viewer Viewer, input ShelfInput) (Shelf, error) {
 	if err := checkViewer(viewer); err != nil {
 		return Shelf{}, err
@@ -289,6 +297,9 @@ func (s *Service) CreateShelf(ctx context.Context, viewer Viewer, input ShelfInp
 		return Shelf{}, ErrForbidden
 	}
 	rules := sql.NullString{}
+	if input.Rules != nil && input.RuleGroups != nil {
+		return Shelf{}, invalid("rules and rule_groups cannot be supplied together")
+	}
 	switch input.Mode {
 	case ShelfModeManual:
 		if input.Rules != nil {
@@ -298,14 +309,26 @@ func (s *Service) CreateShelf(ctx context.Context, viewer Viewer, input ShelfInp
 		if input.Kind != "private" {
 			return Shelf{}, invalid("automatic shelves must be private")
 		}
-		if input.Rules == nil {
+		if input.Rules == nil && len(input.RuleGroups) == 0 {
 			return Shelf{}, invalid("automatic shelves require rules")
 		}
-		_, stored, err := normalizeRules(*input.Rules)
+		set := input.Rules
+		if set == nil {
+			set = &input.RuleGroups[0].Rules
+		}
+		_, stored, err := normalizeRules(*set)
 		if err != nil {
 			return Shelf{}, err
 		}
 		rules = sql.NullString{String: stored, Valid: true}
+	}
+	groups := input.RuleGroups
+	if input.Rules != nil {
+		groups = []RuleGroup{{ID: "legacy", Name: "Rules", Rules: *input.Rules}}
+	}
+	_, storedGroups, err := normalizeRuleGroups(groups)
+	if err != nil {
+		return Shelf{}, err
 	}
 	name, err := validateName(input.Name, "shelf name")
 	if err != nil {
@@ -329,7 +352,7 @@ func (s *Service) CreateShelf(ctx context.Context, viewer Viewer, input ShelfInp
 		row, err := queries.ShelfCreate(ctx, sqlc.ShelfCreateParams{
 			Kind: input.Kind, OwnerID: owner, Name: name, Description: description,
 			CreatedBy: sql.NullInt64{Int64: viewer.UserID, Valid: true}, CreatedAt: now, UpdatedAt: now,
-			Mode: input.Mode, Rules: rules,
+			Mode: input.Mode, Rules: rules, RuleGroups: storedGroups,
 		})
 		if err != nil {
 			return fmt.Errorf("create shelf: %w", err)
@@ -347,11 +370,13 @@ func (s *Service) UpdateShelf(ctx context.Context, viewer Viewer, id int64, patc
 	if err := checkViewer(viewer); err != nil {
 		return Shelf{}, err
 	}
-	if id < 1 || !patch.Name.Set && !patch.Description.Set && !patch.Mode.Set && !patch.Rules.Set {
+	if id < 1 || !patch.Name.Set && !patch.Description.Set && !patch.Mode.Set && !patch.Rules.Set && !patch.RuleGroups.Set {
 		return Shelf{}, invalid("shelf ID and at least one update are required")
 	}
 	var name string
 	var description, rules sql.NullString
+	var groups []RuleGroup
+	var storedGroups string
 	var err error
 	if patch.Name.Set {
 		if patch.Name.Value == nil {
@@ -373,6 +398,9 @@ func (s *Service) UpdateShelf(ctx context.Context, viewer Viewer, id int64, patc
 		return Shelf{}, invalid("shelf mode must be manual or automatic")
 	}
 	if patch.Rules.Set {
+		if patch.RuleGroups.Set {
+			return Shelf{}, invalid("rules and rule_groups cannot be supplied together")
+		}
 		if patch.Rules.Value == nil {
 			return Shelf{}, invalid("shelf rules cannot be null")
 		}
@@ -381,6 +409,15 @@ func (s *Service) UpdateShelf(ctx context.Context, viewer Viewer, id int64, patc
 			return Shelf{}, err
 		}
 		rules = sql.NullString{String: stored, Valid: true}
+	}
+	if patch.RuleGroups.Set {
+		if patch.RuleGroups.Value == nil {
+			return Shelf{}, invalid("rule_groups cannot be null")
+		}
+		groups, storedGroups, err = normalizeRuleGroups(*patch.RuleGroups.Value)
+		if err != nil {
+			return Shelf{}, err
+		}
 	}
 	var result Shelf
 	err = db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
@@ -392,7 +429,7 @@ func (s *Service) UpdateShelf(ctx context.Context, viewer Viewer, id int64, patc
 		if err := checkShelfManager(viewer, row); err != nil {
 			return err
 		}
-		if row.SystemKey.Valid && (patch.Name.Set || patch.Mode.Set || patch.Rules.Set) {
+		if row.SystemKey.Valid && (patch.Name.Set || patch.Mode.Set || patch.Rules.Set || patch.RuleGroups.Set) {
 			return checkShelfMutable(row)
 		}
 		if patch.Mode.Set && *patch.Mode.Value != row.Mode {
@@ -410,13 +447,47 @@ func (s *Service) UpdateShelf(ctx context.Context, viewer Viewer, id int64, patc
 		if !patch.Rules.Set {
 			rules = row.Rules
 		}
+		if patch.Rules.Set {
+			groups = []RuleGroup{}
+			if err := json.Unmarshal([]byte(row.RuleGroups), &groups); err != nil {
+				return fmt.Errorf("decode collection rule groups: %w", err)
+			}
+			normalized, err := decodeStoredRules(rules.String)
+			if err != nil {
+				return err
+			}
+			if len(groups) == 0 {
+				groups = append(groups, RuleGroup{ID: "legacy", Name: "Rules"})
+			}
+			groups[0].Rules = *normalized
+			_, storedGroups, err = normalizeRuleGroups(groups)
+			if err != nil {
+				return err
+			}
+		} else if !patch.RuleGroups.Set {
+			storedGroups = row.RuleGroups
+		}
+		if patch.RuleGroups.Set {
+			if !patch.RemoveRuleBooks {
+				if err := retainRemovedRuleBooks(ctx, queries, viewer, row, groups, s.now().UnixMilli()); err != nil {
+					return err
+				}
+			}
+			if row.Mode == ShelfModeAutomatic && len(groups) > 0 {
+				_, stored, err := normalizeRules(groups[0].Rules)
+				if err != nil {
+					return err
+				}
+				rules = sql.NullString{String: stored, Valid: true}
+			}
+		}
 		if !row.SystemKey.Valid {
 			if err := checkShelfName(ctx, queries, row, name); err != nil {
 				return err
 			}
 		}
 		updated, err := queries.ShelfUpdate(ctx, sqlc.ShelfUpdateParams{
-			ID: id, Name: name, Description: description, Rules: rules, UpdatedAt: s.now().UnixMilli(),
+			ID: id, Name: name, Description: description, Rules: rules, RuleGroups: storedGroups, UpdatedAt: s.now().UnixMilli(),
 		})
 		if err != nil {
 			return fmt.Errorf("update shelf: %w", err)
