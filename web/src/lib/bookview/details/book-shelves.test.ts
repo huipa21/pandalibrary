@@ -67,9 +67,21 @@ describe('book shelf membership', () => {
 		expect(store.canRemove(shelf(1))).toBe(true);
 		expect(store.canRemove(shelf(2, 'Other private', { owner_id: 2 }))).toBe(role === 'admin');
 		expect(store.canRemove(shelf(3, 'Shared', { kind: 'shared', owner_id: null }))).toBe(role === 'admin');
-		expect(store.canRemove(shelf(4, 'Automatic', { mode: 'automatic' }))).toBe(false);
+		expect(store.canRemove(shelf(4, 'Automatic', { mode: 'automatic' }))).toBe(true);
 		expect(store.canRemove(shelf(5, 'Unshelved', { system_key: 'unshelved' }))).toBe(false);
 		expect(store.canRemove(shelf(6, 'Favorites', { system_key: 'favorites' }))).toBe(true);
+	});
+
+	it('refreshes automatic memberships after removing manual provenance so rule matches remain visible', async () => {
+		const automatic = shelf(4, 'Automatic', { mode: 'automatic' });
+		vi.mocked(getBookShelves).mockResolvedValue([automatic]);
+		const store = create();
+		await settle();
+		await store.remove(automatic);
+		await settle();
+		expect(removeBookFromShelf).toHaveBeenCalledWith(4, 21);
+		expect(getBookShelves).toHaveBeenCalledTimes(2);
+		expect(store.memberIds).toEqual([4]);
 	});
 
 	it('removes optimistically, broadcasts once, and ignores its own event', async () => {

@@ -31,7 +31,7 @@ export class BookShelves {
 
 	canRemove(shelf: Shelf): boolean {
 		return offersShelfManagement(shelf, this.#viewer) &&
-			shelf.mode !== 'automatic' && shelf.system_key !== 'unshelved';
+			shelf.system_key !== 'unshelved';
 	}
 
 	reload(): void {
@@ -104,6 +104,7 @@ export class BookShelves {
 		const event = new CustomEvent(SHELVES_CHANGED);
 		this.#ownEvents.add(event);
 		window.dispatchEvent(event);
+		if (generation === this.#generation && (shelf.mode === 'automatic' || shelf.rule_groups?.length)) this.reload();
 	}
 
 	listen(target: Window = window): () => void {

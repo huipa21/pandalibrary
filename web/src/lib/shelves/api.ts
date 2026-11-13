@@ -1,7 +1,14 @@
 import { api, type JsonValue } from '#lib/api/client.js';
 import { buildPagePath, MAX_PAGE_SIZE, type PageOptions } from '#lib/catalog/api.js';
 import type { Book, Page } from '#lib/catalog/types.js';
-import type { SessionViewer, Shelf, ShelfInput, ShelfPatch, RuleSet, SystemShelf } from './types.js';
+import type { SessionViewer, Shelf, ShelfInput, ShelfPatch, SystemShelf } from './types.js';
+import { parseLibraryID } from '#lib/libraries/context.js';
+
+/** Collections are global unless an old link explicitly requests a valid library filter. */
+export function collectionLibraryID(url: { readonly pathname: string; readonly searchParams: Pick<URLSearchParams, 'get' | 'has'> }): number | undefined | null {
+	if (url.pathname.replace(/\/+$/, '') === '/shelves/system/favorites') return undefined;
+	return url.searchParams.has('library_id') ? parseLibraryID(url.searchParams.get('library_id')) ?? null : undefined;
+}
 
 export type ShelfOptions = PageOptions & { library_id?: number };
 type RequestOptions = ShelfOptions & { signal?: AbortSignal };
@@ -67,6 +74,7 @@ export async function createShelf(input: ShelfInput): Promise<Shelf> {
 	};
 	if (input.mode !== undefined) body.mode = input.mode;
 	if (input.rules !== undefined) body.rules = input.rules;
+	if (input.rule_groups !== undefined) body.rule_groups = input.rule_groups;
 	return (await api.request<{ shelf: Shelf }>('/shelves', { method: 'POST', body })).shelf;
 }
 
@@ -75,6 +83,8 @@ export async function updateShelf(id: number, patch: ShelfPatch): Promise<Shelf>
 	if (patch.name !== undefined) body.name = patch.name;
 	if (patch.description !== undefined) body.description = patch.description;
 	if (patch.rules !== undefined) body.rules = patch.rules;
+	if (patch.rule_groups !== undefined) body.rule_groups = patch.rule_groups;
+	if (patch.remove_rule_books !== undefined) body.remove_rule_books = patch.remove_rule_books;
 	return (await api.request<{ shelf: Shelf }>(`/shelves/${id}`, { method: 'PATCH', body })).shelf;
 }
 

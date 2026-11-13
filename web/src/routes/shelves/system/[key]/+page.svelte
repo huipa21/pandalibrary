@@ -4,18 +4,21 @@
 	import { page } from '$app/state';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { translate } from '#lib/paging/translate.js';
-	import { getSystemShelf, listSystemShelfBooks } from '#lib/shelves/api.js';
+	import { collectionLibraryID, getSystemShelf, listSystemShelfBooks } from '#lib/shelves/api.js';
 	import { shelfErrorKey } from '#lib/shelves/form.js';
 	import ShelfDescription from '#lib/shelves/ShelfDescription.svelte';
 	import BookCard from '#lib/catalog/BookCard.svelte';
+	import BookDisplaySettings from '#lib/catalog/BookDisplaySettings.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import type { SystemShelf } from '#lib/shelves/types.js';
 	import type { Book } from '#lib/catalog/types.js';
-	import { libraryHref, shelfLibraryID } from '#lib/libraries/context.js';
+	import { libraryHref } from '#lib/libraries/context.js';
 
 	const pager = new CursorPager<Book>();
 	let shelf = $state<SystemShelf | null>(null);
 	let error = $state('');
+	let coverSize = $state(208);
+	let spacing = $state(20);
 	let requestVersion = 0;
 	let libraryID = $state<number | undefined>(undefined);
 	let metadataController: AbortController | null = null;
@@ -25,7 +28,7 @@
 	$effect(() => {
 		const current = key;
 		const url = page.url;
-		untrack(() => void loadShelf(current, shelfLibraryID(url)));
+		untrack(() => void loadShelf(current, collectionLibraryID(url)));
 	});
 
 	onDestroy(() => {
@@ -74,7 +77,7 @@
 	{#if error}
 		<div class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">
 			<p>{error}</p>
-			<button class="mt-2 underline underline-offset-4 focus-visible:outline-2" onclick={() => void loadShelf(key, shelfLibraryID(page.url))}>{m['shelves.retry']()}</button>
+			<button class="mt-2 underline underline-offset-4 focus-visible:outline-2" onclick={() => void loadShelf(key, collectionLibraryID(page.url))}>{m['shelves.retry']()}</button>
 		</div>
 	{:else if !shelf}
 		<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
@@ -83,6 +86,7 @@
 			<h1 class="sr-only">{systemShelfTitle(key)}</h1>
 			<p class="text-sm text-slate-500">{m['shelves.book_count']({ count: shelf.visible_book_count })}</p>
 			{#if shelf.description}<ShelfDescription description={shelf.description} />{/if}
+			<BookDisplaySettings storageKey={`system-collection:${key}`} bind:size={coverSize} bind:spacing />
 		</header>
 
 		{#if pager.status === 'error'}
@@ -95,7 +99,7 @@
 		{:else if pager.empty}
 			<p class="card p-6 text-slate-600">{m['shelves.empty']()}</p>
 		{:else}
-			<ul class="book-grid">
+			<ul class="book-grid book-grid-configurable" style={`--book-cover-size: ${coverSize}px; --book-cover-spacing: ${spacing}px`}>
 				{#each pager.items as book (book.id)}
 					<BookCard {book} />
 				{/each}

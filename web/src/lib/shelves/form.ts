@@ -1,6 +1,6 @@
 import { requestErrorKind } from '#lib/paging/errors.js';
 import { MAX_SHELF_DESCRIPTION_BYTES, MAX_SHELF_NAME_BYTES } from './api.js';
-import type { SessionViewer, Shelf, ShelfKind } from './types.js';
+import type { RuleGroup, SessionViewer, Shelf, ShelfKind } from './types.js';
 
 export type ShelfFieldError = 'name_required' | 'name_too_long' | 'name_invalid' | 'description_too_long';
 
@@ -12,6 +12,8 @@ export interface ShelfFormValue {
 	readonly kind: ShelfKind;
 	readonly name: string;
 	readonly description: string | null;
+	readonly rule_groups: RuleGroup[];
+	readonly remove_rule_books?: boolean;
 }
 
 const encoder = new TextEncoder();

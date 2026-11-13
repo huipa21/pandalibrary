@@ -17,6 +17,7 @@
 	import type { SearchResult } from '#lib/search/types.js';
 	import {
 		addBookToShelf,
+		collectionLibraryID,
 		deleteShelf,
 		getSessionViewer,
 		getShelf,
@@ -27,8 +28,10 @@
 	import { offersShelfManagement, shelfErrorKey, type ShelfFormValue } from '#lib/shelves/form.js';
 	import ShelfDescription from '#lib/shelves/ShelfDescription.svelte';
 	import ShelfForm from '#lib/shelves/ShelfForm.svelte';
+	import { shelfRuleGroups } from '#lib/shelves/rules.js';
+	import BookDisplaySettings from '#lib/catalog/BookDisplaySettings.svelte';
 	import type { SessionViewer, Shelf } from '#lib/shelves/types.js';
-	import { libraryHref, shelfLibraryID } from '#lib/libraries/context.js';
+	import { libraryHref } from '#lib/libraries/context.js';
 
 	const books = new CursorPager<Book>();
 	const candidates = new CursorPager<SearchResult>();
@@ -42,6 +45,8 @@
 	let actionError = $state('');
 	let removing = $state<number | null>(null);
 	let mode = $state<'grid' | 'list'>('grid');
+	let coverSize = $state(208);
+	let spacing = $state(20);
 	let addDraft = $state('');
 	let addQuery = $state('');
 	let addValidation = $state('');
@@ -54,12 +59,13 @@
 
 	const manageable = $derived(shelf !== null && offersShelfManagement(shelf, viewer));
 	const editable = $derived(manageable && !shelf?.system_key);
-	const membershipEditable = $derived(manageable && shelf?.mode !== 'automatic' && shelf?.system_key !== 'unshelved');
+	const membershipEditable = $derived(manageable && shelf?.system_key !== 'unshelved');
+	const initialRuleGroups = $derived(shelf ? shelfRuleGroups(shelf, m['ux3.shelves.rules_label']()) : []);
 
 	$effect(() => {
 		const id = page.params.id ?? '';
 		const url = page.url;
-		untrack(() => void loadShelf(id, shelfLibraryID(url)));
+		untrack(() => void loadShelf(id, collectionLibraryID(url)));
 	});
 
 	$effect(() => { if (shelf && books.status === 'ready') rememberBrowseContext({ ids: books.items.map((book) => book.id), label: shelf.name, href: libraryHref(`/shelves/${shelf.id}`, libraryID) }); });
@@ -142,12 +148,13 @@
 		try {
 			const id = shelf.id;
 			const request = requestVersion;
-			await updateShelf(id, { name: value.name, description: value.description });
+			await updateShelf(id, { name: value.name, description: value.description, rule_groups: value.rule_groups, remove_rule_books: value.remove_rule_books });
 			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
 			if (request !== requestVersion) return null;
 			const updated = await getShelf(id, { library_id: libraryID });
 			if (request !== requestVersion) return null;
 			shelf = updated;
+			void books.reload();
 			editing = false;
 			notice = m['shelves.edit.success']();
 			return null;
@@ -239,7 +246,7 @@
 	<div class="space-y-4" role="alert">
 		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800">{loadError}</p>
 		<div class="flex flex-wrap gap-4">
-			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadShelf(page.params.id ?? '', shelfLibraryID(page.url))}>{m['shelves.retry']()}</button>
+			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadShelf(page.params.id ?? '', collectionLibraryID(page.url))}>{m['shelves.retry']()}</button>
 			<a class="underline underline-offset-4 focus-visible:outline-2" href="/shelves">{m['shelves.back']()}</a>
 		</div>
 	</div>
@@ -272,6 +279,7 @@
 						busyLabel={m['shelves.edit.saving']()}
 						initialName={shelf.name}
 						initialDescription={shelf.description ?? ''}
+						{initialRuleGroups}
 						onsave={save}
 						oncancel={() => (editing = false)}
 					/>
@@ -297,7 +305,11 @@
 			<div class="flex flex-wrap items-end justify-between gap-4">
 				<h2 id="shelf-books-heading" class="text-xl font-semibold">{m['shelves.books.heading']()}</h2>
 				<ViewToggle view={mode} onchange={(next) => (mode = next)} />
+				<BookDisplaySettings storageKey={`collection:${shelf.id}`} bind:size={coverSize} bind:spacing />
 			</div>
+			{#if membershipEditable && (initialRuleGroups.length || shelf.mode === 'automatic')}
+				<p class="text-sm text-slate-600">{m['collections.membership.remove_help']()}</p>
+			{/if}
 			{#if books.status === 'error'}
 				<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">
 					<p>{translate(shelfErrorKey(books.error, 'load_books'))}</p>
@@ -308,7 +320,7 @@
 			{:else if books.empty}
 				<p class="card p-6 text-slate-600">{m['shelves.books.empty']()}</p>
 			{:else}
-				<ul class={mode === 'grid' ? 'book-grid' : 'space-y-3'}>
+				<ul class={mode === 'grid' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${coverSize}px; --book-cover-spacing: ${spacing}px`}>
 					{#each books.items as book (book.id)}
 						<BookCard {book} {mode}>
 							{#snippet actions()}
@@ -354,6 +366,7 @@
 		{#if membershipEditable}
 			<section class="space-y-4 card p-4 sm:p-6" aria-labelledby="add-books-heading">
 				<h2 id="add-books-heading" class="text-xl font-semibold">{m['shelves.add.heading']()}</h2>
+				<p class="text-sm text-slate-600">{m['collections.membership.help']()}</p>
 				<form role="search" aria-labelledby="add-books-heading" class="flex flex-wrap items-end gap-3" onsubmit={findCandidates} novalidate>
 					<SearchField
 						id="add-book-query"
