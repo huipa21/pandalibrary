@@ -8,8 +8,8 @@ import (
 	"pandalibrary/internal/db/sqlc"
 )
 
-// assignableShelf applies the normal manual-membership rules (visible, managed by the
-// viewer, manual) and additionally rejects other users' private shelves: bulk assignment
+// assignableShelf applies the normal membership rules (visible, managed by the
+// viewer) and additionally rejects other users' private shelves: bulk assignment
 // never places books on a shelf that belongs to someone else, even for administrators.
 func assignableShelf(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelfID int64) error {
 	if shelfID < 1 {
@@ -25,13 +25,13 @@ func assignableShelf(ctx context.Context, queries *sqlc.Queries, viewer Viewer, 
 	if err := checkShelfManager(viewer, shelf); err != nil {
 		return err
 	}
-	return checkManualMembership(shelf)
+	return nil
 }
 
 // CheckAssignableShelf reports whether viewer may add new books to shelfID. It returns
 // ErrNotFound for missing or invisible shelves, ErrForbidden for shelves the viewer
-// cannot write (including other users' private shelves) and ErrConflict for automatic
-// shelves. Favorites is an ordinary manual shelf owned by the viewer.
+// cannot write (including other users' private shelves).
+// Favorites is an ordinary manual shelf owned by the viewer.
 func (s *Service) CheckAssignableShelf(ctx context.Context, viewer Viewer, shelfID int64) error {
 	if err := checkViewer(viewer); err != nil {
 		return err

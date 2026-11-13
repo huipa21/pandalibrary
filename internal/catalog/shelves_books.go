@@ -23,10 +23,11 @@ func shelfOrderSignature(ids []int64) string {
 	return base64.RawURLEncoding.EncodeToString(hash.Sum(nil))
 }
 
-// ListShelfBooks returns visible, fully hydrated books. Manual shelves use manual
+// ListShelfBooks returns visible, fully hydrated books. Rule-free manual shelves use manual
 // order and a cursor that is invalidated if the viewer's visible membership or order
-// changes. Automatic shelves are evaluated live and ordered by sort title and ID; their
-// cursors are bound to the current rules. An optional positive library ID intersects
+// changes. Collections with rules (and legacy automatic shelves) are evaluated live
+// and ordered by sort title and ID; their cursors are bound to the current groups.
+// An optional positive library ID intersects
 // membership with that accessible library and binds cursors to that scope.
 func (s *Service) ListShelfBooks(ctx context.Context, viewer Viewer, shelfID int64, options PageOptions, libraryIDs ...int64) (Page[Book], error) {
 	if err := checkViewer(viewer); err != nil {
@@ -50,7 +51,7 @@ func (s *Service) ListShelfBooks(ctx context.Context, viewer Viewer, shelfID int
 		if err != nil {
 			return Page[Book]{}, err
 		}
-		if shelf.Mode == ShelfModeAutomatic {
+		if shelf.Mode == ShelfModeAutomatic || shelf.RuleGroups != "[]" {
 			return listAutomaticShelfBooks(ctx, queries, viewer, shelf, options, libraryID)
 		}
 		return listManualShelfBooks(ctx, queries, viewer, shelfID, options, libraryID)
@@ -105,13 +106,13 @@ func listManualShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Vie
 }
 
 func listAutomaticShelfBooks(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelf sqlc.Shelf, options PageOptions, libraryID int64) (Page[Book], error) {
-	scope := shelfLibraryScope(fmt.Sprintf("%s:%d:automatic:%s", viewerScope(viewer), shelf.ID, rulesSignature(shelf.Rules.String)), libraryID)
+	scope := shelfLibraryScope(fmt.Sprintf("%s:%d:automatic:%s", viewerScope(viewer), shelf.ID, rulesSignature(shelf.RuleGroups)), libraryID)
 	limit, after, err := parsePage(options, "shelf_books", scope, "title")
 	if err != nil {
 		return Page[Book]{}, err
 	}
 	rows, err := queries.ShelfAutomaticBooks(ctx, sqlc.ShelfAutomaticBooksParams{
-		IsAdmin: adminFlag(viewer), UserID: viewer.UserID, Rules: shelf.Rules.String, LibraryID: libraryID,
+		IsAdmin: adminFlag(viewer), UserID: viewer.UserID, RuleGroups: shelf.RuleGroups, ShelfID: shelf.ID, LibraryID: libraryID,
 		AfterID: after.ID, AfterTitle: after.Text, PageSize: int64(limit + 1),
 	})
 	if err != nil {
@@ -137,13 +138,6 @@ func titlePage(ctx context.Context, queries *sqlc.Queries, viewer Viewer, rows [
 		items = append(items, book)
 	}
 	return Page[Book]{Items: items, NextCursor: next}, nil
-}
-
-func checkManualMembership(shelf sqlc.Shelf) error {
-	if shelf.Mode != ShelfModeManual {
-		return conflict("automatic shelf membership is computed from its rules")
-	}
-	return nil
 }
 
 func orderedShelfMembers(ctx context.Context, queries *sqlc.Queries, viewer Viewer, shelfID int64) ([]sqlc.ShelfOrderedMembersRow, error) {
@@ -199,9 +193,6 @@ func (s *Service) PutShelfBook(ctx context.Context, viewer Viewer, shelfID, book
 			return err
 		}
 		if err := checkShelfManager(viewer, shelf); err != nil {
-			return err
-		}
-		if err := checkManualMembership(shelf); err != nil {
 			return err
 		}
 		return putShelfBook(ctx, queries, viewer, shelfID, bookID, position, s.now().UnixMilli())
@@ -282,7 +273,8 @@ func putShelfBook(ctx context.Context, queries *sqlc.Queries, viewer Viewer, she
 	return touchShelf(ctx, queries, shelfID, now, changed || memberIndex < 0)
 }
 
-// RemoveShelfBook idempotently removes a visible book from a managed shelf.
+// RemoveShelfBook idempotently removes manual provenance for a visible book from
+// a managed shelf. Matching rule groups may still include the book.
 func (s *Service) RemoveShelfBook(ctx context.Context, viewer Viewer, shelfID, bookID int64) error {
 	if err := checkViewer(viewer); err != nil {
 		return err
@@ -297,9 +289,6 @@ func (s *Service) RemoveShelfBook(ctx context.Context, viewer Viewer, shelfID, b
 			return err
 		}
 		if err := checkShelfManager(viewer, shelf); err != nil {
-			return err
-		}
-		if err := checkManualMembership(shelf); err != nil {
 			return err
 		}
 		if _, err := visibleBook(ctx, queries, viewer, bookID); err != nil {

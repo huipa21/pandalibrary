@@ -440,8 +440,8 @@ func TestShelfHTTPSystemAndAutomaticShelves(t *testing.T) {
 		strings.NewReader(`{"rules":{"match":"any","conditions":[{"field":"format","op":"eq","value":"epub"}]}}`), fixture.reader, nil), http.StatusOK)
 	expectShelfStatus(t, fixture.request(http.MethodPatch, shelfHTTPPath(created.Shelf.ID),
 		strings.NewReader(`{"rules":null}`), fixture.reader, nil), http.StatusBadRequest)
-	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(created.Shelf.ID, 101), nil, fixture.reader, nil), http.StatusConflict)
-	expectShelfStatus(t, fixture.request(http.MethodDelete, shelfHTTPBookPath(created.Shelf.ID, 101), nil, fixture.reader, nil), http.StatusConflict)
+	expectShelfStatus(t, fixture.request(http.MethodPut, shelfHTTPBookPath(created.Shelf.ID, 101), nil, fixture.reader, nil), http.StatusOK)
+	expectShelfStatus(t, fixture.request(http.MethodDelete, shelfHTTPBookPath(created.Shelf.ID, 101), nil, fixture.reader, nil), http.StatusOK)
 }
 
 func TestShelfHTTPBookShelves(t *testing.T) {
