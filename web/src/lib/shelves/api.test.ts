@@ -5,6 +5,7 @@ import {
 	addBookToShelf,
 	buildShelfBooksPath,
 	buildShelvesPath,
+	collectionLibraryID,
 	createShelf,
 	deleteShelf,
 	getShelf,
@@ -17,6 +18,7 @@ import {
 } from './api.js';
 import { fieldErrorKey, isAdministrator, offersShelfManagement, shelfErrorKey, validateShelfDraft } from './form.js';
 import type { Shelf } from './types.js';
+import { selectedLibrary } from '#lib/libraries/context.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -37,6 +39,28 @@ const admin = { id: 9, username: 'admin', display_name: 'Admin', role: 'admin' }
 const problem = (status: number) => new ApiError(status, '', '{}', { status });
 
 describe('shelf API helpers', () => {
+	it('defaults to global collections regardless of the previous library selection, preserving only explicit legacy filters', () => {
+		selectedLibrary.set({ id: 2 });
+		try {
+			expect(collectionLibraryID(new URL('http://localhost/shelves/7'))).toBeUndefined();
+			expect(collectionLibraryID(new URL('http://localhost/shelves/system/unshelved'))).toBeUndefined();
+			expect(collectionLibraryID(new URL('http://localhost/shelves/7?library_id=3'))).toBe(3);
+			expect(collectionLibraryID(new URL('http://localhost/shelves/7?library_id=bad'))).toBeNull();
+			expect(collectionLibraryID(new URL('http://localhost/shelves/system/favorites?library_id=3'))).toBeUndefined();
+		} finally { selectedLibrary.set(null); }
+	});
+
+	it('serializes independent groups and explicit retain/remove decisions without dropping false', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ shelf: shelf() });
+		const groups = [{ id: 'fiction', name: 'Fiction', rules: { match: 'any' as const, conditions: [{ field: 'title', op: 'contains', value: 'Novel' }] } }];
+		await createShelf({ kind: 'private', name: 'Across libraries', description: null, rule_groups: groups });
+		await updateShelf(7, { rule_groups: [], remove_rule_books: false });
+		await updateShelf(7, { rule_groups: [], remove_rule_books: true });
+		expect(request.mock.calls[0][1]?.body).toMatchObject({ rule_groups: groups });
+		expect(request.mock.calls[1][1]?.body).toEqual({ rule_groups: [], remove_rule_books: false });
+		expect(request.mock.calls[2][1]?.body).toEqual({ rule_groups: [], remove_rule_books: true });
+	});
+
 	it('uses the SH1 page envelope paths with verbatim cursors', () => {
 		const cursor = 'b3BhcXVl/+==';
 		expect(buildShelvesPath()).toBe('/shelves?limit=50');

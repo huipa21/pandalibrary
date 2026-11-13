@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
-	import { libraryHref } from '#lib/libraries/context.js';
 	import { translate } from '#lib/paging/translate.js';
 	import { getSessionViewer, getSystemShelf, listAllShelves } from './api.js';
 	import { shelfErrorKey } from './form.js';
@@ -17,7 +16,6 @@
 	let refreshVersion = $state(0);
 
 	$effect(() => {
-		const id = libraryID;
 		refreshVersion;
 		const controller = new AbortController();
 		let active = true;
@@ -28,8 +26,8 @@
 		void (async () => {
 			try {
 				const [all, systemShelf, viewer] = await Promise.all([
-					listAllShelves(controller.signal, { library_id: id }),
-					getSystemShelf('unshelved', { library_id: id, signal: controller.signal }),
+					listAllShelves(controller.signal),
+					getSystemShelf('unshelved', { signal: controller.signal }),
 					getSessionViewer()
 				]);
 				if (!active) return;
@@ -69,14 +67,14 @@
 			{#if unshelved}
 				<li>
 					<a class="inline-block rounded-full border border-slate-300 px-3 py-1 text-sm underline-offset-4 hover:underline focus-visible:outline-2"
-						href={libraryHref('/shelves/system/unshelved', libraryID)}
+						href="/shelves/system/unshelved"
 					>{m['ux3.shelves.unshelved']()} <span class="text-slate-500">({unshelved.visible_book_count})</span></a>
 				</li>
 			{/if}
 			{#each shelves as shelf (shelf.id)}
 				<li>
 					<a class="inline-block rounded-full border border-slate-300 px-3 py-1 text-sm underline-offset-4 hover:underline focus-visible:outline-2"
-						href={libraryHref(`/shelves/${shelf.id}`, libraryID)}
+						href={`/shelves/${shelf.id}`}
 					>{shelf.name} <span class="text-slate-500">({shelf.visible_book_count})</span></a>
 				</li>
 			{/each}

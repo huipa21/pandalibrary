@@ -21,6 +21,12 @@ export interface RuleSet {
 	conditions: RuleCondition[];
 }
 
+export interface RuleGroup {
+	id: string;
+	name: string;
+	rules: RuleSet;
+}
+
 /** SH1/UX2 shelf metadata. `visible_book_count` already applies the viewer's grants and hide list. */
 export interface Shelf {
 	readonly id: number;
@@ -35,6 +41,7 @@ export interface Shelf {
 	readonly mode?: ShelfMode;
 	readonly system_key?: string | null;
 	readonly rules?: RuleSet | null;
+	readonly rule_groups?: RuleGroup[];
 }
 
 export interface ShelfInput {
@@ -43,6 +50,7 @@ export interface ShelfInput {
 	readonly description: string | null;
 	readonly mode?: ShelfMode;
 	readonly rules?: RuleSet | null;
+	readonly rule_groups?: RuleGroup[];
 }
 
 /** Omitted fields are unchanged; an explicit null description clears it. */
@@ -50,6 +58,8 @@ export interface ShelfPatch {
 	readonly name?: string;
 	readonly description?: string | null;
 	readonly rules?: RuleSet | null;
+	readonly rule_groups?: RuleGroup[];
+	readonly remove_rule_books?: boolean;
 }
 
 export interface SessionViewer {
