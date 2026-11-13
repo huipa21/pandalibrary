@@ -7,13 +7,9 @@
 	import BookCover from '../BookCover.svelte';
 	import Icon from '../Icon.svelte';
 	import { getBookContext } from '../book-context.svelte.js';
-	import { defaultFile, sortedFormats } from '../cover.js';
 	import { BOOK_STATE_CHANGED_EVENT, type BookStateChangedDetail } from '../events.js';
 	import { detailsVisibleIdentifiers } from '../identifiers.js';
 	import { readTarget } from '../read.js';
-	import BookLibrary from '../details/BookLibrary.svelte';
-	import AddFileButton from '../details/AddFileButton.svelte';
-	import BookShelfTags from '../details/BookShelfTags.svelte';
 	import BookVisibilityButton from '../details/BookVisibilityButton.svelte';
 	import DetailsHero from '../details/DetailsHero.svelte';
 	import DetailsPanel from '../details/DetailsPanel.svelte';
@@ -44,13 +40,6 @@
 	let readError = $state('');
 	const detailsReady = $derived(details !== null && !detailsLoading && !detailsError);
 	const readable = $derived(book?.files.some((file) => readerFormat(file.format) !== null) ?? false);
-	const primaryFile = $derived.by(() => {
-		if (!book) return null;
-		const chosen = defaultFile(book.files);
-		if (chosen) return chosen;
-		const preferred = sortedFormats(book.files)[0];
-		return book.files.find((file) => file.format.trim().toLowerCase() === preferred) ?? book.files[0] ?? null;
-	});
 
 	$effect(() => {
 		bookId;
@@ -159,23 +148,6 @@
 				{#if readError}<p class="text-sm text-red-800" role="alert">{readError}</p>{/if}
 				<div class="flex flex-wrap items-start gap-2">
 					{#if !offline}
-						{#if primaryFile}
-							<div class="relative flex min-w-0">
-								<button type="button" class="shell-icon-button size-10" aria-label={m['catalog.book.download']()} title={m['catalog.book.download']()} onclick={() => { if (primaryFile) window.location.assign(primaryFile.download_url); }}>
-									<Icon name="download" />
-								</button>
-								{#if book.files.length > 1}
-									<details class="relative">
-										<summary class="shell-icon-button size-10 cursor-pointer list-none" aria-label={m['bv6.download_formats']()} title={m['bv6.download_formats']()}><Icon name="chevron-down" class="size-4" /></summary>
-										<ul class="absolute top-full left-0 z-10 mt-1 min-w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-											{#each book.files as file (file.id)}
-												<li><a class="block rounded px-3 py-2 text-sm hover:bg-slate-100" href={file.download_url} title={file.original_filename}>{m['bv6.download_format']({ format: file.format.toUpperCase() })}</a></li>
-											{/each}
-										</ul>
-									</details>
-								{/if}
-							</div>
-						{/if}
 						{#key book.id}
 							<FavoriteButton bookId={book.id} {shelves} />
 						{/key}
@@ -184,16 +156,7 @@
 					{#key book.id}
 						<BookVisibilityButton {book} {offline} onUpdate={(updated) => { context.book = updated; }} />
 					{/key}
-					{#if context.canEditMetadata}
-						{#key book.id}
-							<AddFileButton {book} {offline} onAdded={() => context.reload()} />
-						{/key}
-					{/if}
 				</div>
-				{#if !offline || shelves.status !== 'error'}
-					<BookShelfTags {shelves} bookTitle={book.title} {offline} />
-				{/if}
-				<BookLibrary {book} {offline} />
 			</aside>
 
 			<div class="min-w-0 space-y-6">

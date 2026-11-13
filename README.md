@@ -5,6 +5,13 @@ application, SQLite storage, background imports, a browser reader/PWA, OPDS 1.2,
 KOReader progress sync. Supported book formats are EPUB, PDF, MOBI, AZW3, FB2, FBZ, and
 CBZ; reader support depends on format and browser.
 
+Book **Details** shows edition filenames and a file count. Open the **Files** tab
+to choose a specific file to download, see its library and collection tags, or
+set the default file. Administrators can use **Add file** there to review or
+drop additional formats/editions before uploading. The review checks file type,
+size, empty files, and repeated selections; import verifies contents and
+duplicates before attaching files without replacing existing editions.
+
 ## Run with a container
 
 Build the image from a Git source checkout (Node.js and Docker are required):

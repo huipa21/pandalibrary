@@ -57,7 +57,7 @@
 </script>
 
 <div bind:this={root} class="space-y-2">
-	<p bind:this={label} id={labelId} tabindex="-1" class="text-xs font-semibold tracking-wide text-slate-500 uppercase focus-visible:outline-2 focus-visible:outline-emerald-700">{m['bd5.shelves']()}</p>
+	<p bind:this={label} id={labelId} tabindex="-1" class="sr-only focus:not-sr-only focus-visible:outline-2 focus-visible:outline-emerald-700">{m['bd5.shelves']()}</p>
 	{#if shelves.status === 'loading'}
 		<p class="text-sm text-slate-500" role="status">{m['shelves.book.loading']()}</p>
 	{:else if shelves.status === 'error'}
@@ -72,8 +72,9 @@
 				<li data-shelf-id={shelf.id} class="shelf-chip group relative inline-flex max-w-full rounded-full bg-slate-100 text-xs font-medium text-slate-700 hover:bg-slate-200">
 					<a
 						href={shelf.system_key === 'favorites' ? '/shelves/system/favorites' : `/shelves/${shelf.id}`}
-						class="max-w-full truncate rounded-full px-3 py-1 focus-visible:outline-2 focus-visible:outline-emerald-700"
-					>{shelfName(shelf)}</a>
+						class="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 focus-visible:outline-2 focus-visible:outline-emerald-700"
+						title={`${m['bd5.shelves']()}: ${shelfName(shelf)}`}
+					><Icon name="bookmark" class="size-3.5 shrink-0" /><span class="truncate">{shelfName(shelf)}</span></a>
 					{#if !offline && shelves.canRemove(shelf)}
 						<button
 							type="button"

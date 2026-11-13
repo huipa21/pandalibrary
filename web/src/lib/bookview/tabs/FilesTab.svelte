@@ -15,10 +15,15 @@
 	import FilesSummary from '../files/FilesSummary.svelte';
 	import { buildFilesModel, type FileItem, type FileSort } from '../files/files-model.js';
 	import { setDefaultFile } from '../files/files-api.js';
+	import AddFileButton from '../files/AddFileButton.svelte';
+	import BookShelfTags from '../details/BookShelfTags.svelte';
+	import { createBookShelves } from '../details/book-shelves.svelte.js';
+	import ShelfPopover from '../quickview/ShelfPopover.svelte';
 
 	const context = getBookContext();
 	const book = $derived(context.book);
 	const online = $derived(!context.offline && $offlineStatus.online);
+	const shelves = createBookShelves(() => book?.id ?? null);
 	let progress = $state<Progress | null>(null);
 	let progressError = $state('');
 	let libraryName = $state('');
@@ -226,7 +231,20 @@
 
 {#if book && model}
 	<div class="min-w-0 space-y-4">
-		<FilesSummary {book} coverSource={context.coverSource} {libraryName} {model} bind:sort />
+		<FilesSummary {book} coverSource={context.coverSource} {libraryName} {model} {online} bind:sort />
+		<div class="card flex min-w-0 flex-wrap items-center justify-between gap-4 p-4">
+			<div class="flex min-w-0 flex-1 items-center gap-3">
+				{#if online || shelves.status !== 'error'}
+					<BookShelfTags {shelves} bookTitle={book.title} offline={!online} />
+				{/if}
+				{#if online}<ShelfPopover bookId={book.id} variant="plain-icon" placement="down" memberIds={shelves.memberIds} />{/if}
+			</div>
+			{#if context.canEditMetadata}
+				{#key book.id}
+					<AddFileButton {book} offline={!online} onAdded={() => context.reload()} />
+				{/key}
+			{/if}
+		</div>
 		{#if libraryError}<p role="alert" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{libraryError}</p>{/if}
 		{#if progressError}
 			<div role="alert" class="flex flex-wrap items-center gap-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">

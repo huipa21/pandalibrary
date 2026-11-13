@@ -360,7 +360,7 @@ for (const label of ['Read', 'Resume']) {
 			const read = await readButton.boundingBox();
 			expect(Math.abs(read!.width - cover!.width)).toBeLessThanOrEqual(1);
 			expect(Math.abs(read!.x - cover!.x)).toBeLessThanOrEqual(1);
-			const actions = ['Download', 'Add to Favorites', 'Add to collection', 'Make private'].map((name) =>
+			const actions = ['Add to Favorites', 'Add to collection', 'Make private'].map((name) =>
 				page.getByRole('button', { name, exact: true }));
 			let previousX = -1;
 			let rowY = -1;
@@ -394,21 +394,95 @@ test('localizes the ownerless visibility control and confirmation', async ({ pag
 	expect(state.visibilityRequests).toEqual(['private']);
 });
 
-test('download icon downloads the primary file', async ({ page }) => {
-	await setup(page);
+test('downloads are file-specific and only available in Files', async ({ page }) => {
+	await setup(page, 'admin');
 	await page.route('**/api/v1/books/21/files/31?*', (route) => route.fulfill({
 		contentType: 'application/epub+zip',
 		headers: { 'content-disposition': 'attachment; filename="library.epub"' },
 		body: 'book fixture'
 	}));
 	await page.goto('/books/21');
+	await expect(page.getByRole('button', { name: 'Download', exact: true })).toHaveCount(0);
+	await expect(page.getByLabel('Choose a download format')).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Add file', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('region', { name: 'Library', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('list', { name: 'Collections', exact: true })).toHaveCount(0);
+	await page.getByRole('navigation', { name: 'Book sections' }).getByRole('link', { name: 'Files', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Add file', exact: true })).toBeVisible();
+	await expect(page.getByRole('region', { name: 'Library', exact: true }).getByRole('link', { name: 'Fiction', exact: true })).toHaveAttribute('href', '/library/1');
+	await expect(page.getByRole('list', { name: 'Collections', exact: true }).getByRole('link')).toHaveText(['Owned shelf', 'Shared shelf']);
+	await page.getByRole('button', { name: 'Select library.epub', exact: true }).click();
 	const requested = page.waitForRequest((request) =>
 		request.url().endsWith(book.files[0].download_url));
 	const downloaded = page.waitForEvent('download');
-	await page.getByRole('button', { name: 'Download', exact: true }).click();
+	await page.getByRole('region', { name: 'This file' }).getByRole('link', { name: 'Download', exact: true }).click();
 	await requested;
 	expect((await downloaded).suggestedFilename()).toBe('library.epub');
-	await expect(page).toHaveURL('/books/21');
+	await expect(page).toHaveURL('/books/21/files');
+});
+
+test('attachment review validates selections and waits for explicit upload confirmation', async ({ page, context }) => {
+	await setup(page, 'admin');
+	const uploads: string[] = [];
+	page.on('request', (request) => {
+		if (request.method() === 'POST' && request.url().endsWith('/books/21/files')) uploads.push(request.url());
+	});
+	await page.goto('/books/21/files');
+	const trigger = page.getByRole('button', { name: 'Add file', exact: true });
+	await trigger.click();
+	const dialog = page.getByRole('dialog', { name: 'Add file', exact: true });
+	const upload = dialog.getByRole('button', { name: 'Upload', exact: true });
+	const select = dialog.getByRole('button', { name: 'Select files', exact: true });
+	await expect(select).toBeFocused();
+	await expect(upload).toBeDisabled();
+	await dialog.getByTestId('add-file-input').setInputFiles([
+		{ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('not a book') },
+		{ name: 'empty.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(0) }
+	]);
+	await expect(dialog.getByRole('alert')).toHaveText([
+		'Not added, unsupported format: notes.txt',
+		'empty.pdf is empty. Choose a non-empty book file.'
+	]);
+	await expect(upload).toBeDisabled();
+	const zone = dialog.getByRole('group', { name: 'Drag and drop book files here' });
+	await zone.evaluate((element) => {
+		const transfer = new DataTransfer();
+		for (const [name, size] of [['large.pdf', 1024 ** 3 + 1], ['limit.pdf', 1024 ** 3]] as const) {
+			const file = new File(['test'], name, { type: 'application/pdf', lastModified: 1 });
+			Object.defineProperty(file, 'size', { value: size });
+			transfer.items.add(file);
+		}
+		element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+	});
+	await expect(dialog.getByRole('alert')).toHaveText(['Not added, larger than 1 GB: large.pdf']);
+	await expect(dialog.getByRole('button', { name: 'Remove limit.pdf', exact: true })).toBeVisible();
+	await expect(upload).toBeEnabled();
+	await dialog.getByRole('button', { name: 'Remove limit.pdf', exact: true }).click();
+	await expect(upload).toBeDisabled();
+	await zone.evaluate((element) => {
+		const transfer = new DataTransfer();
+		transfer.items.add(new File(['book'], 'edition.epub', { type: 'application/epub+zip', lastModified: 1 }));
+		for (let index = 0; index < 2; index += 1) {
+			element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+		}
+	});
+	await expect(dialog.getByRole('alert')).toHaveText(['edition.epub is already selected.']);
+	await expect(dialog.getByRole('listitem')).toHaveCount(1);
+	await expect(upload).toBeEnabled();
+	expect(uploads).toEqual([]);
+	await page.keyboard.press('Escape');
+	await expect(dialog).toHaveCount(0);
+	await expect(trigger).toBeFocused();
+	expect(uploads).toEqual([]);
+
+	await trigger.click();
+	await context.setOffline(true);
+	await expect(upload).toBeDisabled();
+	await expect(dialog.getByRole('alert').filter({ hasText: 'Reconnect to add files' })).toBeVisible();
+	await context.setOffline(false);
+	await expect(upload).toBeEnabled();
+	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+	expect(uploads).toEqual([]);
 });
 
 test('Favorites toggles once while busy, persists, and synchronizes Home and shelf tags', async ({ page }) => {
@@ -436,8 +510,10 @@ test('Favorites toggles once while busy, persists, and synchronizes Home and she
 	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 	await expect(toggle.locator('path')).not.toHaveCSS('fill', 'none');
 	await expect(count).toHaveText('1');
-	const tags = page.getByRole('list', { name: 'Shelves', exact: true });
+	const tags = page.getByRole('list', { name: 'Collections', exact: true });
+	await page.goto('/books/21/files');
 	await expect(tags.getByRole('link', { name: 'Favorites', exact: true })).toBeVisible();
+	await page.goto('/books/21');
 	await page.reload();
 	await expect(toggle).toBeEnabled();
 	await expect(toggle).toHaveAttribute('aria-pressed', 'true');
@@ -446,15 +522,18 @@ test('Favorites toggles once while busy, persists, and synchronizes Home and she
 	await expect(add).toBeEnabled();
 	await expect(add).toHaveAttribute('aria-pressed', 'false');
 	await expect(count).toHaveText('0');
-	await expect(tags.getByRole('link', { name: 'Favorites', exact: true })).toHaveCount(0);
 	expect(state.shelfDeletes).toEqual(['/shelves/44/books/21']);
 
 	await add.click();
 	await expect(toggle).toBeEnabled();
+	await page.goto('/books/21/files');
+	await expect(tags.getByRole('link', { name: 'Favorites', exact: true })).toBeVisible();
 	page.once('dialog', (dialog) => dialog.accept());
-	await tags.getByRole('button', { name: 'Remove from Favorites', exact: true }).click();
-	await expect(add).toBeEnabled();
+	await tags.getByRole('button', { name: 'Remove manual membership in Favorites', exact: true }).click();
+	await expect(tags.getByRole('link', { name: 'Favorites', exact: true })).toHaveCount(0);
 	await expect(count).toHaveText('0');
+	await page.goto('/books/21');
+	await expect(add).toBeEnabled();
 });
 
 test('Favorites reports failed additions and rolls back failed removals for retry', async ({ page }) => {
@@ -498,10 +577,8 @@ test('cover action icons are borderless squares with the header hover and focus 
 		const outline = await header.evaluate((element) => getComputedStyle(element).outlineWidth);
 		expect(outline).not.toBe('0px');
 		for (const action of [
-			page.getByRole('button', { name: 'Download', exact: true }),
-			page.getByLabel('Choose a download format'),
 			page.getByRole('button', { name: 'Add to Favorites', exact: true }),
-			page.getByRole('button', { name: 'Add to shelf', exact: true })
+			page.getByRole('button', { name: 'Add to collection', exact: true })
 		]) {
 			await header.hover();
 			await expect(action).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -549,13 +626,13 @@ test('renders details, reading statistics, editions and related books responsive
 	await expect(page.getByRole('combobox', { name: 'Shelf', exact: true })).toHaveCount(0);
 	await expect(page.locator('#book-shelf')).toHaveCount(0);
 	await expect(page.getByRole('progressbar', { name: 'Progress' })).toHaveAttribute('aria-valuenow', '21');
-	await expect(page.getByRole('link', { name: 'Files on disk: 2' })).toHaveAttribute('href', '/books/21/files');
+	await expect(page.getByText('Files on disk: 2', { exact: true })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Files on disk: 2' })).toHaveCount(0);
+	await expect(page.getByRole('region', { name: 'Editions', exact: true })).toContainText('library.epub');
+	await expect(page.getByRole('region', { name: 'Editions', exact: true })).toContainText('library.pdf');
 	await expect(page.getByText('Panda Press')).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Fiction', exact: true })).toHaveAttribute('href', '/library/1');
-	await expect(page.getByRole('button', { name: 'Download', exact: true })).toHaveAttribute('title', 'Download');
-	await page.getByLabel('Choose a download format').click();
-	await expect(page.getByRole('link', { name: 'Download PDF' }).first()).toHaveAttribute('href', book.files[1].download_url);
-	await page.getByLabel('Choose a download format').click();
+	await expect(page.getByRole('link', { name: 'Fiction', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Download', exact: true })).toHaveCount(0);
 	const relatedRegion = page.getByRole('region', { name: 'Related books' });
 	await expect(relatedRegion.getByTitle('Another by the Author', { exact: true })).toHaveAttribute('href', '/books/22');
 	const related = relatedRegion.getByRole('list');
@@ -608,11 +685,12 @@ test('renders details, reading statistics, editions and related books responsive
 		}
 	}
 	await page.setViewportSize({ width: 1440, height: 900 });
-	const tags = page.getByRole('list', { name: 'Shelves', exact: true });
+	await page.goto('/books/21/files');
+	const tags = page.getByRole('list', { name: 'Collections', exact: true });
 	await expect(tags.getByRole('link')).toHaveText(['Owned shelf', 'Shared shelf']);
-	const trigger = page.getByRole('button', { name: 'Add to shelf', exact: true });
+	const trigger = page.getByRole('button', { name: 'Add to collection', exact: true });
 	await trigger.click();
-	const picker = page.getByRole('dialog', { name: 'Add to shelf' });
+	const picker = page.getByRole('dialog', { name: 'Add to collection' });
 	const option = picker.getByRole('button', { name: /My shelf/ });
 	await expect(option).toBeVisible();
 	await expect(picker.getByRole('button', { name: /Owned shelf/ })).toHaveAttribute('aria-disabled', 'true');
@@ -626,7 +704,7 @@ test('renders details, reading statistics, editions and related books responsive
 	expect(state.shelfAdds).toBe(1);
 });
 
-test('focuses the metadata card and places Library below Shelves', async ({ page }, testInfo) => {
+test('keeps metadata in Details and library and collection tags in Files', async ({ page }, testInfo) => {
 	const state = await setup(page);
 	state.book = {
 		...book, published_date: '1946-11-15T05:00:00+00:00',
@@ -655,14 +733,19 @@ test('focuses the metadata card and places Library below Shelves', async ({ page
 	await expect(identifiers).toContainText('isbn13: 9781234567890');
 	await expect(page.getByText(/6cc2ed23-59f2-4150-936a-2986ffa3e9a9/)).toHaveCount(0);
 
+	await expect(page.getByRole('region', { name: 'Library', exact: true })).toHaveCount(0);
+	await page.goto('/books/21/files');
 	const library = page.getByRole('main').getByRole('region', { name: 'Library', exact: true });
 	await expect(library.getByRole('link', { name: 'Fiction', exact: true })).toHaveAttribute('href', '/library/1');
-	const shelvesBox = await page.getByRole('list', { name: 'Shelves', exact: true }).boundingBox();
-	const libraryBox = await library.boundingBox();
-	if (!shelvesBox || !libraryBox) throw new Error('Missing Shelves or Library section.');
-	expect(libraryBox.y).toBeGreaterThanOrEqual(shelvesBox.y + shelvesBox.height);
-	expect(Math.abs(libraryBox.x - shelvesBox.x)).toBeLessThan(1);
-	await page.screenshot({ path: testInfo.outputPath('details-metadata.png'), fullPage: true });
+	await expect(library.locator('svg')).toHaveCount(1);
+	const tags = page.getByRole('list', { name: 'Collections', exact: true });
+	await expect(tags.getByRole('link')).toHaveText(['Owned shelf', 'Shared shelf']);
+	await expect(tags.getByRole('link').first().locator('svg')).toHaveCount(1);
+	for (const width of [1440, 390, 360]) {
+		await page.setViewportSize({ width, height: 900 });
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+	}
+	await page.screenshot({ path: testInfo.outputPath('files-tags.png'), fullPage: true });
 });
 
 test('omits identifier displays when the book only has a UUID', async ({ page }) => {
@@ -771,8 +854,8 @@ test('reports a library load failure without the removed back-to-library link', 
 	await page.route('**/api/v1/libraries/1', (route) =>
 		route.fulfill({ status: 503, json: { title: 'Unavailable', status: 503 } })
 	);
-	await page.goto('/books/21');
-	await expect(page.getByRole('region', { name: 'Library', exact: true }).getByRole('alert')).toHaveText('Could not load the library.');
+	await page.goto('/books/21/files');
+	await expect(page.getByRole('alert').filter({ hasText: 'Could not load the library name.' })).toBeVisible();
 	await expect(page.getByRole('region', { name: 'Details', exact: true }).getByText('Could not load the library.')).toHaveCount(0);
 	await expect(page.getByRole('link', { name: 'Back to library' })).toHaveCount(0);
 });
@@ -871,18 +954,18 @@ test('shows only the details-card edit link to administrators', async ({ page })
 
 test('manages shelf tags on the real tab with permissions, confirmation, keyboard and rollback', async ({ page }) => {
 	const state = await setup(page);
-	await page.goto('/books/21');
-	const tags = page.getByRole('list', { name: 'Shelves', exact: true });
+	await page.goto('/books/21/files');
+	const tags = page.getByRole('list', { name: 'Collections', exact: true });
 	await expect(tags.getByRole('link')).toHaveText(['Owned shelf', 'Shared shelf']);
 	await expect(tags.getByRole('link', { name: 'Owned shelf' })).toHaveAttribute('href', '/shelves/43');
-	await expect(page.getByRole('button', { name: 'Remove from Shared shelf', exact: true })).toHaveCount(0);
-	const remove = page.getByRole('button', { name: 'Remove from Owned shelf', exact: true });
+	await expect(page.getByRole('button', { name: 'Remove manual membership in Shared shelf', exact: true })).toHaveCount(0);
+	const remove = page.getByRole('button', { name: 'Remove manual membership in Owned shelf', exact: true });
 
 	await tags.getByRole('link', { name: 'Owned shelf' }).focus();
 	await page.keyboard.press('Tab');
 	await expect(remove).toBeFocused();
 	page.once('dialog', async (dialog) => {
-		expect(dialog.message()).toBe('Remove “The Emerald Library” from “Owned shelf”?');
+		expect(dialog.message()).toBe('Remove manual membership of “The Emerald Library” in “Owned shelf”? Books matching automatic rules remain.');
 		await dialog.dismiss();
 	});
 	await page.keyboard.press('Enter');
@@ -892,14 +975,14 @@ test('manages shelf tags on the real tab with permissions, confirmation, keyboar
 	state.failShelfDelete = true;
 	page.once('dialog', (dialog) => dialog.accept());
 	await remove.click();
-	await expect(page.getByRole('alert').filter({ hasText: /shelf/i })).toBeVisible();
+	await expect(page.getByRole('alert').filter({ hasText: 'The collection request failed.' })).toBeVisible();
 	await expect(tags.getByRole('link', { name: 'Owned shelf' })).toBeVisible();
 	expect(state.shelfDeletes).toEqual(['/shelves/43/books/21']);
 
 	state.failShelfDelete = false;
 	page.once('dialog', (dialog) => dialog.accept());
 	await remove.click();
-	await expect(page.getByRole('status').filter({ hasText: 'Removed from Owned shelf' })).toBeVisible();
+	await expect(page.getByRole('status').filter({ hasText: 'Manual membership removed from Owned shelf' })).toBeVisible();
 	await expect(tags.getByRole('link')).toHaveText(['Shared shelf']);
 	expect(state.shelfDeletes).toEqual(['/shelves/43/books/21', '/shelves/43/books/21']);
 });
@@ -909,8 +992,8 @@ test.describe('touch shelf tags', () => {
 
 	test('shows the remove badge without hover on touch devices', async ({ page }) => {
 		await setup(page);
-		await page.goto('/books/21');
-		await expect(page.getByRole('button', { name: 'Remove from Owned shelf', exact: true })).toHaveCSS('opacity', '1');
+		await page.goto('/books/21/files');
+		await expect(page.getByRole('button', { name: 'Remove manual membership in Owned shelf', exact: true })).toHaveCSS('opacity', '1');
 	});
 });
 
@@ -993,9 +1076,7 @@ test('keeps metadata sources but hides the admin edit control when offline', asy
 	state.online = false;
 	await context.setOffline(true);
 	await expect(card.getByRole('link', { name: 'Edit metadata' })).toHaveCount(0);
-	const library = page.getByRole('region', { name: 'Library', exact: true });
-	await expect(library).toContainText('Fiction');
-	await expect(library.getByRole('link')).toHaveCount(0);
+	await expect(page.getByRole('region', { name: 'Library', exact: true })).toHaveCount(0);
 	state.online = true;
 	await context.setOffline(false);
 	await expect(card.getByRole('link', { name: 'Edit metadata' })).toBeVisible();

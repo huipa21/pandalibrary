@@ -76,6 +76,7 @@ async function setup(page: Page, options: { empty?: boolean; locale?: 'en' | 'zh
 		} } });
 		if (path === '/libraries/1') return route.fulfill({ json: { library: { id: 1, name: 'Family Library' } } });
 		if (path === '/shelves') return route.fulfill({ json: { items: [], next_cursor: null } });
+		if (path === '/books/21/shelves') return route.fulfill({ json: { shelves: [] } });
 		if (path === '/books/21') return route.fulfill({ json: { book: state.book } });
 		if (path === '/books') return route.fulfill({ json: { items: [state.book], next_cursor: null } });
 		if (/^\/books\/21\/files\/\d+$/.test(path)) {
@@ -157,7 +158,7 @@ test('groups formats, selects the progress file, updates the panel, and resumes 
 	await page.goto('/books/21/files');
 
 	await expect(page.getByRole('heading', { name: 'Files', level: 1 })).toBeAttached();
-	await expect(page.getByRole('navigation', { name: 'File location' })).toContainText('Family Library');
+	await expect(page.getByRole('region', { name: 'Library', exact: true })).toContainText('Family Library');
 	await expect(page.getByRole('navigation', { name: 'File location' })).toContainText('First Author');
 	await expect(page.getByRole('navigation', { name: 'File location' })).toContainText('Manual.pdf');
 	await expect(page.locator('[aria-labelledby^="file-group-"] h3')).toHaveText(['Ebook', 'Document', 'Comic']);
@@ -385,7 +386,7 @@ test('loads synchronized progress and legacy metadata offline, then reloads afte
 	page.once('dialog', (dialog) => void dialog.accept());
 	await panel(page).getByRole('button', { name: 'Actions for Multi-format Book.pdf' }).click();
 	await panel(page).getByRole('menuitem', { name: 'Remove offline copy' }).click();
-	await expect(page.getByRole('alert')).toContainText('This book or file is not available offline.');
+	await expect(page.getByRole('main').getByRole('alert').filter({ hasText: 'This book or file is not available offline.' })).toBeVisible();
 	await expect.poll(async () => (await storedRows(page, 'files')).length).toBe(0);
 });
 

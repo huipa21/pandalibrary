@@ -18,6 +18,7 @@
 						<FormatBadge files={[file]} size="xs" />
 						<span class="text-xs text-slate-500">{formatSize(file.size_bytes)}</span>
 					</div>
+					<p class="text-sm text-slate-700 [overflow-wrap:anywhere]">{file.original_filename}</p>
 					{#if progress?.book_file_id === file.id}
 						<div class="flex items-center gap-2">
 							<div
@@ -39,7 +40,7 @@
 	{:else}
 		<p class="text-sm text-slate-500">{m['catalog.book.no_files']()}</p>
 	{/if}
-	<a class="inline-block text-sm font-semibold text-emerald-800 underline-offset-4 hover:underline" href={`/books/${book.id}/files`}>
+	<p class="text-sm text-slate-500">
 		{m['bv6.files_on_disk']({ count: String(book.files.length) })}
-	</a>
+	</p>
 </section>

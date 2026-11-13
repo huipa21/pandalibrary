@@ -140,7 +140,7 @@ test('tabs navigate, mark the current tab, and share one book request', async ({
 	await expect(tabs.getByText('Books', { exact: true })).toHaveCount(0);
 	await tabs.getByRole('link', { name: 'Details' }).click();
 	await expect(page).toHaveURL('/books/2');
-	await expect(page.getByRole('button', { name: 'Download', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Download', exact: true })).toHaveCount(0);
 	expect(requests.get(2)).toBe(1);
 });
 
