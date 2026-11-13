@@ -81,7 +81,7 @@ ORDER BY h.position, h.id;
 SELECT n.* FROM notes n
 JOIN books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(user_id) AND n.book_id = sqlc.arg(book_id)
-AND n.deleted_at IS NULL
+AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -305,7 +305,7 @@ DELETE FROM notes_fts WHERE rowid = (SELECT seq FROM notes WHERE id = sqlc.arg(i
 INSERT INTO notes_fts (rowid, body, highlight_text, user_id, book_id)
 SELECT n.seq, n.body_md, coalesce(h.text, ''), n.user_id, n.book_id
 FROM notes n LEFT JOIN highlights h ON h.id = n.highlight_id AND h.deleted_at IS NULL
-WHERE n.id = sqlc.arg(id) AND n.deleted_at IS NULL;
+WHERE n.id = sqlc.arg(id) AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL;
 
 -- name: ReadingRefreshHighlightNotesFTS :exec
 DELETE FROM notes_fts WHERE rowid IN (
@@ -336,9 +336,8 @@ SELECT n.id, n.book_id, n.body_md AS content, 'note' AS kind, 0.0 AS position, n
 FROM notes_fts(sqlc.arg(query)) f JOIN notes n ON n.seq = f.rowid
 JOIN books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(user_id)
-AND n.deleted_at IS NULL
-AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR
-    CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END = sqlc.arg(kind))
+AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
+AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR sqlc.arg(kind) = 'comment')
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
 )))))
@@ -360,9 +359,8 @@ ORDER BY h.position, h.id LIMIT sqlc.arg(page_size);
 -- name: ReadingSearchNotesLike :many
 SELECT n.id, n.book_id, n.body_md AS content, 'note' AS kind, 0.0 AS position, n.created_at
 FROM notes n JOIN books b ON b.id = n.book_id
-WHERE n.user_id = sqlc.arg(user_id) AND n.deleted_at IS NULL
-AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR
-    CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END = sqlc.arg(kind))
+WHERE n.user_id = sqlc.arg(user_id) AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
+AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR sqlc.arg(kind) = 'comment')
 AND ((n.body_md LIKE sqlc.arg(pattern) ESCAPE '\')
     OR EXISTS (
         SELECT 1 FROM highlights h
@@ -405,6 +403,7 @@ ORDER BY h.rev, h.id;
 -- name: ReadingPullNotes :many
 SELECT n.* FROM notes n JOIN books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(user_id) AND n.rev > sqlc.arg(cursor) AND n.rev <= sqlc.arg(high_water)
+AND n.highlight_id IS NOT NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
 )))))

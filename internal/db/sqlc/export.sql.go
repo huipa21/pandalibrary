@@ -121,11 +121,11 @@ SELECT
         JOIN books b ON b.id = n.book_id
         WHERE n.user_id = ?1
         AND n.deleted_at IS NULL
-        AND (n.highlight_id IS NULL OR EXISTS (
+        AND EXISTS (
             SELECT 1 FROM highlights h
             WHERE h.id = n.highlight_id AND h.user_id = n.user_id AND h.book_id = n.book_id
             AND h.deleted_at IS NULL
-        ))
+        )
         AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
             SELECT 1 FROM library_access la
             WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -233,11 +233,11 @@ FROM notes n
 JOIN books b ON b.id = n.book_id
 WHERE n.user_id = ?1
 AND n.deleted_at IS NULL
-AND (n.highlight_id IS NULL OR EXISTS (
+AND EXISTS (
     SELECT 1 FROM highlights h
     WHERE h.id = n.highlight_id AND h.user_id = n.user_id AND h.book_id = n.book_id
     AND h.deleted_at IS NULL
-))
+)
 AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1

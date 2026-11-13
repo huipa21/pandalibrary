@@ -157,7 +157,8 @@ describe('reader settings and annotations', () => {
 		expect('id' in highlight && highlight.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 		const note = makeNote(7, '**Markdown**', 'highlight');
 		expect(note).toMatchObject({ entity: 'notes', data: { book_id: 7, highlight_id: 'highlight', body_md: '**Markdown**' } });
-		expect(() => makeNote(7, '中'.repeat(21846), null)).toThrow();
+		expect(() => makeNote(7, '中'.repeat(21846), 'highlight')).toThrow();
+		expect(() => makeNote(7, 'comment', '')).toThrow('A comment must be attached to a highlight.');
 		expect(() => makeHighlight(7, 3, { ...selection, text: '中'.repeat(11000) }, 'yellow')).toThrow();
 		expect(deleteAnnotation('notes', 'id')).toMatchObject({ entity: 'notes', id: 'id', op: 'delete', data: {} });
 	});

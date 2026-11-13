@@ -57,6 +57,9 @@ longer a sidebar menu item. You can:
 - filter by author, series or tag and change the sort order;
 - clear filters with the clear-filters button.
 
+On library and collection pages, including Favorites, the available controls
+are left-aligned above the books. Use the sidebar to switch between them.
+
 Use the settings gear in a library or collection's content toolbar to adjust
 cover size and spacing. Both use the same controls. Settings are saved on this
 device separately for each library and collection.
@@ -94,7 +97,7 @@ Opening a book shows four tabs:
 | **Details** | Description and metadata, your reading status and rating, collections, and reviews |
 | **Files** | The book's files. Read, download or save a file for offline reading |
 | **Activities** | Your reading progress, reading sessions and summary. You can add a session by hand |
-| **Annotations** | Your reviews, comments, private notes, highlights, underlines, strikeouts, inserted text, drawings and images for this book only |
+| **Annotations** | Your reviews, comments, highlights, underlines, strikeouts, inserted text, drawings and images for this book only |
 
 Reading statuses: Unread, Want to read, Reading, Re-reading, On hold, Read,
 Skimmed and Abandoned.
@@ -147,9 +150,8 @@ combining results from different sources.
   earlier cycles. The dashboard keeps previous Read/Skimmed cycles in **Read**
   and shows the new cycle in **Continue reading**, including at 0%.
 
-**Reviews are public; notes and comments are private.** Anyone who can see a
-book can read its reviews. Your passage comments, book notes and highlights
-are only visible to you.
+**Reviews are public; comments and highlights are private.** Anyone who can see a
+book can read its reviews. Your passage comments and highlights are only visible to you.
 
 The back button returns to the list you came from. The **‹ ›** buttons, or the
 `[` and `]` keys, move to the previous or next book in that list.
@@ -292,8 +294,7 @@ the sidebar, or with a page click.
   seconds. Entries from other files are listed separately and are read-only.
   Add or edit a comment by expanding a mark. Create passage marks and comments
   with the floating selection toolbar; the sidebar reflects those changes
-  without duplicating creation controls. Existing private book notes remain
-  on the book's **Annotations** page.
+  without duplicating creation controls.
 - **Bookmarks** lists saved positions. Click an entry to jump there, or use its
   Edit and Delete icons. The bookmark icon in the top toolbar adds or removes a
   bookmark for the current page.
@@ -371,13 +372,15 @@ Bookmarks page now open **All Books**.
 
 ## Annotations, reviews and comments
 
-The **Annotations** page lists your reviews, passage comments, private book notes,
-highlights (including underline and strikeout), inserted text, drawings and images
+The **Annotations** page lists your reviews, passage comments, highlights
+(including underline and strikeout), inserted text, drawings and images
 in newest-first order, with a small cover for each book. Reviews are also
-available on the book's **Details** tab. Comments stay attached to their
-passages; older book notes remain private and are shown as private notes.
+available on the book's **Details** tab. Comments stay attached to their passages.
 
-Use the search bar at the top to search your own reviews, comments, private notes,
+Standalone book notes are no longer shown, searched or exported. Existing records
+are retained in the database and backups.
+
+Use the search bar at the top to search your own reviews, comments,
 highlights and inserted text, including short Chinese keywords such as “扣子”.
 Use the **All** dropdown beside the search input to choose an annotation type.
 Like Bookheap, the dropdown and search input are separate controls with green
@@ -399,7 +402,6 @@ category tags. Passage notes are labeled **Comment**, matching the reader toolba
 Click anywhere on an entry to open its destination: reviews open the book's
 review section; comments and marks jump to their passage; inserted text,
 drawings and images jump to their position in the reader.
-Existing standalone private book notes open book details.
 If the annotations API is unavailable after updating the frontend, restart or update the
 backend too.
 There is no export panel on the Annotations page. Use the book's **Annotations**

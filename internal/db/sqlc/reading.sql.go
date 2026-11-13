@@ -586,7 +586,7 @@ const readingIndexNoteFTS = `-- name: ReadingIndexNoteFTS :exec
 INSERT INTO notes_fts (rowid, body, highlight_text, user_id, book_id)
 SELECT n.seq, n.body_md, coalesce(h.text, ''), n.user_id, n.book_id
 FROM notes n LEFT JOIN highlights h ON h.id = n.highlight_id AND h.deleted_at IS NULL
-WHERE n.id = ?1 AND n.deleted_at IS NULL
+WHERE n.id = ?1 AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
 `
 
 func (q *Queries) ReadingIndexNoteFTS(ctx context.Context, id string) error {
@@ -898,7 +898,7 @@ const readingListNotes = `-- name: ReadingListNotes :many
 SELECT n.seq, n.id, n.user_id, n.book_id, n.highlight_id, n.body_md, n.created_at, n.updated_at, n.deleted_at, n.rev FROM notes n
 JOIN books b ON b.id = n.book_id
 WHERE n.user_id = ?1 AND n.book_id = ?2
-AND n.deleted_at IS NULL
+AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
 AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1332,6 +1332,7 @@ func (q *Queries) ReadingPullHighlights(ctx context.Context, arg ReadingPullHigh
 const readingPullNotes = `-- name: ReadingPullNotes :many
 SELECT n.seq, n.id, n.user_id, n.book_id, n.highlight_id, n.body_md, n.created_at, n.updated_at, n.deleted_at, n.rev FROM notes n JOIN books b ON b.id = n.book_id
 WHERE n.user_id = ?1 AND n.rev > ?2 AND n.rev <= ?3
+AND n.highlight_id IS NOT NULL
 AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?1
 )))))
@@ -1781,9 +1782,8 @@ SELECT n.id, n.book_id, n.body_md AS content, 'note' AS kind, 0.0 AS position, n
 FROM notes_fts(?1) f JOIN notes n ON n.seq = f.rowid
 JOIN books b ON b.id = n.book_id
 WHERE n.user_id = ?2
-AND n.deleted_at IS NULL
-AND (CAST(?3 AS TEXT) = '' OR
-    CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END = ?3)
+AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
+AND (CAST(?3 AS TEXT) = '' OR ?3 = 'comment')
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?2
 )))))
@@ -1847,9 +1847,8 @@ func (q *Queries) ReadingSearchNotesFTS(ctx context.Context, arg ReadingSearchNo
 const readingSearchNotesLike = `-- name: ReadingSearchNotesLike :many
 SELECT n.id, n.book_id, n.body_md AS content, 'note' AS kind, 0.0 AS position, n.created_at
 FROM notes n JOIN books b ON b.id = n.book_id
-WHERE n.user_id = ?1 AND n.deleted_at IS NULL
-AND (CAST(?2 AS TEXT) = '' OR
-    CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END = ?2)
+WHERE n.user_id = ?1 AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
+AND (CAST(?2 AS TEXT) = '' OR ?2 = 'comment')
 AND ((n.body_md LIKE ?3 ESCAPE '\')
     OR EXISTS (
         SELECT 1 FROM highlights h

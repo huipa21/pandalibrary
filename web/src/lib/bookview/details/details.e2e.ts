@@ -155,8 +155,9 @@ async function setup(page: Page, role = 'user', locale: 'en' | 'zh' = 'en') {
 					state.notes = state.notes.filter((note) => note.id !== id);
 					if (mutation.op !== 'delete') {
 						if (typeof mutation.data.body_md !== 'string') throw new TypeError('Missing note body.');
+						if (typeof mutation.data.highlight_id !== 'string') throw new TypeError('Missing note highlight.');
 						state.notes.push({
-							id, book_id: 21, highlight_id: null, body_md: mutation.data.body_md,
+							id, book_id: 21, highlight_id: mutation.data.highlight_id, body_md: mutation.data.body_md,
 							created_at: existing?.created_at ?? updated, updated_at: updated, deleted_at: null, rev
 						});
 					}
@@ -736,15 +737,15 @@ test('resumes the saved readable format', async ({ page }) => {
 	await expect(page).toHaveURL('/read/21/31');
 });
 
-test('persists rating and status without showing private notes as a review', async ({ page }) => {
+test('persists rating and status without showing private comments as a review', async ({ page }) => {
 	const state = await setup(page);
 	state.notes = [{
-		id: 'private-note', book_id: 21, highlight_id: null, body_md: 'A private book note.',
+		id: 'private-comment', book_id: 21, highlight_id: 'highlight', body_md: 'A private comment.',
 		created_at: stamp, updated_at: stamp, deleted_at: null, rev: 1
 	}];
 	await page.goto('/books/21');
 	await expect(page.getByRole('region', { name: 'Reviews', exact: true })).toContainText('No reviews yet.');
-	await expect(page.getByText('A private book note.')).toHaveCount(0);
+	await expect(page.getByText('A private comment.')).toHaveCount(0);
 	const rating = page.getByRole('radio', { name: '4 out of 5', exact: true });
 	await expect(rating).toBeVisible();
 	await rating.click();

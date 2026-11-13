@@ -118,12 +118,6 @@ exported: 2026-11-03
 ---
 # 三体: "The" ---
 
-## Notes
-
-New **note**
-
-Old note
-
 ## Highlights
 
 > First highlight ^hl-0190f5c2-7a00-7000-8000-000000000001
@@ -137,10 +131,25 @@ Old note
 	if string(result.Body) != want {
 		t.Fatalf("Markdown document mismatch\n--- got ---\n%s\n--- want ---\n%s", result.Body, want)
 	}
-	for _, forbidden := range []string{"Deleted highlight", "Orphaned note", "Deleted note", "Another user", "Secret"} {
+	for _, forbidden := range []string{"Old note", "New **note**", "Deleted highlight", "Orphaned note", "Deleted note", "Another user", "Secret"} {
 		if strings.Contains(string(result.Body), forbidden) {
 			t.Errorf("export leaked %q: %s", forbidden, result.Body)
 		}
+	}
+}
+
+func TestLegacyNotesDoNotCountAgainstExportLimits(t *testing.T) {
+	fixture := newExportFixture(t)
+	ctx := context.Background()
+	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO notes
+		(id, user_id, book_id, body_md, created_at, updated_at, rev)
+		VALUES ('0190f5c2-7a00-7000-8000-999999999990', 2, 104, ?, 1, 1, 1)`,
+		strings.Repeat("x", maxAnnotationBytes+1)); err != nil {
+		t.Fatal(err)
+	}
+	result, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{104})
+	if err != nil || bytes.Contains(result.Body, []byte("xxxx")) {
+		t.Fatalf("legacy note affected export: %v", err)
 	}
 }
 
@@ -180,8 +189,8 @@ func TestExportEmptySectionsAndSafeUniqueZIPEntries(t *testing.T) {
 			t.Fatal(err)
 		}
 		if member.Name == "Empty - Unknown Author.md" &&
-			(!bytes.Contains(body, []byte("## Notes\n\n## Highlights")) ||
-				bytes.Contains(body, []byte("Old note"))) {
+			(!bytes.Contains(body, []byte("## Highlights")) ||
+				bytes.Contains(body, []byte("## Notes"))) {
 			t.Errorf("empty book document has incorrect sections: %s", body)
 		}
 	}
@@ -329,15 +338,15 @@ func TestExportCombinedAnnotationRowBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO notes (id,user_id,book_id,body_md,created_at,updated_at,rev) VALUES
-			('0190f5c2-7a00-7000-8000-999999999991',2,104,'Note',1,1,1)`); err != nil {
+	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO highlights (id,user_id,book_id,locator,text,created_at,updated_at,rev) VALUES
+			('0190f5c2-7a00-7000-8000-999999999992',2,104,'{}','Highlight',1,1,1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{104}); err != nil {
 		t.Fatalf("exact combined row budget failed: %v", err)
 	}
-	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO highlights (id,user_id,book_id,locator,text,created_at,updated_at,rev) VALUES
-			('0190f5c2-7a00-7000-8000-999999999992',2,104,'{}','Highlight',1,1,1)`); err != nil {
+	if _, err := fixture.db.Writer.ExecContext(ctx, `INSERT INTO notes (id,user_id,book_id,highlight_id,body_md,created_at,updated_at,rev) VALUES
+			('0190f5c2-7a00-7000-8000-999999999991',2,104,'0190f5c2-7a00-7000-8000-999999999992','Note',1,1,1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := fixture.service.Export(ctx, Viewer{UserID: 2}, []int64{104}); err != ErrTooLarge {

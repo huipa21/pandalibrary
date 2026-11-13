@@ -12,9 +12,9 @@ export function otherBookAnnotations(book: Book, state: BookState, review: Revie
 	const liveHighlights = new Set(state.highlights.filter((row) => row.book_id === book.id && !row.deleted_at).map((row) => row.id));
 	const entries: BookAnnotation[] = [];
 	for (const note of state.notes) {
-		if (note.book_id !== book.id || note.deleted_at || (note.highlight_id && liveHighlights.has(note.highlight_id))) continue;
+		if (note.book_id !== book.id || note.deleted_at || !note.highlight_id || liveHighlights.has(note.highlight_id)) continue;
 		entries.push({
-			...base, id: note.id, kind: note.highlight_id ? 'comment' : 'book_note',
+			...base, id: note.id, kind: 'comment',
 			content: note.body_md, created_at: note.created_at, position: 0
 		});
 	}
@@ -40,7 +40,7 @@ export function filterBookAnnotations(
 	const query = foldText(options.query);
 	return entries.filter((entry) =>
 		(!options.kind || entry.kind === options.kind) &&
-		(!options.notesOnly || entry.kind === 'book_note' || entry.kind === 'comment') &&
+		(!options.notesOnly || entry.kind === 'comment') &&
 		options.colors.size === 0 && options.styles.size === 0 &&
 		foldText(entry.content).includes(query)
 	).sort((a, b) => options.sort === 'reading'

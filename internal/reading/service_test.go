@@ -97,6 +97,62 @@ func TestReadingVisibilityOwnershipAndEmptyState(t *testing.T) {
 	}
 }
 
+func TestStandaloneNotesAreRejectedAndHiddenWithoutDeletingRecords(t *testing.T) {
+	fixture := newReadingFixture(t)
+	ctx := context.Background()
+	viewer := Viewer{UserID: 2}
+	const legacyID = "018f0f7e-7b00-7000-8000-000000000001"
+	for _, statement := range []string{
+		`UPDATE sync_counter SET value = 1 WHERE id = 1`,
+		`INSERT INTO notes (id, user_id, book_id, body_md, created_at, updated_at, rev)
+			VALUES ('` + legacyID + `', 2, 101, 'legacy content', 10, 10, 1)`,
+		`INSERT INTO notes_fts (rowid, body, highlight_text, user_id, book_id)
+			SELECT seq, body_md, '', user_id, book_id FROM notes`,
+	} {
+		if _, err := fixture.db.Writer.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := fixture.service.Push(ctx, viewer, PushRequest{Mutations: []Mutation{
+		mutation("notes", "018f0f7e-7b00-7000-8000-000000000002", "", "upsert",
+			`{"book_id":101,"body_md":"missing highlight"}`, 1000),
+		mutation("notes", "018f0f7e-7b00-7000-8000-000000000003", "", "upsert",
+			`{"book_id":101,"highlight_id":null,"body_md":"null highlight"}`, 1000),
+		mutation("notes", legacyID, "", "upsert",
+			`{"book_id":101,"highlight_id":"018f0f7e-7b00-7000-8000-000000000004","body_md":"changed"}`, 1000),
+		mutation("notes", legacyID, "", "delete", `{}`, 1000),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Results) != 4 {
+		t.Fatalf("expected four mutation results, got %+v", result.Results)
+	}
+	for _, row := range result.Results {
+		if row.Status != "rejected" || row.Reason == "" {
+			t.Fatalf("standalone mutation was not explicitly rejected: %+v", row)
+		}
+	}
+	state, err := fixture.service.GetBookState(ctx, viewer, 101)
+	if err != nil || len(state.Notes) != 0 {
+		t.Fatalf("book state contains legacy notes: %+v, %v", state.Notes, err)
+	}
+	pull, err := fixture.service.Pull(ctx, viewer, 0)
+	if err != nil || pull.Cursor != 1 || len(pull.Notes) != 0 {
+		t.Fatalf("sync contains legacy notes: %+v, %v", pull, err)
+	}
+	for _, query := range []string{"legacy", "le"} {
+		results, err := fixture.service.SearchAnnotations(ctx, viewer, query, "")
+		if err != nil || len(results) != 0 {
+			t.Fatalf("search %q contains legacy notes: %+v, %v", query, results, err)
+		}
+	}
+	var body string
+	if err := fixture.db.Reader.QueryRowContext(ctx, `SELECT body_md FROM notes WHERE id = ? AND deleted_at IS NULL`, legacyID).Scan(&body); err != nil || body != "legacy content" {
+		t.Fatalf("legacy record was changed or removed: %q, %v", body, err)
+	}
+}
+
 func TestPushLWWClockClampPullAndAnnotationCascade(t *testing.T) {
 	fixture := newReadingFixture(t)
 	ctx := context.Background()
@@ -188,7 +244,7 @@ func TestPushLWWClockClampPullAndAnnotationCascade(t *testing.T) {
 	}
 	oldNoteEdit, err := fixture.service.Push(ctx, viewer, PushRequest{Mutations: []Mutation{
 		mutation("notes", noteID, "", "upsert",
-			`{"book_id":101,"body_md":"an older note edit"}`, 1700),
+			`{"book_id":101,"highlight_id":"018f0f7e-7b00-7000-8000-000000000001","body_md":"an older note edit"}`, 1700),
 	}})
 	if err != nil || oldNoteEdit.Results[0].Status != "stale" {
 		t.Fatalf("older edit after highlight cascade = %+v, %v", oldNoteEdit, err)
@@ -230,10 +286,10 @@ func TestPushRejectsForeignRowsAndFiltersSyncVisibility(t *testing.T) {
 		}
 	}
 	if _, err := fixture.db.Writer.ExecContext(ctx, `
-		INSERT INTO notes (id, user_id, book_id, body_md, created_at, updated_at, rev)
-		VALUES ('018f0f7e-7b00-7000-8000-000000000008', 2, 101, 'alpha visible note', 10, 10, 1),
-		       ('018f0f7e-7b00-7000-8000-000000000009', 2, 102, 'alpha hidden note', 10, 10, 1),
-		       ('018f0f7e-7b00-7000-8000-00000000000b', 3, 101, 'alpha foreign user note', 10, 10, 1)
+		INSERT INTO notes (id, user_id, book_id, highlight_id, body_md, created_at, updated_at, rev)
+		VALUES ('018f0f7e-7b00-7000-8000-000000000008', 2, 101, '018f0f7e-7b00-7000-8000-000000000007', 'alpha visible note', 10, 10, 1),
+		       ('018f0f7e-7b00-7000-8000-000000000009', 2, 102, '018f0f7e-7b00-7000-8000-000000000005', 'alpha hidden note', 10, 10, 1),
+		       ('018f0f7e-7b00-7000-8000-00000000000b', 3, 101, '018f0f7e-7b00-7000-8000-000000000004', 'alpha foreign user note', 10, 10, 1)
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +303,7 @@ func TestPushRejectsForeignRowsAndFiltersSyncVisibility(t *testing.T) {
 		mutation("highlights", highlightIDs[0].id, "", "delete", `{}`, 100),
 		mutation("notes", "018f0f7e-7b00-7000-8000-00000000000b", "", "delete", `{}`, 100),
 		mutation("notes", "018f0f7e-7b00-7000-8000-00000000000a", "", "upsert",
-			`{"book_id":103,"body_md":"private"}`, 100),
+			`{"book_id":103,"highlight_id":"018f0f7e-7b00-7000-8000-000000000006","body_md":"private"}`, 100),
 		mutation("user_books", "", "102", "upsert",
 			`{"status":"reading","book_id":102}`, 100),
 	}})

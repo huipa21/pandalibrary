@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { annotationHref, annotationKind, annotationTagClass } from './entry.js';
+import { annotationHref, annotationKind, annotationKindFilter, annotationTagClass } from './entry.js';
 import type { AnnotationEntry } from './types.js';
 
 const item: AnnotationEntry = {
@@ -16,14 +16,13 @@ describe('annotation entries', () => {
 		for (const kind of ['text', 'ink', 'image']) {
 			expect(annotationHref({ ...item, kind })).toBe('/read/21/31?annotation=entry');
 		}
-		expect(annotationHref({ ...item, kind: 'book_note' })).toBe('/books/21');
 		expect(annotationHref({ ...item, book_file_id: undefined })).toBe('/books/21');
 	});
 
-	it('distinguishes passage comments from legacy private notes and uses distinct category colors', () => {
+	it('labels passage notes as comments and uses distinct category colors', () => {
 		expect(annotationKind({ ...item, kind: 'note', highlight_id: 'passage' })).toBe('comment');
-		expect(annotationKind({ ...item, kind: 'note' })).toBe('book_note');
-		const kinds = ['review', 'comment', 'highlight', 'underline', 'strikeout', 'text', 'ink', 'image', 'book_note'];
+		expect(annotationKindFilter('book_note')).toBe('');
+		const kinds = ['review', 'comment', 'highlight', 'underline', 'strikeout', 'text', 'ink', 'image'];
 		expect(new Set(kinds.map(annotationTagClass)).size).toBe(kinds.length);
 	});
 });

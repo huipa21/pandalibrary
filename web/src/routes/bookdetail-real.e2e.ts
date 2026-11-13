@@ -97,7 +97,7 @@ async function writeReview(page: Page, body: string) {
 	await expect(reviews(page).getByText(body, { exact: true })).toBeVisible();
 }
 
-test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private notes', async ({ page, browser }) => {
+test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private comments', async ({ page, browser }) => {
 	test.setTimeout(240_000);
 	const data = await seed(page);
 	const bookPath = `/books/${data.book.id}`;
@@ -266,21 +266,29 @@ test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private no
 			await expect(heroStatus(reader)).toHaveAccessibleName('Reading status: Reading');
 		});
 
-		await test.step('R12: reviews shared and pinned, admin moderation; notes remain private', async () => {
+		await test.step('R12: reviews shared and pinned, admin moderation; comments remain private', async () => {
 			await page.goto(bookPath);
 			await writeReview(page, 'BD8 public administrator review');
 			await reader.goto(bookPath);
 			await expect(reviews(reader).getByText('BD8 public administrator review', { exact: true })).toBeVisible();
 			await writeReview(reader, 'BD8 public reader review');
 			await expect(reviews(reader).locator('article').first()).toHaveAccessibleName('Your review');
-			await push(reader.request, [{
-				entity: 'notes', id: uuidv7(), op: 'upsert', updated_at: Date.now(),
-				data: { book_id: data.book.id, highlight_id: null, body_md: 'BD8 STRICTLY PRIVATE BOOK NOTE' }
-			}]);
-			expect((await state(reader.request, data.book.id)).notes.map((note) => note.body_md)).toContain('BD8 STRICTLY PRIVATE BOOK NOTE');
-			expect((await state(page.request, data.book.id)).notes.map((note) => note.body_md)).not.toContain('BD8 STRICTLY PRIVATE BOOK NOTE');
+			const highlightId = uuidv7();
+			await push(reader.request, [
+				{
+					entity: 'highlights', id: highlightId, op: 'upsert', updated_at: Date.now(),
+					data: { book_id: data.book.id, book_file_id: data.book.files[0].id,
+						locator: { type: 'pdf', page: 1 }, position: 0, text: 'Private passage', color: 'yellow' }
+				},
+				{
+					entity: 'notes', id: uuidv7(), op: 'upsert', updated_at: Date.now(),
+					data: { book_id: data.book.id, highlight_id: highlightId, body_md: 'BD8 STRICTLY PRIVATE COMMENT' }
+				}
+			]);
+			expect((await state(reader.request, data.book.id)).notes.map((note) => note.body_md)).toContain('BD8 STRICTLY PRIVATE COMMENT');
+			expect((await state(page.request, data.book.id)).notes.map((note) => note.body_md)).not.toContain('BD8 STRICTLY PRIVATE COMMENT');
 			await page.reload();
-			await expect(page.getByText('BD8 STRICTLY PRIVATE BOOK NOTE', { exact: true })).toHaveCount(0);
+			await expect(page.getByText('BD8 STRICTLY PRIVATE COMMENT', { exact: true })).toHaveCount(0);
 			const readerReview = reviews(page).locator('article').filter({ hasText: 'BD8 public reader review' });
 			await expect(readerReview).toBeVisible();
 			page.once('dialog', (dialog) => dialog.accept());

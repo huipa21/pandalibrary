@@ -153,7 +153,7 @@ test('a genuine rejection links to its reason and can be discarded explicitly', 
 	state.rejection = 'book is unavailable';
 	await queueFixture(page, {
 		entity: 'notes', id: '019a4d48-cc00-7000-8000-000000000001', op: 'upsert',
-		data: { book_id: 21, highlight_id: null, body_md: 'Unsynced note' }, updated_at: Date.now()
+		data: { book_id: 21, highlight_id: 'highlight', body_md: 'Unsynced note' }, updated_at: Date.now()
 	}, 'pending');
 	await page.evaluate(() => window.dispatchEvent(new Event('online')));
 	await expect(page.getByText('Some changes were rejected or conflicted. Review them in offline storage settings.')).toBeVisible();
@@ -226,7 +226,7 @@ test('book details use synced state and the cached cover while offline', async (
 	const state = await setup(page);
 	state.rev = 1;
 	state.notes.push({
-		id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, highlight_id: null,
+		id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, highlight_id: 'highlight',
 		body_md: 'A synchronized review', created_at: '2026-11-03T00:00:00Z',
 		updated_at: '2026-11-03T00:00:00Z', deleted_at: null, rev: 1
 	});

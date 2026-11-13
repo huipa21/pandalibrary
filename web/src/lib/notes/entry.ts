@@ -1,6 +1,6 @@
 import type { AnnotationEntry } from './types.js';
 
-export const annotationKinds = ['review', 'comment', 'book_note', 'highlight', 'underline', 'strikeout', 'text', 'ink', 'image'] as const;
+export const annotationKinds = ['review', 'comment', 'highlight', 'underline', 'strikeout', 'text', 'ink', 'image'] as const;
 export type AnnotationKindFilter = '' | typeof annotationKinds[number];
 
 export function annotationKindFilter(value: string | null): AnnotationKindFilter {
@@ -8,7 +8,7 @@ export function annotationKindFilter(value: string | null): AnnotationKindFilter
 }
 
 export function annotationHref(item: AnnotationEntry): string {
-	if (item.book_file_id && item.kind !== 'review' && item.kind !== 'book_note') {
+	if (item.book_file_id && item.kind !== 'review') {
 		const target = item.highlight_id
 			? new URLSearchParams({ highlight: item.highlight_id })
 			: new URLSearchParams({ annotation: item.id });
@@ -18,7 +18,7 @@ export function annotationHref(item: AnnotationEntry): string {
 }
 
 export function annotationKind(item: AnnotationEntry): string {
-	return item.kind === 'note' ? (item.highlight_id ? 'comment' : 'book_note') : item.kind;
+	return item.kind === 'note' ? 'comment' : item.kind;
 }
 
 export function annotationTagClass(kind: string): string {

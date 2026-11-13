@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -80,11 +79,8 @@ type pageAnnotation struct {
 }
 
 type note struct {
-	id          string
-	highlightID sql.NullString
+	highlightID string
 	body        string
-	createdAt   int64
-	updatedAt   int64
 }
 
 // Export exports all live annotations for the requested visible books.
@@ -216,23 +212,7 @@ func (s *Service) Export(ctx context.Context, viewer Viewer, bookIDs []int64) (r
 	byBookNotes := make(map[int64][]note, len(books))
 	for _, row := range noteRows {
 		byBookNotes[row.BookID] = append(byBookNotes[row.BookID], note{
-			id: row.ID, highlightID: row.HighlightID, body: row.BodyMd,
-			createdAt: row.CreatedAt, updatedAt: row.UpdatedAt,
-		})
-	}
-	for id := range byBookNotes {
-		sort.Slice(byBookNotes[id], func(i, j int) bool {
-			left, right := byBookNotes[id][i], byBookNotes[id][j]
-			if left.highlightID.Valid != right.highlightID.Valid {
-				return !left.highlightID.Valid
-			}
-			if !left.highlightID.Valid && left.updatedAt != right.updatedAt {
-				return left.updatedAt > right.updatedAt
-			}
-			if left.createdAt != right.createdAt {
-				return left.createdAt < right.createdAt
-			}
-			return left.id < right.id
+			highlightID: row.HighlightID.String, body: row.BodyMd,
 		})
 	}
 	date := s.now().UTC().Format("2006-01-02")
@@ -362,26 +342,13 @@ func writeDocument(writer io.Writer, item book, notes []note, highlights []highl
 			}
 		}
 	}
-	if _, err := fmt.Fprintf(writer, "pandalibrary_id: %d\nexported: %s\n---\n# %s\n\n## Notes\n\n",
+	if _, err := fmt.Fprintf(writer, "pandalibrary_id: %d\nexported: %s\n---\n# %s\n\n## Highlights\n\n",
 		item.id, date, oneLine(item.title)); err != nil {
-		return err
-	}
-	for _, entry := range notes {
-		if entry.highlightID.Valid {
-			continue
-		}
-		if err := writeMarkdownBody(writer, entry.body); err != nil {
-			return err
-		}
-	}
-	if _, err := io.WriteString(writer, "## Highlights\n\n"); err != nil {
 		return err
 	}
 	notesByHighlight := make(map[string][]note)
 	for _, entry := range notes {
-		if entry.highlightID.Valid {
-			notesByHighlight[entry.highlightID.String] = append(notesByHighlight[entry.highlightID.String], entry)
-		}
+		notesByHighlight[entry.highlightID] = append(notesByHighlight[entry.highlightID], entry)
 	}
 	for _, entry := range highlights {
 		// Explicit labels preserve arbitrary multiline text without introducing HTML or delimiters.

@@ -100,6 +100,8 @@ func TestSearchAnnotationPresentationAndDestinations(t *testing.T) {
 				0.2, 'shared passage', 'underline', 100, 100, 1)`,
 		`INSERT INTO notes (id, user_id, book_id, highlight_id, body_md, created_at, updated_at, rev)
 			VALUES ('` + noteID + `', 2, 101, '` + highlightID + `', 'shared comment', 200, 200, 1)`,
+		`INSERT INTO notes (id, user_id, book_id, body_md, created_at, updated_at, rev)
+			VALUES ('018f0f7e-7b00-7000-8000-000000000004', 2, 101, 'shared legacy note', 250, 250, 1)`,
 		`INSERT INTO page_annotations
 			(id, user_id, book_id, book_file_id, kind, locator, position, data, created_at, updated_at, rev)
 			VALUES ('018f0f7e-7b00-7000-8000-000000000003', 2, 101, 202, 'text',
@@ -135,7 +137,7 @@ func TestSearchAnnotationPresentationAndDestinations(t *testing.T) {
 			results[2].HighlightID == nil || *results[2].HighlightID != highlightID {
 			t.Fatalf("missing annotation targets: %+v", results)
 		}
-		for _, kind := range []string{"comment", "underline", "text", "review", "book_note", "highlight", "strikeout", "ink", "image"} {
+		for _, kind := range []string{"comment", "underline", "text", "review", "highlight", "strikeout", "ink", "image"} {
 			filtered, err := f.service.SearchAnnotations(ctx, Viewer{UserID: 2}, query, kind)
 			if err != nil {
 				t.Fatal(err)
@@ -153,6 +155,9 @@ func TestSearchAnnotationPresentationAndDestinations(t *testing.T) {
 	}
 	if _, err := f.service.SearchAnnotations(ctx, Viewer{UserID: 2}, "shared", "invalid"); err == nil {
 		t.Fatal("expected invalid kind to be rejected")
+	}
+	if _, err := f.service.SearchAnnotations(ctx, Viewer{UserID: 2}, "shared", "book_note"); err == nil {
+		t.Fatal("expected removed kind to be rejected")
 	}
 }
 

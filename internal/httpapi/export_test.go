@@ -38,8 +38,10 @@ func TestNotesExportHTTPAuthenticationSelectionAndAttachments(t *testing.T) {
 		`INSERT INTO book_authors (book_id, author_id, role, position) VALUES
 			(101, 1, 'author', 0), (104, 1, 'author', 0)`,
 		`INSERT INTO book_hidden (user_id, book_id, hidden_by, created_at) VALUES (2, 102, 1, 1)`,
-		`INSERT INTO notes (id, user_id, book_id, body_md, created_at, updated_at, rev) VALUES
-			('00000000-0000-7000-8000-000000000101', 2, 101, 'Own note', 1, 1, 1)`,
+		`INSERT INTO highlights (id, user_id, book_id, locator, text, created_at, updated_at, rev) VALUES
+			('00000000-0000-7000-8000-000000000100', 2, 101, '{}', 'Passage', 1, 1, 1)`,
+		`INSERT INTO notes (id, user_id, book_id, highlight_id, body_md, created_at, updated_at, rev) VALUES
+			('00000000-0000-7000-8000-000000000101', 2, 101, '00000000-0000-7000-8000-000000000100', 'Own note', 1, 1, 1)`,
 	} {
 		if _, err := databases.Writer.ExecContext(ctx, statement); err != nil {
 			t.Fatalf("seed notes export HTTP fixture: %v", err)

@@ -20,7 +20,7 @@
 		: kind === 'text' ? m['pv10.text']()
 		: kind === 'ink' ? m['pv10.drawing']()
 		: kind === 'image' ? m['pv10.image']()
-		: m['notes.activity.private_note']());
+		: m['notes.title']());
 </script>
 
 <a {href} class="flex min-w-0 items-start gap-3 rounded-md py-4 text-inherit no-underline hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
@@ -44,7 +44,7 @@
 					<path d={strokePath(stroke)} fill="none" stroke={item.data.color} stroke-width={item.data.width} stroke-linecap="round" stroke-linejoin="round" />
 				{/each}
 			</svg>
-		{:else if kind === 'comment' || kind === 'book_note'}
+		{:else if kind === 'comment'}
 			<div class="reader-markdown break-words text-sm leading-6 text-slate-800">{@html renderMarkdown(item.content, false)}</div>
 		{:else}
 			<p class="break-words whitespace-pre-wrap text-sm leading-6 text-slate-800">{item.content}</p>

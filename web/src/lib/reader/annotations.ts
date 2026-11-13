@@ -121,7 +121,8 @@ export function makeHighlight(
 	};
 }
 
-export function makeNote(bookId: number, body: string, highlightId: string | null, id = uuidv7()): Mutation {
+export function makeNote(bookId: number, body: string, highlightId: string, id = uuidv7()): Mutation {
+	if (!highlightId) throw new Error('A comment must be attached to a highlight.');
 	if (bytes(body) > 64 * 1024) throw new Error('Note exceeds the server limit.');
 	return {
 		entity: 'notes',

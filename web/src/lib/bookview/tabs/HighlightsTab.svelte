@@ -67,7 +67,7 @@
 	const chapterIds = $derived(new Map(allChapters.map((group, index) => [chapterKey(group), `highlights-chapter-${index}`])));
 	const stats = $derived(markStats(marks, now, files, otherAnnotations));
 	const total = $derived(marks.length + otherAnnotations.length);
-	const notesCount = $derived(marks.filter((mark) => mark.notes.length > 0).length + otherAnnotations.filter((item) => item.kind === 'book_note' || item.kind === 'comment').length);
+	const notesCount = $derived(marks.filter((mark) => mark.notes.length > 0).length + otherAnnotations.filter((item) => item.kind === 'comment').length);
 	const colorOptions = $derived(colorCounts(marks));
 	const visible = $derived(sortMarks(filterMarks(marks, { query, colors, styles, notesOnly }).filter((mark) =>
 		!kind || (kind === 'comment' ? mark.notes.length > 0 : kind === (mark.style ?? 'highlight'))

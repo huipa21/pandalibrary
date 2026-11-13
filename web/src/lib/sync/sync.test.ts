@@ -336,7 +336,7 @@ describe('durable R1 synchronization', () => {
 		const note: SyncMutation = {
 			entity: 'notes', id: '019a4d48-cc00-7000-8000-000000000001',
 			op: 'upsert', updated_at: Date.parse(timestamp),
-			data: { book_id: 21, highlight_id: null, body_md: 'Saved note' }
+			data: { book_id: 21, highlight_id: 'highlight', body_md: 'Saved note' }
 		};
 		const session: SyncMutation = {
 			entity: 'reading_sessions', id: '019a4d48-cc00-7000-8000-000000000002',
@@ -353,7 +353,7 @@ describe('durable R1 synchronization', () => {
 			key: 'reader.pdf', value: { theme: 'dark', layout: ['single', 'split'] }, updated_at: timestamp, rev: 2
 		});
 		response.notes.push({
-			id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, highlight_id: null,
+			id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, highlight_id: 'highlight',
 			body_md: 'Saved note', created_at: timestamp, updated_at: timestamp, deleted_at: null, rev: 3
 		});
 		const client = transport(response);
@@ -373,7 +373,7 @@ describe('durable R1 synchronization', () => {
 		const rejected: SyncMutation = {
 			entity: 'notes', id: '019a4d48-cc00-7000-8000-000000000001',
 			op: 'upsert', updated_at: Date.parse(timestamp),
-			data: { book_id: 21, highlight_id: null, body_md: 'Unsent' }
+			data: { book_id: 21, highlight_id: 'highlight', body_md: 'Unsent' }
 		};
 		for (const mutation of [setting, progress(0.7), rejected]) await enqueue(1, mutation);
 		await recordResults(1, await outbox(1), [
@@ -387,7 +387,7 @@ describe('durable R1 synchronization', () => {
 			percentage: 0.5, device: 'Web', device_id: 'device', updated_at: timestamp, rev: 2
 		});
 		response.notes.push({
-			id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, highlight_id: null,
+			id: '019a4d48-cc00-7000-8000-000000000001', book_id: 21, highlight_id: 'highlight',
 			body_md: 'Unsent', created_at: timestamp, updated_at: timestamp, deleted_at: null, rev: 3
 		});
 		const client = transport(response);
@@ -408,14 +408,14 @@ describe('durable R1 synchronization', () => {
 		const deletion: SyncMutation = { entity: 'notes', id, op: 'delete', data: {}, updated_at: 123 };
 		const edit: SyncMutation = {
 			entity: 'notes', id, op: 'upsert', updated_at: 124,
-			data: { book_id: 21, highlight_id: null, body_md: 'Keep this edit' }
+			data: { book_id: 21, highlight_id: 'highlight', body_md: 'Keep this edit' }
 		};
 		await enqueue(1, deletion);
 		await enqueue(1, edit);
 		await recordResults(1, await outbox(1), [{ index: 0, status: 'stale' }, { index: 1, status: 'stale' }]);
 		const response = pull(1);
 		response.notes.push({
-			id, book_id: 21, highlight_id: null, body_md: 'Old note', created_at: timestamp,
+			id, book_id: 21, highlight_id: 'highlight', body_md: 'Old note', created_at: timestamp,
 			updated_at: timestamp, deleted_at: timestamp, rev: 1
 		});
 		await expect(synchronize(1, transport(response))).resolves.toEqual({ applied: 0, issues: 1 });
@@ -511,14 +511,14 @@ describe('durable R1 synchronization', () => {
 			{ entity: 'notes', id, op: 'upsert', updated_at: 123, data: { book_id: 21, body_md: 'Saved' } },
 			{
 				entity: 'notes', id, op: 'upsert', updated_at: 124,
-				data: { book_id: 21, highlight_id: null, body_md: 'Saved', future_field: true }
+				data: { book_id: 21, highlight_id: 'highlight', body_md: 'Saved', future_field: true }
 			}
 		];
 		for (const change of changes) await enqueue(1, change);
 		await recordResults(1, await outbox(1), [{ index: 0, status: 'stale' }, { index: 1, status: 'stale' }]);
 		const response = pull(1);
 		response.notes.push({
-			id, book_id: 21, highlight_id: null, body_md: 'Saved', created_at: timestamp,
+			id, book_id: 21, highlight_id: 'highlight', body_md: 'Saved', created_at: timestamp,
 			updated_at: timestamp, deleted_at: null, rev: 1
 		});
 		await expect(synchronize(1, transport(response))).resolves.toEqual({ applied: 0, issues: 2 });
@@ -585,7 +585,7 @@ describe('durable R1 synchronization', () => {
 	it('accepts revision gaps and persists tombstones with the cursor', async () => {
 		const response = pull(100);
 		response.notes.push({
-			id: 'note', book_id: 21, highlight_id: null, body_md: '', created_at: timestamp,
+			id: 'note', book_id: 21, highlight_id: 'highlight', body_md: '', created_at: timestamp,
 			updated_at: timestamp, deleted_at: timestamp, rev: 17
 		});
 		await persistPull(1, 0, parsePullResponse(response, 0), true);

@@ -837,6 +837,9 @@ func (s *Service) applyMutation(
 			if err != nil {
 				return "", "", fmt.Errorf("get owned note: %w", err)
 			}
+			if !existing.HighlightID.Valid {
+				return reject("standalone notes are no longer supported")
+			}
 			if updatedAt <= existing.UpdatedAt {
 				return stale()
 			}
@@ -854,6 +857,9 @@ func (s *Service) applyMutation(
 		if data.BookID < 1 || len(data.Body) > maxNoteBytes || !utf8.ValidString(data.Body) {
 			return reject("note fields are invalid")
 		}
+		if data.HighlightID == nil {
+			return reject("notes must be attached to a highlight")
+		}
 		if exists && existing.BookID != data.BookID {
 			return reject("note cannot be moved to another book")
 		}
@@ -862,19 +868,17 @@ func (s *Service) applyMutation(
 		} else if err != nil {
 			return "", "", err
 		}
-		if data.HighlightID != nil {
-			highlight, err := q.ReadingGetOwnedHighlight(ctx, sqlc.ReadingGetOwnedHighlightParams{
-				ID: *data.HighlightID, UserID: viewer.UserID, IsAdmin: adminFlag(viewer),
-			})
-			if errors.Is(err, sql.ErrNoRows) {
-				return reject("highlight is unavailable")
-			}
-			if err != nil {
-				return "", "", fmt.Errorf("check note highlight: %w", err)
-			}
-			if highlight.BookID != data.BookID || highlight.DeletedAt.Valid {
-				return reject("highlight is unavailable")
-			}
+		highlight, err := q.ReadingGetOwnedHighlight(ctx, sqlc.ReadingGetOwnedHighlightParams{
+			ID: *data.HighlightID, UserID: viewer.UserID, IsAdmin: adminFlag(viewer),
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return reject("highlight is unavailable")
+		}
+		if err != nil {
+			return "", "", fmt.Errorf("check note highlight: %w", err)
+		}
+		if highlight.BookID != data.BookID || highlight.DeletedAt.Valid {
+			return reject("highlight is unavailable")
 		}
 		createdAt := now
 		if exists {
@@ -1358,7 +1362,7 @@ func (s *Service) SearchAnnotations(
 		return nil, err
 	}
 	switch kind {
-	case "", "review", "comment", "book_note", "highlight", "underline", "strikeout", "text", "ink", "image":
+	case "", "review", "comment", "highlight", "underline", "strikeout", "text", "ink", "image":
 	default:
 		return nil, fmt.Errorf("%w: annotation kind is invalid", ErrInvalid)
 	}

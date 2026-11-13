@@ -130,7 +130,7 @@
 			announcement = m['reader.error.render']();
 		}
 	}
-	function openNote(highlightId: string | null, note?: Note) {
+	function openNote(highlightId: string, note?: Note) {
 		if (!canOpenNote()) return;
 		noteTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		createdCommentMark = null;
@@ -457,7 +457,7 @@
 						<p class="whitespace-pre-wrap break-words">{note.body_md}</p>
 						{#if !detail.readonly}
 							<div class="flex gap-3">
-								<button class="reader-action" disabled={controller.busy} onclick={() => openNote(note.highlight_id, note)}>{m['reader.annotations.edit']()}</button>
+								<button class="reader-action" disabled={controller.busy} onclick={() => openNote(detailEntry!.id, note)}>{m['reader.annotations.edit']()}</button>
 								<button class="reader-action" disabled={controller.busy} onclick={() => controller.deleteNote(note)}>{m['reader.annotations.delete']()}</button>
 							</div>
 						{/if}

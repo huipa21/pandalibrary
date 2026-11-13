@@ -27,7 +27,7 @@ import { pdfSettingsForScope, initialPdfSettings } from './pdf-settings.js';
 
 export interface NoteDraft {
 	id: string;
-	highlightId: string | null;
+	highlightId: string;
 	body: string;
 	original: string;
 	editing: boolean;
@@ -85,7 +85,6 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		await saveMutation(mutation);
 	});
 	const orderedHighlights = $derived([...highlights].sort((a, b) => a.position - b.position || a.created_at.localeCompare(b.created_at)));
-	const bookNotes = $derived(notes.filter((note) => note.highlight_id === null));
 	const availableBookmarks = $derived(bookmarks.filter((bm) => bookmarkForPosition(bm, file?.id ?? -1, format ?? 'epub')));
 
 	$effect(() => {
@@ -765,6 +764,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				await saveMutation(updateBookmarkLabel(entry.row, entry.row.label));
 				bookmarks = [...bookmarks.filter((item) => item.id !== row.id), { ...entry.row, deleted_at: null }];
 			} else if (entry.kind === 'note') {
+				if (!entry.row.highlight_id) throw new Error('Cannot restore a comment without a highlight.');
 				await saveMutation(makeNote(book.id, entry.row.body_md, entry.row.highlight_id, row.id));
 				notes = [...notes.filter((item) => item.id !== row.id), { ...entry.row, deleted_at: null }];
 				await refreshCommentMarker(entry.row.highlight_id);
@@ -974,7 +974,6 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		get location() { return location; },
 		get selection() { return selection; },
 		get orderedHighlights() { return orderedHighlights; },
-		get bookNotes() { return bookNotes; },
 		get availableBookmarks() { return availableBookmarks; },
 		mount, dispose, beforeNavigate, setDraftGuard, registerDraftGuard, setViewSave, attach, turnPage, goToFraction, goToHighlight, removeHighlight, removeBookmark, jumpToBookmark, retryWrites, applySettings, saveSettings, addHighlight, saveNote,
 		addPageAnnotation: (input: PageAnnotationInput) => writePageAnnotation(input),

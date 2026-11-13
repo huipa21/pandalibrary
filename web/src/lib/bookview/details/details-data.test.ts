@@ -29,7 +29,7 @@ const progress: Progress = {
 
 function note(id: string): Note {
 	return {
-		id, book_id: 21, highlight_id: null, body_md: id, created_at: stamp,
+		id, book_id: 21, highlight_id: 'highlight', body_md: id, created_at: stamp,
 		updated_at: stamp, deleted_at: null, rev: 1
 	};
 }
@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 describe('details state', () => {
-	it('loads only the reader book state and never exposes private notes', async () => {
+	it('loads only the reader book state and never exposes private comments', async () => {
 		const state: BookState = { ...emptyState, progress, notes: [note('private')] };
 		fetchMock.mockImplementation(async () => json(state));
 		const controller = new AbortController();

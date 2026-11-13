@@ -142,7 +142,7 @@ func TestReviewHTTPRejections(t *testing.T) {
 	f := newReviewHTTPFixture(t)
 	const base = "/api/v1/books/101/reviews"
 	expectShelfStatus(t, f.request(http.MethodGet, "/api/v1/me/notes", nil, nil, nil), http.StatusUnauthorized)
-	for _, query := range []string{"?limit=0", "?cursor=bad", "?unknown=x", "?kind=invalid", "?kind=review&kind=comment"} {
+	for _, query := range []string{"?limit=0", "?cursor=bad", "?unknown=x", "?kind=invalid", "?kind=book_note", "?kind=review&kind=comment"} {
 		expectShelfStatus(t, f.request(http.MethodGet, "/api/v1/me/notes"+query, nil, f.reader, nil), http.StatusBadRequest)
 	}
 	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {

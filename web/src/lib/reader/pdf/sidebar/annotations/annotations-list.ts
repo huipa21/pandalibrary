@@ -150,7 +150,6 @@ export function buildAnnotationList(input: {
 	otherFile.sort(compare);
 	return {
 		entries, otherFile,
-		bookNotes: input.notes.filter((note) => !note.deleted_at && note.highlight_id === null),
 		count: entries.length
 	};
 }

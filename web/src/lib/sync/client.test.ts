@@ -6,7 +6,7 @@ const viewer = { id: 1, username: 'reader', display_name: '', role: 'user', loca
 const mutation = {
 	entity: 'notes' as const, id: '019a4d48-cc00-7000-8000-000000000001',
 	op: 'upsert' as const, updated_at: 123,
-	data: { book_id: 21, highlight_id: null, body_md: 'Offline note' }
+	data: { book_id: 21, highlight_id: 'highlight', body_md: 'Offline note' }
 };
 
 async function setup(backgroundSync = true) {

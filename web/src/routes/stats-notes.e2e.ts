@@ -179,7 +179,7 @@ test('searches annotations with unified entries and no export panel', async ({ p
 
 	const box = page.getByRole('searchbox', { name: 'Search annotations', exact: true });
 	await expect(page.getByRole('heading', { name: 'Annotations', exact: true })).toHaveClass('sr-only');
-	await expect(box).toHaveAttribute('placeholder', 'Search reviews, comments, notes, highlights, and inserted text');
+	await expect(box).toHaveAttribute('placeholder', 'Search reviews, comments, highlights, and inserted text');
 	await expect(page.locator('#notes-query-hint')).toHaveCount(0);
 	await expect(page.getByText('Search annotations', { exact: true })).toHaveCount(0);
 	await box.fill('  spice ');
@@ -259,7 +259,7 @@ test('shows reviews and comments newest first with book covers and pagination', 
 			} });
 		}
 		return route.fulfill({ json: {
-			items: [{ id: '00000000-0000-7000-8000-000000000002', kind: 'book_note', book_id: 23, book_title: 'The Left Hand of Darkness', cover_url: null, content: 'A private legacy note', created_at: '2026-11-08T12:00:00Z', updated_at: '2026-11-08T12:00:00Z' }],
+			items: [{ id: '00000000-0000-7000-8000-000000000002', kind: 'highlight', book_id: 23, book_title: 'The Left Hand of Darkness', cover_url: null, content: 'An older highlight', created_at: '2026-11-08T12:00:00Z', updated_at: '2026-11-08T12:00:00Z' }],
 			next_cursor: null, total: 3
 		} });
 	});
@@ -278,7 +278,7 @@ test('shows reviews and comments newest first with book covers and pagination', 
 	await page.getByRole('button', { name: 'Show more' }).click();
 	await expect(list.getByRole('listitem')).toHaveCount(3);
 	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 3');
-	await expect(list.getByRole('listitem').nth(2)).toContainText('A private legacy note');
+	await expect(list.getByRole('listitem').nth(2)).toContainText('An older highlight');
 	expect(requests).toEqual(['first', 'older']);
 });
 
@@ -378,7 +378,8 @@ test('annotation type dropdown combines with search, preserves URLs, and keeps t
 	await page.goto('/notes');
 	const type = page.getByRole('combobox', { name: 'Annotation type' });
 	await expect(type).toHaveValue('');
-	await expect(type.getByRole('option')).toHaveCount(10);
+	await expect(type.getByRole('option')).toHaveCount(9);
+	await expect(type.getByRole('option', { name: 'Private note' })).toHaveCount(0);
 	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 3');
 	const total = page.getByTestId('annotations-count');
 	await expect(total).toHaveAttribute('title', 'Total annotations: 83');

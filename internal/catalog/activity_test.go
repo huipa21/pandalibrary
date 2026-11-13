@@ -50,8 +50,8 @@ func TestListPersonalActivityNewestFirstAndPaginated(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if page.Total != 4 {
-			t.Fatalf("total = %d, want 4 across all pages", page.Total)
+		if page.Total != 3 {
+			t.Fatalf("total = %d, want 3 across all pages", page.Total)
 		}
 		got = append(got, page.Items...)
 		if page.NextCursor == nil {
@@ -59,33 +59,33 @@ func TestListPersonalActivityNewestFirstAndPaginated(t *testing.T) {
 		}
 		cursor = *page.NextCursor
 	}
-	if kinds := []string{got[0].Kind, got[1].Kind, got[2].Kind, got[3].Kind}; !reflect.DeepEqual(kinds, []string{"review", "comment", "book_note", "highlight"}) {
+	if len(got) != 3 {
+		t.Fatalf("got %d activities, want 3", len(got))
+	}
+	if kinds := []string{got[0].Kind, got[1].Kind, got[2].Kind}; !reflect.DeepEqual(kinds, []string{"review", "comment", "highlight"}) {
 		t.Fatalf("kinds newest first = %v", kinds)
 	}
-	if got[1].Anchor != "Passage text" || got[0].Content != "A public review" || got[2].Content != "A private book note" {
+	if got[1].Anchor != "Passage text" || got[0].Content != "A public review" {
 		t.Fatalf("activities = %+v", got)
 	}
 	if got[1].HighlightID == nil || *got[1].HighlightID != highlightID ||
-		got[3].HighlightID == nil || *got[3].HighlightID != highlightID || got[2].HighlightID != nil {
+		got[2].HighlightID == nil || *got[2].HighlightID != highlightID {
 		t.Fatalf("activity passage targets = %+v", got)
 	}
 	if got[1].BookFileID == nil || *got[1].BookFileID != 201 ||
-		got[3].BookFileID == nil || *got[3].BookFileID != 201 {
+		got[2].BookFileID == nil || *got[2].BookFileID != 201 {
 		t.Fatalf("activity file targets = %+v", got)
 	}
 	if got[0].CoverURL == nil || *got[0].CoverURL != "/api/v1/books/101/cover" {
 		t.Fatalf("cover URL = %v", got[0].CoverURL)
 	}
-	if len(got) != 4 {
-		t.Fatalf("got %d activities, want 4", len(got))
-	}
-	for _, kind := range []string{"review", "comment", "book_note", "highlight", "underline", "strikeout", "text", "ink", "image"} {
+	for _, kind := range []string{"review", "comment", "highlight", "underline", "strikeout", "text", "ink", "image"} {
 		page, err := fixture.service.ListPersonalActivity(ctx, viewer, PersonalActivityOptions{Limit: 1, Kind: kind})
 		if err != nil {
 			t.Fatal(err)
 		}
 		want := int64(0)
-		if kind == "review" || kind == "comment" || kind == "book_note" || kind == "highlight" {
+		if kind == "review" || kind == "comment" || kind == "highlight" {
 			want = 1
 		}
 		if page.Total != want || int64(len(page.Items)) != want || page.NextCursor != nil {
@@ -157,6 +157,7 @@ func TestListPersonalActivityRejectsInvalidViewerAndCursor(t *testing.T) {
 	}{
 		{name: "viewer", page: PersonalActivityOptions{}},
 		{name: "kind", viewer: Viewer{UserID: 2}, page: PersonalActivityOptions{Kind: "invalid"}},
+		{name: "removed kind", viewer: Viewer{UserID: 2}, page: PersonalActivityOptions{Kind: "book_note"}},
 		{name: "cursor", viewer: Viewer{UserID: 2}, page: PersonalActivityOptions{Cursor: "eyJ2IjoxLCJrIjoicGVyc29uYWxfYWN0aXZpdHkiLCJzIjoiMjpmYWxzZSIsIm8iOiJjcmVhdGVkIiwiaSI6MSwidCI6ImJhZDogMSIsImQiOjF9"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

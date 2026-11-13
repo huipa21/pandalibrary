@@ -50,7 +50,6 @@ describe('annotation list', () => {
 		const list = fixture();
 		expect(list.entries.map((entry) => entry.id)).toEqual(['older', 'first', 'image', 'ink', 'text', 'low', 'later-page']);
 		expect(list.otherFile.map((entry) => entry.id).sort()).toEqual(['cfi', 'other', 'other-insert']);
-		expect(list.bookNotes.map((entry) => entry.id)).toEqual(['book']);
 		expect(list.count).toBe(7);
 		expect(list.entries[0]).toMatchObject({ swatch: { kind: 'mark', style: 'underline', hex: '#000000' } });
 		expect(list.entries[1]).toMatchObject({
@@ -97,7 +96,6 @@ describe('annotation list', () => {
 		});
 		expect(filterEntries(list.entries, 'CAFE').map((entry) => entry.id)).toEqual(['first']);
 		expect(list.count).toBe(3);
-		expect(list.bookNotes.map((entry) => entry.id)).toEqual(['book']);
 	});
 
 	it('keeps other-file and incompatible locators read-only in a CFI list', () => {

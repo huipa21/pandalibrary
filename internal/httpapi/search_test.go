@@ -182,13 +182,13 @@ func TestSearchHTTPMatchingAndVisibility(t *testing.T) {
 	if annotations.Code != http.StatusOK || !strings.Contains(annotations.Body.String(), `"items":[]`) {
 		t.Fatalf("annotation route was replaced: %d %s", annotations.Code, annotations.Body.String())
 	}
-	for _, kind := range []string{"review", "comment", "book_note", "highlight", "underline", "strikeout", "text", "ink", "image"} {
+	for _, kind := range []string{"review", "comment", "highlight", "underline", "strikeout", "text", "ink", "image"} {
 		filtered := fixture.request(http.MethodGet, "/api/v1/search/annotations?q=test&kind="+kind, nil, fixture.reader, nil)
 		if filtered.Code != http.StatusOK {
 			t.Fatalf("annotation kind %s = %d %s", kind, filtered.Code, filtered.Body.String())
 		}
 	}
-	for _, query := range []string{"q=test&kind=invalid", "q=test&kind=review&kind=comment"} {
+	for _, query := range []string{"q=test&kind=invalid", "q=test&kind=book_note", "q=test&kind=review&kind=comment"} {
 		response := fixture.request(http.MethodGet, "/api/v1/search/annotations?"+query, nil, fixture.reader, nil)
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("invalid annotation filter = %d %s", response.Code, response.Body.String())

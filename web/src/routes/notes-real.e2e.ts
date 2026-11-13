@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, request, test } from '@playwright/test';
 import { v7 as uuidv7 } from 'uuid';
 import { signInRealAdmin } from '../lib/real-auth.js';
 import { pdfFixture } from '../lib/reader/fixtures.js';
@@ -59,7 +59,41 @@ test('real Notes API lists every annotation type and searches Chinese reviews an
 	expect(pushed.ok()).toBe(true);
 	const { results } = await pushed.json() as { results: Array<{ status: string }> };
 	expect(results.map((result) => result.status)).toEqual(mutations.map(() => 'applied'));
+	const standalone = await page.request.post('/api/v1/sync/push', { data: { mutations: [{
+		entity: 'notes', id: uuidv7(), op: 'upsert', updated_at: Date.now(),
+		data: { book_id: bookID, highlight_id: null, body_md: 'Unsupported standalone note' }
+	}] } });
+	expect(standalone.ok()).toBe(true);
+	expect((await standalone.json() as { results: Array<{ status: string; reason?: string }> }).results)
+		.toEqual([expect.objectContaining({ status: 'rejected', reason: 'notes must be attached to a highlight' })]);
+
+	const ownerState = await page.request.get(`/api/v1/me/books/${bookID}`);
+	expect(ownerState.ok()).toBe(true);
+	expect((await ownerState.json() as { notes: Array<{ body_md: string }> }).notes)
+		.toContainEqual(expect.objectContaining({ body_md: 'AI实战使用扣子' }));
+	const username = 'notes-reader';
+	const password = 'notes-reader-test-password';
+	const createdReader = await page.request.post('/api/v1/admin/users', {
+		data: { username, password, display_name: 'Notes reader', role: 'user', locale: 'en' }
+	});
+	expect(createdReader.status()).toBe(201);
+	const { user } = await createdReader.json() as { user: { id: number } };
+	const granted = await page.request.put(`/api/v1/admin/libraries/${library.id}/access/${user.id}`, { data: {} });
+	expect(granted.ok()).toBe(true);
+	const origin = new URL(page.url()).origin;
+	const other = await request.newContext({ baseURL: origin, extraHTTPHeaders: { Origin: origin } });
+	try {
+		const login = await other.post('/api/v1/auth/login', { data: { username, password } });
+		expect(login.ok()).toBe(true);
+		const otherState = await other.get(`/api/v1/me/books/${bookID}`);
+		expect(otherState.ok()).toBe(true);
+		expect((await otherState.json() as { notes: unknown[] }).notes).toEqual([]);
+	} finally {
+		await other.dispose();
+	}
 	await page.goto('/notes');
+	await expect(page.getByRole('combobox', { name: 'Annotation type' })
+		.getByRole('option', { name: 'Private note' })).toHaveCount(0);
 	const feed = page.getByRole('list', { name: 'Your annotations, newest first' });
 	await expect(feed.getByRole('listitem')).toHaveCount(5);
 	await expect(feed.getByRole('img', { name: 'Drawing' })).toBeVisible();

@@ -8,7 +8,6 @@
 		{ value: '', label: m['notes.filter.all'] },
 		{ value: 'review', label: m['notes.activity.review'] },
 		{ value: 'comment', label: m['notes.activity.comment'] },
-		{ value: 'book_note', label: m['notes.activity.private_note'] },
 		{ value: 'highlight', label: m['notes.kind.highlight'] },
 		{ value: 'underline', label: m['pv10.underline'] },
 		{ value: 'strikeout', label: m['pv10.strikeout'] },

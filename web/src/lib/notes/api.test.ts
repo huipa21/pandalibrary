@@ -57,7 +57,7 @@ describe('annotation search helpers', () => {
 		expect(notesPageHref(' ')).toBe('/notes');
 		expect(notesPageHref(' spice ', 'comment')).toBe('/notes?q=spice&kind=comment');
 		expect(notesPageHref('', 'underline')).toBe('/notes?kind=underline');
-		expect(buildAnnotationSearchPath('spice', 'book_note')).toBe('/search/annotations?q=spice&kind=book_note');
+		expect(buildAnnotationSearchPath('spice', 'comment')).toBe('/search/annotations?q=spice&kind=comment');
 
 		const request = vi.spyOn(api, 'request').mockResolvedValue({ items: [result('h1', 1)] });
 		await expect(searchAnnotations('spice')).resolves.toHaveLength(1);

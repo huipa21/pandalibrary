@@ -52,14 +52,14 @@ WITH activity AS (
 	))))
 	AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND hidden.user_id = ?)
 	UNION ALL
-	SELECT CASE WHEN n.highlight_id IS NULL THEN 'book_note' ELSE 'comment' END AS kind,
+	SELECT 'comment' AS kind,
 		n.id, n.book_id, b.title AS book_title, b.cover_sha256, n.body_md AS content,
 		COALESCE(h.text, '') AS anchor, n.created_at, n.updated_at, h.book_file_id, '', '', n.highlight_id
 	FROM notes n
 	JOIN books b ON b.id = n.book_id
 	LEFT JOIN highlights h ON h.id = n.highlight_id AND h.user_id = n.user_id
 		AND h.book_id = n.book_id AND h.deleted_at IS NULL
-	WHERE n.user_id = ? AND n.deleted_at IS NULL
+	WHERE n.user_id = ? AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
 	AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
 		SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
 	))))
@@ -206,7 +206,7 @@ func (s *Service) ListPersonalActivity(ctx context.Context, viewer Viewer, optio
 
 func validActivityKind(kind string) bool {
 	switch kind {
-	case "review", "comment", "book_note", "highlight", "underline", "strikeout", "text", "ink", "image":
+	case "review", "comment", "highlight", "underline", "strikeout", "text", "ink", "image":
 		return true
 	default:
 		return false

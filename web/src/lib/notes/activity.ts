@@ -18,7 +18,7 @@ interface Activity {
 export type PersonalActivity = Activity & (
 	| { readonly kind: 'ink'; readonly data: InkData; readonly locator: PageAnnotationLocator }
 	| { readonly kind: 'text' | 'image'; readonly locator: PageAnnotationLocator }
-	| { readonly kind: 'review' | 'comment' | 'book_note' | 'highlight' | 'underline' | 'strikeout' }
+	| { readonly kind: 'review' | 'comment' | 'highlight' | 'underline' | 'strikeout' }
 );
 
 export interface PersonalActivityPage {

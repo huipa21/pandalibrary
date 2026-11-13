@@ -34,13 +34,13 @@ const state: BookState = {
 const filter = { query: '', kind: '', colors: new Set<string>(), styles: new Set<string>(), notesOnly: false, sort: 'reading' as const };
 
 describe('other book annotations', () => {
-	it('includes reviews, private notes, orphan comments and all inserts without repeating attached comments', () => {
+	it('includes reviews, orphan comments and inserts without exposing legacy notes or repeating attached comments', () => {
 		const entries = otherBookAnnotations(book, state, review);
-		expect(entries.map((entry) => entry.kind)).toEqual(['book_note', 'comment', 'text', 'ink', 'image', 'review']);
+		expect(entries.map((entry) => entry.kind)).toEqual(['comment', 'text', 'ink', 'image', 'review']);
 		expect(entries.find((entry) => entry.kind === 'ink')?.data?.strokes).toEqual([[0, 0, 1, 1]]);
 		const stats = markStats([], new Date(created_at), [{ id: 70, format: 'pdf' }], entries);
-		expect(stats.total).toBe(6);
-		expect(stats.weeks.reduce((sum, week) => sum + week.count, 0)).toBe(6);
+		expect(stats.total).toBe(5);
+		expect(stats.weeks.reduce((sum, week) => sum + week.count, 0)).toBe(5);
 		expect(stats.byFormat).toContainEqual({ format: 'pdf', count: 3 });
 	});
 
@@ -56,8 +56,8 @@ describe('other book annotations', () => {
 	it('applies type, text, notes and mark-only filters consistently', () => {
 		const entries = otherBookAnnotations(book, state, review);
 		expect(filterBookAnnotations(entries, { ...filter, kind: 'ink' }).map((row) => row.id)).toEqual(['ink']);
-		expect(filterBookAnnotations(entries, { ...filter, query: 'cafe', kind: 'book_note' }).map((row) => row.id)).toEqual(['note']);
-		expect(filterBookAnnotations(entries, { ...filter, notesOnly: true })).toHaveLength(2);
+		expect(filterBookAnnotations(entries, { ...filter, query: 'cafe', kind: 'comment' }).map((row) => row.id)).toEqual(['orphan']);
+		expect(filterBookAnnotations(entries, { ...filter, notesOnly: true })).toHaveLength(1);
 		expect(filterBookAnnotations(entries, { ...filter, colors: new Set(['yellow']) })).toEqual([]);
 		expect(filterBookAnnotations(entries, { ...filter, styles: new Set(['underline']) })).toEqual([]);
 		expect(filterBookAnnotations(entries, { ...filter, query: 'missing' })).toEqual([]);
