@@ -10,6 +10,7 @@
 	} = $props();
 	let error = $state('');
 	let panel = $state<HTMLDivElement | null>(null);
+	const id = $props.id();
 
 	$effect(() => {
 		const key = `pandalibrary.display:${storageKey}`;
@@ -61,13 +62,13 @@
 		{#snippet children()}
 			<div bind:this={panel} class="space-y-4 p-4">
 				<h3 class="font-semibold">{m['organize.display']()}</h3>
-				<label class="grid gap-2 text-sm">
+				<label class="grid gap-2 text-sm" for={`${id}-cover-size`}>
 					<span>{m['organize.cover_size']()} <output>{size}px</output></span>
-					<input type="range" min="100" max="280" step="1" value={size} oninput={(event) => { size = Number(event.currentTarget.value); save(); }} />
+					<input id={`${id}-cover-size`} type="range" min="100" max="280" step="1" value={size} oninput={(event) => { size = Number(event.currentTarget.value); save(); }} />
 				</label>
-				<label class="grid gap-2 text-sm">
+				<label class="grid gap-2 text-sm" for={`${id}-spacing`}>
 					<span>{m['organize.spacing']()} <output>{spacing}px</output></span>
-					<input type="range" min="0" max="48" step="2" value={spacing} oninput={(event) => { spacing = Number(event.currentTarget.value); save(); }} />
+					<input id={`${id}-spacing`} type="range" min="0" max="48" step="2" value={spacing} oninput={(event) => { spacing = Number(event.currentTarget.value); save(); }} />
 				</label>
 			</div>
 		{/snippet}

@@ -13,7 +13,7 @@ switching between pages with and without a vertical scrollbar.
 
 ## Administration
 
-Administrators open **Admin** to manage **Users**. There is no Overview tab.
+Administrators open **Account menu → Admin** to manage **Users**. There is no Overview tab.
 Server CLI account commands are listed at the bottom of Users.
 
 Choose a search category, enter text, and select **Search accounts** to search

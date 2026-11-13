@@ -217,7 +217,7 @@ test('mobile drawer keeps focus and creates a shared collection with automatic r
 	await creator.getByLabel('Shared', { exact: true }).check();
 	await creator.getByRole('button', { name: 'Add automatic rule' }).click();
 	await creator.getByLabel('Rule name', { exact: true }).fill('Moon titles');
-	await creator.getByLabel('Field', { exact: true }).selectOption('title');
+	await creator.getByRole('combobox', { name: 'Field', exact: true }).selectOption('title');
 	await creator.getByLabel('Value', { exact: true }).fill('Moon');
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	try {
@@ -247,7 +247,7 @@ test('shelf actions stay available when sidebar shelf loading fails', async ({ p
 	await page.setViewportSize({ width: 1280, height: 900 });
 	await page.goto('/books');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await expect(sidebar.getByText('Collections could not be loaded.')).toBeVisible();
+	await expect(sidebar.getByRole('alert')).toContainText('The collection request failed.');
 	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
 	await expect(sidebar.getByRole('menuitem', { name: 'New collection' })).toBeVisible();
 	await sidebar.getByRole('menuitem', { name: 'Manage collections' }).click();

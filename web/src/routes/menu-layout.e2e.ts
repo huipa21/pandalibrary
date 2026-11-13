@@ -34,6 +34,7 @@ async function mockApi(page: Page, state: MockState) {
 		if (path === '/me/notes') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		if (path === '/admin/bookheap/items') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		if (path === '/admin/bookheap/scan') return route.fulfill({ json: { scan: null } });
+		if (path === '/admin/users') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		if (path === '/shelves') return route.fulfill({ json: { items: [customShelf], next_cursor: null } });
 		if (path === '/shelves/11') return route.fulfill({ json: { shelf: customShelf } });
 		if (path === '/shelves/11/books') return route.fulfill({ json: { items: [], next_cursor: null } });
@@ -75,7 +76,7 @@ test('menu destinations keep accessible titles without repeated visible introduc
 		{ path: '/notes', heading: 'Annotations', description: 'Browse your reviews, comments and reader annotations.' },
 		{ path: '/shelves', heading: 'Collections', description: 'Organize books on your private shelves and browse shared shelves.' },
 		{ path: '/shelves/11', heading: 'Weekend reads' },
-		{ path: '/shelves/system/unshelved', heading: 'Unshelved' },
+		{ path: '/shelves/system/unshelved', heading: 'Uncollected' },
 		{ path: '/shelves/system/favorites', heading: 'Favorites' },
 		{ path: '/libraries', heading: 'Your libraries', description: 'Choose a library to browse its books.' },
 		{ path: '/authors', heading: 'Authors' },
@@ -84,14 +85,15 @@ test('menu destinations keep accessible titles without repeated visible introduc
 		{ path: '/read', heading: 'Choose a book to read', description: 'Choose an available format to open it in your browser.' },
 		{ path: '/search', heading: 'Search', description: 'Find books by title, author, series, tag, or other details.' },
 		{ path: '/stats', heading: 'Reading stats', description: 'See how much you read each day, which books you finished, and your reading streaks.' },
-		{ path: '/admin', heading: 'Administration', description: 'Manage libraries, access, hidden books, imports, metadata providers, and maintenance for this server.' },
+		{ path: '/admin', heading: 'Users' },
 		{ path: '/settings', heading: 'Account settings', description: 'Manage your profile and device passwords.' }
 	];
 	for (const destination of destinations) {
 		await page.goto(destination.path);
 		const main = page.getByRole('main');
 		const heading = main.getByRole('heading', { name: destination.heading, level: 1, exact: true });
-		await expect(heading).toHaveClass('sr-only');
+		if (destination.path === '/admin') await expect(heading).toBeVisible();
+		else await expect(heading).toHaveClass('sr-only');
 		if (destination.description) await expect(main.getByText(destination.description, { exact: true })).toHaveCount(0);
 		if (destination.path === '/settings') {
 			await page.getByRole('button', { name: 'Account menu', exact: true }).click();

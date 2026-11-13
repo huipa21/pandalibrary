@@ -5,14 +5,12 @@ import { getSessionViewer, listAllShelves } from '#lib/shelves/api.js';
 import type { SessionViewer, Shelf } from '#lib/shelves/types.js';
 
 /**
- * Shelves an administrator can target when assigning heap items: Favorites and custom manual
- * shelves they can write (shared shelves, or private shelves they own). Automatic shelves and
- * Unshelved are excluded. Favorites comes first, then the rest by name.
+ * Assignment accepts manual additions to rule-based collections too. Private
+ * targets must belong to the importing account; Favorites sorts first.
  */
-export function writableManualShelves(shelves: readonly Shelf[], viewer: Pick<SessionViewer, 'id'>): Shelf[] {
+export function writableCollections(shelves: readonly Shelf[], viewer: Pick<SessionViewer, 'id'>): Shelf[] {
 	const byId = new Map<number, Shelf>();
 	for (const shelf of shelves) {
-		if (shelf.mode === 'automatic' || shelf.rules) continue;
 		if (shelf.system_key && shelf.system_key !== 'favorites') continue;
 		if (shelf.kind !== 'shared' && shelf.owner_id !== viewer.id) continue;
 		byId.set(shelf.id, shelf);
@@ -32,7 +30,7 @@ export interface AssignTargets {
 	readonly shelves: Shelf[];
 }
 
-/** Loads every library and the writable manual shelves for the Assign dialog. */
+/** Loads every library and writable collection for the Assign dialog. */
 export async function loadAssignTargets(signal?: AbortSignal): Promise<AssignTargets> {
 	const [libraries, shelves, viewer] = await Promise.all([
 		listAllAdminLibraries(signal),
@@ -41,6 +39,6 @@ export async function loadAssignTargets(signal?: AbortSignal): Promise<AssignTar
 	]);
 	return {
 		libraries: [...libraries].sort((a, b) => a.name.localeCompare(b.name)),
-		shelves: writableManualShelves(shelves, viewer)
+		shelves: writableCollections(shelves, viewer)
 	};
 }

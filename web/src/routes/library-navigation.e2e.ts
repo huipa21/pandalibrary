@@ -127,6 +127,9 @@ test('library actions point to new, current settings, and all-library management
 	await page.goto('/libraries');
 	await actions.click();
 	await expect(sidebar.getByRole('menuitem', { name: 'Edit Library', exact: true })).toHaveCount(0);
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: 'Account menu', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Admin', exact: true })).toHaveAttribute('href', '/admin');
 	expect(unexpected).toEqual([]);
 });
 
@@ -145,6 +148,9 @@ test('direct scoped shelf links restore the library on mobile and readers cannot
 	expect(requests.some((url) =>
 		url.pathname.endsWith('/shelves/11/books') && url.searchParams.get('library_id') === '2'
 	)).toBe(true);
+	await page.keyboard.press('Escape');
+	await page.getByRole('button', { name: '账户菜单', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: '管理', exact: true })).toHaveCount(0);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 	expect(unexpected).toEqual([]);
 });

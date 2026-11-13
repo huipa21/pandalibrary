@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Shelf } from '#lib/shelves/types.js';
-import { writableManualShelves } from './targets.js';
+import { writableCollections } from './targets.js';
 
 function shelf(id: number, overrides: Partial<Shelf> = {}): Shelf {
 	return {
@@ -17,8 +17,8 @@ function shelf(id: number, overrides: Partial<Shelf> = {}): Shelf {
 	};
 }
 
-describe('writableManualShelves', () => {
-	it('keeps Favorites and writable manual shelves, Favorites first then by name', () => {
+describe('writableCollections', () => {
+	it('accepts rule collections while keeping ownership and system restrictions', () => {
 		const shelves = [
 			shelf(1, { name: 'Zebra' }),
 			shelf(2, { name: 'Alpha', kind: 'private', owner_id: 1 }),
@@ -28,6 +28,6 @@ describe('writableManualShelves', () => {
 			shelf(6, { name: 'Favorites', kind: 'private', owner_id: 1, system_key: 'favorites' }),
 			shelf(1, { name: 'Zebra' })
 		];
-		expect(writableManualShelves(shelves, { id: 1 }).map((entry) => entry.id)).toEqual([6, 2, 1]);
+		expect(writableCollections(shelves, { id: 1 }).map((entry) => entry.id)).toEqual([6, 2, 4, 1]);
 	});
 });

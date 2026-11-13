@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function authenticate(page: Page, locale = 'en') {
+	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
@@ -27,6 +29,9 @@ test('renders localized loading, API error, and empty library states', async ({ 
 	let releaseFirstResponse: () => void = () => {};
 	const firstResponse = new Promise<void>((resolve) => { releaseFirstResponse = resolve; });
 	await page.route('**/api/v1/libraries?*', async (route) => {
+		if (new URL(route.request().url()).searchParams.get('limit') === '100') {
+			return route.fulfill({ json: { items: [], next_cursor: null } });
+		}
 		attempts += 1;
 		if (attempts === 1) {
 			await firstResponse;
@@ -46,7 +51,7 @@ test('renders localized loading, API error, and empty library states', async ({ 
 	} finally {
 		releaseFirstResponse();
 	}
-	await expect(page.getByRole('alert')).toContainText('目录请求失败');
+	await expect(page.getByRole('main').getByRole('alert')).toContainText('目录请求失败');
 	await page.getByRole('main').getByRole('button', { name: '重试' }).click();
 	await expect(page.getByText('你的账户目前无法访问任何书库。')).toBeVisible();
 });
@@ -141,6 +146,7 @@ test('filters and sorts with server cursors, then opens a hash-versioned downloa
 
 	await page.goto('/books/21');
 	await expect(page.getByRole('heading', { name: 'A Book' })).toBeVisible();
+	await page.getByRole('link', { name: 'Files', exact: true }).click();
 	await expect(page.getByRole('link', { name: 'Download' })).toHaveAttribute(
 		'href',
 		'/api/v1/books/21/files/31?v=abc123'

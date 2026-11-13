@@ -5,7 +5,7 @@
 
 	interface Props {
 		pathname: string;
-		viewer: { username: string; display_name: string };
+		viewer: { username: string; display_name: string; role?: string };
 		onlogout: () => void;
 	}
 
@@ -51,6 +51,11 @@
 			</svg>
 			<span>{m['hm1.account.profile']()}</span>
 		</a>
+		{#if viewer.role === 'admin'}
+			<a role="menuitem" class="header-menu-item" href="/admin" aria-current={pathname === '/admin' || pathname.startsWith('/admin/') ? 'page' : undefined} data-menu-activate>
+				<span>{m['admin.nav']()}</span>
+			</a>
+		{/if}
 		<button type="button" role="menuitem" class="header-menu-item" onclick={onlogout} data-menu-activate>
 			<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
 				<path d="M8 3H4.5A1.5 1.5 0 0 0 3 4.5v11A1.5 1.5 0 0 0 4.5 17H8" />

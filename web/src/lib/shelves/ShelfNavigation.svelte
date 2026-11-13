@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { listAllLibraries } from '#lib/catalog/api.js';
+	import { catalogErrorMessage } from '#lib/catalog/errors.js';
 	import type { Library } from '#lib/catalog/types.js';
 	import LibraryActionsMenu from '#lib/libraries/LibraryActionsMenu.svelte';
 	import { selectedLibrary } from '#lib/libraries/context.js';
@@ -39,7 +40,10 @@
 					if (current) selectedLibrary.set({ id: current.id, name: current.name });
 				});
 			}).catch((cause) => {
-				if (active) libraryError = translate(shelfErrorKey(cause, 'load'));
+				if (active) libraryError = catalogErrorMessage(cause, {
+					api: m['catalog.error.api'](), connection: m['catalog.error.connection'](),
+					notFound: m['catalog.error.not_found']()
+				});
 			}),
 			listAllShelves(controller.signal).then((items) => {
 				if (active) shelves = items.filter((shelf) => !shelf.system_key);

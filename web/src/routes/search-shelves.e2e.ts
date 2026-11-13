@@ -16,6 +16,8 @@ async function expectNativeSearchCancelHidden(page: Page, search: Locator) {
 }
 
 async function authenticate(page: Page, role = 'user', locale = 'en') {
+	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
@@ -239,7 +241,7 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await creator.getByLabel('Collection name').fill('  To read  ');
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(page.getByRole('status').filter({ hasText: 'Collection created.' })).toBeVisible();
-	expect(created.at(-1)).toEqual({ kind: 'private', name: 'To read', description: null, mode: 'manual' });
+	expect(created.at(-1)).toEqual({ kind: 'private', name: 'To read', description: null, rule_groups: [] });
 	await expect(creator).toHaveCount(0);
 	await expect(page.getByRole('main').getByRole('link', { name: 'To read', exact: true })).toHaveCount(2);
 
@@ -260,19 +262,19 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await expect(page.getByRole('heading', { name: 'Best books', level: 1 })).toHaveClass('sr-only');
 	await expect(page.getByText('Collection updated.')).toBeVisible();
 	await expect(page.getByText('Old notes')).toHaveCount(0);
-	expect(patches).toEqual([{ name: 'Best books', description: null }]);
+	expect(patches).toEqual([{ name: 'Best books', description: null, rule_groups: [] }]);
 
 	await expect(page.getByTitle('A Book', { exact: true })).toHaveAttribute('href', '/books/21');
 	await page.getByRole('button', { name: 'Load more books' }).click();
 	await expect(page.getByRole('alert')).toContainText('This collection changed while you were browsing.');
 	expect(bookQueries.at(-1)?.get('cursor')).toBe('shelf-cursor');
 
-	await page.getByRole('button', { name: 'Remove “A Book” from this collection' }).click();
+	await page.getByRole('button', { name: 'Remove manual membership of “A Book” in this collection' }).click();
 	await expect(page.getByText('This collection has no books you can see.')).toBeVisible();
-	await expect(page.getByText('The book itself was not deleted.')).toBeVisible();
+	await expect(page.getByText('Manual membership removed.', { exact: false })).toBeVisible();
 	expect(bookQueries.at(-1)?.has('cursor')).toBe(false);
 
-	await expect(page.getByText('Deleting a collection removes only the collection, not the books in it.')).toBeVisible();
+	await expect(page.getByText('Deleting a collection removes only the collection, not the books on it.')).toBeVisible();
 	page.once('dialog', (dialog) => dialog.dismiss());
 	await page.getByRole('button', { name: 'Delete collection' }).click();
 	expect(deleted).toBe(false);
@@ -305,22 +307,22 @@ test('offers shared shelves to administrators and reports shelf permission failu
 
 	await page.goto('/shelves');
 	const sidebar = page.getByRole('navigation', { name: '主导航' });
-	await sidebar.getByRole('button', { name: '书架操作' }).click();
-	await sidebar.getByRole('menuitem', { name: '新建书架' }).click();
-	const creator = page.getByRole('dialog', { name: '创建书架' });
-	await creator.getByLabel('书架名称').fill('Staff favourites');
+	await sidebar.getByRole('button', { name: '合集操作' }).click();
+	await sidebar.getByRole('menuitem', { name: '新建合集' }).click();
+	const creator = page.getByRole('dialog', { name: '创建合集' });
+	await creator.getByLabel('合集名称').fill('Staff favourites');
 	await creator.getByLabel('共享', { exact: true }).check();
-	await creator.getByRole('button', { name: '创建书架' }).click();
-	await expect(page.getByText('书架已创建。')).toBeVisible();
-	expect(created).toEqual([{ kind: 'shared', name: 'Staff favourites', description: null, mode: 'manual' }]);
+	await creator.getByRole('button', { name: '创建合集' }).click();
+	await expect(page.getByText('合集已创建。')).toBeVisible();
+	expect(created).toEqual([{ kind: 'shared', name: 'Staff favourites', description: null, rule_groups: [] }]);
 
 	await page.goto('/books/21');
-	const picker = page.getByRole('dialog', { name: '添加到书架' });
-	await page.getByRole('main').getByRole('button', { name: '添加到书架', exact: true }).click();
+	const picker = page.getByRole('dialog', { name: '添加到合集' });
+	await page.getByRole('main').getByRole('button', { name: '添加到合集', exact: true }).click();
 	const staffPicks = picker.getByRole('button', { name: /Staff picks/ });
 	await expect(staffPicks).toContainText('共享');
 	await staffPicks.click();
-	await expect(picker.getByText('你没有权限更改此书架。')).toBeVisible();
+	await expect(picker.getByText('你没有权限更改此合集。')).toBeVisible();
 	await staffPicks.click();
 	await expect(page.getByText('已添加到“Staff picks”。')).toBeAttached();
 	await expect(picker).toHaveCount(0);
@@ -361,8 +363,8 @@ test('manual and system shelves use the standard tile grid', async ({ page }) =>
 	await expect(page.getByTitle('Shelf Book 1', { exact: true })).toHaveAttribute('href', '/books/61');
 	await expectStandardTiles(page, books.length);
 	const tile = page.locator('ul.book-grid > li').first();
-	const remove = tile.getByRole('button', { name: 'Remove “Shelf Book 1” from this collection' });
-	await expect(remove).toHaveText('Remove from collection');
+	const remove = tile.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' });
+	await expect(remove).toHaveText('Remove manual membership');
 	await expect(remove).toHaveCSS('font-size', '12px');
 	const [tileBox, removeBox] = await Promise.all([tile.boundingBox(), remove.boundingBox()]);
 	if (!tileBox || !removeBox) throw new Error('Missing shelf tile layout.');

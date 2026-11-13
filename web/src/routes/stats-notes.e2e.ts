@@ -3,6 +3,8 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 test.use({ timezoneId: 'America/New_York' });
 
 async function authenticate(page: Page, locale = 'en') {
+	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => route.fulfill({ json: {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
 	} }));
@@ -92,7 +94,7 @@ test('stats use local inclusive dates and the browser timezone, with accessible 
 	await expect(daily.getByRole('row', { name: /Jan 31, 2026/ })).toContainText('0 min');
 	await expect(daily.getByRole('row', { name: /Feb 2, 2026/ })).toContainText('1 min');
 	await expect(page.getByRole('img', { name: /Bar chart of daily reading time/ })).toBeVisible();
-	const months = page.getByRole('table', { name: 'Books finished in each month of the range' });
+	const months = page.getByRole('table', { name: 'Reading cycles ended in each month of the range' });
 	await expect(months.getByRole('row', { name: /Jan 2026/ })).toContainText('2');
 	await expect(months.getByRole('row', { name: /Feb 2026/ })).toContainText('0');
 	await expect(page.getByRole('link', { name: 'Dune' })).toHaveAttribute('href', '/books/42');
@@ -120,7 +122,7 @@ test('stats use local inclusive dates and the browser timezone, with accessible 
 	await page.getByLabel('To', { exact: true }).fill('2026-02-03');
 	await page.getByRole('button', { name: 'Show stats' }).click();
 	await expect(page.getByText('No reading recorded in this range.')).toBeVisible();
-	await expect(page.getByText('No books finished in this range.')).toBeVisible();
+	await expect(page.getByText('No reading cycles ended in this range.')).toBeVisible();
 	await expect(page.getByText('No reading time recorded for any book in this range.')).toBeVisible();
 	await expect(page.getByRole('region', { name: 'Reading time and sessions for each day' }).getByRole('row')).toHaveCount(4);
 });

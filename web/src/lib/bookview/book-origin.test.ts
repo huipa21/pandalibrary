@@ -142,7 +142,7 @@ describe('origin label', () => {
 	it('prefers the browse-context label for the same href', () => {
 		rememberBrowseContext({ ids: [1], label: 'Sci-fi', href: '/shelves/4' });
 		expect(originLabel('/shelves/4')).toBe('Sci-fi');
-		expect(originLabel('/shelves/5')).toBe('Shelf');
+		expect(originLabel('/shelves/5')).toBe('Collection');
 		rememberBrowseContext({ ids: [1], label: ' ', href: '/books' });
 		expect(originLabel('/books')).toBe('All books');
 	});
@@ -158,7 +158,7 @@ describe('origin label', () => {
 		expect(originLabel('/search?q=x')).toBe('Search');
 		expect(originLabel('/bookheap')).toBe('Bookheap');
 		expect(originLabel('/notes')).toBe('Annotations');
-		expect(originLabel('/shelves/system/favorites')).toBe('Shelf');
+		expect(originLabel('/shelves/system/favorites')).toBe('Collection');
 		expect(originLabel('/authors/3')).toBe('Author');
 		expect(originLabel('/series/3')).toBe('Series');
 		expect(originLabel('/tags/3')).toBe('Tag');
