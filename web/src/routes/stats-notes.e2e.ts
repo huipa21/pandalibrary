@@ -94,6 +94,9 @@ test('stats use local inclusive dates and the browser timezone, with accessible 
 	await expect(daily.getByRole('row', { name: /Jan 31, 2026/ })).toContainText('0 min');
 	await expect(daily.getByRole('row', { name: /Feb 2, 2026/ })).toContainText('1 min');
 	await expect(page.getByRole('img', { name: /Bar chart of daily reading time/ })).toBeVisible();
+	const readingCard = page.locator('section').filter({ has: page.getByRole('img', { name: /Bar chart of daily reading time/ }) }).last();
+	await expect(readingCard).toHaveClass(/card/);
+	await expect(readingCard.getByRole('heading', { level: 2 })).toBeVisible();
 	const months = page.getByRole('table', { name: 'Reading cycles ended in each month of the range' });
 	await expect(months.getByRole('row', { name: /Jan 2026/ })).toContainText('2');
 	await expect(months.getByRole('row', { name: /Feb 2026/ })).toContainText('0');

@@ -7,6 +7,7 @@
 	import { translate } from '#lib/paging/translate.js';
 	import { filterControlClass } from '#lib/catalog/filter-styles.js';
 	import BarChart from '#lib/stats/BarChart.svelte';
+	import StatsCard from '#lib/stats/StatsCard.svelte';
 	import {
 		browserTimeZone,
 		DEFAULT_RANGE_DAYS,
@@ -192,13 +193,13 @@
 	{/if}
 
 	{#if data && summary && status !== 'error'}
-		<div class="space-y-10" aria-busy={status === 'loading'}>
-			<p class="text-sm text-slate-600" role="status">
+		<div class="grid min-w-0 gap-6 lg:grid-cols-2" aria-busy={status === 'loading'}>
+			<p class="text-sm text-slate-600 lg:col-span-2" role="status">
 				{m['stats.showing']({ from: formatCalendar(data.from, locale), to: formatCalendar(data.to, locale), timezone: data.timezone })}
 			</p>
 
 			{#if view === 'all' || view === 'reading'}
-			<dl class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+			<dl class="grid gap-4 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-5">
 				<div class="card p-4">
 					<dt class="text-sm text-slate-600">{m['stats.summary.total_time']()}</dt>
 					<dd class="text-2xl font-semibold">{formatDuration(summary.activeSeconds)}</dd>
@@ -225,8 +226,7 @@
 			{/if}
 
 			{#if view !== 'books'}
-			<section class="space-y-3" aria-labelledby="stats-daily-heading">
-				<h2 id="stats-daily-heading" class="text-xl font-semibold">{m['stats.daily.heading']()}</h2>
+			<StatsCard title={m['stats.daily.heading']()}>
 				{#if view !== 'history'}
 				<BarChart
 					bars={dailyBars}
@@ -237,7 +237,7 @@
 				<!-- The scrollable table must be focusable so keyboard users can scroll every day. -->
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<div
-					class="max-h-80 overflow-auto card {focusRing}"
+					class="max-h-80 overflow-auto rounded-md border border-slate-100 {focusRing}"
 					role="region"
 					aria-labelledby="stats-daily-caption"
 					tabindex="0"
@@ -262,14 +262,13 @@
 						</tbody>
 					</table>
 				</div>
-			</section>
+			</StatsCard>
 			{/if}
 
 			{#if view === 'all' || view === 'books'}
-			<section class="space-y-3" aria-labelledby="stats-finished-heading">
-				<h2 id="stats-finished-heading" class="text-xl font-semibold">{m['stats.finished.heading']()}</h2>
+			<StatsCard title={m['stats.finished.heading']()}>
 				<BarChart bars={monthBars} label={m['stats.finished.chart_label']()} empty={m['stats.finished.empty']()} />
-				<div class="overflow-auto card">
+				<div class="overflow-auto rounded-md border border-slate-100">
 					<table class="w-full text-left text-sm">
 						<caption class="px-3 py-2 text-left text-slate-600">{m['stats.finished.table_caption']()}</caption>
 						<thead class="bg-slate-100">
@@ -288,16 +287,15 @@
 						</tbody>
 					</table>
 				</div>
-			</section>
+			</StatsCard>
 			{/if}
 
 			{#if view !== 'reading'}
-			<section class="space-y-3" aria-labelledby="stats-books-heading">
-				<h2 id="stats-books-heading" class="text-xl font-semibold">{m['stats.books.heading']()}</h2>
+			<StatsCard title={m['stats.books.heading']()}>
 				{#if data.time_per_book.length === 0}
 					<p class="rounded-md border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600">{m['stats.books.empty']()}</p>
 				{:else}
-					<div class="overflow-auto card">
+					<div class="overflow-auto rounded-md border border-slate-100">
 						<table class="w-full text-left text-sm">
 							<caption class="px-3 py-2 text-left text-slate-600">{m['stats.books.table_caption']()}</caption>
 							<thead class="bg-slate-100">
@@ -332,7 +330,7 @@
 						</table>
 					</div>
 				{/if}
-			</section>
+			</StatsCard>
 			{/if}
 		</div>
 	{/if}

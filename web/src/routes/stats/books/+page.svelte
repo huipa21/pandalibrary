@@ -1,5 +1,5 @@
 <script lang="ts">
-	import StatsDashboard from '#lib/stats/StatsDashboard.svelte';
+	import BooksDashboard from '#lib/stats/BooksDashboard.svelte';
 </script>
 
-<StatsDashboard view="books" />
+<BooksDashboard />

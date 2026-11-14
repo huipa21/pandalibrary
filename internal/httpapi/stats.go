@@ -15,12 +15,43 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// StatsMount registers authenticated, read-only dashboard and history endpoints.
+// StatsMount registers authenticated, read-only statistics endpoints.
 func StatsMount(service *stats.Service, authentication *auth.Service, logger *slog.Logger) Mount {
 	handler := &statsHTTP{service: service, logger: logger}
 	return func(router chi.Router, _ Middleware) {
 		router.With(SessionMiddleware(authentication, logger)).Get("/api/v1/stats", handler.get)
 		router.With(SessionMiddleware(authentication, logger)).Get("/api/v1/stats/history", handler.history)
+		router.With(SessionMiddleware(authentication, logger)).Get("/api/v1/stats/books", handler.books)
+	}
+}
+
+func (h *statsHTTP) books(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	user, ok := ViewerFromRequest(r)
+	if !ok {
+		WriteProblem(w, h.logger, http.StatusUnauthorized, "")
+		return
+	}
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil || len(values) != 1 || len(values["timezone"]) != 1 || values.Get("timezone") == "" {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "Exactly one timezone parameter is required.")
+		return
+	}
+	result, err := h.service.Books(r.Context(), stats.Viewer{
+		UserID: user.ID, IsAdmin: user.Role == "admin",
+	}, values.Get("timezone"))
+	if err != nil {
+		if errors.Is(err, stats.ErrInvalid) {
+			WriteProblem(w, h.logger, http.StatusBadRequest, strings.TrimPrefix(err.Error(), "invalid stats request: "))
+		} else {
+			h.logger.Error("books stats request failed", "request_id", RequestID(r), "error", err)
+			WriteProblem(w, h.logger, http.StatusInternalServerError, "")
+		}
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		h.logger.Error("write books stats response", "error", err)
 	}
 }
 

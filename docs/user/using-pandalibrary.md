@@ -487,9 +487,21 @@ short queries such as two-character titles.
 ## Statistics
 
 The sidebar groups **Books**, **Reading** and **History** under **Statistics**.
-Books shows ended reading cycles per month and time per book; Reading shows
-time, sessions, active days and streaks. Choose a date range in those views.
-The combined view remains available at `/stats`.
+**Books** shows all-time statistics for the catalog you can access, in responsive
+cards: books added by month (with counts), a publication-year area timeline,
+a genre treemap, language and format pies, page-count bars, and the top 20
+authors, largest books and books with the most pages. Largest books are ranked
+by the combined size of their accessible files; page counts use book metadata.
+Hover or focus a language slice or page-count bar for its count and percentage;
+click a format slice to keep its count and percentage visible. Missing language,
+publication-year and page-count metadata is shown as unknown. Genres use catalog
+tags; untagged books do not appear in the treemap. Books with multiple tags or
+formats can appear in more than one category. Distribution percentages use the
+total number of accessible books. Addition months follow your browser's time zone.
+
+**Reading** shows time, sessions, active days and streaks with the same card
+styling. Choose a date range for reading statistics. The combined reading view,
+including ended reading cycles per month and time per book, remains at `/stats`.
 
 **History** shows a newest-first waterfall for the selected year, separated by
 month. Each row includes the date, cover, title, author and reading cycle.
