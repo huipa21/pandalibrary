@@ -206,7 +206,6 @@
 			const updated = await setDefaultFile(id, file.is_default ? null : file.id);
 			if (context.book?.id !== id) return;
 			context.book = updated;
-			notice = file.is_default ? m['bv8.default_cleared']() : m['bv8.default_set']({ name: file.original_filename });
 		} catch (cause) {
 			console.error('Could not change the default file', cause);
 			if (context.book?.id === id) actionError = m['bv8.default_failure']();

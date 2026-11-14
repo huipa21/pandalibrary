@@ -23,7 +23,7 @@
 	const primary = $derived(model.groups.flatMap((group) => group.files).find((file) => file.id === model.primaryFileId));
 </script>
 
-<div class="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+<div class="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
 	<section class="card min-w-0 p-4 sm:p-6">
 		<h1 class="sr-only">{m['bv7.title']()}</h1>
 		<div class="flex min-w-0 items-center gap-4">

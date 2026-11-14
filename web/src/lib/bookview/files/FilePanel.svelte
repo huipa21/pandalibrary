@@ -42,7 +42,6 @@
 			<h3 class="break-words font-semibold text-slate-900">{file.original_filename}</h3>
 			<div class="mt-2 flex flex-wrap gap-1.5">
 				{#if primary}<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold uppercase text-emerald-800">{m['bv7.primary']()}</span>{/if}
-				{#if file.is_default}<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase text-amber-800">{m['bv8.default']()}</span>{/if}
 				{#if file.saved}<span class="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold uppercase text-sky-800">{m['bv7.offline']()}</span>{/if}
 			</div>
 		</div>

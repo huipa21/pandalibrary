@@ -34,9 +34,6 @@
 		<span class="min-w-0">
 			<span class="block truncate font-medium text-slate-900" title={file.original_filename}>{name.stem}<span class="text-slate-400">{name.extension}</span></span>
 			<span class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-				{#if file.is_default}
-					<span class="rounded-full bg-amber-100 px-2 py-0.5 font-semibold uppercase text-amber-800">{m['bv8.default']()}</span>
-				{/if}
 				{#if file.progress !== null}
 					<span class="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold uppercase text-emerald-800">{m['bv7.read_percent']({ percent: formatPercent(file.progress) })}</span>
 				{/if}

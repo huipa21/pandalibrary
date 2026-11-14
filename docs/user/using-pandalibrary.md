@@ -124,11 +124,14 @@ Technical UUID identifiers are hidden on **Details** but remain stored.
 In **Files**, the upper-left card shows the cover and title, with icons to move
 the book (administrators only) and add it to a collection. **Add file** is also
 available there for administrators. The upper-right card shows file totals and
-library/collection tags. Files are grouped by reader with a fixed format order;
-read, download and offline actions are in the file list. The selected-file card
+library/collection tags. Both rows use a wider left card and a narrower right
+card on desktop, and stack on small screens. Files are grouped by reader with a
+fixed format order; read, download and offline actions are in the file list. The selected-file card
 shows file details, with a star toggle in its top-right corner to set or clear
-the default file (administrators only). Moving a book moves all its files to the
-chosen library and updates library-based access; existing collection memberships
+the default file (administrators only). The star indicates the saved default
+without adding a separate badge or success notification; the **Primary** badge
+is unchanged. Moving a book moves all its files to the chosen library and updates
+library-based access; existing collection memberships
 are kept.
 
 Administrators can select **Edit metadata** (the pencil in the **Details** card)

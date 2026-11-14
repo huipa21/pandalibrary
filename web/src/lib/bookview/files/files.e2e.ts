@@ -430,7 +430,9 @@ test('shows translated file groups and progress', async ({ page }) => {
 
 test('places book actions beside the cover and toggles the selected default file in the panel header', async ({ page }, testInfo) => {
 	const state = await setup(page, { admin: true });
+	let defaultStatus = 200;
 	await page.route('**/api/v1/books/21/default-file', async (route) => {
+		if (defaultStatus !== 200) return route.fulfill({ status: defaultStatus, json: { title: 'Failed' } });
 		const { file_id } = route.request().postDataJSON() as { file_id: number | null };
 		state.book = { ...state.book, files: state.book.files.map((file) => ({ ...file, is_default: file.id === file_id })) };
 		await route.fulfill({ json: { book: state.book } });
@@ -449,13 +451,26 @@ test('places book actions beside the cover and toggles the selected default file
 	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 	await toggle.click();
 	await expect(panel(page).getByRole('button', { name: 'Clear default', exact: true })).toHaveAttribute('aria-pressed', 'true');
-	await expect(page.getByText('Manual.pdf is now the default file.', { exact: true })).toBeVisible();
+	await expect(panel(page).getByText('Primary', { exact: true })).toHaveCount(1);
+	await expect(page.getByText('Default', { exact: true })).toHaveCount(0);
+	await expect(page.getByText('Manual.pdf is now the default file.', { exact: true })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Select A.epub', exact: true }).click();
 	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-	await page.getByRole('button', { name: 'Select Manual.pdf', exact: true }).click();
+	await toggle.click();
+	await expect(panel(page).getByRole('button', { name: 'Clear default', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(panel(page).getByText('Primary', { exact: true })).toHaveCount(0);
+	await expect(page.getByText('Default', { exact: true })).toHaveCount(0);
+	await expect(page.getByText('A.epub is now the default file.', { exact: true })).toHaveCount(0);
+	await page.reload();
+	await page.getByRole('button', { name: 'Select A.epub', exact: true }).click();
+	await expect(panel(page).getByRole('button', { name: 'Clear default', exact: true })).toHaveAttribute('aria-pressed', 'true');
 	await panel(page).getByRole('button', { name: 'Clear default', exact: true }).click();
 	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-	await expect(page.getByText('The default file was cleared.', { exact: true })).toBeVisible();
+	await expect(page.getByText('Default', { exact: true })).toHaveCount(0);
+	await expect(page.getByText('The default file was cleared.', { exact: true })).toHaveCount(0);
+	await page.getByRole('button', { name: 'Select Manual.pdf', exact: true }).click();
+	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+	await expect(panel(page).getByText('Primary', { exact: true })).toHaveCount(1);
 	for (const width of [1440, 390]) {
 		await page.setViewportSize({ width, height: 900 });
 		const left = await identity.boundingBox();
@@ -467,6 +482,9 @@ test('places book actions beside the cover and toggles the selected default file
 		if (width >= 1024) {
 			expect(Math.abs(left.y - right.y)).toBeLessThanOrEqual(1);
 			expect(right.x).toBeGreaterThanOrEqual(left.x + left.width);
+			expect(left.width).toBeGreaterThan(right.width);
+			expect(Math.abs(right.x - selected.x)).toBeLessThanOrEqual(1);
+			expect(Math.abs(right.width - selected.width)).toBeLessThanOrEqual(1);
 		} else {
 			expect(right.y).toBeGreaterThanOrEqual(left.y + left.height);
 		}
@@ -475,6 +493,11 @@ test('places book actions beside the cover and toggles the selected default file
 		await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 		await page.screenshot({ path: testInfo.outputPath(`files-${width}.png`), fullPage: true });
 	}
+	defaultStatus = 503;
+	await toggle.click();
+	await expect(page.getByRole('alert').filter({ hasText: 'Could not change the default file.' })).toBeVisible();
+	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+	await expect(panel(page).getByText('Primary', { exact: true })).toHaveCount(1);
 });
 
 test('moves all book files, updates the library tag, and reports load and destination conflicts without losing files', async ({ page }) => {
