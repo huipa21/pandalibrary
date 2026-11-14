@@ -96,8 +96,29 @@ function draft(page: Page, name: string) {
 	return field(page, name).locator('.draft-value');
 }
 
-function viewLink(page: Page, name: 'Edit' | 'Search') {
-	return page.getByRole('navigation', { name: 'Metadata view' }).getByRole('link', { name, exact: true });
+function edit(page: Page) {
+	return page.getByRole('button', { name: 'Edit', exact: true });
+}
+
+function restore(page: Page) {
+	return page.getByRole('button', { name: 'Restore all existing values', exact: true });
+}
+
+function metadata(page: Page) {
+	return page.getByRole('button', { name: 'Metadata', exact: true });
+}
+
+function searchMetadata(page: Page) {
+	return page.getByRole('button', { name: 'Search metadata', exact: true });
+}
+
+async function expectReadOnly(page: Page) {
+	await expect(edit(page)).toBeEnabled();
+	await expect(restore(page)).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toHaveCount(0);
+	await expect(textInput(page, 'Title')).toBeDisabled();
+	await expect(form(page).locator('input:enabled, textarea:enabled, select:enabled')).toHaveCount(0);
+	await expect(form(page).locator('.save-controls')).toHaveCount(0);
 }
 
 async function search(page: Page) {
@@ -145,12 +166,14 @@ test('the metadata tab sits between Details and Files and the old edit route red
 	await page.getByRole('region', { name: 'Details', exact: true }).getByRole('link', { name: 'Edit metadata' }).click();
 	await expect(page).toHaveURL(/\/books\/21\/metadata$/);
 	await expect(textInput(page, 'Title')).toHaveValue('Old Title');
+	await expectReadOnly(page);
 	await page.goto('/books/21/edit?view=search');
 	await expect(page).toHaveURL(/\/books\/21\/metadata\?view=search$/);
-	await expect(viewLink(page, 'Search')).toHaveAttribute('aria-current', 'page');
+	await expect(page.getByRole('form', { name: 'Search metadata' })).toBeVisible();
+	await expect(metadata(page)).toBeEnabled();
 });
 
-test('the edit view starts populated and saves direct edits, chips and ratings fields without a lookup', async ({ page }) => {
+test('metadata starts read-only and the icon row edits and saves fields without a lookup', async ({ page }) => {
 	await authenticate(page);
 	let current = baseBook();
 	const patches: Record<string, unknown>[] = [];
@@ -170,7 +193,14 @@ test('the edit view starts populated and saves direct edits, chips and ratings f
 	});
 
 	await page.goto('/books/21/metadata');
-	await expect(viewLink(page, 'Edit')).toHaveAttribute('aria-current', 'page');
+	await expectReadOnly(page);
+	await expect(page.getByRole('navigation', { name: 'Metadata view' })).toHaveCount(0);
+	await expect(searchMetadata(page)).toBeEnabled();
+	const icons = form(page).locator('.cover-actions').getByRole('button');
+	await expect(icons).toHaveCount(3);
+	await expect(icons.nth(0)).toHaveAccessibleName('Edit');
+	await expect(icons.nth(1)).toHaveAccessibleName('Restore all existing values');
+	await expect(icons.nth(2)).toHaveAccessibleName('Search metadata');
 	await expect(textInput(page, 'Title')).toHaveValue('Old Title');
 	await expect(field(page, 'Title').getByText('Manual', { exact: true })).toBeVisible();
 	await expect(textInput(page, 'Subtitle')).toHaveValue('Old subtitle');
@@ -188,12 +218,18 @@ test('the edit view starts populated and saves direct edits, chips and ratings f
 	await expect(field(page, 'Tags').getByText('Original', { exact: true })).toBeVisible();
 	await expect(field(page, 'Genres').getByText('Fiction', { exact: true })).toBeVisible();
 	await expect(field(page, 'Moods').getByText('No moods')).toBeVisible();
-	await page.getByText('Provider metadata', { exact: true }).click();
 	await expect(field(page, 'Ratings')).toContainText('goodreads');
 	await expect(field(page, 'Ratings')).toContainText('4.25');
 	await expect(field(page, 'Identifiers').getByRole('combobox', { name: 'Scheme 1' })).toHaveValue('isbn13');
-	const save = form(page).getByRole('button', { name: 'Save metadata', exact: true });
+	await expect(field(page, 'Identifiers').getByRole('combobox', { name: 'Scheme 1' })).toBeDisabled();
+	await edit(page).click();
+	await expect(edit(page)).toHaveCount(0);
+	await expect(textInput(page, 'Title')).toBeEnabled();
+	const save = page.getByRole('button', { name: 'Save metadata', exact: true });
+	await expect(save).toHaveCount(1);
+	await expect(form(page).locator('.save-controls')).toHaveCount(0);
 	await expect(save).toBeDisabled();
+	await expect(restore(page)).toBeDisabled();
 
 	await textInput(page, 'Title').fill('Edited Title');
 	await textInput(page, 'Publisher').fill('');
@@ -205,19 +241,95 @@ test('the edit view starts populated and saves direct edits, chips and ratings f
 	await field(page, 'Age rating').getByRole('combobox').selectOption({ label: '13+' });
 	await field(page, 'Content rating').getByRole('combobox').selectOption({ label: 'Teen' });
 	await field(page, 'Series').getByRole('textbox', { name: 'Series total' }).fill('5');
+	await expect(restore(page)).toBeEnabled();
 	await save.click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
 	expect(patches).toEqual([{
 		title: 'Edited Title', publisher: null, tags: ['Original', 'Space'], genres: [], moods: ['Hopeful'],
 		age_rating: 13, content_rating: 'teen', series: { name: 'Existing Saga', index: 1.5, total: 5 }
 	}]);
-	await expect(save).toBeDisabled();
+	await expectReadOnly(page);
 	await page.reload();
 	await expect(textInput(page, 'Title')).toHaveValue('Edited Title');
 	await expect(field(page, 'Tags').getByText('Space', { exact: true })).toBeVisible();
 	await expect(field(page, 'Age rating').getByRole('combobox')).toHaveValue('13');
 	expect(current.description).toBe('Existing description');
 	expect(lookups).toBe(0);
+});
+
+test('restore keeps editing and restores the pre-edit snapshot, pending chips and the latest saved baseline', async ({ page }) => {
+	await authenticate(page);
+	let current = baseBook();
+	const patches: Record<string, unknown>[] = [];
+	await page.route('**/api/v1/books/21', (route) => {
+		if (route.request().method() === 'PATCH') {
+			const patch = route.request().postDataJSON() as Record<string, unknown>;
+			patches.push(patch);
+			const tags = (patch.tags ?? current.tags.map((tag) => tag.name)) as string[];
+			current = baseBook({ ...current, ...patch, tags: tags.map((name, index) => ({ id: index + 1, name })) });
+		}
+		return route.fulfill({ json: { book: current } });
+	});
+	await lookupFixture(page);
+	await page.goto('/books/21/metadata');
+	await edit(page).click();
+	await textInput(page, 'Title').fill('Unsaved title');
+	await textInput(page, 'Publisher').fill('');
+	await field(page, 'Contributors').getByRole('textbox', { name: 'Name 1', exact: true }).fill('Unsaved writer');
+	await field(page, 'Series').getByRole('textbox', { name: 'Series index' }).fill('9');
+	await field(page, 'Tags').getByRole('button', { name: 'Remove tag: Original', exact: true }).click();
+	const terms = [
+		['Tags', 'New tag', 'Pending tag'],
+		['Genres', 'New genre', 'Pending genre'],
+		['Moods', 'New mood', 'Pending mood']
+	] as const;
+	for (const [group, name, value] of terms) {
+		await field(page, group).getByRole('textbox', { name, exact: true }).fill(value);
+	}
+	await searchMetadata(page).click();
+	await search(page);
+	await field(page, 'Title').getByRole('button', { name: 'Use found Title', exact: true }).click();
+	await metadata(page).click();
+	await expect(textInput(page, 'Title')).toHaveValue('New Title');
+	await expect(textInput(page, 'Title')).toBeEnabled();
+	for (const [group, name, value] of terms) {
+		await expect(field(page, group).getByRole('textbox', { name, exact: true })).toHaveValue(value);
+	}
+	await restore(page).click();
+	await expect(textInput(page, 'Title')).toHaveValue('Old Title');
+	await expect(textInput(page, 'Title')).toBeEnabled();
+	await expect(textInput(page, 'Publisher')).toHaveValue('Existing Press');
+	await expect(field(page, 'Contributors').getByRole('textbox', { name: 'Name 1', exact: true })).toHaveValue('A Writer');
+	await expect(field(page, 'Series').getByRole('textbox', { name: 'Series index' })).toHaveValue('1.5');
+	await expect(field(page, 'Tags').getByText('Original', { exact: true })).toBeVisible();
+	await expect(field(page, 'Genres').getByText('Fiction', { exact: true })).toBeVisible();
+	await expect(field(page, 'Moods').getByText('No moods', { exact: true })).toBeVisible();
+	for (const [group, name] of terms) {
+		await expect(field(page, group).getByRole('textbox', { name, exact: true })).toHaveValue('');
+	}
+	await expect(restore(page)).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeDisabled();
+	await expect(edit(page)).toHaveCount(0);
+	expect(patches).toEqual([]);
+
+	await textInput(page, 'Title').fill('Saved baseline');
+	await field(page, 'Tags').getByRole('textbox', { name: 'New tag', exact: true }).fill('Saved tag');
+	await field(page, 'Tags').getByRole('button', { name: 'Add tag', exact: true }).click();
+	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
+	await expectReadOnly(page);
+	expect(patches).toEqual([{ title: 'Saved baseline', tags: ['Original', 'Saved tag'] }]);
+	await edit(page).click();
+	await textInput(page, 'Title').fill('Discard this');
+	await field(page, 'Tags').getByRole('button', { name: 'Remove tag: Saved tag', exact: true }).click();
+	await field(page, 'Tags').getByRole('textbox', { name: 'New tag', exact: true }).fill('Discard pending');
+	await restore(page).click();
+	await expect(textInput(page, 'Title')).toHaveValue('Saved baseline');
+	await expect(textInput(page, 'Title')).toBeEnabled();
+	await expect(field(page, 'Tags').getByText('Saved tag', { exact: true })).toBeVisible();
+	await expect(field(page, 'Tags').getByRole('textbox', { name: 'New tag', exact: true })).toHaveValue('');
+	await expect(restore(page)).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeDisabled();
+	expect(patches).toHaveLength(1);
 });
 
 test('direct edits preserve contributor roles and order, pages and identifiers', async ({ page }) => {
@@ -238,6 +350,7 @@ test('direct edits preserve contributor roles and order, pages and identifiers',
 		return route.fulfill({ json: { book: current } });
 	});
 	await page.goto('/books/21/metadata');
+	await edit(page).click();
 	const contributors = field(page, 'Contributors');
 	await contributors.getByRole('textbox', { name: 'Name 1', exact: true }).fill('Revised Writer');
 	await contributors.getByRole('combobox', { name: 'Role 1', exact: true }).selectOption('editor');
@@ -247,13 +360,13 @@ test('direct edits preserve contributor roles and order, pages and identifiers',
 	await contributors.getByRole('button', { name: 'Move contributor 2 up', exact: true }).click();
 	await textInput(page, 'Pages').fill('321');
 	await textInput(page, 'ISBN-10').fill('0000000001');
-	await page.getByText('Provider metadata', { exact: true }).click();
 	const identifiers = field(page, 'Identifiers');
 	await identifiers.getByRole('button', { name: 'Add identifier', exact: true }).click();
 	await identifiers.getByRole('combobox', { name: 'Scheme 3', exact: true }).selectOption('goodreads');
 	await identifiers.getByRole('textbox', { name: 'Value 3', exact: true }).fill('12345');
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
+	await expectReadOnly(page);
 	expect(patches).toEqual([{
 		authors: [{ name: 'A Translator', role: 'translator' }, { name: 'Revised Writer', role: 'editor' }],
 		page_count: 321,
@@ -287,8 +400,9 @@ test('search sends the prefilled query and compares providers per field until on
 		await route.fulfill({ json: { book: current } });
 	});
 	await page.goto('/books/21/metadata');
+	await edit(page).click();
 	await textInput(page, 'Description').fill('My description');
-	await page.getByRole('button', { name: 'Search metadata', exact: true }).click();
+	await searchMetadata(page).click();
 	await expect(page).toHaveURL(/view=search/);
 	const query = page.getByRole('form', { name: 'Search metadata' });
 	await expect(query.getByRole('textbox', { name: 'ISBN' })).toHaveValue('9780000000001');
@@ -327,12 +441,13 @@ test('search sends the prefilled query and compares providers per field until on
 	await page.evaluate(() => window.scrollTo(0, 0));
 	await page.screenshot({ path: testInfo.outputPath('metadata-comparison.png'), fullPage: true });
 
-	await viewLink(page, 'Edit').click();
+	await metadata(page).click();
 	await expect(textInput(page, 'Title')).toHaveValue('Alternative Title');
 	await expect(textInput(page, 'Publisher')).toHaveValue('Other Press');
 	expect(applies).toHaveLength(0);
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
+	await expectReadOnly(page);
 	expect(applies).toEqual([{
 		request_key: 'key-1',
 		fields: {
@@ -371,10 +486,12 @@ test('use all copies new fields, manual edits clear references, and restore retu
 	await field(page, 'Title').getByRole('button', { name: 'Use found Title', exact: true }).click();
 	await field(page, 'Publisher').getByRole('button', { name: 'Use found Publisher', exact: true }).click();
 	await field(page, 'Ratings').getByRole('button', { name: 'Use found Ratings', exact: true }).click();
-	await viewLink(page, 'Edit').click();
+	await metadata(page).click();
+	await expect(textInput(page, 'Title')).toBeEnabled();
 	await textInput(page, 'Title').fill('Handwritten Title');
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
+	await expectReadOnly(page);
 	expect(applies).toEqual([{
 		request_key: 'key-1',
 		fields: {
@@ -383,6 +500,51 @@ test('use all copies new fields, manual edits clear references, and restore retu
 		},
 		patch: { title: 'Handwritten Title' }
 	}]);
+});
+
+test('provider save failure retains the search draft and success returns to read-only metadata', async ({ page }) => {
+	await authenticate(page);
+	let current = baseBook();
+	await page.route('**/api/v1/books/21', (route) => route.fulfill({ json: { book: current } }));
+	await lookupFixture(page);
+	const applies: Record<string, unknown>[] = [];
+	await page.route('**/api/v1/books/21/metadata/apply', (route) => {
+		applies.push(route.request().postDataJSON() as Record<string, unknown>);
+		if (applies.length === 1) {
+			return route.fulfill({ status: 500, json: { title: 'Internal error', status: 500 } });
+		}
+		current = baseBook({ title: 'Alternative Title' });
+		return route.fulfill({ json: { book: current } });
+	});
+	await page.goto('/books/21/metadata');
+	await expectReadOnly(page);
+	await searchMetadata(page).click();
+	const query = page.getByRole('form', { name: 'Search metadata' });
+	await query.getByRole('textbox', { name: 'Title' }).fill('Keep this query');
+	await search(page);
+	await page.getByRole('combobox', { name: 'Alternative', exact: true }).selectOption({ label: 'Alternative Title' });
+	await field(page, 'Title').getByRole('button', { name: 'Use found Title', exact: true }).click();
+	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
+	await expect(tab(page).getByRole('alert')).toBeVisible();
+	await expect(page).toHaveURL(/\/books\/21\/metadata\?view=search$/);
+	await expect(query.getByRole('textbox', { name: 'Title' })).toHaveValue('Keep this query');
+	await expect(page.getByRole('combobox', { name: 'Alternative', exact: true })).toHaveValue('/works/OL2W');
+	await expect(draft(page, 'Title')).toHaveText('Alternative Title');
+	await expect(field(page, 'Title').getByText('→ openlibrary')).toBeVisible();
+	await expect(restore(page)).toBeEnabled();
+	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeEnabled();
+	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
+	await expect(page).toHaveURL(/\/books\/21\/metadata$/);
+	await expect(query).toHaveCount(0);
+	await expect(metadata(page)).toHaveCount(0);
+	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
+	await expectReadOnly(page);
+	await expect(textInput(page, 'Title')).toHaveValue('Alternative Title');
+	const expected = {
+		request_key: 'key-1',
+		fields: { title: { provider: 'openlibrary', reference: '/works/OL2W' } }
+	};
+	expect(applies).toEqual([expected, expected]);
 });
 
 test('failed saves keep drafts and disable mutation while pending, and chip validation does not send a request', async ({ page }) => {
@@ -402,6 +564,7 @@ test('failed saves keep drafts and disable mutation while pending, and chip vali
 		await route.fulfill({ json: { book: current } });
 	});
 	await page.goto('/books/21/metadata');
+	await edit(page).click();
 	const tags = field(page, 'Tags');
 	await tags.getByRole('textbox', { name: 'New tag', exact: true }).fill(' original ');
 	await tags.getByRole('button', { name: 'Add tag', exact: true }).click();
@@ -414,14 +577,20 @@ test('failed saves keep drafts and disable mutation while pending, and chip vali
 	await field(page, 'Genres').getByRole('textbox', { name: 'New genre', exact: true }).fill('');
 	await textInput(page, 'Title').fill('Retry Title');
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Saving metadata…', exact: true })).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeDisabled();
+	await expect(restore(page)).toBeDisabled();
+	await expect(searchMetadata(page)).toBeDisabled();
 	await expect(textInput(page, 'Title')).toBeDisabled();
 	await expect.poll(() => !!finishSave).toBe(true);
 	finishSave!();
 	await expect(tab(page).getByRole('alert')).toBeVisible();
+	await expect(page).toHaveURL(/\/books\/21\/metadata$/);
 	await expect(textInput(page, 'Title')).toHaveValue('Retry Title');
+	await expect(textInput(page, 'Title')).toBeEnabled();
+	await expect(restore(page)).toBeEnabled();
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
+	await expectReadOnly(page);
 	expect(patches).toEqual([{ title: 'Retry Title' }, { title: 'Retry Title' }]);
 });
 
@@ -450,8 +619,9 @@ test('stale candidate saves refresh results without losing manual edits or savin
 		return route.fulfill({ json: { book: current } });
 	});
 	await page.goto('/books/21/metadata');
+	await edit(page).click();
 	await textInput(page, 'Description').fill('Keep my manual text');
-	await viewLink(page, 'Search').click();
+	await searchMetadata(page).click();
 	await search(page);
 	await field(page, 'Title').getByRole('button', { name: 'Use found Title', exact: true }).click();
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
@@ -463,6 +633,8 @@ test('stale candidate saves refresh results without losing manual edits or savin
 	await field(page, 'Title').getByRole('button', { name: 'Use found Title', exact: true }).click();
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
+	await expect(page).toHaveURL(/\/books\/21\/metadata$/);
+	await expectReadOnly(page);
 	expect(applies[1]).toEqual({
 		request_key: 'key-2',
 		fields: { title: { provider: 'openlibrary', reference: '/works/OL1W' } },
@@ -494,8 +666,9 @@ test('a failed conflict refresh blocks saving until existing values can be refre
 		return route.fulfill({ status: 409, json: { title: 'Conflict', status: 409 } });
 	});
 	await page.goto('/books/21/metadata');
+	await edit(page).click();
 	await textInput(page, 'Description').fill('Manual text survives recovery');
-	await viewLink(page, 'Search').click();
+	await searchMetadata(page).click();
 	await search(page);
 	await field(page, 'Title').getByRole('button', { name: 'Use found Title', exact: true }).click();
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
@@ -526,7 +699,11 @@ test('covers are previewed through the server, source tabs work with keyboard, a
 		externalRequests += 1;
 		return route.abort();
 	});
-	await page.goto('/books/21/metadata?view=search');
+	await page.goto('/books/21/metadata');
+	await expectReadOnly(page);
+	const readOnlyAxe = await new AxeBuilder({ page }).include('.metadata-tab').analyze();
+	expect(readOnlyAxe.violations).toEqual([]);
+	await searchMetadata(page).click();
 	await search(page);
 	const cover = field(page, 'Cover');
 	await expect(cover.getByRole('img', { name: 'Cover preview from openlibrary' })).toHaveAttribute('src', /^blob:/);
@@ -540,18 +717,23 @@ test('covers are previewed through the server, source tabs work with keyboard, a
 	await expect(page.getByRole('tab', { name: 'openlibrary', exact: true })).toHaveAttribute('aria-selected', 'true');
 	const searchAxe = await new AxeBuilder({ page }).include('.metadata-tab').analyze();
 	expect(searchAxe.violations).toEqual([]);
-	await viewLink(page, 'Edit').click();
-	await page.getByText('Provider metadata', { exact: true }).click();
+	await metadata(page).click();
+	await expect(textInput(page, 'Title')).toBeEnabled();
 	const editAxe = await new AxeBuilder({ page }).include('.metadata-tab').analyze();
 	expect(editAxe.violations).toEqual([]);
 	await page.setViewportSize({ width: 390, height: 900 });
+	const coverBounds = await field(page, 'Cover').boundingBox();
+	const actionBounds = await form(page).locator('.cover-actions').boundingBox();
+	expect(coverBounds).not.toBeNull();
+	expect(actionBounds).not.toBeNull();
+	expect(actionBounds!.y).toBeGreaterThanOrEqual(coverBounds!.y + coverBounds!.height);
 	const dimensions = await page.evaluate(() => ({
 		viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth
 	}));
 	expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport);
 	await expect(textInput(page, 'Title')).toBeVisible();
 	await page.screenshot({ path: testInfo.outputPath('metadata-edit-mobile.png'), fullPage: true });
-	await viewLink(page, 'Search').click();
+	await searchMetadata(page).click();
 	await expect(field(page, 'Title').getByRole('button', { name: 'Use found Title', exact: true })).toBeVisible();
 	const searchDimensions = await page.evaluate(() => ({
 		viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth
@@ -563,14 +745,15 @@ test('unsaved edits ask before leaving the metadata tab', async ({ page }) => {
 	await authenticate(page);
 	await page.route('**/api/v1/books/21', (route) => route.fulfill({ json: { book: baseBook() } }));
 	await page.goto('/books/21/metadata');
+	await edit(page).click();
 	await textInput(page, 'Title').fill('Unsaved');
-	await viewLink(page, 'Search').click();
+	await searchMetadata(page).click();
 	await expect(page).toHaveURL(/view=search/);
 	const files = page.getByRole('navigation', { name: 'Book sections' }).getByRole('link', { name: /Files/ });
 	page.once('dialog', (dialog) => dialog.dismiss());
 	await files.click();
 	await expect(page).toHaveURL(/\/metadata\?view=search$/);
-	await viewLink(page, 'Edit').click();
+	await metadata(page).click();
 	await expect(textInput(page, 'Title')).toHaveValue('Unsaved');
 	page.once('dialog', (dialog) => dialog.accept());
 	await files.click();

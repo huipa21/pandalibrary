@@ -123,17 +123,20 @@ abandoned images and images belonging to deleted accounts.
 
 On a book page, administrators have a **Metadata** tab between **Details** and
 **Files**; **Edit metadata** in the **Details** card opens it as well. Other
-users do not see the tab. The **Edit** view starts with the saved metadata,
+users do not see the tab. The tab initially shows the saved metadata read-only,
 including tags, genres, moods, age rating, content rating and series total.
-A small badge beside each field shows where its saved value came from. Edit
-values directly and use **Save metadata** at the bottom; no provider lookup is
-required. Contributors retain their order and roles, and series positions and
+A small badge beside each field shows where its saved value came from. Select
+the **Edit** pencil under the cover to enable editing; it becomes the **Save
+metadata** icon. The adjacent restore icon is enabled when there are unsaved
+changes and restores the values from before editing. Saving returns to read-only
+mode and disables restore. No provider lookup is required for direct edits.
+Contributors retain their order and roles, and series positions and
 identifiers can also be edited. Identifiers and provider ratings are in the
-collapsible **Provider metadata** section; ratings can only be copied from
+initially expanded **Provider metadata** section; ratings can only be copied from
 search results. Remove every tag to save an empty tag list. Leaving the tab
 with unsaved changes asks for confirmation.
 
-Open the **Search** view (or **Search metadata** under the cover) to search
+Select the **Search metadata** icon next to restore under the cover to search
 providers. The ISBN, title and author are prefilled from the book and can be
 changed; uncheck providers to search only some of them. With an empty ISBN and
 title, the search uses the book's saved metadata. Select **Search providers**
@@ -147,7 +150,9 @@ clearing fields the source does not supply. Individual empty values can still
 be chosen to clear a field.
 
 Copying values only changes the draft. **Save metadata** commits manual edits
-and selected provider values together, preserving their field sources. Editing
+and selected provider values together, preserving their field sources, then
+returns to the read-only **Metadata** tab. Use the **Metadata** back button to
+return without saving and continue editing the draft. Editing
 a copied value manually makes that field a manual edit. Covers are previewed
 through the server, not downloaded directly from a provider in your browser.
 Failed saves keep the draft for retry. Expired provider results must be searched

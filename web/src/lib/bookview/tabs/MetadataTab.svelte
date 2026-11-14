@@ -7,6 +7,7 @@
 	import MetadataEditView from '../metadata/MetadataEditView.svelte';
 	import MetadataSearchView from '../metadata/MetadataSearchView.svelte';
 	import { MetadataEditorState } from '../metadata/editor-state.svelte.js';
+	import Icon from '../Icon.svelte';
 
 	type View = 'edit' | 'search';
 
@@ -14,6 +15,10 @@
 	const view = $derived<View>(page.url.searchParams.get('view') === 'search' ? 'search' : 'edit');
 	const book = context.book!;
 	const editor = new MetadataEditorState(book, (updated) => { context.book = updated; });
+
+	$effect(() => {
+		if (view === 'search') untrack(() => editor.beginEdit());
+	});
 
 	$effect(() => {
 		const current = context.book;
@@ -54,6 +59,10 @@
 	function openView(next: View) {
 		void goto(viewHref(next), { replace: true, reset: false });
 	}
+
+	async function saveSearch() {
+		if (await editor.save()) openView('edit');
+	}
 </script>
 
 <section class="metadata-tab" aria-labelledby="metadata-tab-heading">
@@ -68,19 +77,13 @@
 	{:else if editor.error}
 		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">{editor.error}</p>
 	{:else}
-		<div class="toolbar">
-			<nav class="view-switch" aria-label={m['metadata.view.label']()}>
-				<a href={viewHref('edit')} aria-current={view === 'edit' ? 'page' : undefined}
-					onclick={(event) => { event.preventDefault(); openView('edit'); }}>{m['metadata.view.edit']()}</a>
-				<a href={viewHref('search')} aria-current={view === 'search' ? 'page' : undefined}
-					onclick={(event) => { event.preventDefault(); openView('search'); }}>{m['metadata.view.search']()}</a>
-			</nav>
-			<div aria-live="polite" role="status" class="text-sm">
-				{#if editor.notice}<p class="rounded-md bg-green-50 px-3 py-2 text-green-800">{editor.notice}</p>{/if}
-			</div>
+		<div aria-live="polite" role="status" class="text-sm">
+			{#if editor.notice}<p class="rounded-md bg-green-50 px-3 py-2 text-green-800">{editor.notice}</p>{/if}
 		</div>
 		{#if view === 'search'}
-			<MetadataSearchView {editor} coverSource={context.coverSource} />
+			<button type="button" class="back-button" disabled={editor.busy}
+				onclick={() => openView('edit')}><Icon name="arrow-left" />{m['bv4.tabs.metadata']()}</button>
+			<MetadataSearchView {editor} coverSource={context.coverSource} onSave={saveSearch} />
 		{:else}
 			<MetadataEditView {editor} coverSource={context.coverSource} onSearch={() => openView('search')} />
 		{/if}
@@ -89,10 +92,8 @@
 
 <style>
 	.metadata-tab { display: grid; gap: 1rem; min-width: 0; }
-	.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
-	.view-switch { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 0.125rem; background: #f8fafc; }
-	.view-switch a { border-radius: 0.375rem; padding: 0.375rem 1rem; font-size: 0.875rem; font-weight: 500; color: #475569; }
-	.view-switch a[aria-current='page'] { background: white; color: #0f172a; box-shadow: 0 1px 2px rgb(15 23 42 / 0.12); }
-	.view-switch a:focus-visible { outline: 2px solid #334155; outline-offset: 2px; }
+	.back-button { display: inline-flex; align-items: center; gap: 0.375rem; justify-self: start; border: 1px solid #cbd5e1; border-radius: 0.375rem; padding: 0.375rem 0.75rem; font-size: 0.875rem; }
+	.back-button:focus-visible { outline: 2px solid #334155; outline-offset: 2px; }
+	.back-button:disabled { opacity: 0.5; cursor: not-allowed; }
 	.notice { border-radius: 0.375rem; background: #f1f5f9; padding: 1rem; color: #334155; }
 </style>

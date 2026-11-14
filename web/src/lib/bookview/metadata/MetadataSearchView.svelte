@@ -8,7 +8,11 @@
 	import type { MetadataEditorState } from './editor-state.svelte.js';
 	import { displayValues, draftValues, fieldLabels, providerErrorCode, roleLabel } from './labels.js';
 
-	let { editor, coverSource }: { editor: MetadataEditorState; coverSource: string | null } = $props();
+	let { editor, coverSource, onSave }: {
+		editor: MetadataEditorState;
+		coverSource: string | null;
+		onSave: () => Promise<void>;
+	} = $props();
 
 	const disabled = $derived(editor.busy || editor.lookupPending);
 
@@ -99,7 +103,7 @@
 {#if editor.lookup}
 	{@const candidate = editor.candidate}
 	{@const source = editor.source}
-	<form aria-label={m['metadata.form.name']()} class="compare-form" onsubmit={(event) => { event.preventDefault(); void editor.save(); }}>
+	<form aria-label={m['metadata.form.name']()} class="compare-form" onsubmit={(event) => { event.preventDefault(); void onSave(); }}>
 		{#if editor.sources.length && source}
 			<div class="source-controls">
 				<div role="tablist" aria-label={m['metadata.lookup.heading']()} class="source-tabs">

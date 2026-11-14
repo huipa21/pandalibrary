@@ -56,6 +56,7 @@ export class MetadataEditorState {
 	// Assigned in the constructor; deriveds below only read them lazily.
 	book = $state<Book>(null!);
 	draft = $state<MetadataDraft>(null!);
+	editing = $state(false);
 	/** Text typed into a chip input but not yet added; it still counts as an edit. */
 	pending = $state<Record<TermField, string>>({ tags: '', genres: '', moods: '' });
 	error = $state('');
@@ -108,6 +109,11 @@ export class MetadataEditorState {
 	readonly #preview = new ObjectUrlSlot();
 	readonly #chosenCover = new ObjectUrlSlot();
 	readonly #onBook: (book: Book) => void;
+	#editSnapshot: {
+		draft: MetadataDraft;
+		pending: Record<TermField, string>;
+		selections: Selections;
+	} | null = null;
 
 	constructor(book: Book, onBook: (book: Book) => void) {
 		this.book = book;
@@ -160,7 +166,7 @@ export class MetadataEditorState {
 
 	/** Adopts a book refreshed elsewhere; only safe while nothing is edited. */
 	adopt(book: Book) {
-		if (book === this.book || this.dirty || this.busy || this.lookupPending) return;
+		if (book === this.book || this.editing || this.dirty || this.busy || this.lookupPending) return;
 		this.book = book;
 		this.draft = createDraft(book);
 		this.search = defaultQuery(book);
@@ -383,9 +389,21 @@ export class MetadataEditorState {
 
 	restoreAll() {
 		if (this.busy) return;
-		this.draft = createDraft(this.book);
-		this.selections = {};
-		this.pending = { tags: '', genres: '', moods: '' };
+		const snapshot = this.#editSnapshot;
+		this.draft = snapshot ? structuredClone(snapshot.draft) : createDraft(this.book);
+		this.selections = snapshot ? structuredClone(snapshot.selections) : {};
+		this.pending = snapshot ? { ...snapshot.pending } : { tags: '', genres: '', moods: '' };
+		this.#clearMessages();
+	}
+
+	beginEdit() {
+		if (this.editing || this.busy || this.lookupPending) return;
+		this.#editSnapshot = {
+			draft: $state.snapshot(this.draft),
+			pending: $state.snapshot(this.pending),
+			selections: $state.snapshot(this.selections)
+		};
+		this.editing = true;
 		this.#clearMessages();
 	}
 
@@ -407,8 +425,8 @@ export class MetadataEditorState {
 		this.setDraft({ ...this.draft, [field]: this.draft[field].filter((_, position) => position !== index) }, field);
 	}
 
-	async save() {
-		if (this.busy || this.lookupPending || !this.dirty) return;
+	async save(): Promise<boolean> {
+		if (this.busy || this.lookupPending || !this.dirty) return false;
 		this.#clearMessages();
 		const request = this.#version;
 		let failedField: TermField = 'tags';
@@ -424,15 +442,18 @@ export class MetadataEditorState {
 			const patch = buildManualPatch(this.book, pendingDraft, pendingSelections);
 			this.saving = true;
 			const updated = await saveMetadata(this.book.id, patch, this.lookup?.request_key ?? null, pendingSelections);
-			if (request !== this.#version) return;
+			if (request !== this.#version) return false;
 			this.book = updated;
 			this.draft = createDraft(updated);
 			this.pending = { tags: '', genres: '', moods: '' };
 			this.selections = {};
+			this.editing = false;
+			this.#editSnapshot = null;
 			this.notice = m['metadata.save.success']();
 			this.#onBook(updated);
+			return true;
 		} catch (cause) {
-			if (request !== this.#version) return;
+			if (request !== this.#version) return false;
 			if (cause instanceof InvalidTagsError) this.saveError = termValidationMessage(failedField, cause);
 			else if (cause instanceof InvalidMetadataDraftError) this.saveError = m['metadata.save.invalid_draft']();
 			else if (cause instanceof ApiError && cause.status === 409) await this.recoverFromConflict();
@@ -443,5 +464,6 @@ export class MetadataEditorState {
 		} finally {
 			if (request === this.#version) this.saving = false;
 		}
+		return false;
 	}
 }

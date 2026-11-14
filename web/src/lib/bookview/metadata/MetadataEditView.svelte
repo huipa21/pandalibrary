@@ -2,8 +2,8 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { AGE_RATINGS, IDENTIFIER_SCHEMES, identifierValue, withIdentifier } from '#lib/metadata/editor.js';
 	import type { MergeField } from '#lib/metadata/types.js';
+	import Icon from '../Icon.svelte';
 	import ChipInput from './ChipInput.svelte';
-	import MetadataSaveBar from './MetadataSaveBar.svelte';
 	import ProvenanceBadge from './ProvenanceBadge.svelte';
 	import type { MetadataEditorState } from './editor-state.svelte.js';
 	import { ageRatingLabel, CONTENT_RATINGS, contentRatingLabel, fieldLabels, ROLES, roleLabel } from './labels.js';
@@ -45,9 +45,12 @@
 
 {#snippet badge(field: MergeField)}<ProvenanceBadge {editor} {field} />{/snippet}
 
-<form aria-label={m['metadata.form.name']()} class="metadata-edit" onsubmit={(event) => { event.preventDefault(); void editor.save(); }}>
+<form aria-label={m['metadata.form.name']()} class="metadata-edit" onsubmit={(event) => {
+	event.preventDefault();
+	if (editor.editing && !editor.busy && !editor.lookupPending && editor.dirty) void editor.save();
+}}>
 	<aside class="cover-column">
-		<fieldset class="field" data-field="cover" disabled={editor.busy}>
+		<fieldset class="field" data-field="cover" disabled={!editor.editing || editor.busy || editor.lookupPending}>
 			<legend>{fieldLabels.cover()}</legend>
 			{@render badge('cover')}
 			{#if editor.selections.cover}
@@ -61,10 +64,35 @@
 				<p class="cover-placeholder text-slate-500">{m['metadata.cover.none']()}</p>
 			{/if}
 		</fieldset>
-		<button type="button" class="secondary-button" onclick={onSearch}>{m['metadata.search.open']()}</button>
+		<div class="cover-actions">
+			{#if editor.editing}
+				<button type="submit" class="icon-button" aria-label={m['metadata.save.submit']()} title={m['metadata.save.submit']()}
+					disabled={editor.busy || editor.lookupPending || !editor.dirty}>
+					<Icon name="save" />
+				</button>
+			{:else}
+				<button type="button" class="icon-button" aria-label={m['metadata.view.edit']()} title={m['metadata.view.edit']()}
+					disabled={editor.busy || editor.lookupPending} onclick={() => editor.beginEdit()}>
+					<Icon name="pencil" />
+				</button>
+			{/if}
+			<button type="button" class="icon-button" aria-label={m['metadata.restore_all']()} title={m['metadata.restore_all']()}
+				disabled={!editor.editing || editor.busy || editor.lookupPending || !editor.dirty} onclick={() => editor.restoreAll()}>
+				<Icon name="undo" />
+			</button>
+			<button type="button" class="icon-button" aria-label={m['metadata.search.open']()} title={m['metadata.search.open']()}
+				disabled={editor.busy || editor.lookupPending} onclick={onSearch}>
+				<Icon name="search" />
+			</button>
+		</div>
+		{#if editor.saveError}<p class="rounded-md bg-red-50 p-3 text-red-800" role="alert">{editor.saveError}</p>{/if}
+		{#if editor.recoveryBlocked}
+			<button type="button" class="secondary-button" disabled={editor.saving || editor.recovering || editor.lookupPending}
+				onclick={() => editor.recoverFromConflict()}>{m['metadata.save.retry_recovery']()}</button>
+		{/if}
 	</aside>
 
-	<fieldset class="form-body" disabled={editor.busy}>
+	<fieldset class="form-body" disabled={!editor.editing || editor.busy || editor.lookupPending}>
 		<div class="grid">
 			{@render text('title', 'span-3')}
 			{@render text('subtitle', 'span-2')}
@@ -168,7 +196,7 @@
 			</fieldset>
 			{@render text('page_count', 'span-1')}
 
-			<details class="provider-card span-6">
+			<details class="provider-card span-6" open>
 				<summary>{m['metadata.provider_section']()}</summary>
 				<p class="text-sm text-slate-600">{m['metadata.provider_section.help']()}</p>
 				<div class="provider-grid">
@@ -225,9 +253,6 @@
 		</div>
 	</fieldset>
 
-	<div class="save-row">
-		<MetadataSaveBar {editor} />
-	</div>
 </form>
 
 <style>
@@ -236,14 +261,14 @@
 	}
 	.cover-column { display: grid; align-content: start; gap: 0.75rem; min-width: 0; }
 	.cover-column > button { justify-self: stretch; }
+	.cover-actions { display: flex; gap: 0.5rem; }
+	.cover-actions .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; min-height: 2.5rem; }
 	.form-body { min-width: 0; }
-	.form-body:disabled .grid { opacity: 0.6; }
 	.grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.75rem 1rem; }
 	.span-1 { grid-column: span 1; }
 	.span-2 { grid-column: span 2; }
 	.span-3 { grid-column: span 3; }
 	.span-6 { grid-column: 1 / -1; }
-	.save-row { grid-column: 1 / -1; }
 	.field { position: relative; min-width: 0; }
 	.field > legend { margin-bottom: 0.25rem; padding-right: 4.5rem; font-size: 0.8125rem; font-weight: 600; color: #334155; }
 	.field > :global(.provenance) { position: absolute; top: 0; right: 0; }
@@ -280,7 +305,7 @@
 	}
 	@media (max-width: 639px) {
 		.metadata-edit { grid-template-columns: minmax(0, 1fr); }
-		.cover-column { grid-template-columns: 7rem minmax(0, 1fr); align-items: start; }
+		.cover-column { max-width: 13rem; }
 		.grid { grid-template-columns: minmax(0, 1fr); }
 		.span-1, .span-2, .span-3 { grid-column: 1 / -1; }
 		.person, .identifier { grid-template-columns: minmax(0, 1fr) auto; }

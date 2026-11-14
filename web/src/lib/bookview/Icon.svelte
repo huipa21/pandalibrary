@@ -2,7 +2,7 @@
 	export type IconName =
 		| 'info' | 'play' | 'book-open' | 'external' | 'eye' | 'eye-off' | 'folder-plus'
 		| 'download' | 'x' | 'chevron-left' | 'chevron-right' | 'chevron-down'
-		| 'trash' | 'copy' | 'more' | 'star' | 'star-half' | 'pencil'
+		| 'trash' | 'copy' | 'more' | 'star' | 'star-half' | 'pencil' | 'save'
 		| 'search' | 'plus' | 'refresh' | 'file' | 'arrow-left'
 		| 'zoom-in' | 'zoom-out' | 'zoom-auto' | 'fit-page' | 'fit-width'
 		| 'actual-size' | 'layout-single' | 'layout-continuous' | 'layout-split'
@@ -71,6 +71,9 @@
 		{/if}
 	{:else if name === 'pencil'}
 		<path d="m4 20 4.2-.8L19 8.4 15.6 5 4.8 15.8zM14 6.6 17.4 10M4 20l.8-4.2" />
+	{:else if name === 'save'}
+		<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z" />
+		<path d="M7 3v6h10V3M7 21v-8h10v8" />
 	{:else if name === 'search'}
 		<circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 4 4" />
 	{:else if name === 'plus'}

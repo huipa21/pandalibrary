@@ -139,14 +139,17 @@ library-based access; existing collection memberships
 are kept.
 
 Administrators have a **Metadata** tab between **Details** and **Files** (the
-pencil in the **Details** card opens it too). Its **Edit** view shows the cover
+pencil in the **Details** card opens it too). It shows the cover
 beside one form with the existing metadata, including tags, genres, moods, age
 and content ratings, series totals and, under **Provider metadata**, identifiers
-and provider ratings. Select **Save metadata** at the bottom to save all
-changes. Direct edits do not require looking up metadata candidates. The
-**Search** view searches providers with an editable ISBN, title and author and
+and provider ratings. Fields are read-only until you select the **Edit** pencil
+under the cover, which becomes **Save metadata**. The adjacent restore icon
+undoes unsaved changes back to the state before editing; it is inactive after
+saving. Direct edits do not require looking up metadata candidates. The
+**Search metadata** icon beside restore searches providers with an editable ISBN, title and author and
 shows a side-by-side comparison; use the buttons between each row's values to
-copy a found value or restore the saved value before saving.
+copy a found value or restore the saved value before saving. A successful
+provider save returns to the read-only **Metadata** tab.
 See [editing book metadata](./administration.md#editing-book-metadata) for
 combining results from different sources.
 
