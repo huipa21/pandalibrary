@@ -25,7 +25,6 @@
 	let { id, removing, onShelfState, onRemove }: Props = $props();
 	const pager = new CursorPager<Book>();
 	let panel = $state<HTMLElement | null>(null);
-	let scroller = $state<HTMLDivElement | null>(null);
 	let shelfState = $state<ShelfState | undefined>(undefined);
 	let shelfMode: Shelf['mode'] | undefined;
 	let started = $state(false);
@@ -144,10 +143,6 @@
 		}
 	}
 
-	function scroll(direction: -1 | 1) {
-		if (scroller) scroller.scrollBy({ left: direction * scroller.clientWidth * 0.8, behavior: 'smooth' });
-	}
-
 	// Several rows render at once, so the row's list is only remembered when one
 	// of its book links is activated.
 	function rememberRow(event: MouseEvent | KeyboardEvent) {
@@ -167,17 +162,9 @@
 	class="min-w-0 space-y-4 card p-4 sm:p-5"
 	data-dashboard-section={id}
 >
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h2 id={headingId} class="text-xl font-semibold tracking-tight text-slate-900">
-			<span class="mr-2 inline-block h-5 w-1 rounded-full bg-emerald-500 align-middle" aria-hidden="true"></span>{label}
-		</h2>
-		{#if pager.items.length && shelfState?.status !== 'unavailable'}
-			<div class="flex gap-2">
-				<button class="rounded-md border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label={m['ux5.scroll_previous']({ section: label })} onclick={() => scroll(-1)}>&larr;</button>
-				<button class="rounded-md border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-emerald-700" aria-label={m['ux5.scroll_next']({ section: label })} onclick={() => scroll(1)}>&rarr;</button>
-			</div>
-		{/if}
-	</div>
+	<h2 id={headingId} class="text-xl font-semibold tracking-tight text-slate-900">
+		<span class="mr-2 inline-block h-5 w-1 rounded-full bg-emerald-500 align-middle" aria-hidden="true"></span>{label}
+	</h2>
 
 	{#if shelfState?.status === 'unavailable'}
 		<div class="space-y-2 text-sm text-slate-700" role="status">
@@ -193,7 +180,7 @@
 		<p class="text-sm text-slate-600" role="status">{m['ux5.feed_loading']()}</p>
 	{:else}
 		{#if pager.items.length}
-			<div bind:this={scroller} class="min-w-0 overflow-x-auto pb-2" role="region" aria-label={m['ux5.cover_row']({ section: label })}>
+			<div class="min-w-0 overflow-x-auto pb-2" role="region" aria-label={m['ux5.cover_row']({ section: label })}>
 				<ul class="flex gap-5 pt-1 pb-3 [&>li]:w-36 [&>li]:shrink-0 sm:[&>li]:w-book" onclickcapture={rememberRow} onkeydowncapture={rememberRow}>
 					{#each pager.items as book (book.id)}
 						<BookCard {book} />

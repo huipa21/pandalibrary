@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -178,11 +178,17 @@ async function openConfig(page: Page) {
 	return dialog;
 }
 
+function configOrder(dialog: Locator) {
+	return dialog.locator('li[data-config-section]').evaluateAll((nodes) =>
+		nodes.map((node) => node.getAttribute('data-config-section'))
+	);
+}
+
 async function openShelfCreator(page: Page) {
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await sidebar.getByRole('button', { name: 'Shelf actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'New shelf' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Create shelf' });
+	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
+	await sidebar.getByRole('menuitem', { name: 'New collection' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Create collection' });
 	await expect(dialog).toBeVisible();
 	return dialog;
 }
@@ -199,18 +205,37 @@ test('defaults, keyboard dialog behavior, reorder, and a persisted empty dashboa
 
 	let dialog = await openConfig(page);
 	await expect(dialog.getByRole('heading', { name: 'Configure dashboard' })).toBeFocused();
-	for (let i = 0; i < 20; i++) await page.keyboard.press('Tab');
+	// Native modal dialogs let Tab reach browser chrome, so only assert focus never reaches the inert page.
+	for (let i = 0; i < 20; i++) {
+		await page.keyboard.press('Tab');
+		expect(await page.evaluate(() => {
+			const active = document.activeElement;
+			return !active || active === document.body || !!document.querySelector('dialog[open]')?.contains(active);
+		})).toBe(true);
+	}
+	await dialog.locator('li[data-config-section]').first().focus();
 	expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
 	await page.keyboard.press('Escape');
 	await expect(dialog).toBeHidden();
 	await expect(page.getByRole('button', { name: 'Configure dashboard' })).toBeFocused();
 
 	dialog = await openConfig(page);
-	await dialog.getByRole('button', { name: 'Move Continue Reading down' }).click();
+	await expect(dialog.getByRole('button', { name: /^Move / })).toHaveCount(0);
+	await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+	const continueRow = dialog.locator('li[data-config-section="continue_reading"]');
+	await continueRow.focus();
+	await page.keyboard.press('Alt+ArrowDown');
+	await expect.poll(() => configOrder(dialog)).toEqual(['recently_added', 'continue_reading', 'read']);
+	await expect(continueRow).toBeFocused();
+	await page.keyboard.press('Alt+ArrowDown');
+	await page.keyboard.press('Alt+ArrowUp');
+	await expect.poll(() => configOrder(dialog)).toEqual(['recently_added', 'continue_reading', 'read']);
 	await dialog.getByRole('button', { name: 'Remove Read', exact: true }).click();
-	await dialog.getByLabel('Choose a section').selectOption('unread');
-	await dialog.getByRole('button', { name: 'Add section', exact: true }).click();
-	await dialog.getByRole('button', { name: 'Save dashboard' }).click();
+	const addRow = dialog.locator('li[data-config-add]');
+	await addRow.getByLabel('Choose a section').selectOption('unread');
+	await addRow.getByRole('button', { name: 'Add section', exact: true }).click();
+	await expect.poll(() => configOrder(dialog)).toEqual(['recently_added', 'continue_reading', 'unread']);
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect.poll(() => server.settings.get(1)?.value.sections.map((item) => item.id))
 		.toEqual(['recently_added', 'continue_reading', 'unread']);
 	await page.reload();
@@ -223,13 +248,13 @@ test('defaults, keyboard dialog behavior, reorder, and a persisted empty dashboa
 		await dialog.getByRole('button', { name: `Remove ${name}`, exact: true }).click();
 	}
 	await expect(dialog.getByText('No sections selected. Saving will leave your dashboard empty.')).toBeVisible();
-	await dialog.getByRole('button', { name: 'Save dashboard' }).click();
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Your dashboard has no sections.' })).toBeVisible();
 	await page.reload();
 	await expect(page.getByRole('heading', { name: 'Your dashboard has no sections.' })).toBeVisible();
 	await expect(sections).toHaveCount(0);
-	await expect(page.getByRole('main').getByRole('button', { name: 'Create shelf', exact: true })).toHaveCount(0);
-	await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Shelf actions' })).toBeVisible();
+	await expect(page.getByRole('main').getByRole('button', { name: 'Create collection', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Collection actions' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Configure dashboard' })).toBeEnabled();
 	expect(server.settings.get(1)?.value).toEqual({ version: 1, sections: [] });
 });
@@ -248,84 +273,103 @@ test('invalid layouts require explicit recovery and rejected saves remain visibl
 	const dialog = await openConfig(page);
 	await dialog.getByRole('button', { name: 'Remove Read', exact: true }).click();
 	server.nextPush = 'stale';
-	await dialog.getByRole('button', { name: 'Save dashboard' }).click();
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(dialog.getByRole('alert')).toContainText('rejected or conflicted');
 	await expect(dialog).toBeVisible();
 	expect(server.settings.get(1)?.value.sections).toHaveLength(3);
 });
 
-test('adds shelves created in the sidebar and removes unavailable shelves', async ({ page }) => {
+test('reorders sections by pointer drag in a scroll-button-free dashboard', async ({ page }) => {
+	const server = state();
+	await mockApi(page, server);
+	await page.goto('/');
+	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
+	await expect(continuing.getByRole('region', { name: 'Continue Reading books' })).toBeVisible();
+	await expect(page.getByRole('button', { name: /^Scroll .* (left|right)$/ })).toHaveCount(0);
+
+	const dialog = await openConfig(page);
+	const source = dialog.locator('li[data-config-section="read"]');
+	const target = dialog.locator('li[data-config-section="continue_reading"]');
+	await expect(source).toHaveAttribute('tabindex', '0');
+	const from = await source.boundingBox();
+	const to = await target.boundingBox();
+	if (!from || !to) throw new Error('Missing configuration rows.');
+	const x = from.x + from.width * 0.3;
+	await page.mouse.move(x, from.y + from.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(x, from.y + from.height / 2 - 12, { steps: 5 });
+	await expect(source).toHaveAttribute('data-dragging', 'true');
+	await page.mouse.move(to.x + to.width * 0.3, to.y + to.height / 4, { steps: 15 });
+	await expect(source).toHaveAttribute('data-dragging', 'true');
+	await page.mouse.up();
+	await expect(source).not.toHaveAttribute('data-dragging', 'true');
+	await expect.poll(() => configOrder(dialog)).toEqual(['read', 'continue_reading', 'recently_added']);
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(dialog).toBeHidden();
+	await expect.poll(() => server.settings.get(1)?.value.sections.map((item) => item.id))
+		.toEqual(['read', 'continue_reading', 'recently_added']);
+});
+
+test('labels saved shelf sections and removes unavailable shelves', async ({ page }) => {
 	const server = state();
 	server.shelves.set(9, shelf(9, 'Hidden private name'));
 	server.hidden.add(9);
+	seed(server, 1, { version: 1, sections: [{ id: 'continue_reading' }, { id: 'shelf:8' }, { id: 'shelf:7' }, { id: 'shelf:9' }] });
 	await mockApi(page, server);
 	await page.goto('/');
-	const createButton = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Shelf actions' });
+	const createButton = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Collection actions' });
 	const creator = await openShelfCreator(page);
 	expect(await creator.evaluate((node) => node.contains(document.activeElement))).toBe(true);
 	await page.keyboard.press('Escape');
 	await expect(creator).toBeHidden();
 	await expect(createButton).toBeFocused();
 	await openShelfCreator(page);
-	await creator.getByLabel('Shelf name').fill('Newly created');
-	await creator.getByRole('button', { name: 'Create shelf', exact: true }).click();
+	await creator.getByLabel('Collection name').fill('Newly created');
+	await creator.getByRole('button', { name: 'Create collection', exact: true }).click();
 	await expect(creator).toBeHidden();
 
-	const dialog = await openConfig(page);
-	await expect(dialog.getByRole('button', { name: 'Create shelf', exact: true })).toHaveCount(0);
-	const select = dialog.getByLabel('Choose an existing shelf');
-	await expect(select.locator('option')).toContainText(['Select an option', 'Favorites', 'Automatic picks']);
-	await expect(select).not.toContainText('Hidden private name');
-	await select.selectOption('8');
-	await dialog.getByRole('button', { name: 'Add shelf section' }).click();
+	let dialog = await openConfig(page);
+	await expect(dialog.getByRole('button', { name: 'Create collection', exact: true })).toHaveCount(0);
+	await expect(dialog.getByLabel(/^Choose an existing/)).toHaveCount(0);
+	await expect(dialog.getByRole('button', { name: /^(Add (collection|shelf) section|Load more)/ })).toHaveCount(0);
 	await expect(dialog.locator('[data-config-section="shelf:8"]')).toContainText('Automatic picks');
-
-	await expect(select.locator('option', { hasText: 'Newly created' })).toHaveCount(1);
-	await select.selectOption('7');
-	await dialog.getByRole('button', { name: 'Add shelf section' }).click();
 	await expect(dialog.locator('[data-config-section="shelf:7"]')).toContainText('Favorites');
+	await expect(dialog.locator('[data-config-section="shelf:9"]')).toBeVisible();
+	await expect(dialog.locator('[data-config-section="shelf:9"]')).not.toContainText('Hidden private name');
 	await expect(dialog.locator('[data-config-section="shelf:20"]')).toHaveCount(0);
-	await select.selectOption('20');
-	await dialog.getByRole('button', { name: 'Add shelf section' }).click();
-	await dialog.getByRole('button', { name: 'Save dashboard' }).click();
-	await expect.poll(() => server.settings.get(1)?.value.sections.map((item) => item.id))
-		.toContain('shelf:20');
+	const choices = dialog.locator('li[data-config-add]').getByLabel('Choose a section');
+	await expect(choices).not.toContainText('Continue Reading');
+	await expect(choices).not.toContainText('Automatic picks');
+	await expect(choices).not.toContainText('Newly created');
 
-	const panel = page.locator('[data-dashboard-section="shelf:20"]');
+	await dialog.getByRole('button', { name: 'Remove Automatic picks', exact: true }).click();
+	await expect(dialog.locator('[data-config-section="shelf:8"]')).toHaveCount(0);
+	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+	await expect(dialog).toBeHidden();
+	expect(server.settings.get(1)?.value.sections.map((item) => item.id))
+		.toEqual(['continue_reading', 'shelf:8', 'shelf:7', 'shelf:9']);
+
+	dialog = await openConfig(page);
+	await dialog.locator('[data-config-section="shelf:7"]').focus();
+	await page.keyboard.press('Alt+ArrowUp');
+	await page.keyboard.press('Alt+ArrowUp');
+	await expect.poll(() => configOrder(dialog)).toEqual(['shelf:7', 'continue_reading', 'shelf:8', 'shelf:9']);
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(dialog).toBeHidden();
+	await expect.poll(() => server.settings.get(1)?.value.sections.map((item) => item.id))
+		.toEqual(['shelf:7', 'continue_reading', 'shelf:8', 'shelf:9']);
+
+	const panel = page.locator('[data-dashboard-section="shelf:8"]');
 	await panel.scrollIntoViewIfNeeded();
-	await expect(panel.getByRole('heading', { name: 'Newly created' })).toBeVisible();
-	server.shelves.delete(20);
+	await expect(panel.getByRole('heading', { name: 'Automatic picks' })).toBeVisible();
+	server.shelves.delete(8);
 	await page.evaluate(() => window.dispatchEvent(new Event('pandalibrary-shelves-changed')));
-	await expect(panel.getByRole('heading', { name: 'Unavailable shelf' })).toBeVisible();
-	await expect(panel).not.toContainText('Newly created');
+	await expect(panel.getByRole('heading', { name: 'Unavailable collection' })).toBeVisible();
+	await expect(panel).not.toContainText('Automatic picks');
 	await panel.getByRole('button', { name: 'Remove unavailable section' }).click();
 	await expect(panel).toHaveCount(0);
 	await expect.poll(() => server.settings.get(1)?.value.sections.map((item) => item.id))
-		.not.toContain('shelf:20');
-});
-
-test('pages shelf choices including a shelf created in the sidebar', async ({ page }) => {
-	const server = state();
-	server.paginateShelves = true;
-	server.shelves.set(25, shelf(25, 'Later shelf'));
-	await mockApi(page, server);
-	await page.goto('/');
-	const creator = await openShelfCreator(page);
-	await creator.getByLabel('Shelf name').fill('Created outside first page');
-	await creator.getByRole('button', { name: 'Create shelf', exact: true }).click();
-	await expect(creator).toBeHidden();
-	const dialog = await openConfig(page);
-	const select = dialog.getByLabel('Choose an existing shelf');
-	await expect(select.locator('option', { hasText: 'Created outside first page' })).toHaveCount(0);
-	await expect(select).toHaveValue('');
-	await dialog.getByRole('button', { name: 'Load more shelves' }).click();
-	await expect(select.locator('option', { hasText: 'Created outside first page' })).toHaveCount(1);
-	await expect(select.locator('option', { hasText: 'Later shelf' })).toHaveCount(1);
-	expect(server.shelfRequests).toContain('shelves/+cursor=');
-	await select.selectOption('25');
-	await dialog.getByRole('button', { name: 'Add shelf section' }).click();
-	await expect(dialog.locator('[data-config-section="shelf:25"]')).toContainText('Later shelf');
-	await expect(dialog.locator('[data-config-section="shelf:20"]')).toHaveCount(0);
+		.toEqual(['shelf:7', 'continue_reading', 'shelf:9']);
 });
 
 test('does not disclose metadata for an inaccessible saved shelf', async ({ page }) => {
@@ -336,7 +380,7 @@ test('does not disclose metadata for an inaccessible saved shelf', async ({ page
 	await mockApi(page, server);
 	await page.goto('/');
 	const panel = page.locator('[data-dashboard-section="shelf:9"]');
-	await expect(panel.getByRole('heading', { name: 'Unavailable shelf' })).toBeVisible();
+	await expect(panel.getByRole('heading', { name: 'Unavailable collection' })).toBeVisible();
 	await expect(panel).not.toContainText('Hidden private name');
 	await panel.getByRole('button', { name: 'Remove unavailable section' }).click();
 	await expect(page.getByRole('heading', { name: 'Your dashboard has no sections.' })).toBeVisible();
@@ -373,36 +417,6 @@ test('discards a late shelf response after a refresh', async ({ page }) => {
 	await finished;
 	await expect(panel.getByRole('heading', { name: 'Fresh shelf' })).toBeVisible();
 	await expect(panel).not.toContainText('Stale shelf');
-});
-
-test('discards a shelf selection response from a closed configuration dialog', async ({ page }) => {
-	const server = state();
-	await mockApi(page, server);
-	let firstStarted!: () => void;
-	let releaseFirst!: () => void;
-	let firstFinished!: () => void;
-	const started = new Promise<void>((resolve) => { firstStarted = resolve; });
-	const release = new Promise<void>((resolve) => { releaseFirst = resolve; });
-	const finished = new Promise<void>((resolve) => { firstFinished = resolve; });
-	await page.route((url) => url.pathname === '/api/v1/shelves/8', async (route) => {
-		firstStarted();
-		await release;
-		await route.fulfill({ json: { shelf: shelf(8, 'Automatic picks', 'automatic') } });
-		firstFinished();
-	});
-	await page.goto('/');
-	let dialog = await openConfig(page);
-	await dialog.getByLabel('Choose an existing shelf').selectOption('8');
-	await dialog.getByRole('button', { name: 'Add shelf section' }).click();
-	await started;
-	await dialog.getByRole('button', { name: 'Cancel' }).click();
-	dialog = await openConfig(page);
-	await dialog.getByLabel('Choose an existing shelf').selectOption('7');
-	await dialog.getByRole('button', { name: 'Add shelf section' }).click();
-	await expect(dialog.locator('[data-config-section="shelf:7"]')).toBeVisible();
-	releaseFirst();
-	await finished;
-	await expect(dialog.locator('[data-config-section="shelf:8"]')).toHaveCount(0);
 });
 
 test('keeps feeds independent, pages with opaque cursors, and resumes the exact saved file', async ({ page }) => {
@@ -590,7 +604,7 @@ test('isolates accounts and synchronizes a dashboard saved while offline', async
 	await context.setOffline(true);
 	const dialog = await openConfig(page);
 	await dialog.getByRole('button', { name: 'Remove Unread' }).click();
-	await dialog.getByRole('button', { name: 'Save dashboard' }).click();
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByText('Dashboard saved on this device and waiting to sync.')).toBeVisible();
 	expect(server.settings.get(2)?.value.sections).toEqual([{ id: 'unread' }]);
 	const queued = await page.evaluate(async () => {
@@ -624,7 +638,7 @@ test('reports an offline layout rejected after reconnection', async ({ page, con
 	await context.setOffline(true);
 	const dialog = await openConfig(page);
 	await dialog.getByRole('button', { name: 'Remove Read', exact: true }).click();
-	await dialog.getByRole('button', { name: 'Save dashboard' }).click();
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Your dashboard has no sections.' })).toBeVisible();
 	server.nextPush = 'rejected';
 	await context.setOffline(false);

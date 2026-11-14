@@ -89,3 +89,12 @@ export function moveSection(sections: readonly SectionId[], id: SectionId, direc
 	[result[from], result[to]] = [result[to], result[from]];
 	return result;
 }
+
+export function moveSectionTo(sections: readonly SectionId[], id: SectionId, index: number): SectionId[] {
+	const from = sections.indexOf(id);
+	const to = Math.min(Math.max(index, 0), sections.length - 1);
+	if (from < 0 || from === to) return [...sections];
+	const result = sections.filter((section) => section !== id);
+	result.splice(to, 0, id);
+	return result;
+}

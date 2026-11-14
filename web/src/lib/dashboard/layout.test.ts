@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { JsonValue } from '#lib/api/client.js';
 import type { Setting } from '#lib/reader/types.js';
 import {
-	DEFAULT_SECTIONS, LayoutTooLargeError, layoutValue, moveSection, parseLayout, parseSectionId, shelfSection
+	DEFAULT_SECTIONS, LayoutTooLargeError, layoutValue, moveSection, moveSectionTo, parseLayout, parseSectionId, shelfSection
 } from './layout.js';
 
 const setting = (value: JsonValue): Setting => ({
@@ -52,6 +52,14 @@ describe('dashboard layout', () => {
 			]
 		});
 		expect(() => layoutValue(['read', 'read'])).toThrow('Invalid dashboard sections');
+	});
+
+	it('moves a dragged section to a clamped target index', () => {
+		const original = ['continue_reading', 'recently_added', 'read'] as const;
+		expect(moveSectionTo(original, 'continue_reading', 2)).toEqual(['recently_added', 'read', 'continue_reading']);
+		expect(moveSectionTo(original, 'read', -5)).toEqual(['read', 'continue_reading', 'recently_added']);
+		expect(moveSectionTo(original, 'unread', 0)).toEqual([...original]);
+		expect(original).toEqual(DEFAULT_SECTIONS);
 	});
 
 	it('checks the actual encoded settings limit before saving', () => {

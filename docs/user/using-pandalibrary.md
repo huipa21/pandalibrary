@@ -43,9 +43,12 @@ credentials return, including credentials revoked after the backup was created.
 The dashboard is your home page. It shows reading feeds such as Continue
 Reading, Recently Added and Read, plus any collections you add.
 
-To change it, use the **⋮** button next to **Dashboard** in the sidebar. You can
-add, remove and reorder sections, add a collection as a section, or save an empty
-dashboard. The layout is saved to your account.
+To change it, use the **⋮** button next to **Dashboard** in the sidebar. Drag
+sections to reorder them (or focus a section and press Alt+Up/Alt+Down), remove
+one with its **×** button, and add a section from the last row with **+**. You
+can also save an empty dashboard. Select **Save** to keep your changes or
+**Close** to discard them. The layout is saved to your account. Collections are
+available from the sidebar.
 
 ## Browsing books
 

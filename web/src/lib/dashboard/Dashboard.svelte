@@ -2,19 +2,18 @@
 	import { onMount, tick, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
-	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
+	import Icon from '#lib/bookview/Icon.svelte';
 	import { SyncError } from '#lib/reader/api.js';
-	import { getShelf, listShelves } from '#lib/shelves/api.js';
-	import type { Shelf } from '#lib/shelves/types.js';
+	import { getShelf } from '#lib/shelves/api.js';
 	import { offlineStatus } from '#lib/sync/client.js';
 	import { filterControlClass } from '#lib/catalog/filter-styles.js';
-	import { uniquePages } from './api.js';
+	import { flip } from 'svelte/animate';
 	import { dashboardConfigure } from './configure.svelte.js';
 	import DashboardRow from './DashboardRow.svelte';
-	import { sectionLabel, shelfLabel, type ShelfState } from './labels.js';
+	import { sectionLabel, type ShelfState } from './labels.js';
 	import {
 		BUILT_IN_SECTIONS, DEFAULT_SECTIONS, isBuiltInSection, LayoutTooLargeError, moveSection,
-		parseSectionId, shelfId, shelfSection, type ParsedLayout, type SectionId
+		moveSectionTo, parseSectionId, shelfId, type ParsedLayout, type SectionId
 	} from './layout.js';
 	import { LayoutNotSyncedError, readDashboardLayout, saveDashboardLayout } from './storage.js';
 
@@ -31,24 +30,14 @@
 	let configHeading = $state<HTMLHeadingElement | null>(null);
 	let draft = $state<SectionId[]>([]);
 	let selectedBuiltin = $state('');
-	let selectedShelf = $state('');
-	let shelfError = $state('');
-	let shelfBusy = $state(false);
+	let dragging = $state<SectionId | null>(null);
+	let sectionList = $state<HTMLOListElement | null>(null);
 	let shelfStates = $state<Record<string, ShelfState>>({});
 	let requestVersion = 0;
 	let configVersion = 0;
 	let metadataVersion = 0;
 	let mounted = true;
 	let deferredRefresh = false;
-	const shelfPager = new CursorPager<Shelf>();
-	const choices = $derived.by(() => {
-		const seen = new Set<number>();
-		return shelfPager.items.filter((shelf) => {
-			if (!Number.isSafeInteger(shelf.id) || shelf.id < 1 || seen.has(shelf.id)) return false;
-			seen.add(shelf.id);
-			return !draft.includes(shelfSection(shelf.id));
-		});
-	});
 	const availableBuiltins = $derived(BUILT_IN_SECTIONS.filter((id) => !draft.includes(id)));
 
 	$effect(() => {
@@ -73,10 +62,7 @@
 			if (event.data === 'pandalibrary-sync-complete') refreshAfterSync();
 		};
 		const onShelvesChanged = () => {
-			if (configOpen) {
-				void refreshShelfOptions();
-				void refreshDraftShelfStates();
-			}
+			if (configOpen) void refreshDraftShelfStates();
 		};
 		navigator.serviceWorker?.addEventListener('message', onSyncMessage);
 		window.addEventListener('pandalibrary-shelves-changed', onShelvesChanged);
@@ -86,7 +72,7 @@
 			configVersion += 1;
 			metadataVersion += 1;
 			unsubscribe();
-			shelfPager.dispose();
+			endDrag();
 			navigator.serviceWorker?.removeEventListener('message', onSyncMessage);
 			window.removeEventListener('pandalibrary-shelves-changed', onShelvesChanged);
 		};
@@ -151,28 +137,13 @@
 		await Promise.all(Array.from({ length: Math.min(4, sections.length) }, () => worker()));
 	}
 
-	async function refreshShelfOptions() {
-		const version = configVersion;
-		await shelfPager.reset(uniquePages((cursor, signal) => listShelves({ cursor, signal, limit: 30 })));
-		if (!mounted || !configOpen || version !== configVersion) return;
-		if (shelfPager.status === 'error') console.error('Could not load dashboard shelf choices', shelfPager.error);
-	}
-
-	async function moreShelves() {
-		await shelfPager.loadMore();
-		if (shelfPager.moreError) console.error('Could not load more dashboard shelves', shelfPager.moreError);
-	}
-
 	async function openConfiguration() {
 		if (!layout?.valid || saving || configOpen) return;
 		configVersion += 1;
 		draft = [...layout.sections];
 		selectedBuiltin = '';
-		selectedShelf = '';
-		shelfError = '';
 		actionError = '';
 		configOpen = true;
-		void refreshShelfOptions();
 		void refreshDraftShelfStates();
 		await tick();
 		if (!mounted || !configOpen || !configDialog) return;
@@ -182,12 +153,11 @@
 
 	function closeConfiguration() {
 		if (saving) return;
+		endDrag();
 		configDialog?.close();
 		configOpen = false;
 		configVersion += 1;
-		shelfBusy = false;
 		metadataVersion += 1;
-		shelfPager.dispose();
 		if (dashboardConfigure.trigger?.isConnected) dashboardConfigure.trigger.focus();
 		if (deferredRefresh) {
 			deferredRefresh = false;
@@ -207,29 +177,41 @@
 		selectedBuiltin = '';
 	}
 
-	async function addShelf() {
-		const id = Number(selectedShelf);
-		if (!Number.isSafeInteger(id) || id < 1 || shelfBusy) return;
-		const section = shelfSection(id);
-		if (draft.includes(section)) return;
-		const version = configVersion;
-		shelfBusy = true;
-		shelfError = '';
-		try {
-			const shelf = await getShelf(id);
-			if (!mounted || !configOpen || version !== configVersion) return;
-			setShelfState(section, { status: 'ready', shelf });
-			draft = [...draft, section];
-			selectedShelf = '';
-		} catch (error) {
-			if (!mounted || !configOpen || version !== configVersion) return;
-			console.error('Could not add the selected dashboard shelf', error);
-			shelfError = m['ux5.shelf_selection_failed']();
-			selectedShelf = '';
-			void refreshShelfOptions();
-		} finally {
-			if (mounted && version === configVersion) shelfBusy = false;
-		}
+	function startDrag(event: PointerEvent, id: SectionId) {
+		if (saving || dragging || !event.isPrimary || event.button !== 0) return;
+		if (event.target instanceof Element && event.target.closest('button')) return;
+		event.preventDefault();
+		(event.currentTarget as HTMLElement).focus({ preventScroll: true });
+		dragging = id;
+		window.addEventListener('pointermove', dragMove);
+		window.addEventListener('pointerup', endDrag);
+		window.addEventListener('pointercancel', endDrag);
+	}
+
+	// Offsets ignore the flip transforms, so rows that are still animating do not
+	// make the dragged row jump back and forth.
+	function dragMove(event: PointerEvent) {
+		if (!dragging || !sectionList) return;
+		const y = event.clientY - sectionList.getBoundingClientRect().top;
+		const rows = [...sectionList.querySelectorAll<HTMLElement>('[data-config-section]')]
+			.filter((row) => row.dataset.configSection !== dragging);
+		const target = rows.filter((row) => y > row.offsetTop + row.offsetHeight / 2).length;
+		if (draft.indexOf(dragging) !== target) draft = moveSectionTo(draft, dragging, target);
+	}
+
+	function endDrag() {
+		dragging = null;
+		window.removeEventListener('pointermove', dragMove);
+		window.removeEventListener('pointerup', endDrag);
+		window.removeEventListener('pointercancel', endDrag);
+	}
+
+	async function moveWithKeyboard(event: KeyboardEvent, id: SectionId) {
+		if (saving || !event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+		event.preventDefault();
+		draft = moveSection(draft, id, event.key === 'ArrowUp' ? -1 : 1);
+		await tick();
+		sectionList?.querySelector<HTMLElement>(`[data-config-section="${id}"]`)?.focus();
 	}
 
 	async function persist(sections: readonly SectionId[], close = false) {
@@ -322,65 +304,53 @@
 				<p class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{actionError}</p>
 			{/if}
 			<section aria-labelledby="dashboard-config-sections" class="space-y-3">
-				<h3 id="dashboard-config-sections" class="font-semibold">{m['ux5.sections']()}</h3>
-				{#if draft.length}
-					<ol class="space-y-2">
-						{#each draft as id, index (id)}
-							{@const label = sectionLabel(id, shelfStates[id])}
-							<li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3" data-config-section={id}>
-								<span class="min-w-0 break-words font-medium">{label}</span>
-								<div class="flex gap-2">
-									<button class="rounded border border-slate-300 px-2 py-1 focus-visible:outline-2 disabled:opacity-40" aria-label={m['ux5.move_up']({ section: label })} disabled={saving || index === 0} onclick={() => (draft = moveSection(draft, id, -1))}>&uarr;</button>
-									<button class="rounded border border-slate-300 px-2 py-1 focus-visible:outline-2 disabled:opacity-40" aria-label={m['ux5.move_down']({ section: label })} disabled={saving || index === draft.length - 1} onclick={() => (draft = moveSection(draft, id, 1))}>&darr;</button>
-									<button class="rounded border border-red-300 px-2 py-1 text-red-800 focus-visible:outline-2 disabled:opacity-40" aria-label={m['ux5.remove']({ section: label })} disabled={saving} onclick={() => (draft = draft.filter((section) => section !== id))}>{m['ux5.remove']({ section: label })}</button>
-								</div>
-							</li>
-						{/each}
-					</ol>
-				{:else}
+				<div>
+					<h3 id="dashboard-config-sections" class="font-semibold">{m['ux5.sections']()}</h3>
+					<p id="dashboard-config-hint" class="mt-1 text-xs text-slate-500">{m['ux5.drag_hint']()}</p>
+				</div>
+				<ol bind:this={sectionList} class="relative space-y-2 {dragging ? 'select-none' : ''}">
+					{#each draft as id (id)}
+						{@const label = sectionLabel(id, shelfStates[id])}
+						{@const held = dragging === id}
+						<!-- Sortable rows are focusable so they can be reordered with Alt+Up/Down. -->
+						<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+						<li
+							animate:flip={{ duration: 150 }}
+							class="relative flex touch-none items-center gap-3 rounded-lg border p-3 transition duration-150 focus-visible:outline-2 focus-visible:outline-emerald-700 {held ? 'z-10 scale-[1.02] cursor-grabbing border-emerald-500 bg-emerald-50 shadow-lg ring-2 ring-emerald-500/30' : 'cursor-grab border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}"
+							tabindex="0"
+							aria-describedby="dashboard-config-hint"
+							aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+							data-config-section={id}
+							data-dragging={held ? 'true' : undefined}
+							onpointerdown={(event) => startDrag(event, id)}
+							onkeydown={(event) => void moveWithKeyboard(event, id)}
+						>
+							<svg aria-hidden="true" class="size-4 shrink-0 {held ? 'text-emerald-600' : 'text-slate-400'}" viewBox="0 0 16 16" fill="currentColor">
+								<circle cx="5.5" cy="3.5" r="1.25" /><circle cx="10.5" cy="3.5" r="1.25" />
+								<circle cx="5.5" cy="8" r="1.25" /><circle cx="10.5" cy="8" r="1.25" />
+								<circle cx="5.5" cy="12.5" r="1.25" /><circle cx="10.5" cy="12.5" r="1.25" />
+							</svg>
+							<span class="min-w-0 flex-1 break-words font-medium">{label}</span>
+							<button type="button" class="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-red-50 hover:text-red-700 focus-visible:outline-2 disabled:opacity-40" aria-label={m['ux5.remove']({ section: label })} title={m['ux5.remove']({ section: label })} disabled={saving} onclick={() => (draft = draft.filter((section) => section !== id))}><Icon name="x" class="size-4" /></button>
+						</li>
+					{/each}
+					<li class="flex items-center gap-3 rounded-lg border border-dashed border-slate-300 p-3" data-config-add>
+						<span class="size-4 shrink-0" aria-hidden="true"></span>
+						<select aria-label={m['ux5.select_builtin']()} bind:value={selectedBuiltin} disabled={saving || !availableBuiltins.length} class="{filterControlClass} min-w-0 flex-1">
+							<option value="">{m['ux5.select_placeholder']()}</option>
+							{#each availableBuiltins as id}<option value={id}>{sectionLabel(id)}</option>{/each}
+						</select>
+						<button type="button" class="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-emerald-700 hover:bg-emerald-50 focus-visible:outline-2 disabled:opacity-40" aria-label={m['ux5.add_builtin']()} title={m['ux5.add_builtin']()} disabled={saving || !selectedBuiltin} onclick={addBuiltIn}><Icon name="plus" class="size-5" /></button>
+					</li>
+				</ol>
+				{#if !draft.length}
 					<p class="text-sm text-slate-600">{m['ux5.empty_draft']()}</p>
 				{/if}
 			</section>
 
-			<div class="space-y-2">
-				<label for="dashboard-builtin" class="block text-sm font-medium">{m['ux5.select_builtin']()}</label>
-				<div class="flex flex-wrap gap-2">
-					<select id="dashboard-builtin" bind:value={selectedBuiltin} disabled={saving || !availableBuiltins.length} class="{filterControlClass} min-w-0 flex-1">
-						<option value="">{m['ux5.select_placeholder']()}</option>
-						{#each availableBuiltins as id}<option value={id}>{sectionLabel(id)}</option>{/each}
-					</select>
-					<button class="inline-flex h-(--control-height) items-center rounded-md border border-emerald-700 px-3 text-sm font-medium text-emerald-800 focus-visible:outline-2 disabled:opacity-40" disabled={saving || !selectedBuiltin} onclick={addBuiltIn}>{m['ux5.add_builtin']()}</button>
-				</div>
-			</div>
-
-			<div class="space-y-2">
-				<label for="dashboard-shelf" class="block text-sm font-medium">{m['ux5.select_shelf']()}</label>
-				<div class="flex flex-wrap gap-2">
-					<select id="dashboard-shelf" bind:value={selectedShelf} disabled={saving || shelfBusy || !choices.length} class="{filterControlClass} min-w-0 flex-1">
-						<option value="">{m['ux5.select_placeholder']()}</option>
-						{#each choices as shelf (shelf.id)}<option value={String(shelf.id)}>{shelfLabel(shelf)}</option>{/each}
-					</select>
-					<button class="inline-flex h-(--control-height) items-center rounded-md border border-emerald-700 px-3 text-sm font-medium text-emerald-800 focus-visible:outline-2 disabled:opacity-40" disabled={saving || shelfBusy || !selectedShelf} onclick={() => void addShelf()}>{m['ux5.add_shelf']()}</button>
-				</div>
-				{#if shelfError}<p class="text-sm text-red-800" role="alert">{shelfError}</p>{/if}
-				{#if shelfPager.status === 'loading'}
-					<p class="text-sm text-slate-600" role="status">{m['ux5.shelves_loading']()}</p>
-				{:else if shelfPager.status === 'error' || shelfPager.moreError}
-					<div class="flex flex-wrap items-center gap-2 text-sm text-red-800" role="alert">
-						<p>{m['ux5.shelves_failed']()}</p>
-						<button class="font-medium underline focus-visible:outline-2" onclick={() => void refreshShelfOptions()}>{m['ux5.shelves_retry']()}</button>
-					</div>
-				{:else if !choices.length && !shelfPager.hasMore}
-					<p class="text-sm text-slate-600">{m['ux5.shelves_empty']()}</p>
-				{/if}
-				{#if shelfPager.hasMore}
-					<button class="text-sm font-medium text-emerald-800 underline focus-visible:outline-2 disabled:opacity-50" disabled={saving || shelfPager.loadingMore} onclick={() => void moreShelves()}>{m['ux5.shelves_more']()}</button>
-				{/if}
-			</div>
-
 			<div class="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-4">
 				<button class="rounded-md border border-slate-300 px-4 py-2 font-medium focus-visible:outline-2 disabled:opacity-50" disabled={saving} onclick={closeConfiguration}>{m['ux5.cancel']()}</button>
-				<button class="rounded-md bg-emerald-700 px-4 py-2 font-medium text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50" disabled={saving || shelfBusy} onclick={() => void persist(draft, true)}>{saving ? m['ux5.saving']() : m['ux5.save']()}</button>
+				<button class="rounded-md bg-emerald-700 px-4 py-2 font-medium text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-50" disabled={saving} onclick={() => void persist(draft, true)}>{saving ? m['ux5.saving']() : m['ux5.save']()}</button>
 			</div>
 		</div>
 	</dialog>

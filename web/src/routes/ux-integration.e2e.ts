@@ -293,7 +293,7 @@ test('book-scoped PDF and CFI bookmarks jump, rename, survive offline reload and
 		await config.getByLabel('Choose a section').selectOption({ label });
 		await config.getByRole('button', { name: 'Add section', exact: true }).click();
 	}
-	await config.getByRole('button', { name: 'Save dashboard' }).click();
+	await config.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.locator('[data-dashboard-section]')).toHaveCount(3);
 	const version = await page.request.get('/api/v1/version');
 	const data = await version.json() as { commit: string; commit_date: string; version: string };
