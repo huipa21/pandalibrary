@@ -260,6 +260,8 @@ func hydrateBook(ctx context.Context, queries *sqlc.Queries, viewer Viewer, row 
 		Language: stringPointer(row.Language), Publisher: stringPointer(row.Publisher),
 		PublishedDate: stringPointer(row.PublishedDate), PageCount: intPointer(row.PageCount),
 		CoverSource: stringPointer(row.CoverSource), Authors: []Author{}, Tags: []Tag{},
+		Genres: []string{}, Moods: []string{}, AgeRating: intPointer(row.AgeRating),
+		ContentRating: stringPointer(row.ContentRating), Ratings: []ProviderRating{},
 		Identifiers: []Identifier{}, Files: []BookFile{}, FieldSources: []FieldSource{},
 		CreatedAt: utcMillis(row.CreatedAt), UpdatedAt: utcMillis(row.UpdatedAt),
 	}
@@ -288,7 +290,10 @@ func hydrateBook(ctx context.Context, queries *sqlc.Queries, viewer Viewer, row 
 		if err != nil {
 			return Book{}, fmt.Errorf("load book series: %w", err)
 		}
-		book.Series = &Series{ID: series.ID, Name: series.Name, Index: floatPointer(series.SeriesIndex)}
+		book.Series = &Series{
+			ID: series.ID, Name: series.Name, Index: floatPointer(series.SeriesIndex),
+			Total: intPointer(series.SeriesTotal),
+		}
 	}
 	tags, err := queries.CatalogBookTags(ctx, sqlc.CatalogBookTagsParams{
 		BookID: row.ID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
@@ -307,6 +312,31 @@ func hydrateBook(ctx context.Context, queries *sqlc.Queries, viewer Viewer, row 
 	}
 	for _, identifier := range identifiers {
 		book.Identifiers = append(book.Identifiers, Identifier{Scheme: identifier.Scheme, Value: identifier.Value})
+	}
+	terms, err := queries.CatalogBookTerms(ctx, sqlc.CatalogBookTermsParams{
+		BookID: row.ID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
+	})
+	if err != nil {
+		return Book{}, fmt.Errorf("load book genres and moods: %w", err)
+	}
+	for _, term := range terms {
+		switch term.Kind {
+		case "genre":
+			book.Genres = append(book.Genres, term.Name)
+		case "mood":
+			book.Moods = append(book.Moods, term.Name)
+		}
+	}
+	ratings, err := queries.CatalogBookRatings(ctx, sqlc.CatalogBookRatingsParams{
+		BookID: row.ID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
+	})
+	if err != nil {
+		return Book{}, fmt.Errorf("load book ratings: %w", err)
+	}
+	for _, rating := range ratings {
+		book.Ratings = append(book.Ratings, ProviderRating{
+			Provider: rating.Provider, Rating: floatPointer(rating.Rating), Count: intPointer(rating.RatingCount),
+		})
 	}
 	files, err := queries.CatalogBookFiles(ctx, sqlc.CatalogBookFilesParams{
 		BookID: row.ID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,

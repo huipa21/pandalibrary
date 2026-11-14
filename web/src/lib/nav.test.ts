@@ -51,7 +51,7 @@ describe('isActive', () => {
 	});
 
 	it('does not imply a sidebar destination for computed or individual book pages', () => {
-		for (const path of ['/books', '/books/21', '/books/21/edit']) {
+		for (const path of ['/books', '/books/21', '/books/21/metadata', '/books/21/edit']) {
 			expect([...homeNavigation, ...navigation].some((entry) => isActive(entry, path))).toBe(false);
 		}
 	});

@@ -116,7 +116,7 @@
 				{#if admin && data && !data.offline}
 					<a
 						class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-emerald-700"
-						href={`/books/${data.book.id}/edit`}
+						href={`/books/${data.book.id}/metadata`}
 					><Icon name="pencil" class="size-3.5" />{m['bv5.edit_metadata']()}</a>
 				{/if}
 			</div>

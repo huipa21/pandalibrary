@@ -55,6 +55,9 @@ type Book struct {
 	UpdatedAt     int64
 	OwnerID       sql.NullInt64
 	Visibility    string
+	AgeRating     sql.NullInt64
+	ContentRating sql.NullString
+	SeriesTotal   sql.NullInt64
 }
 
 type BookAuthor struct {
@@ -98,6 +101,13 @@ type BookIdentifier struct {
 	Value  string
 }
 
+type BookRating struct {
+	BookID      int64
+	Provider    string
+	Rating      sql.NullFloat64
+	RatingCount sql.NullInt64
+}
+
 type BookReview struct {
 	ID        int64
 	BookID    int64
@@ -110,6 +120,13 @@ type BookReview struct {
 type BookTag struct {
 	BookID int64
 	TagID  int64
+}
+
+type BookTerm struct {
+	BookID   int64
+	Kind     string
+	Name     string
+	Position int64
 }
 
 type BookheapItem struct {

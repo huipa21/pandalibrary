@@ -7,6 +7,7 @@
 	import StatusIcon from '../StatusIcon.svelte';
 	import { formatPercent } from '../format.js';
 	import { detailsVisibleIdentifiers } from '../identifiers.js';
+	import { ratingSummaries } from './metadata-display.js';
 	import { readStatusLabel, saveUserBook, statusTone } from '../user-book.js';
 	import type { DetailsState } from './details-data.js';
 
@@ -23,6 +24,7 @@
 	const status = $derived(details?.userBook?.status ?? 'unread');
 	const progress = $derived(details?.progress?.percentage ?? 0);
 	const visibleIdentifiers = $derived(detailsVisibleIdentifiers(book.identifiers));
+	const providerRatings = $derived(ratingSummaries(book.ratings));
 
 	$effect(() => {
 		book.id;
@@ -108,6 +110,18 @@
 		{/if}
 	</div>
 	{#if ratingError}<p class="text-sm text-red-800" role="alert">{ratingError}</p>{/if}
+	{#if providerRatings.length}
+		<ul class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600" aria-label={m['bm8.provider_ratings']()}>
+			{#each providerRatings as item (item.provider)}
+				<li title={item.label}>
+					<span class="sr-only">{item.label}</span>
+					<span class="text-amber-500" aria-hidden="true">★</span>
+					<span class="font-semibold text-slate-800" aria-hidden="true">{item.rating}</span>
+					<span aria-hidden="true">{item.name}{#if item.count !== null}{' '}({item.count}){/if}</span>
+				</li>
+			{/each}
+		</ul>
+	{/if}
 
 	{#if visibleIdentifiers.length}
 		<div class="flex flex-wrap items-center gap-2">

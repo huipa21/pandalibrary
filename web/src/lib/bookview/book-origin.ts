@@ -20,17 +20,19 @@ function pathOf(href: string): string {
 	return href.split(/[?#]/, 1)[0];
 }
 
-/** `/books/{id}` and its tab subpaths; the metadata editor is a child flow instead. */
+/**
+ * `/books/{id}` and its tab subpaths, including the metadata tab and the
+ * legacy `/books/{id}/edit` URL that redirects to it.
+ */
 export function isBookArea(pathname: string): boolean {
-	const match = /^\/books\/([^/]+)(?:\/([^/]*))?/.exec(pathname);
-	return match !== null && match[2] !== 'edit';
+	return /^\/books\/[^/]+/.test(pathname);
 }
 
-/** The reader and the metadata editor return to the book without replacing its origin. */
+/** The reader returns to the book without replacing its origin. */
 export function isBookChildFlow(pathname: string, bookId?: number): boolean {
-	const match = /^\/read\/([^/]+)\/[^/]+|^\/books\/([^/]+)\/edit(?:\/|$)/.exec(pathname);
+	const match = /^\/read\/([^/]+)\/[^/]+/.exec(pathname);
 	if (!match) return false;
-	return bookId === undefined || (match[1] ?? match[2]) === String(bookId);
+	return bookId === undefined || match[1] === String(bookId);
 }
 
 function acceptableOrigin(href: unknown): string | null {

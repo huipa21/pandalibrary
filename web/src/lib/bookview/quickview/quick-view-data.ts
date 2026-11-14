@@ -1,5 +1,6 @@
 import { ApiError } from '#lib/api/client.js';
 import { getBook, getBookShelves } from '#lib/catalog/api.js';
+import { withBookDefaults } from '#lib/catalog/book-defaults.js';
 import type { Book, BookFile } from '#lib/catalog/types.js';
 import { getBookState } from '#lib/reader/api.js';
 import type { BookState, Progress } from '#lib/reader/types.js';
@@ -65,7 +66,7 @@ function aborted(signal: AbortSignal, error: unknown): boolean {
 async function loadBookRecord(bookId: number, seed: Book | undefined, offline: boolean): Promise<Book> {
 	try {
 		if (offline) return (await loadOfflineBook(currentAccount(), bookId)).book;
-		if (isCompleteBook(seed, bookId)) return seed;
+		if (isCompleteBook(seed, bookId)) return withBookDefaults(seed);
 		return await getBook(bookId);
 	} catch (error) {
 		if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {

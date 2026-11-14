@@ -24,11 +24,22 @@ export interface Series {
 	readonly id: number;
 	readonly name: string;
 	readonly index: number | null;
+	readonly total: number | null;
 }
 
 export interface Tag {
 	readonly id: number;
 	readonly name: string;
+}
+
+export const CONTENT_RATINGS = ['everyone', 'teen', 'mature', 'adult'] as const;
+export type ContentRating = (typeof CONTENT_RATINGS)[number];
+
+/** A metadata provider's community rating normalized to a 0–5 scale. */
+export interface ProviderRating {
+	readonly provider: string;
+	readonly rating: number | null;
+	readonly count: number | null;
 }
 
 export interface Identifier {
@@ -76,6 +87,12 @@ export interface Book {
 	readonly authors: Author[];
 	readonly series: Series | null;
 	readonly tags: Tag[];
+	readonly genres: string[];
+	readonly moods: string[];
+	/** Minimum reader age in years (0–21). */
+	readonly age_rating: number | null;
+	readonly content_rating: ContentRating | null;
+	readonly ratings: ProviderRating[];
 	readonly identifiers: Identifier[];
 	readonly files: BookFile[];
 	readonly field_sources: FieldSource[];

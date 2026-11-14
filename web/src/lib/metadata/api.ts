@@ -5,6 +5,7 @@ import type {
 	ApplyResponse,
 	Candidate,
 	CandidateRef,
+	LookupQuery,
 	LookupResponse,
 	ProviderResult,
 	Selections
@@ -21,6 +22,10 @@ function array<T>(value: unknown): T[] {
 	return Array.isArray(value) ? (value as T[]) : [];
 }
 
+function nullable<T>(value: T | null | undefined): T | null {
+	return value === undefined ? null : value;
+}
+
 function normalizeCandidate(provider: string, raw: unknown): Candidate {
 	if (typeof raw !== 'object' || raw === null) throw new InvalidMetadataResponseError();
 	const candidate = raw as Candidate;
@@ -32,6 +37,13 @@ function normalizeCandidate(provider: string, raw: unknown): Candidate {
 		provider: typeof candidate.provider === 'string' ? candidate.provider : provider,
 		authors: array(candidate.authors),
 		tags: array(candidate.tags),
+		genres: array(candidate.genres),
+		moods: array(candidate.moods),
+		age_rating: nullable(candidate.age_rating),
+		content_rating: nullable(candidate.content_rating),
+		rating: nullable(candidate.rating),
+		rating_count: nullable(candidate.rating_count),
+		series: candidate.series ? { ...candidate.series, index: nullable(candidate.series.index), total: nullable(candidate.series.total) } : null,
 		identifiers: array(candidate.identifiers)
 	};
 }
@@ -57,8 +69,25 @@ export function normalizeLookup(raw: unknown): LookupResponse {
 	return { request_key: response.request_key, query: response.query ?? {}, providers };
 }
 
-export async function lookupCandidates(bookId: number, signal?: AbortSignal): Promise<LookupResponse> {
-	const response = await api.request<unknown>(`/books/${bookId}/metadata/candidates`, { method: 'POST', signal });
+/** The JSON body for a custom search: trimmed, without empty values. */
+export function buildLookupBody(query: LookupQuery): { [key: string]: JsonValue } {
+	const body: { [key: string]: JsonValue } = {};
+	for (const key of ['isbn', 'title', 'author', 'language'] as const) {
+		const value = query[key]?.trim();
+		if (value) body[key] = value;
+	}
+	const providers = [...new Set((query.providers ?? []).map((provider) => provider.trim()).filter(Boolean))];
+	if (providers.length) body.providers = providers;
+	return body;
+}
+
+/** Without a query the server searches every enabled provider using the catalog book. */
+export async function lookupCandidates(bookId: number, query?: LookupQuery, signal?: AbortSignal): Promise<LookupResponse> {
+	const response = await api.request<unknown>(`/books/${bookId}/metadata/candidates`, {
+		method: 'POST',
+		signal,
+		...(query ? { body: buildLookupBody(query) } : {})
+	});
 	return normalizeLookup(response);
 }
 

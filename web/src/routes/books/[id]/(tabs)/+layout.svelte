@@ -40,8 +40,8 @@
 		return !isBookArea(url.pathname) && !isBookChildFlow(url.pathname);
 	}
 
-	// The origin is the last page outside the book area. The reader and the
-	// editor are child flows and never replace it. Tabs and previous/next
+	// The origin is the last page outside the book area. The reader is a
+	// child flow and never replaces it. Tabs and previous/next
 	// replace the history entry, so while only those happen the entry before
 	// the current one is still the origin and history.back() can restore it.
 	afterNavigate(({ from, type }) => {
@@ -84,7 +84,7 @@
 {:else}
 	<div class="space-y-6">
 		{#if routeBookID !== null}
-			<BookTabs bookId={routeBookID} {origin} {directFromOrigin} />
+			<BookTabs bookId={routeBookID} {origin} {directFromOrigin} canEditMetadata={context.canEditMetadata} />
 		{/if}
 		{#if context.book && context.bookId === routeBookID}
 			{@render children()}

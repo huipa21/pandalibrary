@@ -321,7 +321,7 @@ func normalizeIdentifier(identifier extract.Identifier) (extract.Identifier, boo
 		scheme = "googlebooks"
 	}
 	switch scheme {
-	case "isbn13", "isbn10", "asin", "doi", "uuid", "openlibrary", "googlebooks", "neodb", "hardcover", "douban":
+	case "isbn13", "isbn10", "asin", "doi", "uuid", "openlibrary", "googlebooks", "neodb", "hardcover", "douban", "goodreads":
 	default:
 		return extract.Identifier{}, false
 	}

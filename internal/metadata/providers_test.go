@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -48,7 +49,12 @@ func TestProviderFixturesAndISBNPrecedence(t *testing.T) {
 				}
 				switch name {
 				case "openlibrary":
-					if r.URL.Path != "/search.json" || query.Get("isbn") != "9781234567897" || query.Get("limit") != "10" {
+					if r.URL.Path == "/works/OL123W.json" {
+						_, _ = w.Write([]byte(`{"key":"/works/OL123W","description":{"type":"/type/text","value":"A work description."}}`))
+						return
+					}
+					if r.URL.Path != "/search.json" || query.Get("isbn") != "9781234567897" || query.Get("limit") != "10" ||
+						!strings.Contains(query.Get("fields"), "ratings_average,ratings_count") {
 						t.Errorf("Open Library request = %s", r.URL)
 					}
 				case "googlebooks":
@@ -82,8 +88,47 @@ func TestProviderFixturesAndISBNPrecedence(t *testing.T) {
 			if c.Provider != name || c.Reference == "" || c.Title != "Test Library" || c.Subtitle == nil ||
 				len(c.Authors) == 0 || c.Authors[0].Role != "author" || c.Authors[0].Name != "Test Author" ||
 				c.PageCount == nil || *c.PageCount != 321 || c.PublishedDate == nil ||
-				len(c.Tags) == 0 || len(c.Identifiers) != 2 || c.CoverURL == nil {
+				c.Genres == nil || c.Moods == nil || c.Tags == nil || c.CoverURL == nil {
 				t.Fatalf("normalization = %+v", c)
+			}
+			want := map[string]struct {
+				rating      float64
+				count       int64
+				ids         int
+				tags        []string
+				genres      []string
+				moods       []string
+				seriesIndex float64
+				seriesTotal int64
+			}{
+				"openlibrary": {4.31, 462, 2, []string{"Libraries", "Fiction"}, []string{}, []string{}, 2, 0},
+				"googlebooks": {4.5, 12, 2, []string{}, []string{"Fiction", "Science Fiction", "Libraries"}, []string{}, -1, 0},
+				"neodb":       {4.2, 25, 4, []string{"Libraries"}, []string{}, []string{}, -1, 0},
+				"hardcover":   {4.12, 50, 2, []string{"Libraries"}, []string{"Reference", "Fantasy"}, []string{"Reflective"}, 1.5, 3},
+			}[name]
+			if c.Rating == nil || *c.Rating != want.rating || c.RatingCount == nil || *c.RatingCount != want.count {
+				t.Fatalf("rating = %v/%v", c.Rating, c.RatingCount)
+			}
+			if len(c.Identifiers) != want.ids || !reflect.DeepEqual(c.Tags, want.tags) ||
+				!reflect.DeepEqual(c.Genres, want.genres) || !reflect.DeepEqual(c.Moods, want.moods) {
+				t.Fatalf("terms = ids %+v tags %q genres %q moods %q", c.Identifiers, c.Tags, c.Genres, c.Moods)
+			}
+			if want.seriesIndex >= 0 && (c.Series == nil || c.Series.Name != "Library Series" || c.Series.Index == nil || *c.Series.Index != want.seriesIndex) {
+				t.Fatalf("series = %+v", c.Series)
+			}
+			if want.seriesTotal > 0 && (c.Series.Total == nil || *c.Series.Total != want.seriesTotal) {
+				t.Fatalf("series total = %+v", c.Series)
+			}
+			if name == "openlibrary" && (c.Description == nil || *c.Description != "A work description.") {
+				t.Fatalf("Open Library work description = %v", c.Description)
+			}
+			if name == "neodb" && (c.Identifiers[1] != Identifier{Scheme: "douban", Value: "1234567"} ||
+				c.Identifiers[2] != Identifier{Scheme: "goodreads", Value: "39776179"}) {
+				t.Fatalf("NeoDB external identifiers = %+v", c.Identifiers)
+			}
+			if name == "googlebooks" && (c.ContentRating == nil || *c.ContentRating != "everyone" ||
+				*c.CoverURL != "https://books.google.com/books/content?id=volume123&zoom=3") {
+				t.Fatalf("Google maturity/cover = %v %s", c.ContentRating, *c.CoverURL)
 			}
 			if name == "neodb" && (len(c.Authors) != 2 || c.Authors[1].Role != "translator") {
 				t.Fatal("translator role was lost")
@@ -105,6 +150,9 @@ func TestProviderFallbackQuery(t *testing.T) {
 				values := r.URL.Query()
 				switch name {
 				case "openlibrary":
+					if strings.HasPrefix(r.URL.Path, "/works/") {
+						break
+					}
 					if values.Get("title") != "Test Library" || values.Get("author") != "Test Author" || values.Get("lang") != "en" {
 						t.Error("missing fallback search fields")
 					}
@@ -216,7 +264,7 @@ func TestProviderGetAndHardcoverEncodedResults(t *testing.T) {
 			p := testAdapter(t, name, func(w http.ResponseWriter, r *http.Request) {
 				switch name {
 				case "openlibrary":
-					if r.URL.Query().Get("q") != "key:"+ref {
+					if r.URL.Path == "/search.json" && r.URL.Query().Get("q") != "key:"+ref {
 						t.Error("Open Library record query is incorrect")
 					}
 					_, _ = w.Write(fixture(t, name))
@@ -239,10 +287,14 @@ func TestProviderGetAndHardcoverEncodedResults(t *testing.T) {
 						} `json:"variables"`
 					}
 					if json.NewDecoder(r.Body).Decode(&request) != nil || request.Variables.ID != 123 ||
-						!strings.Contains(request.Query, "contributions { contribution author { name } }") {
+						!strings.Contains(request.Query, "contributions { contribution author { name } }") ||
+						!strings.Contains(request.Query, "rating ratings_count cached_tags") {
 						t.Error("Hardcover record query is incorrect")
 					}
-					_, _ = w.Write([]byte(`{"data":{"books":[{"id":123,"title":"Test Library","contributions":[{"contribution":"Author","author":{"name":"Test Author"}},{"contribution":"Translator","author":{"name":"Test Translator"}}]}]}}`))
+					_, _ = w.Write([]byte(`{"data":{"books":[{"id":123,"title":"Test Library","rating":3.5,"ratings_count":7,` +
+						`"cached_tags":{"Genre":[{"tag":"Fantasy","count":3}],"Mood":[{"tag":"Dark"}],"Tag":["Magic"],"Content Warning":"bad shape"},` +
+						`"featured_series":{"position":2,"series":{"name":"Get Series","books_count":4}},` +
+						`"contributions":[{"contribution":"Author","author":{"name":"Test Author"}},{"contribution":"Translator","author":{"name":"Test Translator"}}]}]}}`))
 				}
 			})
 			result, err := p.Get(context.Background(), ref)
@@ -251,6 +303,11 @@ func TestProviderGetAndHardcoverEncodedResults(t *testing.T) {
 			}
 			if name == "hardcover" && (len(result.Authors) != 2 || result.Authors[1].Role != "translator") {
 				t.Fatal("Hardcover contributor role was lost")
+			}
+			if name == "hardcover" && (!reflect.DeepEqual(result.Genres, []string{"Fantasy"}) || !reflect.DeepEqual(result.Moods, []string{"Dark"}) ||
+				!reflect.DeepEqual(result.Tags, []string{"Magic"}) || result.Rating == nil || *result.Rating != 3.5 ||
+				result.Series == nil || result.Series.Name != "Get Series" || *result.Series.Index != 2 || *result.Series.Total != 4) {
+				t.Fatalf("Hardcover cached tags/series = %+v %+v", result, result.Series)
 			}
 		})
 	}

@@ -31,6 +31,8 @@ export class BookContext {
 	coverSource = $state<string | null>(null);
 	coverError = $state('');
 	canEditMetadata = $state(false);
+	/** Whether `canEditMetadata` is settled for the loaded book (the viewer check is asynchronous). */
+	metadataAccessKnown = $state(false);
 	/** File IDs of this book saved for offline reading (empty when offline storage is unavailable). */
 	savedFileIds = $state<number[]>([]);
 	loading = $state(true);
@@ -91,6 +93,7 @@ export class BookContext {
 		this.coverError = '';
 		this.savedFileIds = [];
 		this.canEditMetadata = false;
+		this.metadataAccessKnown = false;
 	}
 
 	async #fetch(rawID: string, quiet: boolean) {
@@ -145,13 +148,18 @@ export class BookContext {
 			this.savedFileIds = savedFileIds;
 			if (loaded.offline) {
 				this.canEditMetadata = false;
+				this.metadataAccessKnown = true;
 			} else {
-				// Only hides the entry point; the edit route and API enforce authorization.
+				// Only hides the entry point; the API enforces authorization.
 				void getSessionViewer().then(
 					(viewer) => {
-						if (request === this.#requestVersion) this.canEditMetadata = isAdministrator(viewer);
+						if (request !== this.#requestVersion) return;
+						this.canEditMetadata = isAdministrator(viewer);
+						this.metadataAccessKnown = true;
 					},
-					() => undefined
+					() => {
+						if (request === this.#requestVersion) this.metadataAccessKnown = true;
+					}
 				);
 			}
 		} catch (cause) {

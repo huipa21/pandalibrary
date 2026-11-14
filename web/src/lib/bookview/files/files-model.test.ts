@@ -22,7 +22,7 @@ const book: Book = {
 	owner_id: null, visibility: 'library', can_manage_visibility: false,
 	id: 21, library_id: 1, title: 'Book', sort_title: 'Book', subtitle: null, description: null,
 	language: null, publisher: null, published_date: null, page_count: null, cover_url: null,
-	cover_source: null, authors: [], series: null, tags: [], identifiers: [], field_sources: [],
+	cover_source: null, authors: [], series: null, tags: [], identifiers: [], genres: [], moods: [], age_rating: null, content_rating: null, ratings: [], field_sources: [],
 	files, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z'
 };
 

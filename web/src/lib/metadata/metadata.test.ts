@@ -48,8 +48,13 @@ const book = (overrides: Partial<Book> = {}): Book => ({
 		{ id: 2, name: 'Second', role: 'translator', position: 1 },
 		{ id: 1, name: 'First', role: 'author', position: 0 }
 	],
-	series: { id: 3, name: 'Saga', index: null },
+	series: { id: 3, name: 'Saga', index: null, total: null },
 	tags: [{ id: 1, name: 'Fantasy' }],
+	genres: [],
+	moods: [],
+	age_rating: null,
+	content_rating: null,
+	ratings: [],
 	identifiers: [{ scheme: 'isbn13', value: '9780000000001' }],
 	files: [],
 	field_sources: [],
@@ -69,8 +74,14 @@ const candidate = (overrides: Partial<Candidate> = {}): Candidate => ({
 	published_date: '2020-05',
 	language: 'en',
 	page_count: 321,
-	series: { name: 'Saga', index: 2.5 },
+	series: { name: 'Saga', index: 2.5, total: null },
 	tags: ['Fantasy', 'Epic'],
+	genres: [],
+	moods: [],
+	age_rating: null,
+	content_rating: null,
+	rating: null,
+	rating_count: null,
 	identifiers: [{ scheme: 'isbn13', value: '9780000000002' }],
 	cover_url: 'https://covers.openlibrary.org/b/id/1-L.jpg',
 	...overrides
@@ -97,7 +108,29 @@ describe('metadata lookup and apply API', () => {
 		expect(spy.mock.calls[0][1]).not.toHaveProperty('body');
 		expect(result.request_key).toBe('key-1');
 		expect(result.providers[0].candidates[0].tags).toEqual([]);
+		expect(result.providers[0].candidates[0]).toMatchObject({ genres: [], moods: [], age_rating: null, rating: null });
 		expect(result.providers[1]).toEqual({ provider: 'google', candidates: [], error: { code: 'unavailable', message: 'x' } });
+	});
+
+	it('normalizes missing new candidate fields to empty defaults', () => {
+		const { genres: _g, moods: _m, age_rating: _a, content_rating: _c, rating: _r, rating_count: _n, ...old } = candidate();
+		const result = normalizeLookup({
+			request_key: 'k', providers: [{ provider: 'x', candidates: [{ ...old, series: { name: 'S', index: 1 } }] }]
+		});
+		expect(result.providers[0].candidates[0]).toMatchObject({
+			genres: [], moods: [], age_rating: null, content_rating: null, rating: null, rating_count: null,
+			series: { name: 'S', index: 1, total: null }
+		});
+	});
+
+	it('sends a trimmed custom search body only when a query is given', async () => {
+		const spy = vi.spyOn(api, 'request').mockResolvedValue({ request_key: 'key-2', query: {}, providers: [] });
+		await lookupCandidates(1, { isbn: ' 978 ', title: '  ', author: 'Ann', providers: ['neodb', 'neodb', ' '] });
+		expect(spy.mock.calls[0][1]).toEqual(expect.objectContaining({
+			method: 'POST', body: { isbn: '978', author: 'Ann', providers: ['neodb'] }
+		}));
+		await lookupCandidates(1, undefined);
+		expect(spy.mock.calls[1][1]).not.toHaveProperty('body');
 	});
 
 	it('rejects lookups without an opaque request key', () => {
@@ -205,6 +238,27 @@ describe('candidate mapping and selection', () => {
 		expect(candidateValues(candidate(), 'series')).toEqual(['Saga #2.5']);
 		expect(candidateValues(candidate(), 'identifiers')).toEqual(['isbn13: 9780000000002']);
 		expect(candidateValues(candidate(), 'tags')).toEqual(['Fantasy', 'Epic']);
+	});
+
+	it('maps genres, moods, age and content ratings, series totals and provider ratings', () => {
+		const rich = candidate({
+			genres: ['Fiction'], moods: ['dark'], age_rating: 16, content_rating: 'mature', rating: 4.25, rating_count: 12,
+			series: { name: 'Saga', index: 2, total: 5 }
+		});
+		expect(candidateValues(rich, 'series')).toEqual(['Saga #2 / 5']);
+		expect(candidateValues(rich, 'age_rating')).toEqual(['16']);
+		expect(candidateValues(rich, 'content_rating')).toEqual(['mature']);
+		expect(candidateValues(rich, 'ratings')).toEqual(['openlibrary: ★ 4.25 # 12']);
+		expect(currentValues(book({ genres: ['Fiction'] }), 'genres')).toEqual(['Fiction']);
+		expect(matchesCurrent(book({ moods: ['Dark'] }), rich, 'moods')).toBe(true);
+		expect(matchesCurrent(book({ ratings: [{ provider: 'openlibrary', rating: 4.25, count: 12 }] }), rich, 'ratings')).toBe(true);
+		expect(matchesCurrent(book({ ratings: [{ provider: 'neodb', rating: 4.25, count: 12 }] }), rich, 'ratings')).toBe(false);
+		expect(candidateOffers(rich, 'ratings')).toBe(true);
+		expect(candidateOffers(candidate(), 'ratings')).toBe(false);
+		expect(candidateClears(candidate(), 'genres')).toBe(true);
+		expect(Object.keys(selectCandidateValues({}, rich))).toEqual(
+			expect.arrayContaining(['genres', 'moods', 'age_rating', 'content_rating', 'ratings'])
+		);
 	});
 
 	it('only offers covers with a cached URL and marks empty values as explicit clears', () => {

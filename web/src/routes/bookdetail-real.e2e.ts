@@ -120,8 +120,10 @@ test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private co
 			await expect(page).toHaveURL(bookPath);
 			await expect(back(page)).toHaveAttribute('href', origin);
 			await page.getByRole('region', { name: 'Details', exact: true }).getByRole('link', { name: 'Edit metadata' }).click();
-			await expect(page).toHaveURL(`${bookPath}/edit`);
-			await page.getByRole('link', { name: 'Back to book', exact: true }).click();
+			await expect(page).toHaveURL(`${bookPath}/metadata`);
+			await expect(back(page)).toHaveAttribute('href', origin);
+			await page.getByRole('navigation', { name: 'Book sections' }).getByRole('link', { name: 'Details' }).click();
+			await expect(page).toHaveURL(bookPath);
 			await expect(back(page)).toHaveAttribute('href', origin);
 			if (origin.startsWith('/shelves/')) {
 				await expect(page.getByRole('button', { name: 'Next book' })).toBeDisabled();
@@ -186,7 +188,7 @@ test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private co
 		await test.step('R3/R5-R9/R11/R13: assembled Details layout and permission gate', async () => {
 			await page.goto(bookPath);
 			const details = page.getByRole('region', { name: 'Details', exact: true });
-			await expect(details.getByRole('link', { name: 'Edit metadata' })).toHaveAttribute('href', `${bookPath}/edit`);
+			await expect(details.getByRole('link', { name: 'Edit metadata' })).toHaveAttribute('href', `${bookPath}/metadata`);
 			await expect(details.getByText('Metadata source', { exact: true })).toBeVisible();
 			expect(data.book.field_sources.length).toBeGreaterThan(0);
 			await details.getByText('Show fields', { exact: true }).click();

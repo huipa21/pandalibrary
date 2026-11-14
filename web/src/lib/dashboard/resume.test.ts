@@ -17,7 +17,7 @@ const book: Book = {
 	owner_id: null, visibility: 'library', can_manage_visibility: false,
 	id: 21, library_id: 1, title: 'Book', sort_title: 'Book', subtitle: null, description: null,
 	language: null, publisher: null, published_date: null, page_count: null, cover_url: null,
-	cover_source: null, authors: [], series: null, tags: [], identifiers: [], field_sources: [],
+	cover_source: null, authors: [], series: null, tags: [], identifiers: [], genres: [], moods: [], age_rating: null, content_rating: null, ratings: [], field_sources: [],
 	files: [
 		{ id: 11, format: 'epub', size_bytes: 10, download_url: '', original_filename: 'a.epub', created_at: timestamp },
 		{ id: 12, format: 'PDF', size_bytes: 10, download_url: '', original_filename: 'a.pdf', created_at: timestamp },

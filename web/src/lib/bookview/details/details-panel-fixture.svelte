@@ -11,7 +11,7 @@
 		id: 21, library_id: 1, title: 'Fixture', sort_title: 'Fixture', subtitle: null,
 		description: null, language: null, publisher: null, published_date: null,
 		page_count: null, cover_url: null, cover_source: null, authors: [], series: null,
-		tags: [], identifiers: [], files: [], field_sources: [],
+		tags: [], identifiers: [], files: [], genres: [], moods: [], age_rating: null, content_rating: null, ratings: [], field_sources: [],
 		created_at: '2026-11-06T10:00:00Z', updated_at: '2026-11-06T10:00:00Z'
 	});
 </script>

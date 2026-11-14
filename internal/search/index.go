@@ -24,8 +24,12 @@ SELECT b.id, b.title,
     )), ''),
     COALESCE((SELECT s.name FROM series s WHERE s.id = b.series_id), ''),
     COALESCE((SELECT group_concat(name, ' ') FROM (
-        SELECT t.name FROM book_tags bt JOIN tags t ON t.id = bt.tag_id
-        WHERE bt.book_id = b.id ORDER BY t.name COLLATE NOCASE, t.id
+        SELECT name FROM (
+            SELECT t.name, 0 AS grp, t.name COLLATE NOCASE AS k1, t.id AS k2
+            FROM book_tags bt JOIN tags t ON t.id = bt.tag_id WHERE bt.book_id = b.id
+            UNION ALL
+            SELECT g.name, 1, '', g.position FROM book_terms g WHERE g.book_id = b.id AND g.kind = 'genre'
+        ) ORDER BY grp, k1, k2
     )), ''),
     COALESCE(b.publisher, ''),
     COALESCE((SELECT group_concat(value, ' ') FROM (

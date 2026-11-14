@@ -1,4 +1,4 @@
-import type { Book } from '#lib/catalog/types.js';
+import type { Book, ContentRating } from '#lib/catalog/types.js';
 
 export interface CandidatePerson {
 	readonly name: string;
@@ -8,6 +8,7 @@ export interface CandidatePerson {
 export interface CandidateSeries {
 	readonly name: string;
 	readonly index: number | null;
+	readonly total: number | null;
 }
 
 export interface CandidateIdentifier {
@@ -28,6 +29,13 @@ export interface Candidate {
 	readonly page_count: number | null;
 	readonly series: CandidateSeries | null;
 	readonly tags: string[];
+	readonly genres: string[];
+	readonly moods: string[];
+	readonly age_rating: number | null;
+	readonly content_rating: ContentRating | null;
+	/** Community rating normalized to 0-5. */
+	readonly rating: number | null;
+	readonly rating_count: number | null;
 	readonly identifiers: CandidateIdentifier[];
 	readonly cover_url: string | null;
 }
@@ -48,6 +56,8 @@ export interface LookupQuery {
 	readonly title?: string;
 	readonly author?: string;
 	readonly language?: string;
+	/** Restricts the lookup to these enabled providers; omitted means all. */
+	readonly providers?: string[];
 }
 
 export interface LookupResponse {
@@ -67,6 +77,11 @@ export const MERGE_FIELDS = [
 	'page_count',
 	'series',
 	'tags',
+	'genres',
+	'moods',
+	'age_rating',
+	'content_rating',
+	'ratings',
 	'identifiers',
 	'cover'
 ] as const;

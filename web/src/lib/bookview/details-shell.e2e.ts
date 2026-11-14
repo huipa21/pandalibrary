@@ -281,17 +281,15 @@ test('All Books with a query → tabs → back returns to the same URL', async (
 	await expect(page.getByTitle('Shell Book 3', { exact: true })).toBeVisible();
 });
 
-test('book → metadata editor → Back to book → back icon returns to the list', async ({ page }) => {
+test('book → Metadata tab → back icon returns to the list', async ({ page }) => {
 	await mockApi(page, 'admin');
 	await page.goto('/books');
 	await openTile(page, 2);
 	await expect(page).toHaveURL('/books/2');
 	await page.getByRole('link', { name: 'Edit metadata' }).first().click();
-	await expect(page).toHaveURL('/books/2/edit');
-	await expect(page.getByRole('heading', { name: 'Edit metadata: Shell Book 2' })).toBeVisible();
-	await expect(tabBar(page)).toHaveCount(0);
-	await page.getByRole('link', { name: 'Back to book' }).click();
-	await expect(page).toHaveURL('/books/2');
+	await expect(page).toHaveURL('/books/2/metadata');
+	await expect(tabBar(page).getByRole('link', { name: 'Metadata' })).toHaveAttribute('aria-current', 'page');
+	await expect(page.getByRole('form', { name: 'Book metadata' })).toBeVisible();
 	await expect(backIcon(page)).toHaveAttribute('href', '/books');
 	await backIcon(page).click();
 	await expect(page).toHaveURL('/books');
@@ -319,11 +317,17 @@ test('the legacy reading-log URL opens the Activities tab', async ({ page }) => 
 	await expect(page.getByRole('heading', { name: 'Activities', level: 1 })).toHaveCount(1);
 });
 
-test('the edit page has no tab bar', async ({ page }) => {
+test('the legacy edit URL opens the Metadata tab, which only administrators see', async ({ page }) => {
 	await mockApi(page, 'admin');
 	await page.goto('/books/2/edit');
-	await expect(page.getByRole('heading', { name: 'Edit metadata: Shell Book 2' })).toBeVisible();
-	await expect(tabBar(page)).toHaveCount(0);
+	await expect(page).toHaveURL('/books/2/metadata');
+	await expect(tabBar(page).getByRole('link').filter({ hasText: /^\s*(Details|Metadata|Files|Activities|Annotations)\b/ })).toHaveText([/Details/, /Metadata/, /Files/, /Activities/, /Annotations/]);
+	await expect(tabBar(page).getByRole('link', { name: 'Metadata' })).toHaveAttribute('aria-current', 'page');
+
+	await mockApi(page);
+	await page.goto('/books/2');
+	await expect(tabBar(page).getByRole('link', { name: 'Details' })).toBeVisible();
+	await expect(tabBar(page).getByRole('link', { name: 'Metadata' })).toHaveCount(0);
 });
 
 test('an invalid or missing book shows the error state', async ({ page }) => {

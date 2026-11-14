@@ -61,6 +61,11 @@ func mergeManualPatch(patch, manual BookPatch) BookPatch {
 	patch.Series = mergeManualField(patch.Series, manual.Series)
 	patch.Authors = mergeManualField(patch.Authors, manual.Authors)
 	patch.Tags = mergeManualField(patch.Tags, manual.Tags)
+	patch.Genres = mergeManualField(patch.Genres, manual.Genres)
+	patch.Moods = mergeManualField(patch.Moods, manual.Moods)
+	patch.AgeRating = mergeManualField(patch.AgeRating, manual.AgeRating)
+	patch.ContentRating = mergeManualField(patch.ContentRating, manual.ContentRating)
+	patch.Ratings = mergeManualField(patch.Ratings, manual.Ratings)
 	patch.Identifiers = mergeManualField(patch.Identifiers, manual.Identifiers)
 	return patch
 }

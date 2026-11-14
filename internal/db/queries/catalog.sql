@@ -197,7 +197,7 @@ AND NOT EXISTS (
 ORDER BY ba.position, a.id, ba.role;
 
 -- name: CatalogBookSeries :one
-SELECT s.id, s.name, b.series_index
+SELECT s.id, s.name, b.series_index, b.series_total
 FROM books b JOIN series s ON s.id = b.series_id
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
@@ -234,6 +234,32 @@ AND NOT EXISTS (
     SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
 )
 ORDER BY bi.scheme, bi.value;
+
+-- name: CatalogBookTerms :many
+SELECT bt.kind, bt.name FROM book_terms bt
+JOIN books b ON b.id = bt.book_id
+WHERE b.id = sqlc.arg(book_id)
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+)))))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
+)
+ORDER BY bt.kind, bt.position, bt.name;
+
+-- name: CatalogBookRatings :many
+SELECT br.provider, br.rating, br.rating_count FROM book_ratings br
+JOIN books b ON b.id = br.book_id
+WHERE b.id = sqlc.arg(book_id)
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
+)))))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
+)
+ORDER BY br.provider;
 
 -- name: CatalogBookFiles :many
 SELECT f.* FROM book_files f JOIN books b ON b.id = f.book_id
@@ -366,7 +392,7 @@ GROUP BY t.id, t.name;
 -- name: CatalogUpdateBook :exec
 UPDATE books SET library_id = ?, title = ?, sort_title = ?, subtitle = ?, description = ?,
     language = ?, publisher = ?, published_date = ?, page_count = ?, series_id = ?,
-    series_index = ?, updated_at = ?
+    series_index = ?, series_total = ?, age_rating = ?, content_rating = ?, updated_at = ?
 WHERE id = ?;
 
 -- name: CatalogUpdateCover :exec
@@ -424,6 +450,20 @@ DELETE FROM book_identifiers WHERE book_id = ?;
 
 -- name: CatalogInsertBookIdentifier :exec
 INSERT INTO book_identifiers (book_id, scheme, value) VALUES (?, ?, ?);
+
+-- name: CatalogClearBookTerms :exec
+DELETE FROM book_terms WHERE book_id = ? AND kind = ?;
+
+-- name: CatalogInsertBookTerm :exec
+INSERT INTO book_terms (book_id, kind, name, position) VALUES (?, ?, ?, ?);
+
+-- name: CatalogClearBookRatings :exec
+DELETE FROM book_ratings WHERE book_id = ?;
+
+-- name: CatalogUpsertBookRating :exec
+INSERT INTO book_ratings (book_id, provider, rating, rating_count) VALUES (?, ?, ?, ?)
+ON CONFLICT (book_id, provider) DO UPDATE SET
+    rating = excluded.rating, rating_count = excluded.rating_count;
 
 -- name: CatalogVisibleBookCount :one
 SELECT count(*) FROM books b

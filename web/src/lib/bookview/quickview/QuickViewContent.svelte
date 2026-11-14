@@ -174,6 +174,17 @@
 			</section>
 		{/if}
 
+		{#if book.genres?.length}
+			<section class="space-y-2" aria-labelledby={`${titleId}-genres`}>
+				<h3 id={`${titleId}-genres`} class="text-xs font-semibold tracking-wide text-slate-500 uppercase">{m['bm8.genres']()}</h3>
+				<ul class="flex flex-wrap gap-2">
+					{#each book.genres as genre (genre)}
+						<li class="max-w-full rounded-md bg-slate-100 px-2 py-1 text-xs font-medium break-words text-slate-700">{genre}</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
 		{#if collections.length}
 			<section class="space-y-2" aria-labelledby={`${titleId}-collections`}>
 				<h3 id={`${titleId}-collections`} class="text-xs font-semibold tracking-wide text-slate-500 uppercase">{m['bv5.collections']()}</h3>

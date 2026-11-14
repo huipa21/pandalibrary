@@ -1,9 +1,16 @@
 <script module lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 
-	export type BookTab = 'details' | 'files' | 'activities' | 'highlights';
+	export type BookTab = 'details' | 'metadata' | 'files' | 'activities' | 'highlights';
 
-	export const BOOK_TABS: readonly BookTab[] = ['details', 'files', 'activities', 'highlights'];
+	export const BOOK_TABS: readonly BookTab[] = ['details', 'metadata', 'files', 'activities', 'highlights'];
+
+	/** Tabs that only metadata editors (administrators) see. */
+	const EDITOR_TABS: readonly BookTab[] = ['metadata'];
+
+	export function visibleBookTabs(canEditMetadata: boolean): BookTab[] {
+		return BOOK_TABS.filter((tab) => canEditMetadata || !EDITOR_TABS.includes(tab));
+	}
 
 	export function bookTabPath(bookId: number, tab: BookTab): string {
 		return tab === 'details' ? `/books/${bookId}` : `/books/${bookId}/${tab}`;
@@ -12,11 +19,13 @@
 	export function bookTabFromPath(pathname: string): BookTab {
 		const segment = pathname.replace(/\/+$/, '').split('/')[3] ?? '';
 		if (segment === 'reading-log') return 'activities';
+		if (segment === 'edit') return 'metadata';
 		return (BOOK_TABS as readonly string[]).includes(segment) ? (segment as BookTab) : 'details';
 	}
 
 	export function bookTabLabel(tab: BookTab): string {
 		switch (tab) {
+			case 'metadata': return m['bv4.tabs.metadata']();
 			case 'files': return m['bv4.tabs.files']();
 			case 'activities': return m['bd1.tabs.activities']();
 			case 'highlights': return m['bv4.tabs.highlights']();
@@ -32,13 +41,15 @@
 	import { originLabel, restoreOriginScroll, type BookOrigin } from './book-origin.js';
 	import { browseNeighbors } from './browse-context.js';
 
-	let { bookId, origin = null, directFromOrigin = false }: {
+	let { bookId, origin = null, directFromOrigin = false, canEditMetadata = false }: {
 		bookId: number;
 		origin?: BookOrigin | null;
 		directFromOrigin?: boolean;
+		canEditMetadata?: boolean;
 	} = $props();
 
 	const activeTab = $derived(bookTabFromPath(page.url.pathname));
+	const tabs = $derived(visibleBookTabs(canEditMetadata));
 	const backHref = $derived(origin?.href ?? '/');
 	const backName = $derived.by(() => {
 		const label = origin?.label ?? originLabel(backHref);
@@ -69,7 +80,7 @@
 
 	function openNeighbor(id: number | null) {
 		if (id === null) return;
-		void goto(bookTabPath(id, activeTab), { replace: true, reset: false });
+		void goto(bookTabPath(id, activeTab) + (activeTab === 'metadata' ? page.url.search : ''), { replace: true, reset: false });
 	}
 
 	function typingTarget(target: EventTarget | null): boolean {
@@ -106,7 +117,7 @@
 		</a>
 		<span class="mx-1 h-5 w-px shrink-0 bg-slate-200" aria-hidden="true"></span>
 		<ul class="flex shrink-0 items-stretch gap-1">
-			{#each BOOK_TABS as tab (tab)}
+			{#each tabs as tab (tab)}
 				{@const active = tab === activeTab}
 				<li class="flex">
 					<a

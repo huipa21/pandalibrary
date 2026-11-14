@@ -48,30 +48,29 @@ afterEach(() => {
 });
 
 describe('book area and child flows', () => {
-	it('matches the book tabs but not the editor or other pages', () => {
-		for (const path of ['/books/1', '/books/1/', '/books/1/files', '/books/1/activities', '/books/1/reading-log', '/books/abc']) {
+	it('matches the book tabs, including metadata and the legacy editor URL, but not other pages', () => {
+		for (const path of [
+			'/books/1', '/books/1/', '/books/1/files', '/books/1/metadata', '/books/1/activities', '/books/1/reading-log',
+			'/books/abc', '/books/1/edit', '/books/1/edit/'
+		]) {
 			expect(isBookArea(path), path).toBe(true);
 		}
-		for (const path of ['/', '/books', '/books/', '/books/1/edit', '/books/1/edit/', '/read/1/2', '/shelves/1', '/bookshelf/1']) {
+		for (const path of ['/', '/books', '/books/', '/read/1/2', '/shelves/1', '/bookshelf/1']) {
 			expect(isBookArea(path), path).toBe(false);
 		}
 	});
 
-	it('matches the reader and the metadata editor', () => {
+	it('matches only the reader; metadata is a tab', () => {
 		expect(isBookChildFlow('/read/1/10')).toBe(true);
 		expect(isBookChildFlow('/read/1/10/extra')).toBe(true);
-		expect(isBookChildFlow('/books/1/edit')).toBe(true);
-		expect(isBookChildFlow('/books/1/edit/')).toBe(true);
-		for (const path of ['/read', '/read/', '/read/1', '/books/1', '/books/1/files', '/books/1/editions', '/']) {
+		for (const path of ['/read', '/read/', '/read/1', '/books/1', '/books/1/files', '/books/1/metadata', '/books/1/edit', '/']) {
 			expect(isBookChildFlow(path), path).toBe(false);
 		}
 	});
 
 	it('limits child flows to one book when an ID is given', () => {
 		expect(isBookChildFlow('/read/1/10', 1)).toBe(true);
-		expect(isBookChildFlow('/books/1/edit', 1)).toBe(true);
 		expect(isBookChildFlow('/read/2/10', 1)).toBe(false);
-		expect(isBookChildFlow('/books/2/edit', 1)).toBe(false);
 	});
 });
 
@@ -87,7 +86,7 @@ describe('book origin', () => {
 
 	it('ignores unsafe, book-area, child-flow and sign-in hrefs', () => {
 		rememberBookOrigin('/shelves/1');
-		for (const href of ['https://evil.example/', '//evil.example/', '/\\evil', 'books', '/books/2', '/books/2/files?x=1', '/books/2/edit', '/read/2/20', '/login?next=/', '/setup']) {
+		for (const href of ['https://evil.example/', '//evil.example/', '/\\evil', 'books', '/books/2', '/books/2/files?x=1', '/books/2/metadata?view=search', '/books/2/edit', '/read/2/20', '/login?next=/', '/setup']) {
 			rememberBookOrigin(href);
 			expect(readBookOrigin(), href).toEqual({ href: '/shelves/1', label: null });
 		}

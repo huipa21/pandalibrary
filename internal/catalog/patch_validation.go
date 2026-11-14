@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -10,7 +11,7 @@ import (
 const maximumAssociations = 1000
 
 func normalizeBookPatch(patch BookPatch, allowCoverOnly bool) (BookPatch, []string, error) {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 16)
 	if patch.LibraryID.Set && (patch.LibraryID.Value == nil || *patch.LibraryID.Value < 1) {
 		return BookPatch{}, nil, invalid("library ID must be positive")
 	}
@@ -71,6 +72,9 @@ func normalizeBookPatch(patch BookPatch, allowCoverOnly bool) (BookPatch, []stri
 			if value.Index != nil && (*value.Index < 0 || math.IsNaN(*value.Index) || math.IsInf(*value.Index, 0)) {
 				return BookPatch{}, nil, invalid("series index must be finite and nonnegative")
 			}
+			if value.Total != nil && *value.Total < 1 {
+				return BookPatch{}, nil, invalid("series total must be positive")
+			}
 			value.Name = name
 			patch.Series.Value = &value
 		}
@@ -123,6 +127,67 @@ func normalizeBookPatch(patch BookPatch, allowCoverOnly bool) (BookPatch, []stri
 		patch.Tags.Value = &values
 		fields = append(fields, "tags")
 	}
+	for _, field := range []struct {
+		name  string
+		label string
+		value *Optional[[]string]
+	}{
+		{"genres", "genre", &patch.Genres},
+		{"moods", "mood", &patch.Moods},
+	} {
+		if !field.value.Set {
+			continue
+		}
+		values, err := normalizeTerms(field.value.Value, field.name, field.label)
+		if err != nil {
+			return BookPatch{}, nil, err
+		}
+		field.value.Value = &values
+		fields = append(fields, field.name)
+	}
+	if patch.AgeRating.Set {
+		if patch.AgeRating.Value != nil && (*patch.AgeRating.Value < 0 || *patch.AgeRating.Value > MaxAgeRating) {
+			return BookPatch{}, nil, invalid("age rating must be between 0 and 21")
+		}
+		fields = append(fields, "age_rating")
+	}
+	if patch.ContentRating.Set {
+		if patch.ContentRating.Value != nil {
+			value := strings.TrimSpace(*patch.ContentRating.Value)
+			if !slices.Contains(ContentRatings, value) {
+				return BookPatch{}, nil, invalid("content rating must be one of everyone, teen, mature, adult")
+			}
+			patch.ContentRating.Value = &value
+		}
+		fields = append(fields, "content_rating")
+	}
+	if patch.Ratings.Set {
+		if patch.Ratings.Value == nil || len(*patch.Ratings.Value) > maximumAssociations {
+			return BookPatch{}, nil, invalid("ratings must be an array of at most 1000 entries")
+		}
+		values := append([]ProviderRating(nil), (*patch.Ratings.Value)...)
+		seen := make(map[string]struct{}, len(values))
+		for i := range values {
+			provider := strings.TrimSpace(values[i].Provider)
+			if provider == "" || len(provider) > 255 || !utf8.ValidString(provider) || strings.ContainsRune(provider, 0) {
+				return BookPatch{}, nil, invalid("rating provider is invalid")
+			}
+			if _, exists := seen[provider]; exists {
+				return BookPatch{}, nil, invalid("duplicate rating provider")
+			}
+			seen[provider] = struct{}{}
+			if rating := values[i].Rating; rating != nil && (math.IsNaN(*rating) || *rating < 0 || *rating > 5) {
+				return BookPatch{}, nil, invalid("rating must be between 0 and 5")
+			}
+			if count := values[i].Count; count != nil && *count < 0 {
+				return BookPatch{}, nil, invalid("rating count must be nonnegative")
+			}
+			values[i].Provider = provider
+		}
+		slices.SortFunc(values, func(a, b ProviderRating) int { return strings.Compare(a.Provider, b.Provider) })
+		patch.Ratings.Value = &values
+		fields = append(fields, "ratings")
+	}
 	if patch.Identifiers.Set {
 		if patch.Identifiers.Value == nil || len(*patch.Identifiers.Value) > maximumAssociations {
 			return BookPatch{}, nil, invalid("identifiers must be an array of at most 1000 entries")
@@ -131,7 +196,7 @@ func normalizeBookPatch(patch BookPatch, allowCoverOnly bool) (BookPatch, []stri
 		seen := make(map[string]struct{}, len(values))
 		for i := range values {
 			switch values[i].Scheme {
-			case "isbn13", "isbn10", "asin", "doi", "uuid", "openlibrary", "googlebooks", "neodb", "hardcover", "douban":
+			case "isbn13", "isbn10", "asin", "doi", "uuid", "openlibrary", "googlebooks", "neodb", "hardcover", "douban", "goodreads":
 			default:
 				return BookPatch{}, nil, invalid("identifier scheme is invalid")
 			}
@@ -153,6 +218,27 @@ func normalizeBookPatch(patch BookPatch, allowCoverOnly bool) (BookPatch, []stri
 		return BookPatch{}, nil, invalid("at least one book update is required")
 	}
 	return patch, fields, nil
+}
+
+func normalizeTerms(input *[]string, field, label string) ([]string, error) {
+	if input == nil || len(*input) > maximumAssociations {
+		return nil, invalid(field + " must be an array of at most 1000 entries")
+	}
+	values := append([]string(nil), (*input)...)
+	seen := make(map[string]struct{}, len(values))
+	for i := range values {
+		name, err := validateName(values[i], label+" name")
+		if err != nil {
+			return nil, err
+		}
+		key := sqliteFold(name)
+		if _, exists := seen[key]; exists {
+			return nil, invalid("duplicate " + label)
+		}
+		seen[key] = struct{}{}
+		values[i] = name
+	}
+	return values, nil
 }
 
 func validPublishedDate(value string) bool {

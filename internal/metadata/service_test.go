@@ -669,3 +669,101 @@ func TestConfigurationWaitHonorsLookupCancellation(t *testing.T) {
 		t.Fatal("configuration lock ignored lookup deadline")
 	}
 }
+
+func TestLookupCustomQueryProviderFilterAndSelection(t *testing.T) {
+	f := newServiceFixture(t)
+	ctx := context.Background()
+	var calls atomic.Int64
+	installStub(f.service, func(name string, _ context.Context, q Query) ([]Candidate, error) {
+		calls.Add(1)
+		if q.ISBN != "080442957X" || q.Title != "Custom Title" {
+			t.Errorf("custom query %s = %+v", name, q)
+		}
+		return []Candidate{stubCandidate(name)}, nil
+	})
+	custom := &Query{ISBN: " 0-8044-2957-x ", Title: " Custom Title ", Providers: []string{"googlebooks", "googlebooks"}}
+	result, err := f.service.LookupWith(ctx, administrator, 101, custom)
+	if err != nil || len(result.Providers) != 1 || result.Providers[0].Provider != "googlebooks" || calls.Load() != 1 ||
+		result.Query.ISBN != "080442957X" || !reflect.DeepEqual(result.Query.Providers, []string{"googlebooks"}) ||
+		!validSelectionKey(101, result.RequestKey) {
+		t.Fatalf("custom lookup = %+v, %v", result, err)
+	}
+	calls.Store(0)
+	again, err := f.service.LookupWith(ctx, administrator, 101, &Query{ISBN: "080442957X", Title: "Custom Title"})
+	// Without the filter both providers run, but googlebooks reuses the filtered lookup's cache row.
+	if err != nil || again.RequestKey != result.RequestKey || len(again.Providers) != 2 || calls.Load() != 1 {
+		t.Fatalf("provider filter changed cache identity: %+v calls=%d %v", again, calls.Load(), err)
+	}
+	book, err := f.service.Apply(ctx, administrator, 101, ApplyRequest{RequestKey: result.RequestKey,
+		Fields: map[string]Selection{"title": {Provider: "googlebooks", Reference: "record123"}}})
+	if err != nil || book.Title != "Chosen Title" {
+		t.Fatalf("custom selection apply = %+v, %v", book, err)
+	}
+	for _, invalid := range []Query{{}, {Author: "Only"}, {ISBN: "12345"}, {Title: "x", Providers: []string{"evil"}},
+		{Title: strings.Repeat("x", maxQueryText+1)}, {Title: "line\nbreak"}} {
+		if _, err := f.service.LookupWith(ctx, administrator, 101, &invalid); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("invalid query %+v = %v", invalid, err)
+		}
+	}
+	if _, err := f.service.LookupWith(ctx, catalog.Viewer{UserID: 2}, 101, custom); !errors.Is(err, catalog.ErrForbidden) {
+		t.Fatalf("non-admin custom lookup = %v", err)
+	}
+}
+
+func TestApplyGenresMoodsRatingsAndSeriesTotal(t *testing.T) {
+	f := newServiceFixture(t)
+	ctx := context.Background()
+	installStub(f.service, func(name string, _ context.Context, _ Query) ([]Candidate, error) {
+		c := stubCandidate(name)
+		total, age, count := int64(7), int64(13), int64(40)
+		value := map[string]float64{"openlibrary": 4.25, "googlebooks": 3.5}[name]
+		c.Series.Total, c.AgeRating, c.ContentRating = &total, &age, text("teen")
+		c.Genres, c.Moods, c.Rating, c.RatingCount = []string{"Fantasy", "Adventure"}, []string{"Dark"}, &value, &count
+		return []Candidate{c}, nil
+	})
+	lookup, err := f.service.Lookup(ctx, administrator, 101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := Selection{Provider: "openlibrary", Reference: "record123"}
+	fields := map[string]Selection{}
+	for _, field := range []string{"genres", "moods", "age_rating", "content_rating", "ratings", "series"} {
+		fields[field] = open
+	}
+	book, err := f.service.Apply(ctx, administrator, 101, ApplyRequest{RequestKey: lookup.RequestKey, Fields: fields})
+	if err != nil {
+		t.Fatalf("apply new fields: %v", err)
+	}
+	if !reflect.DeepEqual(book.Genres, []string{"Fantasy", "Adventure"}) || !reflect.DeepEqual(book.Moods, []string{"Dark"}) ||
+		book.AgeRating == nil || *book.AgeRating != 13 || book.ContentRating == nil || *book.ContentRating != "teen" ||
+		book.Series == nil || book.Series.Total == nil || *book.Series.Total != 7 ||
+		len(book.Ratings) != 1 || book.Ratings[0].Provider != "openlibrary" || *book.Ratings[0].Rating != 4.25 {
+		t.Fatalf("new fields = %+v", book)
+	}
+	book, err = f.service.Apply(ctx, administrator, 101, ApplyRequest{RequestKey: lookup.RequestKey,
+		Fields: map[string]Selection{"ratings": {Provider: "googlebooks", Reference: "record123"}}})
+	if err != nil || len(book.Ratings) != 2 || book.Ratings[0].Provider != "googlebooks" || *book.Ratings[0].Rating != 3.5 ||
+		book.Ratings[1].Provider != "openlibrary" || *book.Ratings[1].Count != 40 {
+		t.Fatalf("ratings upsert = %+v, %v", book.Ratings, err)
+	}
+	sources := map[string]string{}
+	for _, source := range book.FieldSources {
+		sources[source.Field] = source.Source
+	}
+	if sources["genres"] != "openlibrary" || sources["ratings"] != "googlebooks" {
+		t.Fatalf("new field sources = %+v", sources)
+	}
+}
+
+func TestUpsertRatingKeepsOtherProviders(t *testing.T) {
+	value := 4.0
+	existing := []catalog.ProviderRating{{Provider: "openlibrary", Rating: &value}, {Provider: "hardcover", Rating: &value}}
+	if got := upsertRating(existing, Candidate{Provider: "openlibrary"}); len(got) != 1 || got[0].Provider != "hardcover" {
+		t.Fatalf("unrated candidate = %+v", got)
+	}
+	updated := 2.5
+	got := upsertRating(existing, Candidate{Provider: "neodb", Rating: &updated})
+	if len(got) != 3 || got[0].Provider != "hardcover" || got[1].Provider != "neodb" || got[2].Provider != "openlibrary" {
+		t.Fatalf("upsert = %+v", got)
+	}
+}

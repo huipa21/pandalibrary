@@ -41,8 +41,8 @@ function book(id: number, index: number | null = id): Book {
 		description: null, language: null, publisher: null, published_date: null,
 		page_count: null, cover_url: null, cover_source: null,
 		authors: [{ id: 8, name: 'Author', role: 'author', position: 0 }],
-		series: { id: 9, name: 'Series', index }, tags: [{ id: 10, name: 'Tag' }],
-		identifiers: [], files: [], field_sources: [], created_at: stamp, updated_at: stamp
+		series: { id: 9, name: 'Series', index, total: null }, tags: [{ id: 10, name: 'Tag' }],
+		identifiers: [], files: [], genres: [], moods: [], age_rating: null, content_rating: null, ratings: [], field_sources: [], created_at: stamp, updated_at: stamp
 	};
 }
 

@@ -137,6 +137,12 @@ func TestBookPatchValidationAndRollback(t *testing.T) {
 		`{"tags":["Tag","tag"]}`,
 		`{"identifiers":[{"scheme":"unknown","value":"x"}]}`,
 		`{"identifiers":[{"scheme":"isbn13","value":"x"},{"scheme":"isbn13","value":" x "}]}`,
+		`{"genres":null}`, `{"genres":["Fantasy","fantasy"]}`, `{"moods":[" "]}`, `{"moods":["Dark","DARK"]}`,
+		`{"age_rating":-1}`, `{"age_rating":22}`, `{"content_rating":"kids"}`,
+		`{"ratings":null}`, `{"ratings":[{"provider":" ","rating":4}]}`,
+		`{"ratings":[{"provider":"neodb","rating":4},{"provider":"neodb","rating":3}]}`,
+		`{"ratings":[{"provider":"neodb","rating":5.1}]}`, `{"ratings":[{"provider":"neodb","rating":-0.5}]}`,
+		`{"ratings":[{"provider":"neodb","count":-1}]}`, `{"series":{"name":"X","total":0}}`,
 	} {
 		if _, err := fixture.service.UpdateBook(ctx, admin, 101, bookPatch(t, input)); !errors.Is(err, ErrInvalid) {
 			t.Errorf("patch %s returned %v, want invalid", input, err)
@@ -324,5 +330,77 @@ func TestLibraryMoveRejectsDuplicateAndInvalidTargets(t *testing.T) {
 				t.Fatalf("rejected move changed source: %+v, %v", book, err)
 			}
 		})
+	}
+}
+
+func TestUpdateBookExtendedMetadata(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	ctx := context.Background()
+	admin := Viewer{UserID: 1, IsAdmin: true}
+	before, err := fixture.service.GetBook(ctx, admin, 101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, empty := range []string{`"genres":[]`, `"moods":[]`, `"ratings":[]`, `"age_rating":null`, `"content_rating":null`} {
+		if !strings.Contains(string(encoded), empty) {
+			t.Fatalf("book JSON missing %s: %s", empty, encoded)
+		}
+	}
+	book, err := fixture.service.UpdateBook(ctx, admin, 101, bookPatch(t, `{
+		"genres":[" Science Fiction ","Fantasy"], "moods":["Dark"], "age_rating":13, "content_rating":" teen ",
+		"ratings":[{"provider":"neodb","rating":4.25,"count":12},{"provider":"hardcover","rating":null,"count":null}],
+		"series":{"name":"Saga","index":2,"total":5},
+		"identifiers":[{"scheme":"goodreads","value":"12345"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rating, count := 4.25, int64(12)
+	wantRatings := []ProviderRating{{Provider: "hardcover"}, {Provider: "neodb", Rating: &rating, Count: &count}}
+	if !reflect.DeepEqual(book.Genres, []string{"Science Fiction", "Fantasy"}) || !reflect.DeepEqual(book.Moods, []string{"Dark"}) ||
+		book.AgeRating == nil || *book.AgeRating != 13 || book.ContentRating == nil || *book.ContentRating != "teen" ||
+		!reflect.DeepEqual(book.Ratings, wantRatings) || book.Series == nil || book.Series.Total == nil ||
+		*book.Series.Total != 5 || len(book.Identifiers) != 1 || book.Identifiers[0].Scheme != "goodreads" {
+		t.Fatalf("extended metadata = %+v", book)
+	}
+	sources := map[string]bool{}
+	for _, source := range book.FieldSources {
+		if source.Source == "manual" {
+			sources[source.Field] = true
+		}
+	}
+	for _, field := range []string{"genres", "moods", "age_rating", "content_rating", "ratings", "series", "identifiers"} {
+		if !sources[field] {
+			t.Errorf("missing manual source for %s", field)
+		}
+	}
+	var indexedTags string
+	if err := fixture.db.Reader.QueryRowContext(ctx, `SELECT tags FROM books_fts WHERE rowid = 101`).Scan(&indexedTags); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(indexedTags, "Science Fiction Fantasy") {
+		t.Fatalf("indexed tags = %q", indexedTags)
+	}
+
+	cleared, err := fixture.service.UpdateBook(ctx, admin, 101, bookPatch(t, `{
+		"genres":[], "moods":[], "age_rating":null, "content_rating":null, "ratings":[], "series":{"name":"Saga"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cleared.Genres) != 0 || len(cleared.Moods) != 0 || cleared.AgeRating != nil || cleared.ContentRating != nil ||
+		len(cleared.Ratings) != 0 || cleared.Series == nil || cleared.Series.Total != nil {
+		t.Fatalf("cleared extended metadata = %+v", cleared)
+	}
+	encoded, err = json.Marshal(cleared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"genres":[]`) || !strings.Contains(string(encoded), `"ratings":[]`) {
+		t.Fatalf("cleared JSON = %s", encoded)
 	}
 }

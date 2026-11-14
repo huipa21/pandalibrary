@@ -61,12 +61,20 @@ func (h *metadataHTTP) lookup(w http.ResponseWriter, r *http.Request, viewer cat
 	if !ok {
 		return
 	}
-	// No caller-controlled query or API destination is accepted.
-	if r.ContentLength != 0 || r.URL.RawQuery != "" {
-		WriteProblem(w, h.common.logger, http.StatusBadRequest, "Candidate lookup uses the catalog book, not request parameters.")
+	// An optional JSON body supplies an administrator search; no API destination is accepted.
+	if r.URL.RawQuery != "" {
+		WriteProblem(w, h.common.logger, http.StatusBadRequest, "Candidate lookup does not accept URL query parameters.")
 		return
 	}
-	result, err := h.service.Lookup(r.Context(), viewer, id)
+	var custom *metadata.Query
+	if r.ContentLength != 0 {
+		var query metadata.Query
+		if !h.common.decodeJSON(w, r, &query) {
+			return
+		}
+		custom = &query
+	}
+	result, err := h.service.LookupWith(r.Context(), viewer, id, custom)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

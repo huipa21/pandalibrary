@@ -29,8 +29,10 @@ const book: Book = {
 		{ id: 4, name: 'A Writer', role: 'author', position: 0 },
 		{ id: 5, name: 'A Translator', role: 'translator', position: 1 }
 	],
-	series: { id: 8, name: 'The Reading Series', index: 2 },
+	series: { id: 8, name: 'The Reading Series', index: 2, total: 5 },
 	tags: [{ id: 9, name: 'Fantasy' }],
+	genres: ['Fantasy', 'Adventure'], moods: ['Hopeful'], age_rating: 13, content_rating: 'teen',
+	ratings: [{ provider: 'googlebooks', rating: 4.2, count: 1234 }],
 	identifiers: [{ scheme: 'isbn13', value: '9781234567890' }],
 	files: [
 		{ id: 31, format: 'epub', size_bytes: 4096, download_url: `/api/v1/books/21/files/31?v=${'a'.repeat(64)}`, original_filename: 'library.epub', created_at: stamp },
@@ -43,7 +45,7 @@ const book: Book = {
 function relatedBook(id: number, title: string, index: number): Book {
 	return {
 		...book, id, title, sort_title: title, subtitle: null, description: null,
-		series: { id: 8, name: 'The Reading Series', index }, identifiers: [], field_sources: [],
+		series: { id: 8, name: 'The Reading Series', index, total: 5 }, identifiers: [], field_sources: [],
 		files: [{ ...book.files[0], id: id * 10, download_url: `/api/v1/books/${id}/files/${id * 10}?v=${'a'.repeat(64)}` }]
 	};
 }
@@ -719,8 +721,16 @@ test('keeps metadata in Details and library and collection tags in Files', async
 	await page.goto('/books/21');
 	const card = page.getByRole('region', { name: 'Details', exact: true });
 	await expect(card.locator('dt')).toHaveText([
-		'Publisher', 'Publication date', 'Language', 'Pages', 'ISBN', 'Metadata source', 'Cover source'
+		'Publisher', 'Publication date', 'Language', 'Pages', 'ISBN', 'Series', 'Genres', 'Moods',
+		'Age rating', 'Content rating', 'Metadata source', 'Cover source'
 	]);
+	const fact = (label: string) => card.locator('dl > div').filter({ has: page.getByText(label, { exact: true }) }).locator('dd');
+	await expect(fact('Series')).toHaveText('The Reading Series · #2 of 5');
+	await expect(fact('Series').getByRole('link')).toHaveAttribute('href', '/series/8');
+	await expect(fact('Genres').getByRole('listitem')).toHaveText(['Fantasy', 'Adventure']);
+	await expect(fact('Moods').getByRole('listitem')).toHaveText(['Hopeful']);
+	await expect(fact('Age rating')).toHaveText('13+');
+	await expect(fact('Content rating')).toHaveText('Teen');
 	const publication = card.locator('dl > div').filter({
 		has: page.getByText('Publication date', { exact: true })
 	}).locator('dd');
@@ -729,6 +739,11 @@ test('keeps metadata in Details and library and collection tags in Files', async
 	await expect(card.getByRole('link', { name: 'Fantasy', exact: true })).toHaveCount(0);
 	const hero = page.locator('header').filter({ has: page.getByRole('heading', { name: book.title, exact: true }) });
 	await expect(hero.getByRole('link', { name: 'Fantasy', exact: true })).toHaveAttribute('href', '/tags/9');
+	const ratings = hero.getByRole('list', { name: 'Provider ratings', exact: true });
+	await expect(ratings.getByRole('listitem')).toHaveCount(1);
+	await expect(ratings.getByRole('listitem')).toContainText('4.2');
+	await expect(ratings.getByRole('listitem')).toContainText('Google Books (1,234)');
+	await expect(ratings.getByText('Google Books: 4.2 out of 5 from 1,234 ratings', { exact: true })).toBeAttached();
 	await expect(hero.getByRole('link', { name: /Open Library:/ })).toBeVisible();
 	const identifiers = page.getByRole('region', { name: 'Identifiers', exact: true });
 	await expect(identifiers).toContainText('isbn13: 9781234567890');
@@ -920,7 +935,7 @@ test('opens the metadata editor from the administrator details card', async ({ p
 	await page.goto('/books/21');
 	const card = page.getByRole('region', { name: 'Details', exact: true });
 	const edit = card.getByRole('link', { name: 'Edit metadata', exact: true });
-	await expect(edit).toHaveAttribute('href', '/books/21/edit');
+	await expect(edit).toHaveAttribute('href', '/books/21/metadata');
 	await expect(edit).toHaveAttribute('title', 'Edit metadata');
 	await expect(edit.locator('svg')).toHaveCSS('width', '16px');
 	await edit.focus();
@@ -932,8 +947,8 @@ test('opens the metadata editor from the administrator details card', async ({ p
 	expect(editBox.height).toBe(32);
 	expect(editBox.x).toBeGreaterThan(headingBox.x + headingBox.width);
 	await edit.click();
-	await expect(page).toHaveURL('/books/21/edit');
-	await expect(page.getByRole('heading', { name: 'Edit metadata: The Emerald Library' })).toBeVisible();
+	await expect(page).toHaveURL('/books/21/metadata');
+	await expect(page.getByRole('form', { name: 'Book metadata' })).toBeVisible();
 });
 
 test('hides edit metadata and shows the write-review button to non-admins', async ({ page }) => {
@@ -1141,7 +1156,7 @@ test.describe('details card permission overrides', () => {
 		await expect(root.getByRole('heading', { name: 'Details', exact: true })).toBeVisible();
 		await expect(edit).toHaveCount(0);
 		await root.getByLabel('Context permission').check();
-		await expect(edit).toHaveAttribute('href', '/books/21/edit');
+		await expect(edit).toHaveAttribute('href', '/books/21/metadata');
 		await root.getByLabel('Edit permission override').selectOption('deny');
 		await expect(edit).toHaveCount(0);
 		await root.getByLabel('Context permission').uncheck();
@@ -1152,6 +1167,6 @@ test.describe('details card permission overrides', () => {
 		await root.getByLabel('Offline').uncheck();
 		await expect(edit).toBeVisible();
 		await root.getByRole('button', { name: 'Switch book' }).click();
-		await expect(edit).toHaveAttribute('href', '/books/22/edit');
+		await expect(edit).toHaveAttribute('href', '/books/22/metadata');
 	});
 });

@@ -1,3 +1,4 @@
+import { withBookDefaults } from '#lib/catalog/book-defaults.js';
 import type { Book, BookFile } from '#lib/catalog/types.js';
 import type { JsonValue } from '#lib/api/client.js';
 import type {
@@ -403,7 +404,7 @@ export async function downloadedBooks(account: number): Promise<DownloadedBook[]
 		for (const item of books) {
 			const saved = await result<StoredFile[]>(files.getAll(IDBKeyRange.only([account, item.bookId])));
 			downloaded.push({
-				book: item.book,
+				book: withBookDefaults(item.book),
 				cover: item.cover,
 				fileIds: saved.filter((file) =>
 					file.blob instanceof Blob &&

@@ -5,11 +5,13 @@ import {
 	buildManualPatch,
 	copyCandidateField,
 	createDraft,
+	identifierValue,
 	InvalidMetadataDraftError,
 	metadataDirty,
 	restoreField,
 	type MetadataDraft,
-	type MetadataPatch
+	type MetadataPatch,
+	withIdentifier
 } from './editor.js';
 import { InvalidTagsError } from './tags.js';
 import { MERGE_FIELDS, type Candidate } from './types.js';
@@ -23,7 +25,9 @@ const book: Book = {
 		{ id: 2, name: 'Second', role: 'translator', position: 1 },
 		{ id: 1, name: 'First', role: 'author', position: 0 }
 	],
-	series: { id: 3, name: 'Saga', index: null }, tags: [{ id: 4, name: 'Fantasy' }],
+	series: { id: 3, name: 'Saga', index: null, total: null }, tags: [{ id: 4, name: 'Fantasy' }],
+	genres: ['Literary'], moods: [], age_rating: 12, content_rating: 'teen',
+	ratings: [{ provider: 'neodb', rating: 3.5, count: 4 }],
 	identifiers: [{ scheme: 'isbn13', value: '9780000000001' }],
 	files: [], field_sources: [], created_at: '', updated_at: ''
 };
@@ -32,7 +36,8 @@ const candidate: Candidate = {
 	provider: 'openlibrary', reference: '/works/OL1W', title: 'Candidate', subtitle: null,
 	description: 'Candidate description', language: null, publisher: 'New publisher',
 	published_date: '2024', page_count: 321, authors: [{ name: 'Editor', role: 'editor' }],
-	series: { name: 'New series', index: 2.5 }, tags: ['Epic'],
+	series: { name: 'New series', index: 2.5, total: null }, tags: ['Epic'],
+	genres: ['Fiction'], moods: ['dark'], age_rating: 16, content_rating: 'mature', rating: 4, rating_count: 10,
 	identifiers: [{ scheme: 'doi', value: '10.123/test' }], cover_url: 'https://example.org/cover'
 };
 
@@ -44,7 +49,7 @@ describe('metadata editor drafts', () => {
 	it('preserves existing author order, roles, nullable series index, and identifiers without sharing arrays', () => {
 		const draft = createDraft(book);
 		expect(draft.authors).toEqual([{ name: 'First', role: 'author' }, { name: 'Second', role: 'translator' }]);
-		expect(draft.series).toEqual({ name: 'Saga', index: '' });
+		expect(draft.series).toEqual({ name: 'Saga', index: '', total: '' });
 		expect(draft.identifiers).toEqual(book.identifiers);
 		draft.tags.push('New');
 		draft.authors.pop();
@@ -67,7 +72,7 @@ describe('metadata editor drafts', () => {
 		for (const field of MERGE_FIELDS) draft = copyCandidateField(draft, source, field);
 		expect(draft).toMatchObject({
 			title: 'Candidate', subtitle: '', language: '', page_count: '321',
-			series: { name: 'New series', index: '2.5' }, authors: candidate.authors,
+			series: { name: 'New series', index: '2.5', total: '' }, authors: candidate.authors,
 			tags: candidate.tags, identifiers: candidate.identifiers
 		});
 		expect(original).toEqual(createDraft(book));
@@ -75,10 +80,10 @@ describe('metadata editor drafts', () => {
 		expect(copyCandidateField(draft, candidate, 'cover')).toBe(draft);
 		expect(restoreField(draft, book, 'cover')).toBe(draft);
 		expect(restoreField(draft, book, 'authors').authors).toEqual(original.authors);
-		expect(restoreField(draft, book, 'series').series).toEqual({ name: 'Saga', index: '' });
+		expect(restoreField(draft, book, 'series').series).toEqual({ name: 'Saga', index: '', total: '' });
 		expect(restoreField(draft, book, 'title')).toEqual({ ...draft, title: 'Current' });
 		expect(copyCandidateField(draft, { ...source, page_count: null }, 'page_count').page_count).toBe('');
-		expect(copyCandidateField(draft, { ...source, series: null }, 'series').series).toEqual({ name: '', index: '' });
+		expect(copyCandidateField(draft, { ...source, series: null }, 'series').series).toEqual({ name: '', index: '', total: '' });
 		draft.authors.pop();
 		draft.tags.pop();
 		draft.identifiers.pop();
@@ -101,7 +106,7 @@ describe('metadata editor drafts', () => {
 	it('sends optional clears as null and array clears as explicit empty arrays', () => {
 		expect(patch({
 			subtitle: '', description: '  ', language: '', publisher: '', published_date: '',
-			page_count: '', series: { name: '', index: '' }, authors: [], tags: [], identifiers: []
+			page_count: '', series: { name: '', index: '', total: '' }, authors: [], tags: [], identifiers: []
 		})).toEqual({
 			subtitle: null, description: null, language: null, publisher: null, published_date: null,
 			page_count: null, series: null, authors: [], tags: [], identifiers: []
@@ -116,11 +121,11 @@ describe('metadata editor drafts', () => {
 	it('keeps edited authors in order with their roles and keeps a nullable series index', () => {
 		expect(patch({
 			authors: [{ name: ' First revised ', role: 'author' }, { name: 'Second', role: 'translator' }],
-			series: { name: 'Changed saga', index: '' },
+			series: { name: 'Changed saga', index: '', total: '' },
 			identifiers: [{ scheme: 'isbn13', value: ' 9780000000002 ' }]
 		})).toEqual({
 			authors: [{ name: 'First revised', role: 'author' }, { name: 'Second', role: 'translator' }],
-			series: { name: 'Changed saga', index: null },
+			series: { name: 'Changed saga', index: null, total: null },
 			identifiers: [{ scheme: 'isbn13', value: '9780000000002' }]
 		});
 	});
@@ -133,20 +138,20 @@ describe('metadata editor drafts', () => {
 	);
 
 	it('accepts positive safe integer page counts and nonnegative decimal series indexes', () => {
-		expect(patch({ page_count: ' 123 ', series: { name: 'Saga', index: '2.5' } }))
-			.toEqual({ page_count: 123, series: { name: 'Saga', index: 2.5 } });
+		expect(patch({ page_count: ' 123 ', series: { name: 'Saga', index: '2.5', total: '' } }))
+			.toEqual({ page_count: 123, series: { name: 'Saga', index: 2.5, total: null } });
 		expect(patch({ page_count: String(Number.MAX_SAFE_INTEGER) }).page_count).toBe(Number.MAX_SAFE_INTEGER);
-		expect(patch({ series: { name: 'Saga', index: '0' } }).series).toEqual({ name: 'Saga', index: 0 });
+		expect(patch({ series: { name: 'Saga', index: '0', total: '' } }).series).toEqual({ name: 'Saga', index: 0, total: null });
 		expect(patch({ page_count: '0100', title: ' Current ' })).toEqual({});
 	});
 
 	it.each(['-1', 'Infinity', 'NaN', '1e309', '0x10', '1.2.3'])('rejects invalid series index %s', (index) => {
-		expect(() => patch({ series: { name: 'Saga', index } })).toThrow('series');
+		expect(() => patch({ series: { name: 'Saga', index, total: '' } })).toThrow('series');
 	});
 
 	it('rejects missing title, series name with index, invalid dates, associations and tags', () => {
 		expect(() => patch({ title: '  ' })).toThrow('title');
-		expect(() => patch({ series: { name: '', index: '1' } })).toThrow('series');
+		expect(() => patch({ series: { name: '', index: '1', total: '' } })).toThrow('series');
 		expect(() => patch({ published_date: '2023-02-29' })).toThrow('published_date');
 		expect(patch({ published_date: '2024-02-29' })).toEqual({ published_date: '2024-02-29' });
 		expect(() => patch({ authors: [{ name: '', role: 'author' }] })).toThrow('authors');
@@ -154,6 +159,50 @@ describe('metadata editor drafts', () => {
 		expect(() => patch({ identifiers: [{ scheme: 'unknown', value: 'x' }] })).toThrow('identifiers');
 		expect(() => patch({ identifiers: [{ scheme: 'doi', value: '' }] })).toThrow('identifiers');
 		expect(() => patch({ tags: ['Fantasy', ' fantasy '] })).toThrow(InvalidTagsError);
+	});
+
+	it('edits genres, moods, age and content ratings and series totals as manual fields', () => {
+		const draft = createDraft(book);
+		expect(draft).toMatchObject({ genres: ['Literary'], moods: [], age_rating: '12', content_rating: 'teen' });
+		expect(patch({
+			genres: [' Literary ', 'Mystery'], moods: ['Dark'], age_rating: '', content_rating: 'adult',
+			series: { name: 'Saga', index: '', total: ' 7 ' }
+		})).toEqual({
+			genres: ['Literary', 'Mystery'], moods: ['Dark'], age_rating: null, content_rating: 'adult',
+			series: { name: 'Saga', index: null, total: 7 }
+		});
+		expect(patch({ genres: ['Literary'], age_rating: '12', content_rating: 'teen' })).toEqual({});
+		expect(() => patch({ genres: ['A', 'a'] })).toThrow('genres');
+		expect(() => patch({ moods: [''] })).toThrow('moods');
+		expect(() => patch({ age_rating: '22' })).toThrow('age_rating');
+		expect(() => patch({ age_rating: '1.5' })).toThrow('age_rating');
+		expect(() => patch({ content_rating: 'violent' })).toThrow('content_rating');
+		expect(() => patch({ series: { name: 'Saga', index: '', total: '0' } })).toThrow('series');
+		expect(() => patch({ series: { name: '', index: '', total: '3' } })).toThrow('series');
+		expect(patch({ identifiers: [{ scheme: 'goodreads', value: '123' }] })).toEqual({ identifiers: [{ scheme: 'goodreads', value: '123' }] });
+	});
+
+	it('copies one provider rating without touching other providers and never patches ratings manually', () => {
+		const draft = copyCandidateField(createDraft(book), candidate, 'ratings');
+		expect(draft.ratings).toEqual([
+			{ provider: 'neodb', rating: 3.5, count: 4 },
+			{ provider: 'openlibrary', rating: 4, count: 10 }
+		]);
+		expect(buildManualPatch(book, draft, {})).toEqual({});
+		expect(restoreField(draft, book, 'ratings').ratings).toEqual(book.ratings);
+		const copied = copyCandidateField(copyCandidateField(draft, candidate, 'age_rating'), candidate, 'content_rating');
+		expect(copied).toMatchObject({ age_rating: '16', content_rating: 'mature' });
+	});
+
+	it('edits the first identifier of a scheme through the ISBN shortcuts', () => {
+		const draft = createDraft(book);
+		expect(identifierValue(draft, 'isbn13')).toBe('9780000000001');
+		expect(identifierValue(draft, 'isbn10')).toBe('');
+		expect(withIdentifier(draft, 'isbn10', '0000000001').identifiers).toEqual([
+			{ scheme: 'isbn13', value: '9780000000001' }, { scheme: 'isbn10', value: '0000000001' }
+		]);
+		expect(withIdentifier(draft, 'isbn13', '').identifiers).toEqual([]);
+		expect(withIdentifier(draft, 'isbn10', '')).toBe(draft);
 	});
 
 	it('detects manual changes, invalid drafts and provider selections without throwing', () => {

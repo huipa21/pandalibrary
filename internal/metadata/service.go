@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +20,8 @@ import (
 	"pandalibrary/internal/db/sqlc"
 )
 
-const cacheSchema = 1
+// cacheSchema 2 adds genres, moods, ratings, and series totals to cached candidates.
+const cacheSchema = 2
 
 // Service owns provider configuration, bounded lookups, and cached selections.
 type Service struct {
@@ -218,7 +221,7 @@ func bookQuery(book catalog.Book) Query {
 	for _, scheme := range []string{"isbn13", "isbn10"} {
 		for _, id := range book.Identifiers {
 			if id.Scheme == scheme && strings.TrimSpace(id.Value) != "" {
-				return Query{ISBN: strings.ToUpper(strings.NewReplacer("-", "", " ", "").Replace(id.Value))}
+				return Query{ISBN: normalizeISBN(id.Value)}
 			}
 		}
 	}
@@ -236,21 +239,87 @@ func bookQuery(book catalog.Book) Query {
 }
 
 func requestKey(bookID int64, query Query) string {
+	// Provider filters do not change any provider's results, so they share cache rows.
+	query.Providers = nil
 	data, _ := json.Marshal(query)
 	sum := sha256.Sum256(data)
 	return fmt.Sprintf("book:%d:%s", bookID, hex.EncodeToString(sum[:]))
 }
 
+const maxQueryText = 256
+
+func normalizeISBN(value string) string {
+	return strings.ToUpper(strings.NewReplacer("-", "", " ", "").Replace(value))
+}
+
+var isbnPattern = regexp.MustCompile(`^(?:[0-9]{9}[0-9X]|[0-9]{13})$`)
+
+// normalizeQuery validates an administrator-supplied lookup query.
+func normalizeQuery(q Query) (Query, error) {
+	result := Query{}
+	for _, field := range []struct {
+		value  string
+		target *string
+	}{{q.ISBN, &result.ISBN}, {q.Title, &result.Title}, {q.Author, &result.Author}, {q.Language, &result.Language}} {
+		value := strings.TrimSpace(field.value)
+		if !utf8.ValidString(value) || utf8.RuneCountInString(value) > maxQueryText ||
+			strings.IndexFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+			return Query{}, ErrInvalid
+		}
+		*field.target = value
+	}
+	if result.ISBN != "" {
+		result.ISBN = normalizeISBN(result.ISBN)
+		if !isbnPattern.MatchString(result.ISBN) {
+			return Query{}, ErrInvalid
+		}
+	}
+	if result.ISBN == "" && result.Title == "" {
+		return Query{}, ErrInvalid
+	}
+	if len(q.Providers) > len(providerOrigins) {
+		return Query{}, ErrInvalid
+	}
+	seen := map[string]bool{}
+	for _, name := range q.Providers {
+		if _, ok := providerOrigins[name]; !ok {
+			return Query{}, ErrInvalid
+		}
+		if !seen[name] {
+			result.Providers = append(result.Providers, name)
+			seen[name] = true
+		}
+	}
+	return result, nil
+}
+
 // Lookup queries enabled providers concurrently, ordered by configured priority.
 func (s *Service) Lookup(ctx context.Context, viewer catalog.Viewer, bookID int64) (LookupResponse, error) {
+	return s.LookupWith(ctx, viewer, bookID, nil)
+}
+
+// LookupWith is Lookup with an optional administrator-supplied query; nil derives
+// the query from the catalog book. Query.Providers restricts the enabled providers used.
+func (s *Service) LookupWith(ctx context.Context, viewer catalog.Viewer, bookID int64, custom *Query) (LookupResponse, error) {
 	if err := admin(viewer); err != nil {
 		return LookupResponse{}, err
+	}
+	var query Query
+	if custom != nil {
+		normalized, err := normalizeQuery(*custom)
+		if err != nil {
+			return LookupResponse{}, err
+		}
+		query = normalized
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	book, err := s.catalog.GetBook(ctx, viewer, bookID)
 	if err != nil {
 		return LookupResponse{}, err
+	}
+	if custom == nil {
+		query = bookQuery(book)
 	}
 	if err := waitForLock(ctx, s.config.TryRLock); err != nil {
 		return LookupResponse{}, err
@@ -260,11 +329,10 @@ func (s *Service) Lookup(ctx context.Context, viewer catalog.Viewer, bookID int6
 	if err != nil {
 		return LookupResponse{}, fmt.Errorf("load lookup providers: %w", err)
 	}
-	query := bookQuery(book)
 	response := LookupResponse{RequestKey: requestKey(bookID, query), Query: query, Providers: []ProviderResult{}}
 	enabled := []sqlc.MetadataProvider{}
 	for _, row := range rows {
-		if row.Enabled != 0 {
+		if row.Enabled != 0 && (len(query.Providers) == 0 || slices.Contains(query.Providers, row.Provider)) {
 			enabled = append(enabled, row)
 		}
 	}

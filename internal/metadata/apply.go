@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 
 	"pandalibrary/internal/catalog"
@@ -23,7 +24,7 @@ func (s *Service) Apply(ctx context.Context, viewer catalog.Viewer, bookID int64
 	if err := s.catalog.CheckVisible(ctx, viewer, bookID); err != nil {
 		return catalog.Book{}, err
 	}
-	if !validSelectionKey(bookID, request.RequestKey) || len(request.Fields) == 0 || len(request.Fields) > 12 {
+	if !validSelectionKey(bookID, request.RequestKey) || len(request.Fields) == 0 || len(request.Fields) > maxApplyFields {
 		return catalog.Book{}, ErrInvalid
 	}
 	if err := waitForLock(ctx, s.config.TryRLock); err != nil {
@@ -57,7 +58,7 @@ func (s *Service) Apply(ctx context.Context, viewer catalog.Viewer, bookID int64
 		case "series":
 			patch.Series.Set = true
 			if candidate.Series != nil {
-				patch.Series.Value = &catalog.SeriesInput{Name: candidate.Series.Name, Index: candidate.Series.Index}
+				patch.Series.Value = &catalog.SeriesInput{Name: candidate.Series.Name, Index: candidate.Series.Index, Total: candidate.Series.Total}
 			}
 		case "authors":
 			authors := make([]catalog.AuthorInput, 0, len(candidate.Authors))
@@ -67,6 +68,22 @@ func (s *Service) Apply(ctx context.Context, viewer catalog.Viewer, bookID int64
 			patch.Authors = catalog.Optional[[]catalog.AuthorInput]{Set: true, Value: &authors}
 		case "tags":
 			patch.Tags = catalog.Optional[[]string]{Set: true, Value: &candidate.Tags}
+		case "genres":
+			patch.Genres = catalog.Optional[[]string]{Set: true, Value: nonNil(candidate.Genres)}
+		case "moods":
+			patch.Moods = catalog.Optional[[]string]{Set: true, Value: nonNil(candidate.Moods)}
+		case "age_rating":
+			patch.AgeRating = catalog.Optional[int64]{Set: true, Value: candidate.AgeRating}
+		case "content_rating":
+			patch.ContentRating = catalog.Optional[string]{Set: true, Value: candidate.ContentRating}
+		case "ratings":
+			// Ratings replace all rows, so merge the selected provider's row into the current ones.
+			book, err := s.catalog.GetBook(ctx, viewer, bookID)
+			if err != nil {
+				return catalog.Book{}, err
+			}
+			ratings := upsertRating(book.Ratings, candidate)
+			patch.Ratings = catalog.Optional[[]catalog.ProviderRating]{Set: true, Value: &ratings}
 		case "identifiers":
 			ids := make([]catalog.Identifier, 0, len(candidate.Identifiers))
 			for _, id := range candidate.Identifiers {
@@ -84,6 +101,32 @@ func (s *Service) Apply(ctx context.Context, viewer catalog.Viewer, bookID int64
 		}
 	}
 	return s.catalog.ApplyMetadataWithPatch(ctx, viewer, bookID, patch, sources, cover, request.Patch)
+}
+
+// maxApplyFields is the number of distinct merge fields Apply accepts.
+const maxApplyFields = 17
+
+func nonNil(values []string) *[]string {
+	if values == nil {
+		values = []string{}
+	}
+	return &values
+}
+
+// upsertRating replaces the candidate provider's row and keeps other providers' rows.
+// A candidate without a rating removes that provider's row.
+func upsertRating(existing []catalog.ProviderRating, candidate Candidate) []catalog.ProviderRating {
+	result := make([]catalog.ProviderRating, 0, len(existing)+1)
+	for _, row := range existing {
+		if row.Provider != candidate.Provider {
+			result = append(result, row)
+		}
+	}
+	if candidate.Rating != nil || candidate.RatingCount != nil {
+		result = append(result, catalog.ProviderRating{Provider: candidate.Provider, Rating: candidate.Rating, Count: candidate.RatingCount})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Provider < result[j].Provider })
+	return result
 }
 
 // Cover retrieves a cached candidate's cover for administrator preview.

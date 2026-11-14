@@ -22,11 +22,13 @@ type Provider interface {
 }
 
 // Query is either an ISBN or a title with an optional first author and language.
+// Providers optionally restricts the lookup to the named enabled providers.
 type Query struct {
-	ISBN     string `json:"isbn,omitempty"`
-	Title    string `json:"title,omitempty"`
-	Author   string `json:"author,omitempty"`
-	Language string `json:"language,omitempty"`
+	ISBN      string   `json:"isbn,omitempty"`
+	Title     string   `json:"title,omitempty"`
+	Author    string   `json:"author,omitempty"`
+	Language  string   `json:"language,omitempty"`
+	Providers []string `json:"providers,omitempty"`
 }
 
 // Person is a contributor and their catalog role.
@@ -35,10 +37,11 @@ type Person struct {
 	Role string `json:"role"`
 }
 
-// Series is a series name with an optional position.
+// Series is a series name with an optional position and total number of books.
 type Series struct {
 	Name  string   `json:"name"`
 	Index *float64 `json:"index"`
+	Total *int64   `json:"total"`
 }
 
 // Identifier is a recognized bibliographic identifier.
@@ -49,20 +52,27 @@ type Identifier struct {
 
 // Candidate is a provider record in the common metadata representation.
 type Candidate struct {
-	Provider      string       `json:"provider"`
-	Reference     string       `json:"reference"`
-	Title         string       `json:"title"`
-	Subtitle      *string      `json:"subtitle"`
-	Authors       []Person     `json:"authors"`
-	Description   *string      `json:"description"`
-	Publisher     *string      `json:"publisher"`
-	PublishedDate *string      `json:"published_date"`
-	Language      *string      `json:"language"`
-	PageCount     *int64       `json:"page_count"`
-	Series        *Series      `json:"series"`
-	Tags          []string     `json:"tags"`
-	Identifiers   []Identifier `json:"identifiers"`
-	CoverURL      *string      `json:"cover_url"`
+	Provider      string   `json:"provider"`
+	Reference     string   `json:"reference"`
+	Title         string   `json:"title"`
+	Subtitle      *string  `json:"subtitle"`
+	Authors       []Person `json:"authors"`
+	Description   *string  `json:"description"`
+	Publisher     *string  `json:"publisher"`
+	PublishedDate *string  `json:"published_date"`
+	Language      *string  `json:"language"`
+	PageCount     *int64   `json:"page_count"`
+	Series        *Series  `json:"series"`
+	Tags          []string `json:"tags"`
+	Genres        []string `json:"genres"`
+	Moods         []string `json:"moods"`
+	AgeRating     *int64   `json:"age_rating"`
+	ContentRating *string  `json:"content_rating"`
+	// Rating is the provider's community rating normalized to 0–5.
+	Rating      *float64     `json:"rating"`
+	RatingCount *int64       `json:"rating_count"`
+	Identifiers []Identifier `json:"identifiers"`
+	CoverURL    *string      `json:"cover_url"`
 }
 
 // ProviderSettings omits the write-only token.

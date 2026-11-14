@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -252,6 +254,8 @@ func finish(name string, candidates []Candidate) ([]Candidate, error) {
 			c.Authors = []Person{}
 		}
 		c.Tags = unique(c.Tags)
+		c.Genres = unique(c.Genres)
+		c.Moods = unique(c.Moods)
 		c.Identifiers = append(c.Identifiers, Identifier{Scheme: name, Value: c.Reference})
 		if c.CoverURL != nil && strings.HasPrefix(*c.CoverURL, "http://") && name != "neodb" {
 			c.CoverURL = text("https://" + strings.TrimPrefix(*c.CoverURL, "http://"))
@@ -275,12 +279,20 @@ type openDocument struct {
 	Subjects  []string `json:"subject"`
 	ISBN      []string `json:"isbn"`
 	Cover     int64    `json:"cover_i"`
+	Rating    *float64 `json:"ratings_average"`
+	Ratings   *int64   `json:"ratings_count"`
+	Series    []string `json:"series_name"`
+	Positions []string `json:"series_position"`
 }
+
+// Open Library subjects are unbounded folksonomy; keep the most common ones.
+const maxOpenLibrarySubjects = 20
 
 func (p *adapter) openLibrary(ctx context.Context, q Query, ref string) ([]Candidate, error) {
 	v := url.Values{
-		"limit":  {"10"},
-		"fields": {"key,title,subtitle,author_name,publisher,first_publish_year,language,number_of_pages_median,subject,isbn,cover_i"},
+		"limit": {"10"},
+		"fields": {"key,title,subtitle,author_name,publisher,first_publish_year,language,number_of_pages_median,subject,isbn,cover_i," +
+			"ratings_average,ratings_count,series_name,series_position"},
 	}
 	if ref != "" {
 		v.Set("q", "key:"+ref)
@@ -306,20 +318,83 @@ func (p *adapter) openLibrary(ctx context.Context, q Query, ref string) ([]Candi
 	}
 	result := []Candidate{}
 	for _, doc := range *response.Docs {
+		subjects := unique(doc.Subjects)
+		if len(subjects) > maxOpenLibrarySubjects {
+			subjects = subjects[:maxOpenLibrarySubjects]
+		}
 		c := Candidate{
 			Reference: doc.Key, Title: doc.Title, Subtitle: text(doc.Subtitle), Authors: people(doc.Authors, "author"),
 			Publisher: text(first(doc.Publisher)), Language: text(first(doc.Languages)), PageCount: pages(doc.Pages),
-			Tags: doc.Subjects, Identifiers: isbnIdentifiers(doc.ISBN),
+			Tags: subjects, Identifiers: isbnIdentifiers(doc.ISBN),
 		}
+		c.Rating, c.RatingCount = rating(doc.Rating, 5, doc.Ratings)
 		if doc.Year > 0 {
 			c.PublishedDate = date(strconv.FormatInt(doc.Year, 10))
 		}
 		if doc.Cover > 0 {
 			c.CoverURL = text(fmt.Sprintf("https://covers.openlibrary.org/b/id/%d-L.jpg", doc.Cover))
 		}
+		if name := strings.TrimSpace(first(doc.Series)); name != "" {
+			c.Series = &Series{Name: name, Index: position(first(doc.Positions))}
+		}
 		result = append(result, c)
 	}
+	// Search documents carry no description; fetch the top work's description best-effort.
+	if len(result) > 0 && strings.HasPrefix(result[0].Reference, "/works/") && openReference.MatchString(result[0].Reference) {
+		result[0].Description = p.openLibraryDescription(ctx, result[0].Reference)
+	}
 	return finish(p.name, result)
+}
+
+func (p *adapter) openLibraryDescription(ctx context.Context, key string) *string {
+	var work struct {
+		Description json.RawMessage `json:"description"`
+	}
+	if p.request(ctx, key+".json", nil, nil, &work) != nil || len(work.Description) == 0 {
+		return nil
+	}
+	var value string
+	if json.Unmarshal(work.Description, &value) == nil {
+		return text(value)
+	}
+	var typed struct {
+		Value string `json:"value"`
+	}
+	if json.Unmarshal(work.Description, &typed) == nil {
+		return text(typed.Value)
+	}
+	return nil
+}
+
+// position parses a numeric series position such as "1" or "2.5".
+func position(value string) *float64 {
+	number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || math.IsNaN(number) || math.IsInf(number, 0) || number < 0 {
+		return nil
+	}
+	return &number
+}
+
+// rating normalizes a provider rating on a 0..scale range to 0..5 with two decimals.
+// Ratings without votes or outside the provider scale are dropped.
+func rating(value *float64, scale float64, count *int64) (*float64, *int64) {
+	if value == nil || math.IsNaN(*value) || *value < 0 || *value > scale || (count != nil && *count <= 0) {
+		return nil, nil
+	}
+	normalized := math.Round(*value/scale*5*100) / 100
+	if normalized == 0 && count == nil {
+		return nil, nil
+	}
+	return &normalized, count
+}
+
+func seriesTotal(values ...*int64) *int64 {
+	for _, value := range values {
+		if value != nil && *value >= 1 {
+			return value
+		}
+	}
+	return nil
 }
 
 type googleVolume struct {
@@ -334,14 +409,46 @@ type googleVolume struct {
 		Language      string   `json:"language"`
 		PageCount     int64    `json:"pageCount"`
 		Categories    []string `json:"categories"`
+		AverageRating *float64 `json:"averageRating"`
+		RatingsCount  *int64   `json:"ratingsCount"`
+		Maturity      string   `json:"maturityRating"`
 		Identifiers   []struct {
 			Type  string `json:"type"`
 			Value string `json:"identifier"`
 		} `json:"industryIdentifiers"`
 		Images struct {
-			Thumbnail string `json:"thumbnail"`
+			SmallThumbnail string `json:"smallThumbnail"`
+			Thumbnail      string `json:"thumbnail"`
+			Small          string `json:"small"`
+			Medium         string `json:"medium"`
+			Large          string `json:"large"`
+			ExtraLarge     string `json:"extraLarge"`
 		} `json:"imageLinks"`
 	} `json:"volumeInfo"`
+}
+
+// googleCategories splits BISAC-style "Fiction / Science Fiction / General" paths into genres.
+func googleCategories(categories []string) []string {
+	result := []string{}
+	for _, category := range categories {
+		for _, part := range strings.Split(category, "/") {
+			part = strings.TrimSpace(part)
+			if part != "" && !strings.EqualFold(part, "General") {
+				result = append(result, part)
+			}
+		}
+	}
+	return unique(result)
+}
+
+func googleCover(info *googleVolume) *string {
+	images := info.Info.Images
+	for _, link := range []string{images.ExtraLarge, images.Large, images.Medium, images.Small, images.Thumbnail, images.SmallThumbnail} {
+		if link = strings.TrimSpace(link); link != "" {
+			return text(strings.Replace(link, "&edge=curl", "", 1))
+		}
+	}
+	return nil
 }
 
 func (p *adapter) googleBooks(ctx context.Context, q Query, ref string) ([]Candidate, error) {
@@ -384,8 +491,15 @@ func (p *adapter) googleBooks(ctx context.Context, q Query, ref string) ([]Candi
 		c := Candidate{
 			Reference: volume.ID, Title: info.Title, Subtitle: text(info.Subtitle), Authors: people(info.Authors, "author"),
 			Description: text(info.Description), Publisher: text(info.Publisher), PublishedDate: date(info.PublishedDate),
-			Language: text(info.Language), PageCount: pages(info.PageCount), Tags: info.Categories,
-			CoverURL: text(info.Images.Thumbnail),
+			Language: text(info.Language), PageCount: pages(info.PageCount), Genres: googleCategories(info.Categories),
+			CoverURL: googleCover(&volume),
+		}
+		c.Rating, c.RatingCount = rating(info.AverageRating, 5, info.RatingsCount)
+		switch info.Maturity {
+		case "NOT_MATURE":
+			c.ContentRating = text("everyone")
+		case "MATURE":
+			c.ContentRating = text("mature")
 		}
 		isbns := []string{}
 		for _, id := range info.Identifiers {
@@ -403,10 +517,13 @@ type neoBook struct {
 	UUID        string          `json:"uuid"`
 	Title       string          `json:"title"`
 	Subtitle    string          `json:"display_subtitle"`
+	SubtitleRaw *string         `json:"subtitle"`
 	Description string          `json:"description"`
+	Brief       string          `json:"brief"`
 	Authors     []string        `json:"author"`
 	Translators []string        `json:"translator"`
 	Publishers  []string        `json:"publisher"`
+	PubHouse    string          `json:"pub_house"`
 	Languages   []string        `json:"language"`
 	Year        int             `json:"pub_year"`
 	Month       int             `json:"pub_month"`
@@ -415,6 +532,32 @@ type neoBook struct {
 	ISBN        string          `json:"isbn"`
 	Cover       string          `json:"cover_image_url"`
 	Tags        []string        `json:"tags"`
+	Rating      *float64        `json:"rating"`
+	RatingCount *int64          `json:"rating_count"`
+	External    []struct {
+		URL string `json:"url"`
+	} `json:"external_resources"`
+}
+
+var (
+	goodreadsURL = regexp.MustCompile(`^https://(?:www\.)?goodreads\.com/book/show/([0-9]{1,20})(?:[^0-9]|$)`)
+	doubanURL    = regexp.MustCompile(`^https://book\.douban\.com/subject/([0-9]{1,20})/?$`)
+)
+
+// neoExternalIdentifiers extracts well-known catalog IDs from NeoDB's linked resources.
+func neoExternalIdentifiers(book neoBook) []Identifier {
+	result := []Identifier{}
+	seen := map[string]bool{}
+	for _, resource := range book.External {
+		for scheme, pattern := range map[string]*regexp.Regexp{"goodreads": goodreadsURL, "douban": doubanURL} {
+			if match := pattern.FindStringSubmatch(resource.URL); match != nil && !seen[scheme] {
+				result = append(result, Identifier{Scheme: scheme, Value: match[1]})
+				seen[scheme] = true
+			}
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Scheme < result[j].Scheme })
+	return result
 }
 
 func queryText(q Query) string {
@@ -465,8 +608,18 @@ func (p *adapter) neoDB(ctx context.Context, q Query, ref string) ([]Candidate, 
 			Authors:     append(people(book.Authors, "author"), people(book.Translators, "translator")...),
 			Description: text(book.Description), Publisher: text(strings.Join(book.Publishers, " / ")),
 			Language: text(first(book.Languages)), PageCount: pages(pageNumber), Tags: book.Tags,
-			Identifiers: isbnIdentifiers([]string{book.ISBN}), CoverURL: text(book.Cover),
+			Identifiers: append(isbnIdentifiers([]string{book.ISBN}), neoExternalIdentifiers(book)...), CoverURL: text(book.Cover),
 		}
+		if c.Subtitle == nil && book.SubtitleRaw != nil {
+			c.Subtitle = text(*book.SubtitleRaw)
+		}
+		if c.Description == nil {
+			c.Description = text(book.Brief)
+		}
+		if c.Publisher == nil {
+			c.Publisher = text(book.PubHouse)
+		}
+		c.Rating, c.RatingCount = rating(book.Rating, 10, book.RatingCount)
 		if book.Year > 0 {
 			value := fmt.Sprintf("%04d", book.Year)
 			if book.Month > 0 {
@@ -493,20 +646,95 @@ type hardcoverBook struct {
 			Name string `json:"name"`
 		} `json:"author"`
 	} `json:"contributions"`
-	Description string   `json:"description"`
-	Pages       int64    `json:"pages"`
-	ISBNs       []string `json:"isbns"`
-	Tags        []string `json:"tags"`
-	Genres      []string `json:"genres"`
-	Year        int      `json:"release_year"`
-	Date        string   `json:"release_date"`
+	Description string     `json:"description"`
+	Pages       int64      `json:"pages"`
+	ISBNs       []string   `json:"isbns"`
+	Tags        termList   `json:"tags"`
+	Genres      termList   `json:"genres"`
+	Moods       termList   `json:"moods"`
+	CachedTags  cachedTags `json:"cached_tags"`
+	Rating      *float64   `json:"rating"`
+	RatingCount *int64     `json:"ratings_count"`
+	Year        int        `json:"release_year"`
+	Date        string     `json:"release_date"`
 	Image       struct {
 		URL string `json:"url"`
 	} `json:"image"`
-	Series struct {
-		Name string `json:"name"`
-	} `json:"featured_series"`
-	Position *float64 `json:"featured_series_position"`
+	Series   hardcoverSeries `json:"featured_series"`
+	Position *float64        `json:"featured_series_position"`
+}
+
+// hardcoverSeries accepts the nested {position, series: {name, books_count}} shape
+// and the older flat {name} shape.
+type hardcoverSeries struct {
+	Name         string   `json:"name"`
+	Position     *float64 `json:"position"`
+	BooksCount   *int64   `json:"books_count"`
+	PrimaryCount *int64   `json:"primary_books_count"`
+	Series       *struct {
+		Name         string `json:"name"`
+		BooksCount   *int64 `json:"books_count"`
+		PrimaryCount *int64 `json:"primary_books_count"`
+	} `json:"series"`
+}
+
+// termList accepts tag arrays of strings or of {"tag": ...}/{"name": ...} objects.
+type termList []string
+
+func (t *termList) UnmarshalJSON(data []byte) error {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+			*t = nil
+			return nil
+		}
+		return err
+	}
+	result := make([]string, 0, len(raw))
+	for _, item := range raw {
+		var value string
+		if json.Unmarshal(item, &value) == nil {
+			result = append(result, value)
+			continue
+		}
+		var object struct {
+			Tag  string `json:"tag"`
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(item, &object); err != nil {
+			return err
+		}
+		if object.Tag == "" {
+			object.Tag = object.Name
+		}
+		result = append(result, object.Tag)
+	}
+	*t = result
+	return nil
+}
+
+// cachedTags is Hardcover's per-book tag cache keyed by category ("Genre", "Mood", "Tag", ...).
+// Unexpected shapes are ignored rather than failing the whole record.
+type cachedTags map[string]termList
+
+func (c *cachedTags) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		var encoded string
+		if json.Unmarshal(data, &encoded) != nil || json.Unmarshal([]byte(encoded), &raw) != nil {
+			*c = nil
+			return nil
+		}
+	}
+	result := cachedTags{}
+	for category, value := range raw {
+		var terms termList
+		if json.Unmarshal(value, &terms) == nil {
+			result[category] = terms
+		}
+	}
+	*c = result
+	return nil
 }
 
 func (p *adapter) hardcover(ctx context.Context, q Query, ref string) ([]Candidate, error) {
@@ -520,7 +748,7 @@ func (p *adapter) hardcover(ctx context.Context, q Query, ref string) ([]Candida
 			return nil, ErrInvalid
 		}
 		body = map[string]any{
-			"query":     `query Book($id: Int!) { books(where: {id: {_eq: $id}}, limit: 1) { id title subtitle description pages release_date contributions { contribution author { name } } image: cached_image featured_series: cached_featured_series } }`,
+			"query":     `query Book($id: Int!) { books(where: {id: {_eq: $id}}, limit: 1) { id title subtitle description pages release_date rating ratings_count cached_tags contributions { contribution author { name } } image: cached_image featured_series: cached_featured_series } }`,
 			"variables": map[string]any{"id": id},
 		}
 	}
@@ -580,9 +808,11 @@ func (p *adapter) hardcover(ctx context.Context, q Query, ref string) ([]Candida
 		c := Candidate{
 			Reference: book.ID.String(), Title: book.Title, Subtitle: text(book.Subtitle),
 			Authors: people(book.Authors, "author"), Description: text(book.Description),
-			PageCount: pages(book.Pages), Tags: append(book.Tags, book.Genres...),
+			PageCount: pages(book.Pages), Tags: append(book.Tags, book.CachedTags["Tag"]...),
+			Genres: append(book.Genres, book.CachedTags["Genre"]...), Moods: append(book.Moods, book.CachedTags["Mood"]...),
 			Identifiers: isbnIdentifiers(book.ISBNs), CoverURL: text(book.Image.URL), PublishedDate: date(book.Date),
 		}
+		c.Rating, c.RatingCount = rating(book.Rating, 5, book.RatingCount)
 		if len(book.Contributors) > 0 {
 			c.Authors = []Person{}
 			for _, contributor := range book.Contributors {
@@ -599,8 +829,17 @@ func (p *adapter) hardcover(ctx context.Context, q Query, ref string) ([]Candida
 		if c.PublishedDate == nil && book.Year > 0 {
 			c.PublishedDate = date(strconv.Itoa(book.Year))
 		}
-		if book.Series.Name != "" {
-			c.Series = &Series{Name: book.Series.Name, Index: book.Position}
+		series := book.Series
+		name, index, total := series.Name, book.Position, seriesTotal(series.PrimaryCount, series.BooksCount)
+		if series.Series != nil {
+			name = series.Series.Name
+			total = seriesTotal(series.Series.PrimaryCount, series.Series.BooksCount)
+		}
+		if index == nil {
+			index = series.Position
+		}
+		if name = strings.TrimSpace(name); name != "" {
+			c.Series = &Series{Name: name, Index: index, Total: total}
 		}
 		result = append(result, c)
 	}

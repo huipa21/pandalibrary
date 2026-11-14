@@ -29,7 +29,7 @@ const book: Book = {
 	owner_id: null, visibility: 'library', can_manage_visibility: false,
 	id: 5, library_id: 1, title: 'Seeded', sort_title: 'Seeded', subtitle: null, description: 'About',
 	language: 'en', publisher: 'Press', published_date: '2020-01-02', page_count: 120, cover_url: null,
-	cover_source: null, authors: [], series: null, tags: [], identifiers: [], field_sources: [],
+	cover_source: null, authors: [], series: null, tags: [], identifiers: [], genres: [], moods: [], age_rating: null, content_rating: null, ratings: [], field_sources: [],
 	files: [file(51, 'pdf'), file(52, 'epub'), file(53, 'zip')],
 	created_at: timestamp, updated_at: timestamp
 };
@@ -64,11 +64,19 @@ afterEach(() => {
 });
 
 describe('loadQuickView', () => {
+	it('fills metadata fields a stale seed lacks', async () => {
+		const { genres: _genres, ratings: _ratings, ...stale } = book;
+		const data = await loadQuickView(5, stale as Book, new AbortController().signal);
+		expect(getBook).not.toHaveBeenCalled();
+		expect(data.book.genres).toEqual([]);
+		expect(data.book.ratings).toEqual([]);
+	});
+
 	it('merges the book, per-user state and shelves, skipping the fetch for a complete seed', async () => {
 		const data = await loadQuickView(5, book, new AbortController().signal);
 		expect(getBook).not.toHaveBeenCalled();
 		expect(getBookShelves).toHaveBeenCalledWith(5, expect.any(AbortSignal));
-		expect(data.book).toBe(book);
+		expect(data.book).toEqual(book);
 		expect(data.offline).toBe(false);
 		expect(data.userBook).toEqual(userBook);
 		expect(data.progress?.book_file_id).toBe(51);

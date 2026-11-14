@@ -10,7 +10,7 @@ function makeBook(id: number, title: string): Book {
 		id, library_id: 1, title, sort_title: title, subtitle: null, description: `${title} description`,
 		language: 'en', publisher: null, published_date: null, page_count: null, cover_url: null, cover_source: null,
 		authors: [{ id: 4, name: 'A Writer', role: 'author', position: 0 }],
-		series: null, tags: [], identifiers: [], field_sources: [],
+		series: null, tags: [], identifiers: [], genres: [], moods: [], age_rating: null, content_rating: null, ratings: [], field_sources: [],
 		files: [{ id: id * 10, format: 'epub', size_bytes: 4096, download_url: `/api/v1/books/${id}/files/${id * 10}?v=${'a'.repeat(64)}`, original_filename: 'book.epub', created_at: stamp }],
 		created_at: stamp, updated_at: stamp
 	};

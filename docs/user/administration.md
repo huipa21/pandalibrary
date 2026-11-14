@@ -121,15 +121,25 @@ abandoned images and images belonging to deleted accounts.
 
 ## Editing book metadata
 
-On a book page, administrators can open **Edit metadata** from the **Details**
-card. The form starts with the saved metadata, including tags. Edit values
-directly and use **Save metadata** at the bottom; no provider lookup is required.
-Contributors retain their order and roles, and series positions and identifiers
-can also be edited. Remove every tag to save an empty tag list.
+On a book page, administrators have a **Metadata** tab between **Details** and
+**Files**; **Edit metadata** in the **Details** card opens it as well. Other
+users do not see the tab. The **Edit** view starts with the saved metadata,
+including tags, genres, moods, age rating, content rating and series total.
+A small badge beside each field shows where its saved value came from. Edit
+values directly and use **Save metadata** at the bottom; no provider lookup is
+required. Contributors retain their order and roles, and series positions and
+identifiers can also be edited. Identifiers and provider ratings are in the
+collapsible **Provider metadata** section; ratings can only be copied from
+search results. Remove every tag to save an empty tag list. Leaving the tab
+with unsaved changes asks for confirmation.
 
-Select **Find metadata** at the top right to search enabled sources concurrently.
-Only sources that return candidates have a tab. Select a source tab and, if it
-has several matches, an alternative to compare with the editable values on the
+Open the **Search** view (or **Search metadata** under the cover) to search
+providers. The ISBN, title and author are prefilled from the book and can be
+changed; uncheck providers to search only some of them. With an empty ISBN and
+title, the search uses the book's saved metadata. Select **Search providers**
+to search the chosen sources concurrently. Only sources that return candidates
+have a tab. Select a source tab and, if it
+has several matches, an alternative to compare with your draft values on the
 same rows. Buttons between the columns copy a found value or restore that
 field's saved value. You can mix fields from several sources; switching tabs
 does not discard edits. **Use all found values** copies available values without

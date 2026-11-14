@@ -279,8 +279,57 @@ func (q *Queries) CatalogBookIdentifiers(ctx context.Context, arg CatalogBookIde
 	return items, nil
 }
 
+const catalogBookRatings = `-- name: CatalogBookRatings :many
+SELECT br.provider, br.rating, br.rating_count FROM book_ratings br
+JOIN books b ON b.id = br.book_id
+WHERE b.id = ?1
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+)
+ORDER BY br.provider
+`
+
+type CatalogBookRatingsParams struct {
+	BookID  int64
+	UserID  int64
+	IsAdmin int64
+}
+
+type CatalogBookRatingsRow struct {
+	Provider    string
+	Rating      sql.NullFloat64
+	RatingCount sql.NullInt64
+}
+
+func (q *Queries) CatalogBookRatings(ctx context.Context, arg CatalogBookRatingsParams) ([]CatalogBookRatingsRow, error) {
+	rows, err := q.db.QueryContext(ctx, catalogBookRatings, arg.BookID, arg.UserID, arg.IsAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CatalogBookRatingsRow{}
+	for rows.Next() {
+		var i CatalogBookRatingsRow
+		if err := rows.Scan(&i.Provider, &i.Rating, &i.RatingCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const catalogBookSeries = `-- name: CatalogBookSeries :one
-SELECT s.id, s.name, b.series_index
+SELECT s.id, s.name, b.series_index, b.series_total
 FROM books b JOIN series s ON s.id = b.series_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
@@ -302,12 +351,18 @@ type CatalogBookSeriesRow struct {
 	ID          int64
 	Name        string
 	SeriesIndex sql.NullFloat64
+	SeriesTotal sql.NullInt64
 }
 
 func (q *Queries) CatalogBookSeries(ctx context.Context, arg CatalogBookSeriesParams) (CatalogBookSeriesRow, error) {
 	row := q.db.QueryRowContext(ctx, catalogBookSeries, arg.BookID, arg.UserID, arg.IsAdmin)
 	var i CatalogBookSeriesRow
-	err := row.Scan(&i.ID, &i.Name, &i.SeriesIndex)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.SeriesIndex,
+		&i.SeriesTotal,
+	)
 	return i, err
 }
 
@@ -360,6 +415,54 @@ func (q *Queries) CatalogBookTags(ctx context.Context, arg CatalogBookTagsParams
 	return items, nil
 }
 
+const catalogBookTerms = `-- name: CatalogBookTerms :many
+SELECT bt.kind, bt.name FROM book_terms bt
+JOIN books b ON b.id = bt.book_id
+WHERE b.id = ?1
+AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
+    SELECT 1 FROM library_access la
+    WHERE la.library_id = b.library_id AND la.user_id = ?2
+)))))
+AND NOT EXISTS (
+    SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?2
+)
+ORDER BY bt.kind, bt.position, bt.name
+`
+
+type CatalogBookTermsParams struct {
+	BookID  int64
+	UserID  int64
+	IsAdmin int64
+}
+
+type CatalogBookTermsRow struct {
+	Kind string
+	Name string
+}
+
+func (q *Queries) CatalogBookTerms(ctx context.Context, arg CatalogBookTermsParams) ([]CatalogBookTermsRow, error) {
+	rows, err := q.db.QueryContext(ctx, catalogBookTerms, arg.BookID, arg.UserID, arg.IsAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CatalogBookTermsRow{}
+	for rows.Next() {
+		var i CatalogBookTermsRow
+		if err := rows.Scan(&i.Kind, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const catalogClearBookAuthors = `-- name: CatalogClearBookAuthors :exec
 DELETE FROM book_authors WHERE book_id = ?
 `
@@ -378,12 +481,35 @@ func (q *Queries) CatalogClearBookIdentifiers(ctx context.Context, bookID int64)
 	return err
 }
 
+const catalogClearBookRatings = `-- name: CatalogClearBookRatings :exec
+DELETE FROM book_ratings WHERE book_id = ?
+`
+
+func (q *Queries) CatalogClearBookRatings(ctx context.Context, bookID int64) error {
+	_, err := q.db.ExecContext(ctx, catalogClearBookRatings, bookID)
+	return err
+}
+
 const catalogClearBookTags = `-- name: CatalogClearBookTags :exec
 DELETE FROM book_tags WHERE book_id = ?
 `
 
 func (q *Queries) CatalogClearBookTags(ctx context.Context, bookID int64) error {
 	_, err := q.db.ExecContext(ctx, catalogClearBookTags, bookID)
+	return err
+}
+
+const catalogClearBookTerms = `-- name: CatalogClearBookTerms :exec
+DELETE FROM book_terms WHERE book_id = ? AND kind = ?
+`
+
+type CatalogClearBookTermsParams struct {
+	BookID int64
+	Kind   string
+}
+
+func (q *Queries) CatalogClearBookTerms(ctx context.Context, arg CatalogClearBookTermsParams) error {
+	_, err := q.db.ExecContext(ctx, catalogClearBookTerms, arg.BookID, arg.Kind)
 	return err
 }
 
@@ -507,7 +633,7 @@ func (q *Queries) CatalogGetAuthor(ctx context.Context, arg CatalogGetAuthorPara
 }
 
 const catalogGetBook = `-- name: CatalogGetBook :one
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM books b
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -547,6 +673,9 @@ func (q *Queries) CatalogGetBook(ctx context.Context, arg CatalogGetBookParams) 
 		&i.UpdatedAt,
 		&i.OwnerID,
 		&i.Visibility,
+		&i.AgeRating,
+		&i.ContentRating,
+		&i.SeriesTotal,
 	)
 	return i, err
 }
@@ -758,6 +887,27 @@ func (q *Queries) CatalogInsertBookTag(ctx context.Context, arg CatalogInsertBoo
 	return err
 }
 
+const catalogInsertBookTerm = `-- name: CatalogInsertBookTerm :exec
+INSERT INTO book_terms (book_id, kind, name, position) VALUES (?, ?, ?, ?)
+`
+
+type CatalogInsertBookTermParams struct {
+	BookID   int64
+	Kind     string
+	Name     string
+	Position int64
+}
+
+func (q *Queries) CatalogInsertBookTerm(ctx context.Context, arg CatalogInsertBookTermParams) error {
+	_, err := q.db.ExecContext(ctx, catalogInsertBookTerm,
+		arg.BookID,
+		arg.Kind,
+		arg.Name,
+		arg.Position,
+	)
+	return err
+}
+
 const catalogInsertSeries = `-- name: CatalogInsertSeries :exec
 INSERT INTO series (name, created_at) VALUES (?, ?)
 ON CONFLICT (name) DO NOTHING
@@ -925,7 +1075,7 @@ func (q *Queries) CatalogListAuthors(ctx context.Context, arg CatalogListAuthors
 }
 
 const catalogListBooksByAdded = `-- name: CatalogListBooksByAdded :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM books b
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -999,6 +1149,9 @@ func (q *Queries) CatalogListBooksByAdded(ctx context.Context, arg CatalogListBo
 			&i.UpdatedAt,
 			&i.OwnerID,
 			&i.Visibility,
+			&i.AgeRating,
+			&i.ContentRating,
+			&i.SeriesTotal,
 		); err != nil {
 			return nil, err
 		}
@@ -1014,7 +1167,7 @@ func (q *Queries) CatalogListBooksByAdded(ctx context.Context, arg CatalogListBo
 }
 
 const catalogListBooksBySeries = `-- name: CatalogListBooksBySeries :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM books b
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1095,6 +1248,9 @@ func (q *Queries) CatalogListBooksBySeries(ctx context.Context, arg CatalogListB
 			&i.UpdatedAt,
 			&i.OwnerID,
 			&i.Visibility,
+			&i.AgeRating,
+			&i.ContentRating,
+			&i.SeriesTotal,
 		); err != nil {
 			return nil, err
 		}
@@ -1110,7 +1266,7 @@ func (q *Queries) CatalogListBooksBySeries(ctx context.Context, arg CatalogListB
 }
 
 const catalogListBooksByTitle = `-- name: CatalogListBooksByTitle :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility FROM books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM books b
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1184,6 +1340,9 @@ func (q *Queries) CatalogListBooksByTitle(ctx context.Context, arg CatalogListBo
 			&i.UpdatedAt,
 			&i.OwnerID,
 			&i.Visibility,
+			&i.AgeRating,
+			&i.ContentRating,
+			&i.SeriesTotal,
 		); err != nil {
 			return nil, err
 		}
@@ -1563,7 +1722,7 @@ func (q *Queries) CatalogUnhideBook(ctx context.Context, arg CatalogUnhideBookPa
 const catalogUpdateBook = `-- name: CatalogUpdateBook :exec
 UPDATE books SET library_id = ?, title = ?, sort_title = ?, subtitle = ?, description = ?,
     language = ?, publisher = ?, published_date = ?, page_count = ?, series_id = ?,
-    series_index = ?, updated_at = ?
+    series_index = ?, series_total = ?, age_rating = ?, content_rating = ?, updated_at = ?
 WHERE id = ?
 `
 
@@ -1579,6 +1738,9 @@ type CatalogUpdateBookParams struct {
 	PageCount     sql.NullInt64
 	SeriesID      sql.NullInt64
 	SeriesIndex   sql.NullFloat64
+	SeriesTotal   sql.NullInt64
+	AgeRating     sql.NullInt64
+	ContentRating sql.NullString
 	UpdatedAt     int64
 	ID            int64
 }
@@ -1596,6 +1758,9 @@ func (q *Queries) CatalogUpdateBook(ctx context.Context, arg CatalogUpdateBookPa
 		arg.PageCount,
 		arg.SeriesID,
 		arg.SeriesIndex,
+		arg.SeriesTotal,
+		arg.AgeRating,
+		arg.ContentRating,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -1654,6 +1819,29 @@ func (q *Queries) CatalogUpdateLibrary(ctx context.Context, arg CatalogUpdateLib
 		&i.Icon,
 	)
 	return i, err
+}
+
+const catalogUpsertBookRating = `-- name: CatalogUpsertBookRating :exec
+INSERT INTO book_ratings (book_id, provider, rating, rating_count) VALUES (?, ?, ?, ?)
+ON CONFLICT (book_id, provider) DO UPDATE SET
+    rating = excluded.rating, rating_count = excluded.rating_count
+`
+
+type CatalogUpsertBookRatingParams struct {
+	BookID      int64
+	Provider    string
+	Rating      sql.NullFloat64
+	RatingCount sql.NullInt64
+}
+
+func (q *Queries) CatalogUpsertBookRating(ctx context.Context, arg CatalogUpsertBookRatingParams) error {
+	_, err := q.db.ExecContext(ctx, catalogUpsertBookRating,
+		arg.BookID,
+		arg.Provider,
+		arg.Rating,
+		arg.RatingCount,
+	)
+	return err
 }
 
 const catalogUpsertFieldSource = `-- name: CatalogUpsertFieldSource :exec

@@ -122,6 +122,7 @@ func (s *Service) updateBookWithManualPatch(ctx context.Context, viewer Viewer, 
 		if patch.Series.Set {
 			row.SeriesID = sql.NullInt64{}
 			row.SeriesIndex = sql.NullFloat64{}
+			row.SeriesTotal = sql.NullInt64{}
 			if patch.Series.Value != nil {
 				if err := queries.CatalogInsertSeries(ctx, sqlc.CatalogInsertSeriesParams{
 					Name: patch.Series.Value.Name, CreatedAt: now,
@@ -136,6 +137,21 @@ func (s *Service) updateBookWithManualPatch(ctx context.Context, viewer Viewer, 
 				if patch.Series.Value.Index != nil {
 					row.SeriesIndex = sql.NullFloat64{Float64: *patch.Series.Value.Index, Valid: true}
 				}
+				if patch.Series.Value.Total != nil {
+					row.SeriesTotal = sql.NullInt64{Int64: *patch.Series.Value.Total, Valid: true}
+				}
+			}
+		}
+		if patch.AgeRating.Set {
+			row.AgeRating = sql.NullInt64{}
+			if patch.AgeRating.Value != nil {
+				row.AgeRating = sql.NullInt64{Int64: *patch.AgeRating.Value, Valid: true}
+			}
+		}
+		if patch.ContentRating.Set {
+			row.ContentRating = sql.NullString{}
+			if patch.ContentRating.Value != nil {
+				row.ContentRating = sql.NullString{String: *patch.ContentRating.Value, Valid: true}
 			}
 		}
 		if patch.Authors.Set {
@@ -153,11 +169,29 @@ func (s *Service) updateBookWithManualPatch(ctx context.Context, viewer Viewer, 
 				return err
 			}
 		}
+		for _, terms := range []struct {
+			kind  string
+			value Optional[[]string]
+		}{{"genre", patch.Genres}, {"mood", patch.Moods}} {
+			if terms.value.Set {
+				if err := replaceTerms(ctx, queries, id, terms.kind, *terms.value.Value); err != nil {
+					return err
+				}
+			}
+		}
+		if patch.Ratings.Set {
+			// A provider selection updates only that provider's rows; manual edits replace all.
+			_, fromProvider := sources["ratings"]
+			if err := writeRatings(ctx, queries, id, *patch.Ratings.Value, !fromProvider); err != nil {
+				return err
+			}
+		}
 		if err := queries.CatalogUpdateBook(ctx, sqlc.CatalogUpdateBookParams{
 			ID: id, LibraryID: row.LibraryID, Title: row.Title, SortTitle: row.SortTitle,
 			Subtitle: row.Subtitle, Description: row.Description, Language: row.Language,
 			Publisher: row.Publisher, PublishedDate: row.PublishedDate, PageCount: row.PageCount,
-			SeriesID: row.SeriesID, SeriesIndex: row.SeriesIndex, UpdatedAt: now,
+			SeriesID: row.SeriesID, SeriesIndex: row.SeriesIndex, SeriesTotal: row.SeriesTotal,
+			AgeRating: row.AgeRating, ContentRating: row.ContentRating, UpdatedAt: now,
 		}); err != nil {
 			return fmt.Errorf("update book: %w", err)
 		}
@@ -271,6 +305,41 @@ func replaceIdentifiers(ctx context.Context, queries *sqlc.Queries, bookID int64
 			BookID: bookID, Scheme: identifier.Scheme, Value: identifier.Value,
 		}); err != nil {
 			return fmt.Errorf("add book identifier: %w", err)
+		}
+	}
+	return nil
+}
+
+func replaceTerms(ctx context.Context, queries *sqlc.Queries, bookID int64, kind string, names []string) error {
+	if err := queries.CatalogClearBookTerms(ctx, sqlc.CatalogClearBookTermsParams{BookID: bookID, Kind: kind}); err != nil {
+		return fmt.Errorf("clear book %ss: %w", kind, err)
+	}
+	for position, name := range names {
+		if err := queries.CatalogInsertBookTerm(ctx, sqlc.CatalogInsertBookTermParams{
+			BookID: bookID, Kind: kind, Name: name, Position: int64(position),
+		}); err != nil {
+			return fmt.Errorf("add book %s: %w", kind, err)
+		}
+	}
+	return nil
+}
+
+func writeRatings(ctx context.Context, queries *sqlc.Queries, bookID int64, ratings []ProviderRating, replace bool) error {
+	if replace {
+		if err := queries.CatalogClearBookRatings(ctx, bookID); err != nil {
+			return fmt.Errorf("clear book ratings: %w", err)
+		}
+	}
+	for _, rating := range ratings {
+		params := sqlc.CatalogUpsertBookRatingParams{BookID: bookID, Provider: rating.Provider}
+		if rating.Rating != nil {
+			params.Rating = sql.NullFloat64{Float64: *rating.Rating, Valid: true}
+		}
+		if rating.Count != nil {
+			params.RatingCount = sql.NullInt64{Int64: *rating.Count, Valid: true}
+		}
+		if err := queries.CatalogUpsertBookRating(ctx, params); err != nil {
+			return fmt.Errorf("write book rating: %w", err)
 		}
 	}
 	return nil

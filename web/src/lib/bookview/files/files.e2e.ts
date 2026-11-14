@@ -19,7 +19,7 @@ function makeBook(): Book {
 		subtitle: null, description: null, language: 'en', publisher: null, published_date: null,
 		page_count: null, cover_url: null, cover_source: null,
 		authors: [{ id: 1, name: 'First Author', role: 'author', position: 0 }],
-		series: null, tags: [], identifiers: [], field_sources: [],
+		series: null, tags: [], identifiers: [], genres: [], moods: [], age_rating: null, content_rating: null, ratings: [], field_sources: [],
 		files: [
 			file(34, 'mobi', 'M.mobi', 400, '2026-05-01T00:00:00Z'),
 			file(33, 'cbz', 'Comic.cbz', 300, '2026-04-01T00:00:00Z'),

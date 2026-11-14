@@ -25,7 +25,7 @@ const book: Book = {
 	id: 21, library_id: 1, title: 'Offline book', sort_title: 'Offline book', subtitle: null,
 	description: null, language: 'en', publisher: null, published_date: null, page_count: null,
 	cover_url: null, cover_source: null, authors: [], series: null, tags: [], identifiers: [],
-	files: [file], field_sources: [], created_at: timestamp, updated_at: timestamp
+	files: [file], genres: [], moods: [], age_rating: null, content_rating: null, ratings: [], field_sources: [], created_at: timestamp, updated_at: timestamp
 };
 const pageAnnotation: PageAnnotation = {
 	id: '018f0f7e-7b00-7000-8000-000000000001', book_id: 21, book_file_id: 31, kind: 'text',

@@ -105,7 +105,7 @@ func TestMetadataAdminRoutesRedactionVisibilityAndSelections(t *testing.T) {
 	if _, err := fixture.db.Writer.ExecContext(ctx, `
 		UPDATE metadata_providers SET enabled = 1 WHERE provider = 'openlibrary';
 		INSERT INTO metadata_cache (provider, request_key, status, schema_version, response, fetched_at, expires_at)
-		VALUES ('openlibrary', ?, 200, 1, ?, ?, ?)`,
+		VALUES ('openlibrary', ?, 200, 2, ?, ?, ?)`,
 		lookupDTO.RequestKey, string(cached), time.Now().UnixMilli(), time.Now().Add(time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
@@ -170,6 +170,26 @@ func TestMetadataAdminRoutesRedactionVisibilityAndSelections(t *testing.T) {
 		t.Fatalf("rejected HTTP saves mutated book = %+v, %v", unchanged, err)
 	}
 	requireProblem(t, authRequest(t, router, http.MethodPost, base+"candidates?base_url=https://evil.example", nil, fixture.admin), http.StatusBadRequest)
+	// neodb is disabled, so the restricted custom search runs no provider.
+	custom := authRequest(t, router, http.MethodPost, base+"candidates",
+		map[string]any{"title": "  Custom Title ", "author": "Custom Author", "providers": []string{"neodb"}}, fixture.admin)
+	var customDTO metadata.LookupResponse
+	if custom.Code != http.StatusOK || json.Unmarshal(custom.Body.Bytes(), &customDTO) != nil ||
+		customDTO.Query.Title != "Custom Title" || customDTO.Query.Author != "Custom Author" ||
+		len(customDTO.Query.Providers) != 1 || customDTO.Query.Providers[0] != "neodb" || len(customDTO.Providers) != 0 ||
+		!strings.HasPrefix(customDTO.RequestKey, "book:101:") || customDTO.RequestKey == lookupDTO.RequestKey {
+		t.Fatalf("custom lookup = %d %s", custom.Code, custom.Body.String())
+	}
+	for _, body := range []any{
+		map[string]any{},
+		map[string]any{"author": "Only Author"},
+		map[string]any{"title": "Valid", "providers": []string{"evil"}},
+		map[string]any{"title": "Valid", "base_url": "https://evil.example"},
+		map[string]any{"isbn": "not-an-isbn"},
+		map[string]any{"title": strings.Repeat("x", 257)},
+	} {
+		requireProblem(t, authRequest(t, router, http.MethodPost, base+"candidates", body, fixture.admin), http.StatusBadRequest)
+	}
 	for _, path := range []string{base + "candidates", base + "apply", base + "cover", "/api/v1/admin/metadata/providers/neodb"} {
 		method := http.MethodPost
 		if strings.Contains(path, "/providers/") {

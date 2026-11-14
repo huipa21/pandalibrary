@@ -49,6 +49,7 @@ type Series struct {
 	ID    int64    `json:"id"`
 	Name  string   `json:"name"`
 	Index *float64 `json:"index"`
+	Total *int64   `json:"total"`
 }
 
 // Tag is a catalog tag.
@@ -105,7 +106,12 @@ type Book struct {
 	CoverSource         *string       `json:"cover_source"`
 	Authors             []Author      `json:"authors"`
 	Series              *Series       `json:"series"`
-	Tags                []Tag         `json:"tags"`
+	Tags                []Tag            `json:"tags"`
+	Genres              []string         `json:"genres"`
+	Moods               []string         `json:"moods"`
+	AgeRating           *int64           `json:"age_rating"`
+	ContentRating       *string          `json:"content_rating"`
+	Ratings             []ProviderRating `json:"ratings"`
 	Identifiers         []Identifier  `json:"identifiers"`
 	Files               []BookFile    `json:"files"`
 	FieldSources        []FieldSource `json:"field_sources"`
@@ -185,6 +191,7 @@ type AuthorInput struct {
 type SeriesInput struct {
 	Name  string   `json:"name"`
 	Index *float64 `json:"index"`
+	Total *int64   `json:"total"`
 }
 
 // BookPatch describes the supported partial book metadata update.
@@ -200,5 +207,10 @@ type BookPatch struct {
 	Series        Optional[SeriesInput]   `json:"series"`
 	Authors       Optional[[]AuthorInput] `json:"authors"`
 	Tags          Optional[[]string]      `json:"tags"`
+	Genres        Optional[[]string]         `json:"genres"`
+	Moods         Optional[[]string]         `json:"moods"`
+	AgeRating     Optional[int64]            `json:"age_rating"`
+	ContentRating Optional[string]           `json:"content_rating"`
+	Ratings       Optional[[]ProviderRating] `json:"ratings"`
 	Identifiers   Optional[[]Identifier]  `json:"identifiers"`
 }

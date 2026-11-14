@@ -1,4 +1,4 @@
-import type { Book } from '#lib/catalog/types.js';
+import type { Book, ProviderRating } from '#lib/catalog/types.js';
 import {
 	MERGE_FIELDS,
 	type Candidate,
@@ -24,9 +24,27 @@ function text(value: string | null | undefined): string[] {
 	return value === null || value === undefined || value === '' ? [] : [value];
 }
 
-function seriesText(series: { name: string; index: number | null } | null): string[] {
+function seriesText(series: { name: string; index: number | null; total?: number | null } | null): string[] {
 	if (!series) return [];
-	return [series.index === null ? series.name : `${series.name} #${series.index}`];
+	let value = series.index === null || series.index === undefined ? series.name : `${series.name} #${series.index}`;
+	if (series.total !== null && series.total !== undefined) value += ` / ${series.total}`;
+	return [value];
+}
+
+function numberText(value: number | null | undefined): string[] {
+	return value === null || value === undefined ? [] : [String(value)];
+}
+
+/** "provider: ★ 4.2 (# 120)"; a row without rating or count has no value. */
+export function ratingText(row: ProviderRating): string | null {
+	const parts: string[] = [];
+	if (row.rating !== null && row.rating !== undefined) parts.push(`★ ${Math.round(row.rating * 100) / 100}`);
+	if (row.count !== null && row.count !== undefined) parts.push(`# ${row.count}`);
+	return parts.length ? `${row.provider}: ${parts.join(' ')}` : null;
+}
+
+function candidateRating(candidate: Candidate): ProviderRating {
+	return { provider: candidate.provider, rating: candidate.rating ?? null, count: candidate.rating_count ?? null };
 }
 
 /** Display values for the current catalog book; an empty array means no value. */
@@ -45,6 +63,11 @@ export function currentValues(book: Book, field: MergeField, roleLabel: RoleLabe
 				.sort((a, b) => a.position - b.position)
 				.map((author) => `${author.name} (${roleLabel(author.role)})`);
 		case 'tags': return book.tags.map((tag) => tag.name);
+		case 'genres': return [...(book.genres ?? [])];
+		case 'moods': return [...(book.moods ?? [])];
+		case 'age_rating': return numberText(book.age_rating);
+		case 'content_rating': return text(book.content_rating);
+		case 'ratings': return (book.ratings ?? []).flatMap((row) => ratingText(row) ?? []);
 		case 'identifiers': return book.identifiers.map((id) => `${id.scheme}: ${id.value}`);
 		case 'cover': return book.cover_url ? [book.cover_source ?? ''] : [];
 	}
@@ -63,6 +86,11 @@ export function candidateValues(candidate: Candidate, field: MergeField, roleLab
 		case 'series': return seriesText(candidate.series);
 		case 'authors': return candidate.authors.map((person) => `${person.name} (${roleLabel(person.role)})`);
 		case 'tags': return [...candidate.tags];
+		case 'genres': return [...(candidate.genres ?? [])];
+		case 'moods': return [...(candidate.moods ?? [])];
+		case 'age_rating': return numberText(candidate.age_rating);
+		case 'content_rating': return text(candidate.content_rating);
+		case 'ratings': return [ratingText(candidateRating(candidate))].flatMap((value) => value ?? []);
 		case 'identifiers': return candidate.identifiers.map((id) => `${id.scheme}: ${id.value}`);
 		case 'cover': return candidate.cover_url ? [candidate.provider] : [];
 	}
@@ -75,19 +103,25 @@ export function candidateValues(candidate: Candidate, field: MergeField, roleLab
 export function candidateOffers(candidate: Candidate, field: MergeField): boolean {
 	if (field === 'cover') return candidate.cover_url !== null && candidate.cover_url !== undefined && candidate.cover_url !== '';
 	if (field === 'title') return candidate.title.trim() !== '';
+	// A rating selection only upserts this provider's row, so an empty rating is never a clear.
+	if (field === 'ratings') return candidateValues(candidate, field).length > 0;
 	return true;
 }
 
 /** True when choosing this candidate for the field would clear the current value. */
 export function candidateClears(candidate: Candidate, field: MergeField): boolean {
-	return field !== 'cover' && field !== 'title' && candidateValues(candidate, field).length === 0;
+	return field !== 'cover' && field !== 'title' && field !== 'ratings' && candidateValues(candidate, field).length === 0;
 }
 
 export function matchesCurrent(book: Book, candidate: Candidate, field: MergeField): boolean {
 	if (field === 'cover') return false;
+	if (field === 'ratings') {
+		const row = (book.ratings ?? []).find((item) => item.provider === candidate.provider);
+		return !!row && ratingText(row) === ratingText(candidateRating(candidate));
+	}
 	const current = currentValues(book, field);
 	const next = candidateValues(candidate, field);
-	if (field === 'tags') {
+	if (field === 'tags' || field === 'genres' || field === 'moods') {
 		const normalize = (values: string[]) => values.map((value) => value.toLowerCase()).sort();
 		return JSON.stringify(normalize(current)) === JSON.stringify(normalize(next));
 	}
