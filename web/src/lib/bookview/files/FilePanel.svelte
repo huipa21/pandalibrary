@@ -3,31 +3,39 @@
 	import { formatDate, formatPercent, formatRelative, formatSize } from '../format.js';
 	import Icon from '../Icon.svelte';
 	import FileIcon from './FileIcon.svelte';
-	import FileMenu from './FileMenu.svelte';
 	import ProgressRing from '../ProgressRing.svelte';
 	import type { FileItem } from './files-model.js';
 
 	interface Props {
-		bookId: number;
 		file: FileItem;
 		primary: boolean;
 		progressUpdatedAt: string | null;
 		online: boolean;
-		offlineAvailable: boolean;
-		busy: boolean;
-		onSave: (file: FileItem) => void;
-		onRemove: (file: FileItem) => void;
 		onCopy: (file: FileItem) => void;
 		canSetDefault?: boolean;
 		defaultBusy?: boolean;
 		onToggleDefault?: (file: FileItem) => void;
 	}
 
-	let { bookId, file, primary, progressUpdatedAt, online, offlineAvailable, busy, onSave, onRemove, onCopy, canSetDefault = false, defaultBusy = false, onToggleDefault }: Props = $props();
+	let { file, primary, progressUpdatedAt, online, onCopy, canSetDefault = false, defaultBusy = false, onToggleDefault }: Props = $props();
 </script>
 
 <section class="min-w-0 card p-4 sm:p-6 lg:self-start" aria-labelledby="file-panel-heading">
-	<h2 id="file-panel-heading" class="font-semibold uppercase tracking-wide text-slate-900">{m['bv7.this_file']()}</h2>
+	<div class="flex items-center justify-between gap-3">
+		<h2 id="file-panel-heading" class="font-semibold uppercase tracking-wide text-slate-900">{m['bv7.this_file']()}</h2>
+		{#if canSetDefault && onToggleDefault}
+			<button
+				type="button"
+				class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-60 {file.is_default ? 'bg-amber-100 text-amber-800' : 'text-slate-600'}"
+				disabled={!online || defaultBusy}
+				aria-busy={defaultBusy}
+				aria-pressed={!!file.is_default}
+				aria-label={file.is_default ? m['bv8.clear_default']() : m['bv8.set_default']()}
+				title={file.is_default ? m['bv8.clear_default_hint']() : m['bv8.set_default_hint']()}
+				onclick={() => onToggleDefault(file)}
+			><Icon name="star" class="size-5" /></button>
+		{/if}
+	</div>
 	<div class="mt-5 flex min-w-0 items-center gap-4">
 		<FileIcon format={file.format} size="lg" />
 		<div class="min-w-0">
@@ -63,33 +71,5 @@
 				{#if progressUpdatedAt}<p class="mt-1 text-slate-600">{m['bv7.last_read']({ relative: formatRelative(progressUpdatedAt) })}</p>{/if}
 			</div>
 		</div>
-	{/if}
-	<div class="mt-5 flex items-center gap-2">
-		{#if file.readable}
-			<a
-				class="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-				href={`/read/${bookId}/${file.id}`}
-				aria-label={file.progress !== null ? m['bv7.resume_file']({ name: file.original_filename }) : m['bv7.read_file']({ name: file.original_filename })}
-			><Icon name="book-open" class="size-4" />{file.progress !== null ? m['bv7.resume']() : m['bv7.read']()}</a>
-		{/if}
-		{#if online}
-			<a
-				class="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700"
-				href={file.download_url}
-				aria-label={m['catalog.book.download']()}
-				title={m['catalog.book.download']()}
-			><Icon name="download" /></a>
-		{/if}
-		<FileMenu {file} {online} {offlineAvailable} {busy} {onSave} {onRemove} {onCopy} />
-	</div>
-	{#if canSetDefault && onToggleDefault}
-		<button
-			type="button"
-			class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:opacity-60"
-			disabled={!online || defaultBusy}
-			aria-busy={defaultBusy}
-			title={file.is_default ? m['bv8.clear_default_hint']() : m['bv8.set_default_hint']()}
-			onclick={() => onToggleDefault(file)}
-		><Icon name={file.is_default ? 'x' : 'check'} class="size-4" />{file.is_default ? m['bv8.clear_default']() : m['bv8.set_default']()}</button>
 	{/if}
 </section>

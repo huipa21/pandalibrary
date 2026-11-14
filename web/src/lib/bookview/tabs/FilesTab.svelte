@@ -13,9 +13,10 @@
 	import FileGroupList from '../files/FileGroupList.svelte';
 	import FilePanel from '../files/FilePanel.svelte';
 	import FilesSummary from '../files/FilesSummary.svelte';
-	import { buildFilesModel, type FileItem, type FileSort } from '../files/files-model.js';
+	import { buildFilesModel, type FileItem } from '../files/files-model.js';
 	import { setDefaultFile } from '../files/files-api.js';
 	import AddFileButton from '../files/AddFileButton.svelte';
+	import MoveBookButton from '../files/MoveBookButton.svelte';
 	import BookShelfTags from '../details/BookShelfTags.svelte';
 	import { createBookShelves } from '../details/book-shelves.svelte.js';
 	import ShelfPopover from '../quickview/ShelfPopover.svelte';
@@ -30,7 +31,6 @@
 	let libraryError = $state('');
 	let selectedFileId = $state<number | null>(null);
 	let selectionChanged = $state(false);
-	let sort = $state<FileSort>('format');
 	let busyFileId = $state<number | null>(null);
 	let busyAction = $state<'save' | 'remove' | null>(null);
 	let defaultBusy = $state(false);
@@ -231,20 +231,26 @@
 
 {#if book && model}
 	<div class="min-w-0 space-y-4">
-		<FilesSummary {book} coverSource={context.coverSource} {libraryName} {model} {online} bind:sort />
-		<div class="card flex min-w-0 flex-wrap items-center justify-between gap-4 p-4">
-			<div class="flex min-w-0 flex-1 items-center gap-3">
+		<FilesSummary {book} coverSource={context.coverSource} {libraryName} {model} {online}>
+			{#snippet collections()}
 				{#if online || shelves.status !== 'error'}
 					<BookShelfTags {shelves} bookTitle={book.title} offline={!online} />
 				{/if}
+			{/snippet}
+			{#snippet actions()}
+				{#if context.canEditMetadata}
+					{#key book.id}
+						<MoveBookButton {book} offline={!online} onMoved={(updated) => { context.book = updated; }} />
+					{/key}
+				{/if}
 				{#if online}<ShelfPopover bookId={book.id} variant="plain-icon" placement="down" memberIds={shelves.memberIds} />{/if}
-			</div>
-			{#if context.canEditMetadata}
-				{#key book.id}
-					<AddFileButton {book} offline={!online} onAdded={() => context.reload()} />
-				{/key}
-			{/if}
-		</div>
+				{#if context.canEditMetadata}
+					{#key book.id}
+						<AddFileButton {book} offline={!online} onAdded={() => context.reload()} />
+					{/key}
+				{/if}
+			{/snippet}
+		</FilesSummary>
 		{#if libraryError}<p role="alert" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{libraryError}</p>{/if}
 		{#if progressError}
 			<div role="alert" class="flex flex-wrap items-center gap-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
@@ -260,16 +266,15 @@
 		{#if model.groups.length}
 			<div class="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
 				<FileGroupList
-					bookId={book.id} groups={model.groups} {sort} {selectedFileId} {online}
+					bookId={book.id} groups={model.groups} sort="format" {selectedFileId} {online}
 					offlineAvailable={$offlineStatus.available} busy={busyAction !== null}
 					onChoose={chooseFile} onSave={saveOffline} onRemove={removeOffline} onCopy={copyName}
 				/>
 				{#if selected}
 					<FilePanel
-						bookId={book.id} file={selected} primary={selected.id === model.primaryFileId}
+						file={selected} primary={selected.id === model.primaryFileId}
 						progressUpdatedAt={selected.progress !== null ? progress?.updated_at ?? null : null}
-						{online} offlineAvailable={$offlineStatus.available} busy={busyAction !== null}
-						onSave={saveOffline} onRemove={removeOffline} onCopy={copyName}
+						{online} onCopy={copyName}
 						canSetDefault={context.canEditMetadata && !context.offline} {defaultBusy} onToggleDefault={toggleDefault}
 					/>
 				{/if}

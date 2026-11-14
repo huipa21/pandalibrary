@@ -118,6 +118,16 @@ separate from the metadata card. Publication dates show only the date; file size
 and added dates are in **Files**, and reading dates are in **Activities**.
 Technical UUID identifiers are hidden on **Details** but remain stored.
 
+In **Files**, the upper-left card shows the cover and title, with icons to move
+the book (administrators only) and add it to a collection. **Add file** is also
+available there for administrators. The upper-right card shows file totals and
+library/collection tags. Files are grouped by reader with a fixed format order;
+read, download and offline actions are in the file list. The selected-file card
+shows file details, with a star toggle in its top-right corner to set or clear
+the default file (administrators only). Moving a book moves all its files to the
+chosen library and updates library-based access; existing collection memberships
+are kept.
+
 Administrators can select **Edit metadata** (the pencil in the **Details** card)
 to edit the existing metadata in one form, including adding, renaming or removing
 tags. Select **Save metadata** at the bottom to save all changes. Direct edits do

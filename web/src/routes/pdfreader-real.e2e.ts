@@ -511,7 +511,7 @@ test('downloaded PDF queues marks, text and ink offline and syncs them on reconn
 	const library = await createLibrary(page);
 	const { book } = await upload(page, library, 'PV11 Offline', pdfFixture(2));
 	await page.goto(`/books/${book.id}/files`);
-	const filePanel = page.getByRole('region', { name: 'This file' });
+	const filePanel = page.getByRole('region', { name: 'Files', exact: true });
 	await filePanel.getByRole('button', { name: /^Actions for / }).click();
 	await filePanel.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();
@@ -974,7 +974,7 @@ test('measures large-PDF and annotation performance', async ({ page, context, br
 	}
 	async function downloadForPerformance(book: Book) {
 		await page.goto(`/books/${book.id}/files`);
-		const panel = page.getByRole('region', { name: 'This file' });
+		const panel = page.getByRole('region', { name: 'Files', exact: true });
 		await panel.getByRole('button', { name: /^Actions for / }).click();
 		await panel.getByRole('menuitem', { name: 'Save for offline' }).click();
 		await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible({ timeout: 90_000 });

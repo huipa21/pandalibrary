@@ -210,7 +210,7 @@ test('storage settings refresh when an explicit sync reconciles an existing conf
 
 async function download(page: Page) {
 	await page.goto('/books/21/files');
-	const panel = page.getByRole('region', { name: 'This file' });
+	const panel = page.getByRole('region', { name: 'Files', exact: true });
 	await panel.getByRole('button', { name: 'Actions for Offline Fixture.pdf' }).click();
 	await panel.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();

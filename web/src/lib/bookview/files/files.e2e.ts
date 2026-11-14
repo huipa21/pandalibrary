@@ -52,7 +52,7 @@ interface FixtureState {
 	releaseFile: (() => void) | null;
 }
 
-async function setup(page: Page, options: { empty?: boolean; locale?: 'en' | 'zh'; holdProgress?: boolean } = {}) {
+async function setup(page: Page, options: { empty?: boolean; locale?: 'en' | 'zh'; holdProgress?: boolean; admin?: boolean } = {}) {
 	const state: FixtureState = {
 		book: makeBook(), progress: makeProgress(), progressStatus: 200, fileStatus: 200,
 		online: true, locale: options.locale ?? 'en', progressRequests: 0,
@@ -72,9 +72,10 @@ async function setup(page: Page, options: { empty?: boolean; locale?: 'en' | 'zh
 		const path = url.pathname.slice('/api/v1'.length);
 		if (path === '/setup') return route.fulfill({ json: { required: false } });
 		if (path === '/auth/me') return route.fulfill({ json: { user: {
-			id: 1, username: 'reader', display_name: '', role: 'user', locale: state.locale
+			id: 1, username: 'reader', display_name: '', role: options.admin ? 'admin' : 'user', locale: state.locale
 		} } });
 		if (path === '/libraries/1') return route.fulfill({ json: { library: { id: 1, name: 'Family Library' } } });
+		if (path === '/libraries/2') return route.fulfill({ json: { library: { id: 2, name: 'New Library' } } });
 		if (path === '/shelves') return route.fulfill({ json: { items: [], next_cursor: null } });
 		if (path === '/books/21/shelves') return route.fulfill({ json: { shelves: [] } });
 		if (path === '/books/21') return route.fulfill({ json: { book: state.book } });
@@ -125,8 +126,8 @@ const panel = (page: Page) => page.getByRole('region', { name: 'This file' });
 const group = (page: Page, name: string) => page.getByRole('region', { name, exact: true });
 
 async function saveFromPanel(page: Page, name: string) {
-	await panel(page).getByRole('button', { name: `Actions for ${name}` }).click();
-	await panel(page).getByRole('menuitem', { name: 'Save for offline' }).click();
+	await page.getByRole('button', { name: `Actions for ${name}` }).click();
+	await page.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();
 }
 
@@ -162,9 +163,11 @@ test('groups formats, selects the progress file, updates the panel, and resumes 
 	await expect(page.getByRole('navigation', { name: 'File location' })).toContainText('First Author');
 	await expect(page.getByRole('navigation', { name: 'File location' })).toContainText('Manual.pdf');
 	await expect(page.locator('[aria-labelledby^="file-group-"] h3')).toHaveText(['Ebook', 'Document', 'Comic']);
-	await expect(group(page, 'Ebook')).toContainText('3 · 1.2 KB');
-	await expect(group(page, 'Document')).toContainText('1 · 4 KB');
-	await expect(group(page, 'Comic')).toContainText('1 · 300 B');
+	await expect(page.getByText('Grouped by reader', { exact: true })).toHaveCount(0);
+	await expect(page.getByRole('combobox', { name: 'Sort files' })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Move book', exact: true })).toHaveCount(0);
+	await expect(panel(page).getByRole('link')).toHaveCount(0);
+	await expect(panel(page).getByRole('button', { name: /^Actions for / })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: 'Select Manual.pdf' })).toHaveAttribute('aria-pressed', 'true');
 	await expect(panel(page).getByRole('heading', { name: 'Manual.pdf' })).toBeVisible();
 	await expect(panel(page)).toContainText('Primary');
@@ -175,21 +178,25 @@ test('groups formats, selects the progress file, updates the panel, and resumes 
 	await expect(panel(page).getByRole('img', { name: '21% read' })).toBeVisible();
 	await expect(group(page, 'Document').getByText('21% read')).toBeVisible();
 	await expect(group(page, 'Ebook').getByText('21% read')).toHaveCount(0);
-	await expect(panel(page).getByRole('link', { name: 'Download' })).toHaveAttribute('href', `/api/v1/books/21/files/32?v=${hash}`);
+	await page.getByRole('button', { name: 'Actions for Manual.pdf' }).click();
+	await expect(page.getByRole('menuitem', { name: 'Download' })).toHaveAttribute('href', `/api/v1/books/21/files/32?v=${hash}`);
+	await page.keyboard.press('Escape');
 
 	await page.getByRole('button', { name: 'Select A.epub' }).click();
 	await expect(panel(page).getByRole('heading', { name: 'A.epub' })).toBeVisible();
 	await expect(panel(page).getByRole('img', { name: '21% read' })).toHaveCount(0);
 	await expect(panel(page)).not.toContainText('Primary');
-	await expect(panel(page).getByRole('link', { name: 'Read A.epub' })).toHaveAttribute('href', '/read/21/31');
-	await expect(panel(page).getByRole('link', { name: 'Download' })).toHaveAttribute('href', `/api/v1/books/21/files/31?v=${hash}`);
+	await expect(page.getByRole('link', { name: 'Read A.epub' })).toHaveAttribute('href', '/read/21/31');
+	await page.getByRole('button', { name: 'Actions for A.epub' }).click();
+	await expect(page.getByRole('menuitem', { name: 'Download' })).toHaveAttribute('href', `/api/v1/books/21/files/31?v=${hash}`);
+	await page.keyboard.press('Escape');
 
 	await page.getByRole('button', { name: 'Select Manual.pdf' }).click();
-	await panel(page).getByRole('link', { name: 'Resume Manual.pdf' }).click();
+	await page.getByRole('link', { name: 'Resume Manual.pdf' }).click();
 	await expect(page).toHaveURL('/read/21/32');
 });
 
-test('sorts only within groups and does not overflow a narrow viewport', async ({ page }) => {
+test('keeps fixed format ordering and does not overflow a narrow viewport', async ({ page }) => {
 	const state = await setup(page);
 	const longName = `${'a'.repeat(180)}.epub`;
 	state.book = {
@@ -203,12 +210,7 @@ test('sorts only within groups and does not overflow a narrow viewport', async (
 		buttons.map((button) => button.getAttribute('aria-label'))
 	);
 	await expect.poll(labels).toEqual([`Select ${longName}`, 'Select Z.epub', 'Select M.mobi']);
-	await page.getByLabel('Sort files').selectOption('name');
-	await expect.poll(labels).toEqual([`Select ${longName}`, 'Select M.mobi', 'Select Z.epub']);
-	await page.getByLabel('Sort files').selectOption('size');
-	await expect.poll(labels).toEqual(['Select Z.epub', 'Select M.mobi', `Select ${longName}`]);
-	await page.getByLabel('Sort files').selectOption('added');
-	await expect.poll(labels).toEqual(['Select M.mobi', 'Select Z.epub', `Select ${longName}`]);
+	await expect(page.getByLabel('Sort files')).toHaveCount(0);
 	await expect(group(page, 'Document')).toBeVisible();
 	await expect(group(page, 'Comic')).toBeVisible();
 	await page.getByRole('button', { name: `Select ${longName}` }).click();
@@ -249,15 +251,17 @@ test('keeps unsupported files visible and handles missing and zero-percent progr
 	await expect(group(page, 'Other')).toContainText('Archive.zip');
 	await page.getByRole('button', { name: 'Select Archive.zip' }).click();
 	await expect(panel(page).getByRole('heading', { name: 'Archive.zip' })).toBeVisible();
-	await expect(panel(page).getByRole('link', { name: 'Read Archive.zip' })).toHaveCount(0);
-	await expect(panel(page).getByRole('link', { name: 'Download' })).toHaveAttribute('href', `/api/v1/books/21/files/36?v=${hash}`);
+	await expect(page.getByRole('link', { name: 'Read Archive.zip' })).toHaveCount(0);
+	await page.getByRole('button', { name: 'Actions for Archive.zip' }).click();
+	await expect(page.getByRole('menuitem', { name: 'Download' })).toHaveAttribute('href', `/api/v1/books/21/files/36?v=${hash}`);
+	await page.keyboard.press('Escape');
 
 	state.progress = makeProgress(31, 0, 2);
 	await page.evaluate(() => window.dispatchEvent(new CustomEvent('pandalibrary-book-state-changed', { detail: { bookId: 21 } })));
 	await expect(group(page, 'Ebook').getByText('0% read')).toBeVisible();
 	await page.getByRole('button', { name: 'Select A.epub' }).click();
 	await expect(panel(page)).toContainText('You are 0% through this copy');
-	await expect(panel(page).getByRole('link', { name: 'Resume A.epub' })).toHaveAttribute('href', '/read/21/31');
+	await expect(page.getByRole('link', { name: 'Resume A.epub' })).toHaveAttribute('href', '/read/21/31');
 });
 
 test('supports clipboard and keyboard-operated file menus', async ({ page, context }) => {
@@ -269,12 +273,12 @@ test('supports clipboard and keyboard-operated file menus', async ({ page, conte
 	await expect(page.getByText('File name copied.')).toBeVisible();
 	await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('Manual.pdf');
 
-	const trigger = panel(page).getByRole('button', { name: 'Actions for Manual.pdf' });
+	const trigger = page.getByRole('button', { name: 'Actions for Manual.pdf' });
 	await trigger.focus();
 	await page.keyboard.press('ArrowDown');
-	await expect(panel(page).getByRole('menuitem', { name: 'Download' })).toBeFocused();
+	await expect(page.getByRole('menuitem', { name: 'Download' })).toBeFocused();
 	await page.keyboard.press('ArrowDown');
-	await expect(panel(page).getByRole('menuitem', { name: 'Save for offline' })).toBeFocused();
+	await expect(page.getByRole('menuitem', { name: 'Save for offline' })).toBeFocused();
 	await page.keyboard.press('Escape');
 	await expect(trigger).toBeFocused();
 	await expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -297,14 +301,14 @@ test('saves files, confirms removal of all downloaded copies, and preserves them
 		expect(dialog.message()).toBe('Remove this book and its downloaded files from this device? Queued reading changes are kept.');
 		void dialog.dismiss();
 	});
-	await panel(page).getByRole('button', { name: 'Actions for A.epub' }).click();
-	await panel(page).getByRole('menuitem', { name: 'Remove offline copy' }).click();
+	await page.getByRole('button', { name: 'Actions for A.epub' }).click();
+	await page.getByRole('menuitem', { name: 'Remove offline copy' }).click();
 	expect(await storedRows(page, 'files')).toHaveLength(2);
 	await expect(panel(page)).toContainText('Offline');
 
 	page.once('dialog', (dialog) => void dialog.accept());
-	await panel(page).getByRole('button', { name: 'Actions for A.epub' }).click();
-	await panel(page).getByRole('menuitem', { name: 'Remove offline copy' }).click();
+	await page.getByRole('button', { name: 'Actions for A.epub' }).click();
+	await page.getByRole('menuitem', { name: 'Remove offline copy' }).click();
 	await expect(page.getByText('Downloaded book data removed.')).toBeVisible();
 	await expect.poll(async () => (await storedRows(page, 'files')).length).toBe(0);
 	await expect(panel(page)).not.toContainText('Offline');
@@ -331,11 +335,11 @@ test('reports progress and download failures, including revoked access, and show
 
 	state.holdFile = true;
 	state.fileStatus = 503;
-	await panel(page).getByRole('button', { name: 'Actions for Manual.pdf' }).click();
-	await panel(page).getByRole('menuitem', { name: 'Save for offline' }).click();
+	await page.getByRole('button', { name: 'Actions for Manual.pdf' }).click();
+	await page.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect.poll(() => state.releaseFile !== null).toBe(true);
 	await expect(page.getByText('Downloading for offline…')).toBeVisible();
-	await expect(panel(page).getByRole('button', { name: 'Actions for Manual.pdf' })).toBeDisabled();
+	await expect(page.getByRole('button', { name: 'Actions for Manual.pdf' })).toBeDisabled();
 	state.releaseFile?.();
 	await expect(page.getByRole('alert').filter({ hasText: 'Could not download this file for offline reading.' })).toBeVisible();
 
@@ -343,8 +347,8 @@ test('reports progress and download failures, including revoked access, and show
 	await saveFromPanel(page, 'Manual.pdf');
 	await page.getByRole('button', { name: 'Select A.epub' }).click();
 	state.fileStatus = 403;
-	await panel(page).getByRole('button', { name: 'Actions for A.epub' }).click();
-	await panel(page).getByRole('menuitem', { name: 'Save for offline' }).click();
+	await page.getByRole('button', { name: 'Actions for A.epub' }).click();
+	await page.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByRole('alert').filter({ hasText: 'Could not download this file for offline reading.' })).toBeVisible();
 	await expect.poll(async () => (await storedRows(page, 'files')).length).toBe(0);
 });
@@ -384,8 +388,8 @@ test('loads synchronized progress and legacy metadata offline, then reloads afte
 	await expect(panel(page).getByRole('link', { name: 'Download' })).toHaveCount(0);
 	await expect(group(page, 'Ebook')).toHaveCount(0);
 	page.once('dialog', (dialog) => void dialog.accept());
-	await panel(page).getByRole('button', { name: 'Actions for Multi-format Book.pdf' }).click();
-	await panel(page).getByRole('menuitem', { name: 'Remove offline copy' }).click();
+	await page.getByRole('button', { name: 'Actions for Multi-format Book.pdf' }).click();
+	await page.getByRole('menuitem', { name: 'Remove offline copy' }).click();
 	await expect(page.getByRole('main').getByRole('alert').filter({ hasText: 'This book or file is not available offline.' })).toBeVisible();
 	await expect.poll(async () => (await storedRows(page, 'files')).length).toBe(0);
 });
@@ -407,7 +411,7 @@ test('refreshes the book and progress after reconnecting from an offline load', 
 	await expect(group(page, 'Ebook')).toBeVisible();
 	await expect(panel(page).getByRole('heading', { name: 'A.epub' })).toBeVisible();
 	await expect(panel(page)).toContainText('You are 66% through this copy');
-	await expect(panel(page).getByRole('link', { name: 'Download' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Actions for A.epub' })).toBeVisible();
 });
 
 test('shows an empty state and localizes the files view', async ({ page }) => {
@@ -422,4 +426,117 @@ test('shows translated file groups and progress', async ({ page }) => {
 	await page.goto('/books/21/files');
 	await expect(page.getByRole('region', { name: '电子书' })).toBeVisible();
 	await expect(page.getByRole('region', { name: '此文件' })).toContainText('此副本已读 21%');
+});
+
+test('places book actions beside the cover and toggles the selected default file in the panel header', async ({ page }, testInfo) => {
+	const state = await setup(page, { admin: true });
+	await page.route('**/api/v1/books/21/default-file', async (route) => {
+		const { file_id } = route.request().postDataJSON() as { file_id: number | null };
+		state.book = { ...state.book, files: state.book.files.map((file) => ({ ...file, is_default: file.id === file_id })) };
+		await route.fulfill({ json: { book: state.book } });
+	});
+	await page.goto('/books/21/files');
+	const identity = page.locator('section.card').filter({ has: page.getByRole('heading', { name: 'Multi-format Book', exact: true }) });
+	await expect(identity.getByRole('button', { name: 'Move book', exact: true })).toBeVisible();
+	await expect(identity.getByRole('button', { name: 'Add to collection', exact: true })).toBeVisible();
+	await expect(identity.getByRole('button', { name: 'Add file', exact: true })).toBeVisible();
+	const summary = page.locator('section.card').filter({ has: page.getByRole('region', { name: 'Library', exact: true }) });
+	await expect(summary.locator('dl')).toContainText('Formats');
+	await expect(summary).toContainText('Family Library');
+	await expect(identity.locator('dl')).toHaveCount(0);
+	await expect(panel(page).getByRole('link')).toHaveCount(0);
+	const toggle = panel(page).getByRole('button', { name: 'Set as default', exact: true });
+	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+	await toggle.click();
+	await expect(panel(page).getByRole('button', { name: 'Clear default', exact: true })).toHaveAttribute('aria-pressed', 'true');
+	await expect(page.getByText('Manual.pdf is now the default file.', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Select A.epub', exact: true }).click();
+	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+	await page.getByRole('button', { name: 'Select Manual.pdf', exact: true }).click();
+	await panel(page).getByRole('button', { name: 'Clear default', exact: true }).click();
+	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+	await expect(page.getByText('The default file was cleared.', { exact: true })).toBeVisible();
+	for (const width of [1440, 390]) {
+		await page.setViewportSize({ width, height: 900 });
+		const left = await identity.boundingBox();
+		const right = await summary.boundingBox();
+		const selected = await panel(page).boundingBox();
+		const star = await toggle.boundingBox();
+		const heading = await panel(page).getByRole('heading', { name: 'This file', exact: true }).boundingBox();
+		if (!left || !right || !selected || !star || !heading) throw new Error('Missing Files card layout.');
+		if (width >= 1024) {
+			expect(Math.abs(left.y - right.y)).toBeLessThanOrEqual(1);
+			expect(right.x).toBeGreaterThanOrEqual(left.x + left.width);
+		} else {
+			expect(right.y).toBeGreaterThanOrEqual(left.y + left.height);
+		}
+		expect(Math.abs(star.y + star.height / 2 - heading.y - heading.height / 2)).toBeLessThanOrEqual(1);
+		expect(selected.x + selected.width - star.x - star.width).toBeLessThanOrEqual(25);
+		await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+		await page.screenshot({ path: testInfo.outputPath(`files-${width}.png`), fullPage: true });
+	}
+});
+
+test('moves all book files, updates the library tag, and reports load and destination conflicts without losing files', async ({ page }) => {
+	const state = await setup(page, { admin: true });
+	let loadStatus = 503;
+	let moveStatus = 409;
+	const patches: unknown[] = [];
+	await page.route('**/api/v1/libraries?*', async (route) => {
+		await route.fulfill({ status: loadStatus, json: { items: [
+			{ id: 1, name: 'Family Library' }, { id: 2, name: 'New Library' }
+		], next_cursor: null } });
+	});
+	await page.route('**/api/v1/books/21', async (route) => {
+		if (route.request().method() === 'PATCH') {
+			patches.push(route.request().postDataJSON());
+			if (moveStatus !== 200) return route.fulfill({ status: moveStatus, contentType: 'application/problem+json', json: {
+				detail: "Destination library already contains this book's file"
+			} });
+			state.book = { ...state.book, library_id: 2 };
+		}
+		await route.fulfill({ json: { book: state.book } });
+	});
+	await page.goto('/books/21/files');
+	await page.getByRole('button', { name: 'Move book', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Move book', exact: true });
+	await expect(dialog.getByRole('alert')).toHaveText('Could not load libraries. Please try again.');
+	loadStatus = 200;
+	await dialog.getByRole('button', { name: 'Try again' }).click();
+	const destination = dialog.getByRole('combobox', { name: 'Destination library' });
+	await expect(destination.locator('option')).toHaveText(['Choose a library', 'New Library']);
+	await destination.selectOption('2');
+	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+	expect(patches).toHaveLength(0);
+	await page.getByRole('button', { name: 'Move book', exact: true }).click();
+	await destination.selectOption('2');
+	await dialog.getByRole('button', { name: 'Move book', exact: true }).click();
+	await expect(dialog.getByRole('alert')).toHaveText("Destination library already contains this book's file");
+	await expect(page.getByRole('region', { name: 'Library', exact: true })).toContainText('Family Library');
+	moveStatus = 200;
+	await dialog.getByRole('button', { name: 'Move book', exact: true }).click();
+	await expect(dialog).toHaveCount(0);
+	await expect(page.getByRole('region', { name: 'Library', exact: true }).getByRole('link')).toHaveAttribute('href', '/library/2');
+	await expect(page.getByText('Book moved to New Library.', { exact: true })).toBeVisible();
+	expect(patches).toEqual([{ library_id: 2 }, { library_id: 2 }]);
+	await page.reload();
+	await expect(page.getByRole('region', { name: 'Library', exact: true })).toContainText('New Library');
+	expect(state.book.files).toHaveLength(5);
+	await expect(page.locator('button[aria-label^="Select "]')).toHaveCount(5);
+});
+
+test('disables moving when there are no destination libraries or the connection is offline', async ({ page, context }) => {
+	await setup(page, { admin: true });
+	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: {
+		items: [{ id: 1, name: 'Family Library' }], next_cursor: null
+	} }));
+	await page.goto('/books/21/files');
+	await page.getByRole('button', { name: 'Move book', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Move book', exact: true });
+	await expect(dialog.getByText('No other libraries are available.')).toBeVisible();
+	await expect(dialog.getByRole('button', { name: 'Move book', exact: true })).toBeDisabled();
+	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+	await context.setOffline(true);
+	await expect(page.getByRole('button', { name: 'Move book', exact: true })).toBeDisabled();
+	await expect(panel(page).getByRole('button', { name: 'Set as default', exact: true })).toBeDisabled();
 });

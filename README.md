@@ -8,7 +8,10 @@ CBZ; reader support depends on format and browser.
 Book **Details** shows edition filenames and a file count. Open the **Files** tab
 to choose a specific file to download, see its library and collection tags, or
 set the default file. Administrators can use **Add file** there to review or
-drop additional formats/editions before uploading. The review checks file type,
+drop additional formats/editions before uploading, or the move icon below the
+cover to move the book and all its files to another library. File actions live
+in the file list; the selected-file card has a top-right default toggle.
+The review checks file type,
 size, empty files, and repeated selections; import verifies contents and
 duplicates before attaching files without replacing existing editions.
 

@@ -224,7 +224,7 @@ test('two-touch pinch zooms while one touch retains native scrolling', async ({ 
 test('saved PDF opens from IndexedDB offline and retains the toolbar', async ({ page, context }) => {
 	const state = await setup(page, { pdfLayout: 'single', pdfZoom: 'page-fit' }, 3);
 	await page.goto('/books/21/files');
-	await page.getByRole('region', { name: 'This file' }).getByRole('button', { name: 'Actions for Assembly.pdf' }).click();
+	await page.getByRole('button', { name: 'Actions for Assembly.pdf' }).click();
 	await page.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();
 	await page.evaluate(async () => {

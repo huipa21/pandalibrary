@@ -217,7 +217,7 @@ test('image preparation, upload, aspect-locked resize, cached offline reload and
 	expect(rect.width / rect.height).toBeCloseTo(2 * 792 / 612);
 	const downloads = state.assetDownloads();
 	await page.goto('/books/21/files');
-	await page.getByRole('region', { name: 'This file' }).getByRole('button', { name: 'Actions for Insert.pdf' }).click();
+	await page.getByRole('button', { name: 'Actions for Insert.pdf' }).click();
 	await page.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();
 	await page.evaluate(async () => {

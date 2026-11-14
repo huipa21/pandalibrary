@@ -217,12 +217,7 @@ for (const theme of ['light', 'dark']) {
 		await checkNarrowLayout(page, shelfSearch);
 
 		await page.goto('/books/21/files');
-		const fileSort = page.getByRole('combobox', { name: 'Sort files', exact: true });
-		expect.soft(await fieldStyle(fileSort), 'File sort').toEqual(standard);
-		expect.soft(await labelStyle(fileSort), 'File sort label').toEqual(standardLabel);
-		await checkNarrowLayout(page, fileSort);
-		await fileSort.selectOption('name');
-		await expect(fileSort).toHaveValue('name');
+		await expect(page.getByRole('combobox', { name: 'Sort files', exact: true })).toHaveCount(0);
 
 		await page.goto('/books/21/highlights');
 		const highlightsSearch = page.getByRole('searchbox', { name: 'Search annotations' });

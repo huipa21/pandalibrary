@@ -83,6 +83,7 @@ test('admins review and verify attachments in Files and choose the default file'
 	await page.goto(`/books/${bookID}/files`);
 	await page.getByRole('button', { name: `Select ${pdf.original_filename}` }).click();
 	await page.getByRole('button', { name: 'Set as default', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Clear default', exact: true })).toHaveAttribute('aria-pressed', 'true');
 	await expect(page.getByText(`${pdf.original_filename} is now the default file.`)).toBeVisible();
 	expect((await getBook(page.request, bookID)).files.find((file) => file.is_default)?.id).toBe(pdf.id);
 
@@ -92,4 +93,26 @@ test('admins review and verify attachments in Files and choose the default file'
 	await page.goto(`/books/${bookID}`);
 	await expect(page.getByText('Files on disk: 2', { exact: true })).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Files on disk: 2' })).toHaveCount(0);
+
+	const destination = await checked(await page.request.post('/api/v1/admin/libraries', {
+		data: { name: `Moved files ${suffix}`, slug: `moved-files-${suffix}` }
+	}), 201);
+	const { library: target } = await destination.json() as { library: { id: number } };
+	const collectionResponse = await checked(await page.request.post('/api/v1/shelves', {
+		data: { kind: 'private', name: `Files collection ${suffix}`, description: null }
+	}), 201);
+	const { shelf } = await collectionResponse.json() as { shelf: { id: number } };
+	await checked(await page.request.put(`/api/v1/shelves/${shelf.id}/books/${bookID}`, { data: {} }));
+	await page.goto(`/books/${bookID}/files`);
+	await page.getByRole('button', { name: 'Move book', exact: true }).click();
+	const moveDialog = page.getByRole('dialog', { name: 'Move book', exact: true });
+	await moveDialog.getByRole('combobox', { name: 'Destination library' }).selectOption(String(target.id));
+	await moveDialog.getByRole('button', { name: 'Move book', exact: true }).click();
+	await expect(page.getByText(`Book moved to Moved files ${suffix}.`, { exact: true })).toBeVisible();
+	const moved = await getBook(page.request, bookID);
+	expect(moved.library_id).toBe(target.id);
+	expect(moved.files.map((file) => file.id).sort()).toEqual(attached.files.map((file) => file.id).sort());
+	await page.reload();
+	await expect(page.getByRole('region', { name: 'Library', exact: true })).toContainText(`Moved files ${suffix}`);
+	await expect(page.getByRole('list', { name: 'Collections', exact: true })).toContainText(`Files collection ${suffix}`);
 });

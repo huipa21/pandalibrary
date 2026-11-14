@@ -101,6 +101,17 @@ export async function getBook(id: number): Promise<Book> {
 	return response.book;
 }
 
+export async function moveBook(bookId: number, libraryId: number): Promise<Book> {
+	const response = await api.request<{ book: Book }>(`/books/${bookId}`, {
+		method: 'PATCH',
+		body: { library_id: libraryId }
+	});
+	if (!response?.book || response.book.id !== bookId || response.book.library_id !== libraryId) {
+		throw new Error('The server returned an invalid moved book.');
+	}
+	return response.book;
+}
+
 /** Lists the viewer-visible manual shelves (including Favorites) that contain a book. */
 export async function getBookShelves(bookId: number, signal?: AbortSignal): Promise<Shelf[]> {
 	const response = await api.request<{ shelves: Shelf[] }>(

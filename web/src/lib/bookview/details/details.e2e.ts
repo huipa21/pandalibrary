@@ -415,7 +415,8 @@ test('downloads are file-specific and only available in Files', async ({ page })
 	const requested = page.waitForRequest((request) =>
 		request.url().endsWith(book.files[0].download_url));
 	const downloaded = page.waitForEvent('download');
-	await page.getByRole('region', { name: 'This file' }).getByRole('link', { name: 'Download', exact: true }).click();
+	await page.getByRole('button', { name: 'Actions for library.epub' }).click();
+	await page.getByRole('menuitem', { name: 'Download', exact: true }).click();
 	await requested;
 	expect((await downloaded).suggestedFilename()).toBe('library.epub');
 	await expect(page).toHaveURL('/books/21/files');
@@ -1060,7 +1061,7 @@ test('keeps metadata sources but hides the admin edit control when offline', asy
 	const card = page.getByRole('region', { name: 'Details', exact: true });
 	await expect(card.getByRole('link', { name: 'Edit metadata' })).toBeVisible();
 	await page.goto('/books/21/files');
-	const filePanel = page.getByRole('region', { name: 'This file' });
+	const filePanel = page.getByRole('region', { name: 'Files', exact: true });
 	await filePanel.getByRole('button', { name: 'Actions for library.epub' }).click();
 	await filePanel.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();

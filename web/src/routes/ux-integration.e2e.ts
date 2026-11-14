@@ -220,7 +220,7 @@ test('book-scoped PDF and CFI bookmarks jump, rename, survive offline reload and
 	await epubItem.locator('[data-bookmark-jump]').click();
 	await expect.poll(() => page.frames().some((frame) => frame.url().startsWith('blob:'))).toBe(true);
 	await page.goto(`/books/${pdf.bookID}/files`);
-	const filePanel = page.getByRole('region', { name: 'This file' });
+	const filePanel = page.getByRole('region', { name: 'Files', exact: true });
 	await filePanel.getByRole('button', { name: 'Actions for UXPDF.pdf' }).click();
 	await filePanel.getByRole('menuitem', { name: 'Save for offline' }).click();
 	await expect(page.getByText('Book file downloaded for offline reading.', { exact: true })).toBeVisible();
