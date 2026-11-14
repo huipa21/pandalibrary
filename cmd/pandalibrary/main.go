@@ -53,6 +53,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runMigrate(args[1:], stdout)
 	case "restore":
 		return runRestore(args[1:], stdout, stderr)
+	case "dict":
+		return runDict(args[1:], stdout, stderr)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}

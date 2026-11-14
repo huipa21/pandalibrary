@@ -5,6 +5,7 @@
 	import type { HighlightStyle, ReaderSelection } from '../types.js';
 	import type { MarkColor } from '../annotations.js';
 	import SelectionToolbar from '../pdf/marks/SelectionToolbar.svelte';
+	import LookupPanel from '#lib/dictionary/LookupPanel.svelte';
 	import { intersects, type RectLike } from '../pdf/marks/floating.js';
 	import { markColors } from '../pdf/marks/mark-colors.svelte.js';
 	import '../pdf/marks/marks.css';
@@ -24,9 +25,14 @@
 	let bounds = $state<RectLike>({ left: 0, top: 0, right: 0, bottom: 0 });
 	let working = $state(false);
 	let status = $state('');
+	let lookup = $state.raw<{ text: string; anchor: RectLike; selection: ReaderSelection } | null>(null);
 	let dismissedSelection: ReaderSelection | null = null;
 	const busy = $derived(working || controller.busy);
 	const toolbarFocused = () => !!host?.contains(document.activeElement);
+
+	function sameSelection(a: ReaderSelection | null, b: ReaderSelection | null) {
+		return a === b || (!!a && !!b && a.text === b.text && JSON.stringify(a.locator) === JSON.stringify(b.locator));
+	}
 
 	function dismiss(clear = false) {
 		const focus = toolbarFocused();
@@ -87,6 +93,8 @@
 			}
 		};
 		const unsubscribe = reader.subscribeSelection((reason) => {
+			// A new or collapsed selection inside the book frame closes the dictionary panel.
+			if (reason !== 'geometry' && lookup && !sameSelection(controller.selection, lookup.selection)) lookup = null;
 			if (reason === 'geometry' && !reader.getSelectionBounds()) dismiss();
 			refresh();
 		});
@@ -162,6 +170,12 @@
 		});
 	}
 
+	function openLookup() {
+		const selection = chosen;
+		if (!selection || !anchor) return;
+		lookup = { text: selection.text, anchor, selection };
+	}
+
 	function copy() {
 		const selection = chosen;
 		if (!selection) return;
@@ -192,14 +206,21 @@
 </script>
 
 <div bind:this={host} class="reflow-selection-toolbar">
-	{#if chosen && anchor}
+	{#if chosen && anchor && !lookup}
 		<SelectionToolbar {anchor} {bounds} highlightColor={markColors.get('highlight')} lineColor={markColors.get('underline')}
-			disabled={busy} oncopy={copy} onmark={mark} oncomment={() => mark('highlight', markColors.get('highlight'), true)}
+			disabled={busy} oncopy={copy} onlookup={openLookup} onmark={mark} oncomment={() => mark('highlight', markColors.get('highlight'), true)}
 			onbookmark={bookmark} onpick={(style, color: MarkColor) => {
 				markColors.set(style, color);
 				if (style === 'highlight') mark(style, color);
 			}}
 			onescape={() => dismiss(true)} />
+	{/if}
+	{#if lookup}
+		<LookupPanel text={lookup.text} anchor={lookup.anchor} {bounds} bookLanguage={controller.book?.language ?? null}
+			onclose={(restoreFocus) => {
+				lookup = null;
+				if (restoreFocus) surface.focus({ preventScroll: true });
+			}} />
 	{/if}
 	<p class="sr-only" role="status">{status}</p>
 </div>

@@ -165,6 +165,52 @@ include `library_id` or a field already selected in `fields`. Selected values
 come from the server's cached candidates. Requests without provider selections
 should use `PATCH /api/v1/books/{id}` instead.
 
+## Dictionaries
+
+The reader's **Look up** action uses dictionaries that an administrator imports
+from the server command line. They are stored separately from the library
+database in `<data-dir>/dictionaries/dictionaries.db`. Download the source
+files yourself and import each one:
+
+| Source ID | Download | Provides |
+|---|---|---|
+| `cc-cedict` | [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cc-cedict) `cedict_1_0_ts_utf-8_mdbg.txt.gz` | Chinese → English, and the Traditional → Simplified table used by other Chinese imports |
+| `ecdict` | [ECDICT](https://github.com/skywind3000/ECDICT) `ecdict.csv` | English → Chinese, with inflected forms |
+| `jmdict` | [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) `JMdict_e.gz` (English-only) | Japanese → English and English → Japanese |
+| `wiktionary-en` | [Kaikki English edition](https://kaikki.org/dictionary/rawdata.html) | English definitions; Chinese/Japanese → English |
+| `wiktionary-zh` | [Kaikki Chinese edition](https://kaikki.org/zhwiktionary/rawdata.html) `raw-wiktextract-data.jsonl.gz` | Chinese definitions; English/Japanese → Chinese |
+| `wiktionary-ja` | [Kaikki Japanese edition](https://kaikki.org/jawiktionary/rawdata.html) `raw-wiktextract-data.jsonl.gz` | Japanese definitions; English/Chinese → Japanese |
+
+Import CC-CEDICT first: Chinese Wiktionary entries are converted to Simplified
+Chinese with its table. Files can be plain or gzip-compressed:
+
+```sh
+./pandalibrary dict import --source cc-cedict --file cedict_1_0_ts_utf-8_mdbg.txt.gz --data-dir /data
+./pandalibrary dict import --source ecdict --file ecdict.csv --data-dir /data
+./pandalibrary dict import --source jmdict --file JMdict_e.gz --data-dir /data
+./pandalibrary dict import --source wiktionary-zh --file raw-wiktextract-data.jsonl.gz --data-dir /data
+./pandalibrary dict list --data-dir /data
+```
+
+In a container, mount the data volume and the download folder and override the
+entrypoint, as for other CLI commands:
+
+```sh
+docker run --rm -v pandalibrary-data:/data -v "$PWD:/import:ro" --entrypoint /pandalibrary \
+  pandalibrary:local dict import --source ecdict --file /import/ecdict.csv
+```
+
+Importing a source again replaces that source's earlier entries. Imports can run
+while the server is running; new dictionaries become available to readers
+within about 30 seconds. Wiktionary files are large, so their imports take
+longer and need several gigabytes of free disk space. Readers see each
+dictionary's name with its entries. Check each source's licence before
+redistributing an installation: CC-CEDICT, JMdict and Wiktionary data require
+attribution and share-alike; ECDICT is published under MIT.
+
+Dictionaries are not part of full-data backups. Keep the downloaded files and
+import them again after restoring onto a new server.
+
 ## Backups
 
 Full-data backups are single `.tar.gz` files saved in `<data-dir>/backups/`.

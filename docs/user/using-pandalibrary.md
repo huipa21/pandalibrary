@@ -211,7 +211,9 @@ In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:
   directly beneath the button in every reader;
 - select text in EPUB, MOBI, AZW3, FB2 or FBZ to open the floating annotation
   toolbar: copy, highlight, underline, strike out, attach a comment or bookmark
-  the passage. Use the colour arrows to choose highlight and line colours;
+  the passage. Use the colour arrows to choose highlight and line colours.
+  **Look up** opens the dictionary for the selected word (see
+  [Dictionary lookup](#dictionary-lookup));
 - open **Annotations** to review saved marks, change their colours, attach or
   edit notes, or delete them. In CBZ comics, use **Highlight current page** to mark
   the current page from the top toolbar instead of selecting text;
@@ -237,6 +239,30 @@ CBZ comics have no text search. PDF search uses the document's embedded text,
 not the separately recognized text on scanned pages.
 
 Reading time is recorded as sessions for your stats; idle time is not counted.
+
+### Dictionary lookup
+
+Select a word or short phrase in an EPUB, MOBI, AZW3, FB2, FBZ or PDF book and
+choose **Look up** (magnifying glass) in the selection toolbar. A panel opens
+next to the selection with matching dictionary entries: headword, reading or
+pronunciation, part of speech, definitions and the dictionary that supplied them.
+
+- **From** and **To** choose the languages. English, Chinese and Japanese are
+  supported in every direction, including same-language definitions. Chinese
+  is always shown in Simplified Chinese; Traditional Chinese selections are
+  converted before lookup.
+- The source language is detected from the selection: kana means Japanese,
+  Latin letters mean English, and Chinese characters alone mean Chinese unless
+  the book is Japanese. Change **From** if the guess is wrong. Your last **To**
+  choice is remembered for each source language on this device.
+- Inflected words find their dictionary form, for example *running* → *run*
+  or 食べました → 食べる (marked **Base form**). When a longer selection has
+  no entry, the longest word at its start is shown (marked **Partial match**).
+- Only directions with installed dictionaries can be chosen. Dictionaries are
+  installed by an administrator; see
+  [Administration: dictionaries](administration.md#dictionaries).
+  Selections are limited to 64 characters. Lookup needs a connection to the
+  server and is not available offline.
 
 PDFs fill the screen below a compact toolbar, without the app header or
 library sidebar. Progress shows two decimal places (for example, **10.05%**), while

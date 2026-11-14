@@ -16,6 +16,7 @@
 	import SelectionToolbar from './SelectionToolbar.svelte';
 	import MarkToolbar from './MarkToolbar.svelte';
 	import CommentPopover from './CommentPopover.svelte';
+	import LookupPanel from '#lib/dictionary/LookupPanel.svelte';
 	import './marks.css';
 
 	const ctx = getPdfReaderContext();
@@ -35,6 +36,7 @@
 	let selection = $state.raw<PdfSelection | null>(null);
 	let markTarget = $state<{ id: string; anchor: RectLike } | null>(null);
 	let comment = $state<CommentTarget | null>(null);
+	let lookup = $state.raw<{ text: string; anchor: RectLike } | null>(null);
 	let toast = $state<{ message: string; undo: () => void } | null>(null);
 	let working = $state(false);
 	let ocrStatus = $state<OcrStatus>({ state: 'idle' });
@@ -368,7 +370,7 @@
 
 {#snippet ocrChip()}<OcrStatusChip status={ocrStatus} />{/snippet}
 
-{#if selection && !comment}
+{#if selection && !comment && !lookup}
 	<SelectionToolbar
 		anchor={selection.anchor}
 		{bounds}
@@ -377,6 +379,7 @@
 		lineColor={markColors.get('underline')}
 		disabled={busy}
 		oncopy={() => { if (selection) void copyText(selection.text); }}
+		onlookup={() => { if (selection) lookup = { text: selection.text, anchor: selection.anchor }; }}
 		onmark={(style) => mark(style)}
 		oncomment={commentOnSelection}
 		onbookmark={bookmarkSelection}
@@ -385,6 +388,19 @@
 			if (style === 'highlight') mark(style, color);
 		}}
 		onescape={clearSelection}
+	/>
+{/if}
+
+{#if lookup}
+	<LookupPanel
+		text={lookup.text}
+		anchor={lookup.anchor}
+		{bounds}
+		bookLanguage={ctx.bookLanguage}
+		onclose={(restoreFocus) => {
+			lookup = null;
+			if (restoreFocus) focusViewport();
+		}}
 	/>
 {/if}
 

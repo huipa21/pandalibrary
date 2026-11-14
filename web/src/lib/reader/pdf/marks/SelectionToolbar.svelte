@@ -10,7 +10,7 @@
 
 	let {
 		anchor, bounds, hidden = false, highlightColor, lineColor, disabled = false,
-		oncopy, onmark, oncomment, onbookmark, onpick, onescape
+		oncopy, onlookup, onmark, oncomment, onbookmark, onpick, onescape
 	}: {
 		anchor: RectLike;
 		bounds: RectLike;
@@ -19,6 +19,7 @@
 		lineColor: MarkColor;
 		disabled?: boolean;
 		oncopy: () => void;
+		onlookup?: () => void;
 		onmark: (style: HighlightStyle) => void;
 		oncomment: () => void;
 		onbookmark: () => void;
@@ -94,6 +95,11 @@
 	<button type="button" class="pv4-button" data-roving aria-label={m['pv8.copy']()} title={m['pv8.copy']()} {disabled} onmousedown={keep} onclick={oncopy}>
 		<Icon name="copy" />
 	</button>
+	{#if onlookup}
+		<button type="button" class="pv4-button" data-roving aria-label={m['dict.lookup']()} title={m['dict.lookup']()} data-testid="pv8-lookup" onmousedown={keep} onclick={onlookup}>
+			<Icon name="search" />
+		</button>
+	{/if}
 	<span class="pv8-split">
 		<button type="button" class="pv4-button pv8-split-main" data-roving aria-label={m['pv8.highlight']()} title={m['pv8.highlight']()} {disabled} onmousedown={keep} onclick={() => onmark('highlight')}>
 			<Icon name="highlighter" />
