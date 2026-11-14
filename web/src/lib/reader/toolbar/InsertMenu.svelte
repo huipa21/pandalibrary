@@ -16,9 +16,9 @@
 </script>
 
 <ToolbarMenu label={m['pv4.insert']()} icon="insert" align="start" bind:open {disabled}>
-	<MenuItem label={m['pv9.text']()} onchoose={() => onselect('text')} />
-	<MenuItem label={m['pv9.draw']()} onchoose={() => onselect('draw')} />
+	<MenuItem label={m['pv9.text']()} icon="type" onchoose={() => onselect('text')} />
+	<MenuItem label={m['pv9.draw']()} icon="pen" onchoose={() => onselect('draw')} />
 	<span title={offline ? m['pv9.image_offline']() : undefined}>
-		<MenuItem label={m['pv9.image']()} disabled={offline} onchoose={() => onselect('image')} />
+		<MenuItem label={m['pv9.image']()} icon="image" disabled={offline} onchoose={() => onselect('image')} />
 	</span>
 </ToolbarMenu>

@@ -2,6 +2,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import HeaderMenu from './HeaderMenu.svelte';
 	import { initials } from './initials.js';
+	import Icon from '#lib/bookview/Icon.svelte';
 
 	interface Props {
 		pathname: string;
@@ -53,6 +54,7 @@
 		</a>
 		{#if viewer.role === 'admin'}
 			<a role="menuitem" class="header-menu-item" href="/admin" aria-current={pathname === '/admin' || pathname.startsWith('/admin/') ? 'page' : undefined} data-menu-activate>
+				<Icon name="users" class="size-4.5 shrink-0" />
 				<span>{m['admin.nav']()}</span>
 			</a>
 		{/if}

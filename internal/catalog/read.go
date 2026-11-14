@@ -48,7 +48,7 @@ func stripControl(value string) string {
 
 func libraryDTO(row sqlc.Library) Library {
 	return Library{
-		ID: row.ID, Name: row.Name, Slug: row.Slug,
+		ID: row.ID, Name: row.Name, Slug: row.Slug, Icon: row.Icon,
 		CreatedAt: utcMillis(row.CreatedAt), UpdatedAt: utcMillis(row.UpdatedAt),
 	}
 }
@@ -79,7 +79,7 @@ func (s *Service) ListLibraries(ctx context.Context, viewer Viewer, options Page
 	items := make([]Library, 0, len(rows))
 	for _, row := range rows {
 		item := libraryDTO(sqlc.Library{
-			ID: row.ID, Name: row.Name, Slug: row.Slug, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			ID: row.ID, Name: row.Name, Slug: row.Slug, Icon: row.Icon, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 		})
 		item.VisibleBookCount = row.VisibleBookCount
 		items = append(items, item)

@@ -9,6 +9,7 @@ export type ShelfDraftResult =
 	| { readonly ok: false; readonly error: ShelfFieldError };
 
 export interface ShelfFormValue {
+	readonly icon: string;
 	readonly kind: ShelfKind;
 	readonly name: string;
 	readonly description: string | null;

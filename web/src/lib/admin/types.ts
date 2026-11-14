@@ -34,10 +34,11 @@ export interface HiddenEntry {
 	readonly created_at: string;
 }
 
-/** Omitted fields are unchanged. The server rejects null for either field. */
+/** Omitted fields are unchanged; an empty icon restores the automatic icon. */
 export interface LibraryPatch {
 	readonly name?: string;
 	readonly slug?: string;
+	readonly icon?: string;
 }
 
 export type ImportStatus = 'pending' | 'processing' | 'imported' | 'duplicate' | 'failed';

@@ -77,6 +77,18 @@ describe('admin paths', () => {
 });
 
 describe('library and access requests', () => {
+	it('sends selected icons and explicit clears while omitting unchanged icons', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ library: library(4) });
+		await createLibrary('Fiction', 'fiction', 'star');
+		await updateLibrary(4, { icon: 'bookmark' });
+		await updateLibrary(4, { icon: '' });
+		await updateLibrary(4, { name: 'Renamed' });
+		expect(request.mock.calls.map((call) => call[1]?.body)).toEqual([
+			{ name: 'Fiction', slug: 'fiction', icon: 'star' },
+			{ icon: 'bookmark' }, { icon: '' }, { name: 'Renamed' }
+		]);
+	});
+
 	it('sends the documented methods and bodies', async () => {
 		const request = vi.spyOn(api, 'request').mockResolvedValue({ library: library(4) });
 		await createLibrary('Fiction', 'fiction');

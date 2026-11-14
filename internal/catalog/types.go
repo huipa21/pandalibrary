@@ -25,11 +25,13 @@ type Page[T any] struct {
 }
 
 // Library is an accessible library with its viewer-visible book count and UTC timestamps.
+// An empty Icon selects the client's fallback.
 type Library struct {
 	VisibleBookCount int64     `json:"visible_book_count"`
 	ID               int64     `json:"id"`
 	Name             string    `json:"name"`
 	Slug             string    `json:"slug"`
+	Icon             string    `json:"icon"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -165,10 +167,12 @@ func (o *Optional[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// LibraryPatch describes partial library updates.
+// LibraryPatch describes partial library updates. Icon cannot be null; an empty
+// string clears it, while omission preserves the stored selection.
 type LibraryPatch struct {
 	Name Optional[string] `json:"name"`
 	Slug Optional[string] `json:"slug"`
+	Icon Optional[string] `json:"icon"`
 }
 
 // AuthorInput describes a contributor in a book metadata update.

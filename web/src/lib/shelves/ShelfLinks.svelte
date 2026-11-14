@@ -6,6 +6,8 @@
 	import { shelfErrorKey } from './form.js';
 	import ShelfActionsMenu from './ShelfActionsMenu.svelte';
 	import type { Shelf, SystemShelf } from './types.js';
+	import Icon from '#lib/bookview/Icon.svelte';
+	import { entityIcon } from '#lib/navigation-icons.js';
 
 	let { libraryID }: { libraryID: number } = $props();
 	let shelves = $state<Shelf[]>([]);
@@ -66,16 +68,16 @@
 		<ul class="flex flex-wrap gap-2">
 			{#if unshelved}
 				<li>
-					<a class="inline-block rounded-full border border-slate-300 px-3 py-1 text-sm underline-offset-4 hover:underline focus-visible:outline-2"
+					<a class="inline-flex items-center gap-2 rounded-full border border-slate-300 px-3 py-1 text-sm underline-offset-4 hover:underline focus-visible:outline-2"
 						href="/shelves/system/unshelved"
-					>{m['ux3.shelves.unshelved']()} <span class="text-slate-500">({unshelved.visible_book_count})</span></a>
+					><Icon name="inbox" class="size-4 shrink-0" />{m['ux3.shelves.unshelved']()} <span class="text-slate-500">({unshelved.visible_book_count})</span></a>
 				</li>
 			{/if}
 			{#each shelves as shelf (shelf.id)}
 				<li>
-					<a class="inline-block rounded-full border border-slate-300 px-3 py-1 text-sm underline-offset-4 hover:underline focus-visible:outline-2"
+					<a class="inline-flex items-center gap-2 rounded-full border border-slate-300 px-3 py-1 text-sm underline-offset-4 hover:underline focus-visible:outline-2"
 						href={`/shelves/${shelf.id}`}
-					>{shelf.name} <span class="text-slate-500">({shelf.visible_book_count})</span></a>
+					><Icon name={entityIcon(shelf.icon, `collection:${shelf.id}`)} class="size-4 shrink-0" />{shelf.name} <span class="text-slate-500">({shelf.visible_book_count})</span></a>
 				</li>
 			{/each}
 		</ul>

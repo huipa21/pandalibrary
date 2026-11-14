@@ -234,6 +234,49 @@ test('only one desktop menu stays open and Mac hint uses the command key', async
 	await expect(page.getByRole('button', { name: 'Rotate', exact: true })).toBeFocused();
 });
 
+test('all toolbar menu entries have leading decorative icons, including numeric presets and overflow triggers', async ({ page }) => {
+	await mount(page);
+	async function expectLeadingIcons() {
+		const items = page.locator('[role^="menuitem"]:visible');
+		expect(await items.count()).toBeGreaterThan(0);
+		for (const item of await items.all()) {
+			await expect(item.locator(':scope > :first-child')).toHaveJSProperty('tagName', 'svg');
+			await expect(item.locator(':scope > :first-child')).toHaveAttribute('aria-hidden', 'true');
+		}
+	}
+
+	for (const name of ['Zoom', 'Page display', 'Rotate', 'Insert text, drawing or image']) {
+		await page.getByRole('button', { name, exact: true }).click();
+		await expectLeadingIcons();
+		await page.keyboard.press('Escape');
+	}
+	await update(page, { offline: true });
+	await page.getByRole('button', { name: 'Insert text, drawing or image' }).click();
+	await expect(page.getByRole('menuitem', { name: 'Image', exact: true })).toBeDisabled();
+	await expectLeadingIcons();
+	await page.keyboard.press('Escape');
+
+	for (const typography of [true, false]) {
+		await update(page, { reflowSize: true, typography });
+		await page.getByRole('button', { name: typography ? 'Size' : 'Zoom', exact: true }).click();
+		await expectLeadingIcons();
+		await expect(page.getByRole('menuitemradio', { name: '100%', exact: true })).toBeChecked();
+		await page.getByRole('menuitemradio', { name: '125%', exact: true }).click();
+		await expectLog(page, 'size', 125);
+		await update(page, { formatSize: 100 });
+	}
+
+	await page.setViewportSize({ width: 430, height: 800 });
+	for (const reflowSize of [false, true]) {
+		for (const typography of [true, false]) {
+			await update(page, { reflowSize, typography });
+			await page.getByRole('button', { name: 'More view options', exact: true }).click();
+			await expectLeadingIcons();
+			await page.keyboard.press('Escape');
+		}
+	}
+});
+
 test('insert menu skips offline images, selects with the keyboard, and dismisses without a selection', async ({ page }) => {
 	await mount(page);
 	await update(page, { offline: true });

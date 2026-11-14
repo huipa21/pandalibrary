@@ -84,6 +84,7 @@ export async function createShelf(input: ShelfInput): Promise<Shelf> {
 		description: input.description
 	};
 	if (input.mode !== undefined) body.mode = input.mode;
+	if (input.icon !== undefined) body.icon = input.icon;
 	if (input.rules !== undefined) body.rules = input.rules;
 	if (input.rule_groups !== undefined) body.rule_groups = input.rule_groups;
 	return (await api.request<{ shelf: Shelf }>('/shelves', { method: 'POST', body })).shelf;
@@ -92,6 +93,7 @@ export async function createShelf(input: ShelfInput): Promise<Shelf> {
 export async function updateShelf(id: number, patch: ShelfPatch): Promise<Shelf> {
 	const body: Record<string, any> = {};
 	if (patch.name !== undefined) body.name = patch.name;
+	if (patch.icon !== undefined) body.icon = patch.icon;
 	if (patch.description !== undefined) body.description = patch.description;
 	if (patch.rules !== undefined) body.rules = patch.rules;
 	if (patch.rule_groups !== undefined) body.rule_groups = patch.rule_groups;

@@ -20,6 +20,13 @@ guidance](../README.md#development).
 Playwright is configured for later end-to-end tasks; its browser installation is separate
 from the default unit-test command.
 
+## Menu icons
+
+Navigation and action menus show leading icons. Library and collection create/edit
+forms offer a shared icon picker, and choices are saved with the entity. Entities
+without a selected icon receive a pseudo-random icon derived from their type and ID,
+so their fallback stays consistent across navigation and reloads.
+
 ## Scanned PDF OCR (PV6)
 
 The [OCR module](src/lib/reader/pdf/ocr/index.ts) provides scanned-page

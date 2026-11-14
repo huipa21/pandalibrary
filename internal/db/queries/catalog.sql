@@ -28,13 +28,13 @@ AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
 ));
 
 -- name: CatalogCreateLibrary :one
-INSERT INTO libraries (name, slug, created_at, updated_at)
-VALUES (?, ?, ?, ?)
-RETURNING id, name, slug, created_at, updated_at;
+INSERT INTO libraries (name, slug, created_at, updated_at, icon)
+VALUES (?, ?, ?, ?, ?)
+RETURNING *;
 
 -- name: CatalogUpdateLibrary :one
-UPDATE libraries SET name = ?, slug = ?, updated_at = ? WHERE id = ?
-RETURNING id, name, slug, created_at, updated_at;
+UPDATE libraries SET name = ?, slug = ?, icon = ?, updated_at = ? WHERE id = ?
+RETURNING *;
 
 -- name: CatalogDeleteLibrary :execrows
 DELETE FROM libraries WHERE id = ?;

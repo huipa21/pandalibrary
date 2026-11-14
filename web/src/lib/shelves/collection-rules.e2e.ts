@@ -6,7 +6,7 @@ const timestamp = '2026-11-04T00:00:00Z';
 
 async function mockCollection(page: Page, locale = 'en') {
 	let collection: Shelf = {
-		id: 7, name: 'Across libraries', kind: 'private', owner_id: 1, description: null, created_by: 1,
+		id: 7, name: 'Across libraries', icon: 'bookmark', kind: 'private', owner_id: 1, description: null, created_by: 1,
 		created_at: timestamp, updated_at: timestamp, visible_book_count: 0, mode: 'automatic',
 		rule_groups: [{ id: 'legacy', name: 'Novels', rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: 'Novel' }] } }]
 	};
@@ -60,6 +60,32 @@ async function mockCollection(page: Page, locale = 'en') {
 	});
 	return { patches, creates, added, searchURLs, detailURLs };
 }
+
+test('collection icon edits preserve existing selections, save changes, and clear to automatic', async ({ page }) => {
+	const server = await mockCollection(page);
+	await page.goto('/shelves/7?manage=1');
+	const main = page.getByRole('main');
+	await main.getByRole('button', { name: 'Edit details' }).click();
+	await expect(main.getByRole('radio', { name: 'Bookmark', exact: true })).toBeChecked();
+	await main.getByLabel('Name', { exact: true }).fill('Renamed collection');
+	await main.getByRole('button', { name: 'Save changes', exact: true }).click();
+	await expect.poll(() => server.patches.length).toBe(1);
+	expect(server.patches[0]).not.toHaveProperty('icon');
+
+	await main.getByRole('button', { name: 'Edit details' }).click();
+	await expect(main.getByRole('radio', { name: 'Bookmark', exact: true })).toBeChecked();
+	await main.getByRole('radio', { name: 'Star', exact: true }).check();
+	await main.getByRole('button', { name: 'Save changes', exact: true }).click();
+	await expect.poll(() => server.patches.length).toBe(2);
+	expect(server.patches[1].icon).toBe('star');
+
+	await main.getByRole('button', { name: 'Edit details' }).click();
+	await expect(main.getByRole('radio', { name: 'Star', exact: true })).toBeChecked();
+	await main.getByRole('radio', { name: 'Automatic', exact: true }).check();
+	await main.getByRole('button', { name: 'Save changes', exact: true }).click();
+	await expect.poll(() => server.patches.length).toBe(3);
+	expect(server.patches[2].icon).toBe('');
+});
 
 test('edits several independent all/any rules while allowing manual additions to legacy automatic collections', async ({ page }) => {
 	const server = await mockCollection(page);

@@ -141,7 +141,7 @@
 		onclick={() => open ? close() : void show()}
 		onkeydown={onTriggerKey}
 	>
-		{#if icon}<Icon name={icon} />{/if}
+		{#if icon && (nested || !text)}<Icon name={icon} />{/if}
 		{#if nested}<span class="pv4-item-label">{label}{text ? ` (${text})` : ''}</span>
 		{:else if text}<span>{text}</span>{/if}
 		{#if text || nested}<Icon name={nested ? 'chevron-right' : 'chevron-down'} class="size-3" />{/if}

@@ -26,12 +26,12 @@ AND id != sqlc.arg(exclude_id) AND system_key IS NULL
 AND (kind = 'shared' OR owner_id = sqlc.narg(owner_id));
 
 -- name: ShelfCreate :one
-INSERT INTO shelves (kind, owner_id, name, description, created_by, created_at, updated_at, mode, rules, rule_groups)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO shelves (kind, owner_id, name, description, created_by, created_at, updated_at, mode, rules, rule_groups, icon)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ShelfUpdate :one
-UPDATE shelves SET name = ?, description = ?, rules = ?, rule_groups = ?, updated_at = ? WHERE id = ?
+UPDATE shelves SET name = ?, description = ?, rules = ?, rule_groups = ?, icon = ?, updated_at = ? WHERE id = ?
 RETURNING *;
 -- name: ShelfDelete :execrows
 DELETE FROM shelves WHERE id = ?;

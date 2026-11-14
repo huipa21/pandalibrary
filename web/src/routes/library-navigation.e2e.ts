@@ -4,7 +4,7 @@ test.use({ serviceWorkers: 'block' });
 
 const timestamp = '2026-11-12T00:00:00Z';
 const libraries = [
-	{ id: 1, name: 'Fiction', slug: 'fiction', visible_book_count: 7, created_at: timestamp, updated_at: timestamp },
+	{ id: 1, name: 'Fiction', icon: 'star', slug: 'fiction', visible_book_count: 7, created_at: timestamp, updated_at: timestamp },
 	{ id: 2, name: 'History', slug: 'history', visible_book_count: 2, created_at: timestamp, updated_at: timestamp }
 ];
 const displayBook = {
@@ -40,7 +40,7 @@ async function mockLibraries(page: Page, role = 'admin', locale = 'en') {
 		const path = url.pathname.replace('/api/v1', '');
 		const scope = Number(url.searchParams.get('library_id'));
 		const shelf = (id: number, name: string, system_key: string | null = null) => ({
-			id, name, kind: 'private', mode: system_key ? 'system' : 'manual', system_key,
+			id, name, icon: id === 11 ? 'pen' : '', kind: 'private', mode: system_key ? 'system' : 'manual', system_key,
 			owner_id: 1, description: null, created_by: 1, visible_book_count: scope === 2 ? 1 : 3,
 			created_at: timestamp, updated_at: timestamp
 		});
@@ -147,6 +147,38 @@ test('library actions point to new, current settings, and all-library management
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Account menu', exact: true }).click();
 	await expect(page.getByRole('menuitem', { name: 'Admin', exact: true })).toHaveAttribute('href', '/admin');
+	expect(unexpected).toEqual([]);
+});
+
+test('navigation and popup items lead with icons, preserving selected and stable fallback icons', async ({ page }) => {
+	const { unexpected } = await mockLibraries(page);
+	await page.goto('/library/1');
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await expect(sidebar.locator('a[href="/library/1"] > svg').first()).toHaveAttribute('data-icon', 'star');
+	await expect(sidebar.locator('a[href="/shelves/11"] > svg').first()).toHaveAttribute('data-icon', 'pen');
+	const fallback = sidebar.locator('a[href="/library/2"] > svg').first();
+	await expect(fallback).toBeVisible();
+	const fallbackName = await fallback.getAttribute('data-icon');
+	expect(fallbackName).toBeTruthy();
+	for (const link of await sidebar.locator('.shell-link').all()) {
+		await expect(link.locator(':scope > svg:first-child')).toBeVisible();
+	}
+	for (const label of ['Library actions', 'Collection actions', 'Account menu']) {
+		await page.getByRole('button', { name: label, exact: true }).click();
+		const items = page.getByRole('menuitem');
+		expect(await items.count()).toBeGreaterThan(0);
+		for (const item of await items.all()) {
+			await expect(item.locator(':scope > svg:first-child')).toBeVisible();
+		}
+		await page.keyboard.press('Escape');
+	}
+	await page.getByRole('button', { name: 'Language', exact: true }).click();
+	await expect(page.getByRole('option').first()).toBeVisible();
+	await expect(page.locator('.language-option:not(:has(svg))')).toHaveCount(0);
+	await page.keyboard.press('Escape');
+	await page.reload();
+	await expect(sidebar.locator('a[href="/library/1"] > svg').first()).toHaveAttribute('data-icon', 'star');
+	await expect(fallback).toHaveAttribute('data-icon', fallbackName!);
 	expect(unexpected).toEqual([]);
 });
 

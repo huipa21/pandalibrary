@@ -187,7 +187,7 @@
 		onclick={() => open ? close() : void show()}
 		onkeydown={onTriggerKey}
 	>
-		{#if nested}<span class="pv4-item-label">{label}</span>
+		{#if nested}<Icon name={icon ?? (typography ? 'type' : 'image')} /><span class="pv4-item-label">{label}</span>
 		{:else if icon}<Icon name={icon} />
 		{:else}<span class="rp2-glyph" aria-hidden="true">Aa</span>{/if}
 	</button>

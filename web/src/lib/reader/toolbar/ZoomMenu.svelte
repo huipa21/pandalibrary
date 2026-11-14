@@ -13,7 +13,7 @@
 	onMount(() => { if (/Mac|iPhone|iPad/.test(navigator.platform)) modifier = '⌘'; });
 </script>
 
-<ToolbarMenu label={m['pv4.zoom']()} text={`${Math.round(scale * 100)}%`} {disabled}
+<ToolbarMenu label={m['pv4.zoom']()} icon="zoom-in" text={`${Math.round(scale * 100)}%`} {disabled}
 	triggerLabel={includeValueInLabel ? `${m['pv4.zoom']()} ${Math.round(scale * 100)}%` : undefined}>
 	<MenuItem label={m['pv4.zoom_auto']()} icon="zoom-auto" role="menuitemradio" checked={zoom === 'auto' || (!presets && typeof zoom === 'number')} onchoose={() => onzoom('auto')} />
 	<MenuItem label={m['pv4.actual_size']()} icon="actual-size" role="menuitemradio" checked={zoom === 'page-actual'} onchoose={() => onzoom('page-actual')} />
@@ -22,7 +22,7 @@
 	{#if presets}
 		<div class="pv4-separator" role="separator"></div>
 		{#each [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5] as value}
-			<MenuItem label={`${value * 100}%`} role="menuitemradio" checked={zoom === value} onchoose={() => onzoom(value)} />
+			<MenuItem label={`${value * 100}%`} icon="zoom-in" role="menuitemradio" checked={zoom === value} onchoose={() => onzoom(value)} />
 		{/each}
 	{/if}
 	<div class="pv4-separator" role="separator"></div>

@@ -3,12 +3,14 @@
 	import { translate } from '#lib/paging/translate.js';
 	import { libraryFieldErrorKey, suggestSlug, validateLibraryDraft } from './form.js';
 	import { errorBox, inputClass, primaryButton, secondaryButton } from './ui.js';
+	import IconPicker from '#lib/shelves/IconPicker.svelte';
 
 	let {
 		idPrefix,
 		submitLabel,
 		busyLabel,
 		initialName = '',
+		initialIcon = '',
 		initialSlug = '',
 		suggestSlugFromName = false,
 		resetOnSuccess = false,
@@ -19,16 +21,18 @@
 		submitLabel: string;
 		busyLabel: string;
 		initialName?: string;
+		initialIcon?: string;
 		initialSlug?: string;
 		/** Fills the slug from the name until the administrator edits the slug. */
 		suggestSlugFromName?: boolean;
 		resetOnSuccess?: boolean;
 		/** Returns an error message, or null when the save succeeded. Values are kept on error. */
-		onsave: (name: string, slug: string) => Promise<string | null>;
+		onsave: (name: string, slug: string, icon: string) => Promise<string | null>;
 		oncancel?: () => void;
 	} = $props();
 
 	let name = $state('');
+	let icon = $state('');
 	let slug = $state('');
 	let slugEdited = $state(false);
 	let busy = $state(false);
@@ -40,6 +44,7 @@
 
 	$effect.pre(() => {
 		name = initialName;
+		icon = initialIcon;
 		slug = initialSlug;
 	});
 
@@ -67,10 +72,11 @@
 		}
 		busy = true;
 		try {
-			const failure = await onsave(result.name, result.slug);
+			const failure = await onsave(result.name, result.slug, icon);
 			if (failure) error = failure;
 			else if (resetOnSuccess) {
 				name = '';
+				icon = '';
 				slug = '';
 				slugEdited = false;
 			}
@@ -112,6 +118,9 @@
 		/>
 		<p id={`${idPrefix}-slug-hint`} class="text-xs text-slate-500">{m['admin.libraries.form.slug_hint']()}</p>
 		{#if slugError}<p id={`${idPrefix}-slug-error`} class="text-sm text-red-700">{slugError}</p>{/if}
+	</div>
+	<div class="sm:col-span-2">
+		<IconPicker {idPrefix} bind:value={icon} disabled={busy} />
 	</div>
 	{#if error}<p class={`sm:col-span-2 ${errorBox}`} role="alert">{error}</p>{/if}
 	<div class="flex flex-wrap gap-3 sm:col-span-2">

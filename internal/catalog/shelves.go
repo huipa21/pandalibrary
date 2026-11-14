@@ -16,7 +16,8 @@ import (
 
 // Shelf is shelf metadata with a count filtered for the requesting viewer.
 // OwnerID, Description, CreatedBy, SystemKey, and Rules are null when not present;
-// Mode is "manual" or "automatic"; timestamps are UTC.
+// Mode is "manual" or "automatic"; timestamps are UTC. An empty Icon selects the
+// client's fallback.
 type Shelf struct {
 	ID               int64       `json:"id"`
 	Kind             string      `json:"kind"`
@@ -26,6 +27,7 @@ type Shelf struct {
 	RuleGroups       []RuleGroup `json:"rule_groups"`
 	OwnerID          *int64      `json:"owner_id"`
 	Name             string      `json:"name"`
+	Icon             string      `json:"icon"`
 	Description      *string     `json:"description"`
 	CreatedBy        *int64      `json:"created_by"`
 	VisibleBookCount int64       `json:"visible_book_count"`
@@ -40,17 +42,20 @@ type ShelfInput struct {
 	Kind        string      `json:"kind"`
 	Mode        string      `json:"mode"`
 	Name        string      `json:"name"`
+	Icon        string      `json:"icon"`
 	Description *string     `json:"description"`
 	Rules       *RuleSet    `json:"rules"`
 	RuleGroups  []RuleGroup `json:"rule_groups"`
 }
 
 // ShelfPatch distinguishes omitted fields from an explicit null description.
+// Icon cannot be null; an empty string clears it and omission preserves it.
 // Mode may only repeat the current mode; legacy Rules update the first automatic
 // group. RuleGroups replaces all groups. Deleted groups retain current actor-visible
 // matches as manual books unless RemoveRuleBooks is true.
 type ShelfPatch struct {
 	Name            Optional[string]      `json:"name"`
+	Icon            Optional[string]      `json:"icon"`
 	Description     Optional[string]      `json:"description"`
 	Mode            Optional[string]      `json:"mode"`
 	Rules           Optional[RuleSet]     `json:"rules"`
@@ -61,7 +66,7 @@ type ShelfPatch struct {
 func shelfDTO(row sqlc.Shelf, count int64) (Shelf, error) {
 	shelf := Shelf{
 		ID: row.ID, Kind: row.Kind, Mode: row.Mode, SystemKey: stringPointer(row.SystemKey),
-		OwnerID: intPointer(row.OwnerID), Name: row.Name, Description: stringPointer(row.Description),
+		OwnerID: intPointer(row.OwnerID), Name: row.Name, Icon: row.Icon, Description: stringPointer(row.Description),
 		CreatedBy: intPointer(row.CreatedBy), VisibleBookCount: count,
 		CreatedAt: utcMillis(row.CreatedAt), UpdatedAt: utcMillis(row.UpdatedAt),
 	}
@@ -284,6 +289,9 @@ func (s *Service) CreateShelf(ctx context.Context, viewer Viewer, input ShelfInp
 	if err := checkViewer(viewer); err != nil {
 		return Shelf{}, err
 	}
+	if err := validateIcon(input.Icon); err != nil {
+		return Shelf{}, err
+	}
 	if input.Kind != "private" && input.Kind != "shared" {
 		return Shelf{}, invalid("shelf kind must be private or shared")
 	}
@@ -350,7 +358,7 @@ func (s *Service) CreateShelf(ctx context.Context, viewer Viewer, input ShelfInp
 		}
 		now := s.now().UnixMilli()
 		row, err := queries.ShelfCreate(ctx, sqlc.ShelfCreateParams{
-			Kind: input.Kind, OwnerID: owner, Name: name, Description: description,
+			Kind: input.Kind, OwnerID: owner, Name: name, Icon: input.Icon, Description: description,
 			CreatedBy: sql.NullInt64{Int64: viewer.UserID, Valid: true}, CreatedAt: now, UpdatedAt: now,
 			Mode: input.Mode, Rules: rules, RuleGroups: storedGroups,
 		})
@@ -363,15 +371,23 @@ func (s *Service) CreateShelf(ctx context.Context, viewer Viewer, input ShelfInp
 	return result, err
 }
 
-// UpdateShelf updates the name, description, and/or automatic rules of a shelf
+// UpdateShelf updates the name, icon, description, and/or automatic rules of a shelf
 // managed by the viewer. Mode conversion is rejected; system shelves only accept
-// description changes.
+// description and icon changes.
 func (s *Service) UpdateShelf(ctx context.Context, viewer Viewer, id int64, patch ShelfPatch) (Shelf, error) {
 	if err := checkViewer(viewer); err != nil {
 		return Shelf{}, err
 	}
-	if id < 1 || !patch.Name.Set && !patch.Description.Set && !patch.Mode.Set && !patch.Rules.Set && !patch.RuleGroups.Set {
+	if id < 1 || !patch.Name.Set && !patch.Icon.Set && !patch.Description.Set && !patch.Mode.Set && !patch.Rules.Set && !patch.RuleGroups.Set {
 		return Shelf{}, invalid("shelf ID and at least one update are required")
+	}
+	if patch.Icon.Set {
+		if patch.Icon.Value == nil {
+			return Shelf{}, invalid("shelf icon cannot be null")
+		}
+		if err := validateIcon(*patch.Icon.Value); err != nil {
+			return Shelf{}, err
+		}
 	}
 	var name string
 	var description, rules sql.NullString
@@ -441,6 +457,10 @@ func (s *Service) UpdateShelf(ctx context.Context, viewer Viewer, id int64, patc
 		if !patch.Name.Set {
 			name = row.Name
 		}
+		icon := row.Icon
+		if patch.Icon.Set {
+			icon = *patch.Icon.Value
+		}
 		if !patch.Description.Set {
 			description = row.Description
 		}
@@ -487,7 +507,7 @@ func (s *Service) UpdateShelf(ctx context.Context, viewer Viewer, id int64, patc
 			}
 		}
 		updated, err := queries.ShelfUpdate(ctx, sqlc.ShelfUpdateParams{
-			ID: id, Name: name, Description: description, Rules: rules, RuleGroups: storedGroups, UpdatedAt: s.now().UnixMilli(),
+			ID: id, Name: name, Icon: icon, Description: description, Rules: rules, RuleGroups: storedGroups, UpdatedAt: s.now().UnixMilli(),
 		})
 		if err != nil {
 			return fmt.Errorf("update shelf: %w", err)

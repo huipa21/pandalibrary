@@ -163,12 +163,13 @@ test('one creation dialog refreshes the management page and sidebar', async ({ p
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(creator.getByRole('alert')).toContainText('A collection with this name already exists.');
 	await name.fill('  New reading  ');
+	await creator.getByRole('radio', { name: 'Star', exact: true }).check();
 	await creator.getByLabel('Description (optional)').fill('  Notes  ');
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(creator).toHaveCount(0);
 	await expect(trigger).toBeFocused();
 	expect(server.requests.at(-1)).toEqual({
-		kind: 'private', name: 'New reading', description: '  Notes  ', rule_groups: []
+		kind: 'private', name: 'New reading', description: '  Notes  ', icon: 'star', rule_groups: []
 	});
 	await expect(main.getByRole('status').filter({ hasText: 'Collection created.' })).toBeVisible();
 	await expect(main.getByRole('region', { name: 'Available collections' }).getByRole('link', { name: 'New reading' })).toBeVisible();
@@ -230,7 +231,7 @@ test('mobile drawer keeps focus and creates a shared collection with automatic r
 	}
 	await expect(creator).toHaveCount(0);
 	expect(server.requests).toEqual([{
-		kind: 'shared', name: 'Shared recommendations', description: null,
+		kind: 'shared', name: 'Shared recommendations', description: null, icon: '',
 		rule_groups: [{ id: expect.any(String), name: 'Moon titles', rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: 'Moon' }] } }]
 	}]);
 	await expect(drawer).toBeVisible();

@@ -100,14 +100,17 @@ export async function listAllAdminLibraries(signal?: AbortSignal): Promise<Libra
 	return libraries;
 }
 
-export async function createLibrary(name: string, slug: string): Promise<Library> {
-	return (await api.request<{ library: Library }>('/admin/libraries', { method: 'POST', body: { name, slug } })).library;
+export async function createLibrary(name: string, slug: string, icon?: string): Promise<Library> {
+	return (await api.request<{ library: Library }>('/admin/libraries', {
+		method: 'POST', body: { name, slug, ...(icon !== undefined ? { icon } : {}) }
+	})).library;
 }
 
 export async function updateLibrary(id: number, patch: LibraryPatch): Promise<Library> {
 	const body: { [key: string]: JsonValue } = {};
 	if (patch.name !== undefined) body.name = patch.name;
 	if (patch.slug !== undefined) body.slug = patch.slug;
+	if (patch.icon !== undefined) body.icon = patch.icon;
 	return (await api.request<{ library: Library }>(`/admin/libraries/${id}`, { method: 'PATCH', body })).library;
 }
 

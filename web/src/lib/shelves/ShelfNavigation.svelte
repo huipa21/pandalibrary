@@ -12,6 +12,8 @@
 	import { shelfErrorKey } from './form.js';
 	import ShelfActionsMenu from './ShelfActionsMenu.svelte';
 	import type { Shelf } from './types.js';
+	import Icon from '#lib/bookview/Icon.svelte';
+	import { entityIcon } from '#lib/navigation-icons.js';
 
 	let { pathname, role }: { pathname: string; role: string } = $props();
 	let libraries = $state<Library[]>([]);
@@ -95,6 +97,7 @@
 				{#each libraries as library (library.id)}
 					<li>
 						<a class="shell-link" href={`/library/${library.id}`} aria-current={currentLibraryID === library.id ? 'page' : undefined}>
+							<Icon name={entityIcon(library.icon, `library:${library.id}`)} class="size-4 shrink-0" />
 							<span class="min-w-0 flex-1 truncate">{library.name}</span>
 							<span class="shell-count">{library.visible_book_count}</span>
 						</a>
@@ -110,7 +113,7 @@
 <section class="shell-section" aria-labelledby="sidebar-shelves-heading" data-slot="sidebar-shelves">
 	<div class="flex items-center justify-between gap-2 pr-1">
 		<h2 id="sidebar-shelves-heading" class="shell-heading min-w-0">
-			<a href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined} class="block truncate hover:underline focus-visible:outline-2">{m['organize.collections']()}</a>
+			<a href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined} class="flex items-center gap-2 truncate hover:underline focus-visible:outline-2"><Icon name="folder-plus" class="size-4 shrink-0" />{m['organize.collections']()}</a>
 		</h2>
 		<ShelfActionsMenu {pathname} {role} {currentShelf} />
 	</div>
@@ -126,6 +129,7 @@
 			{#each shelves as shelf (shelf.id)}
 				<li>
 					<a class="shell-link" href={`/shelves/${shelf.id}`} aria-current={pathname === `/shelves/${shelf.id}` ? 'page' : undefined}>
+						<Icon name={entityIcon(shelf.icon, `collection:${shelf.id}`)} class="size-4 shrink-0" />
 						<span class="min-w-0 flex-1 truncate">{shelf.name}</span>
 						<span class="shell-count" title={m['ux1.shelves.count']({ count: shelf.visible_book_count })}>{shelf.visible_book_count}</span>
 					</a>

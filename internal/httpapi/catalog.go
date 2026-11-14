@@ -257,11 +257,12 @@ func (h *catalogHTTP) createLibrary(w http.ResponseWriter, r *http.Request, view
 	var request struct {
 		Name string `json:"name"`
 		Slug string `json:"slug"`
+		Icon string `json:"icon"`
 	}
 	if !h.decodeJSON(w, r, &request) {
 		return
 	}
-	result, err := h.service.CreateLibrary(r.Context(), viewer, request.Name, request.Slug)
+	result, err := h.service.CreateLibrary(r.Context(), viewer, request.Name, request.Slug, request.Icon)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

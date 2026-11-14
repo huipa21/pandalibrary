@@ -5,6 +5,7 @@ export interface Page<T> {
 
 export interface Library {
 	readonly id: number;
+	readonly icon?: string | null;
 	readonly name: string;
 	readonly slug: string;
 	readonly visible_book_count: number;

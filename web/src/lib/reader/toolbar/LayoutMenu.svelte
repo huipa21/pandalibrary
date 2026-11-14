@@ -16,6 +16,6 @@
 	<MenuItem label={m['pv4.split_continuous']()} icon="layout-split-continuous" role="menuitemradio" checked={layout === 'split-continuous'} onchoose={() => onlayout('split-continuous')} />
 	{#if onocr}
 		<div class="pv4-separator" role="separator"></div>
-		<MenuItem label={m['pv4.ocr']()} role="menuitemcheckbox" checked={ocrEnabled} onchoose={() => onocr?.(!ocrEnabled)} />
+		<MenuItem label={m['pv4.ocr']()} icon="text-cursor" role="menuitemcheckbox" checked={ocrEnabled} onchoose={() => onocr?.(!ocrEnabled)} />
 	{/if}
 </ToolbarMenu>

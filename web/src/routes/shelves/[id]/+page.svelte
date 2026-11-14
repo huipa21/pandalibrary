@@ -177,7 +177,11 @@
 		try {
 			const id = shelf.id;
 			const request = requestVersion;
-			await updateShelf(id, { name: value.name, description: value.description, rule_groups: value.rule_groups, remove_rule_books: value.remove_rule_books });
+			await updateShelf(id, {
+				name: value.name, description: value.description,
+				...(value.icon !== (shelf.icon ?? '') ? { icon: value.icon } : {}),
+				rule_groups: value.rule_groups, remove_rule_books: value.remove_rule_books
+			});
 			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
 			if (request !== requestVersion) return null;
 			const updated = await getShelf(id, { library_id: libraryID });
@@ -309,6 +313,7 @@
 						submitLabel={m['shelves.edit.save']()}
 						busyLabel={m['shelves.edit.saving']()}
 						initialName={shelf.name}
+						initialIcon={shelf.icon ?? ''}
 						initialDescription={shelf.description ?? ''}
 						{initialRuleGroups}
 						onsave={save}

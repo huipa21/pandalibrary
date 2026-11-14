@@ -40,6 +40,18 @@ const admin = { id: 9, username: 'admin', display_name: 'Admin', role: 'admin' }
 const problem = (status: number) => new ApiError(status, '', '{}', { status });
 
 describe('shelf API helpers', () => {
+	it('sends selected icons and explicit clears while omitting unchanged icons', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ shelf: shelf() });
+		await createShelf({ kind: 'private', name: 'Picks', description: null, icon: 'star' });
+		await updateShelf(7, { icon: 'bookmark' });
+		await updateShelf(7, { icon: '' });
+		await updateShelf(7, { name: 'Renamed' });
+		expect(request.mock.calls.map((call) => call[1]?.body)).toEqual([
+			{ kind: 'private', name: 'Picks', description: null, icon: 'star' },
+			{ icon: 'bookmark' }, { icon: '' }, { name: 'Renamed' }
+		]);
+	});
+
 	it('defaults to global collections regardless of the previous library selection, preserving only explicit legacy filters', () => {
 		selectedLibrary.set({ id: 2 });
 		try {

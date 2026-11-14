@@ -30,6 +30,7 @@ export interface RuleGroup {
 /** SH1/UX2 shelf metadata. `visible_book_count` already applies the viewer's grants and hide list. */
 export interface Shelf {
 	readonly id: number;
+	readonly icon?: string | null;
 	readonly kind: ShelfKind;
 	readonly owner_id: number | null;
 	readonly name: string;
@@ -45,6 +46,7 @@ export interface Shelf {
 }
 
 export interface ShelfInput {
+	readonly icon?: string;
 	readonly kind: ShelfKind;
 	readonly name: string;
 	readonly description: string | null;
@@ -53,8 +55,9 @@ export interface ShelfInput {
 	readonly rule_groups?: RuleGroup[];
 }
 
-/** Omitted fields are unchanged; an explicit null description clears it. */
+/** Omitted fields are unchanged; null clears the description and an empty string clears the icon. */
 export interface ShelfPatch {
+	readonly icon?: string;
 	readonly name?: string;
 	readonly description?: string | null;
 	readonly rules?: RuleSet | null;

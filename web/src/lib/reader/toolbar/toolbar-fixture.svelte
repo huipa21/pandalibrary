@@ -6,6 +6,7 @@
 	import PageCounter from './PageCounter.svelte';
 	import ProgressLabel from './ProgressLabel.svelte';
 	import ZoomMenu from './ZoomMenu.svelte';
+	import ReflowSizeMenu from './ReflowSizeMenu.svelte';
 	import LayoutMenu from './LayoutMenu.svelte';
 	import FormatMenu from './FormatMenu.svelte';
 	import RotateMenu from './RotateMenu.svelte';
@@ -28,6 +29,7 @@
 	let offline = $state(false);
 	let showOcr = $state(true);
 	let typography = $state(true);
+	let reflowSize = $state(false);
 	let formatFont = $state<ReaderSettings['font']>('serif');
 	let formatSize = $state(100);
 	let formatSpacing = $state(1.5);
@@ -40,7 +42,7 @@
 			const detail = (event as CustomEvent<{
 				page?: number; pageCount?: number; fraction?: number;
 				disabled?: boolean; offline?: boolean; showOcr?: boolean;
-				typography?: boolean; formatFont?: ReaderSettings['font']; formatSize?: number;
+				typography?: boolean; reflowSize?: boolean; formatFont?: ReaderSettings['font']; formatSize?: number;
 				formatSpacing?: number; formatBackground?: BackgroundId;
 			}>).detail;
 			if (detail.page !== undefined) page = detail.page;
@@ -50,6 +52,7 @@
 			if (detail.offline !== undefined) offline = detail.offline;
 			if (detail.showOcr !== undefined) showOcr = detail.showOcr;
 			if (detail.typography !== undefined) typography = detail.typography;
+			if (detail.reflowSize !== undefined) reflowSize = detail.reflowSize;
 			if (detail.formatFont !== undefined) formatFont = detail.formatFont;
 			if (detail.formatSize !== undefined) formatSize = detail.formatSize;
 			if (detail.formatSpacing !== undefined) formatSpacing = detail.formatSpacing;
@@ -67,7 +70,12 @@
 	{/snippet}
 	{#snippet centre()}<span class="pv-title">A book-like PDF reader with a very long title that truncates</span>{/snippet}
 	{#snippet overflow()}
-		<ZoomMenu {zoom} {scale} onzoom={(next) => { zoom = next; log('zoom', next); }} onstep={(step) => { scale += step * .1; zoom = scale; log('step', step); }} />
+		{#if reflowSize}
+			<ReflowSizeMenu size={formatSize} {typography} {disabled}
+				onsize={(next) => { formatSize = next; log('size', next); }} />
+		{:else}
+			<ZoomMenu {zoom} {scale} onzoom={(next) => { zoom = next; log('zoom', next); }} onstep={(step) => { scale += step * .1; zoom = scale; log('step', step); }} />
+		{/if}
 		<LayoutMenu {layout} {ocrEnabled}
 			onlayout={(next) => { layout = next; log('layout', next); }}
 			onocr={showOcr ? (next) => { ocrEnabled = next; log('ocr', next); } : undefined} />

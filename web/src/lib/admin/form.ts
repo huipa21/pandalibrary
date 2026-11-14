@@ -128,15 +128,16 @@ export function validateLibraryDraft(draft: { readonly name: string; readonly sl
 }
 
 /** Builds a PATCH containing only changed fields. */
-export function libraryPatch(library: Library, draft: { readonly name: string; readonly slug: string }):
+export function libraryPatch(library: Library, draft: { readonly name: string; readonly slug: string; readonly icon?: string }):
 	| { readonly ok: true; readonly patch: LibraryPatch }
 	| { readonly ok: false; readonly field: 'name' | 'slug' | 'form'; readonly error: LibraryFieldError } {
 	const result = validateLibraryDraft(draft);
 	if (!result.ok) return result;
-	const patch: { name?: string; slug?: string } = {};
+	const patch: { name?: string; slug?: string; icon?: string } = {};
 	if (result.name !== library.name) patch.name = result.name;
 	if (result.slug !== library.slug) patch.slug = result.slug;
-	if (patch.name === undefined && patch.slug === undefined) return { ok: false, field: 'form', error: 'no_changes' };
+	if (draft.icon !== undefined && draft.icon !== (library.icon ?? '')) patch.icon = draft.icon;
+	if (Object.keys(patch).length === 0) return { ok: false, field: 'form', error: 'no_changes' };
 	return { ok: true, patch };
 }
 

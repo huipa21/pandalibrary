@@ -4,6 +4,7 @@
 	import HeaderMenu from './HeaderMenu.svelte';
 	import { filterLanguages, suggestedLocales } from './languages.js';
 	import SearchField from '#lib/search/SearchField.svelte';
+	import Icon from '#lib/bookview/Icon.svelte';
 
 	interface Props {
 		onlocale: (locale: Locale) => void | Promise<void>;
@@ -93,6 +94,8 @@
 									<span class="language-check" aria-hidden="true">
 										{#if language.code === currentLocale}
 											<svg viewBox="0 0 20 20" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 10 4 4 8-8" /></svg>
+										{:else}
+											<Icon name="globe" class="size-4" />
 										{/if}
 									</span>
 									<span class="language-native" lang={language.code}>{language.nativeName}</span>
@@ -116,6 +119,8 @@
 								<span class="language-check" aria-hidden="true">
 									{#if language.code === currentLocale}
 										<svg viewBox="0 0 20 20" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 10 4 4 8-8" /></svg>
+									{:else}
+										<Icon name="globe" class="size-4" />
 									{/if}
 								</span>
 								<span class="language-native" lang={language.code}>{language.nativeName}</span>

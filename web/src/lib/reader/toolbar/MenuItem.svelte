@@ -2,7 +2,7 @@
 	import Icon, { type IconName } from '#lib/bookview/Icon.svelte';
 	let { label, icon, role = 'menuitem', checked, disabled = false, onchoose }: {
 		label: string;
-		icon?: IconName;
+		icon: IconName;
 		role?: 'menuitem' | 'menuitemradio' | 'menuitemcheckbox';
 		checked?: boolean;
 		disabled?: boolean;
@@ -11,7 +11,7 @@
 </script>
 
 <button type="button" class="pv4-item" {role} aria-checked={role === 'menuitem' ? undefined : checked} {disabled} onclick={onchoose}>
-	{#if icon}<Icon name={icon} />{/if}
+	<Icon name={icon} />
 	<span class="pv4-item-label">{label}</span>
 	{#if role !== 'menuitem'}
 		<svg class="pv4-check" aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">

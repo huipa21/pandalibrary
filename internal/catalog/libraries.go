@@ -69,9 +69,20 @@ func libraryInTx(ctx context.Context, queries *sqlc.Queries, viewer Viewer, id i
 	return row, nil
 }
 
-// CreateLibrary creates a library for an administrator.
-func (s *Service) CreateLibrary(ctx context.Context, viewer Viewer, name, slug string) (Library, error) {
+// CreateLibrary creates a library for an administrator with an optional icon identifier.
+// An omitted or empty icon uses the client's default icon.
+func (s *Service) CreateLibrary(ctx context.Context, viewer Viewer, name, slug string, icons ...string) (Library, error) {
 	if err := checkAdmin(viewer); err != nil {
+		return Library{}, err
+	}
+	if len(icons) > 1 {
+		return Library{}, invalid("at most one library icon is allowed")
+	}
+	icon := ""
+	if len(icons) == 1 {
+		icon = icons[0]
+	}
+	if err := validateIcon(icon); err != nil {
 		return Library{}, err
 	}
 	name, err := validateName(name, "library name")
@@ -90,7 +101,7 @@ func (s *Service) CreateLibrary(ctx context.Context, viewer Viewer, name, slug s
 		}
 		now := s.now().UnixMilli()
 		row, err := queries.CatalogCreateLibrary(ctx, sqlc.CatalogCreateLibraryParams{
-			Name: name, Slug: slug, CreatedAt: now, UpdatedAt: now,
+			Name: name, Slug: slug, Icon: icon, CreatedAt: now, UpdatedAt: now,
 		})
 		if err != nil {
 			return fmt.Errorf("create library: %w", err)
@@ -101,16 +112,24 @@ func (s *Service) CreateLibrary(ctx context.Context, viewer Viewer, name, slug s
 	return result, err
 }
 
-// UpdateLibrary changes a library's name and/or slug.
+// UpdateLibrary changes a library's name, slug, and/or icon.
 func (s *Service) UpdateLibrary(ctx context.Context, viewer Viewer, id int64, patch LibraryPatch) (Library, error) {
 	if err := checkAdmin(viewer); err != nil {
 		return Library{}, err
 	}
-	if id < 1 || (!patch.Name.Set && !patch.Slug.Set) {
+	if id < 1 || (!patch.Name.Set && !patch.Slug.Set && !patch.Icon.Set) {
 		return Library{}, invalid("library ID and at least one update are required")
 	}
 	if patch.Name.Set && patch.Name.Value == nil || patch.Slug.Set && patch.Slug.Value == nil {
 		return Library{}, invalid("library name and slug cannot be null")
+	}
+	if patch.Icon.Set {
+		if patch.Icon.Value == nil {
+			return Library{}, invalid("library icon cannot be null")
+		}
+		if err := validateIcon(*patch.Icon.Value); err != nil {
+			return Library{}, err
+		}
 	}
 	var result Library
 	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
@@ -120,6 +139,10 @@ func (s *Service) UpdateLibrary(ctx context.Context, viewer Viewer, id int64, pa
 			return err
 		}
 		name, slug := row.Name, row.Slug
+		icon := row.Icon
+		if patch.Icon.Set {
+			icon = *patch.Icon.Value
+		}
 		if patch.Name.Set {
 			name, err = validateName(*patch.Name.Value, "library name")
 			if err != nil {
@@ -136,7 +159,7 @@ func (s *Service) UpdateLibrary(ctx context.Context, viewer Viewer, id int64, pa
 			return err
 		}
 		updated, err := queries.CatalogUpdateLibrary(ctx, sqlc.CatalogUpdateLibraryParams{
-			ID: id, Name: name, Slug: slug, UpdatedAt: s.now().UnixMilli(),
+			ID: id, Name: name, Slug: slug, Icon: icon, UpdatedAt: s.now().UnixMilli(),
 		})
 		if err != nil {
 			return fmt.Errorf("update library: %w", err)

@@ -5,6 +5,7 @@
 	import type { RuleGroup, ShelfKind } from './types.js';
 	import RuleGroupsEditor from './RuleGroupsEditor.svelte';
 	import { removedRuleGroups, validRuleGroups } from './rules.js';
+	import IconPicker from './IconPicker.svelte';
 
 	let {
 		idPrefix,
@@ -12,6 +13,7 @@
 		busyLabel,
 		allowShared = false,
 		initialName = '',
+		initialIcon = '',
 		initialDescription = '',
 		initialRuleGroups = [],
 		nameLabel,
@@ -25,6 +27,7 @@
 		busyLabel: string;
 		allowShared?: boolean;
 		initialName?: string;
+		initialIcon?: string;
 		initialDescription?: string;
 		initialRuleGroups?: RuleGroup[];
 		nameLabel?: string;
@@ -36,6 +39,7 @@
 	} = $props();
 
 	let name = $state('');
+	let icon = $state('');
 	let description = $state('');
 	let kind = $state<ShelfKind>('private');
 	let busy = $state(false);
@@ -48,6 +52,7 @@
 
 	$effect.pre(() => {
 		name = initialName;
+		icon = initialIcon;
 		description = initialDescription;
 		groups = initialRuleGroups.map((group) => ({ ...group, rules: { ...group.rules, conditions: group.rules.conditions.map((condition) => ({ ...condition })) } }));
 		removeRuleBooks = undefined;
@@ -79,12 +84,13 @@
 		busy = true;
 		try {
 			const failure = await onsave({
-				kind: allowShared ? kind : 'private', name: result.name, description: result.description,
+				kind: allowShared ? kind : 'private', name: result.name, description: result.description, icon,
 				rule_groups: groups, ...(hasRemovedRules ? { remove_rule_books: removeRuleBooks } : {})
 			});
 			if (failure) error = failure;
 			else if (resetOnSuccess) {
 				name = '';
+				icon = '';
 				description = '';
 				kind = 'private';
 				groups = [];
@@ -110,6 +116,7 @@
 		/>
 	</label>
 	{#if nameError}<p id={`${idPrefix}-name-error`} class="-mt-2 text-sm text-red-700" role="alert">{nameError}</p>{/if}
+	<IconPicker {idPrefix} bind:value={icon} disabled={busy} />
 	<label class="grid gap-1 text-sm font-medium" for={`${idPrefix}-description`}>
 		<span>{m['shelves.form.description']()}</span>
 		<textarea

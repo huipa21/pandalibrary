@@ -106,10 +106,10 @@
 		rowErrors = next;
 	}
 
-	async function create(name: string, slug: string): Promise<string | null> {
+	async function create(name: string, slug: string, icon: string): Promise<string | null> {
 		notice = '';
 		try {
-			const library = await createLibrary(name, slug);
+			const library = await createLibrary(name, slug, icon);
 			notice = m['admin.libraries.created']({ name: library.name });
 			void libraries.reload();
 			librariesChanged();
@@ -119,9 +119,9 @@
 		}
 	}
 
-	async function save(library: Library, name: string, slug: string): Promise<string | null> {
+	async function save(library: Library, name: string, slug: string, icon: string): Promise<string | null> {
 		notice = '';
-		const result = libraryPatch(library, { name, slug });
+		const result = libraryPatch(library, { name, slug, icon });
 		if (!result.ok) return translate(libraryFieldErrorKey(result.error));
 		try {
 			const updated = await updateLibrary(library.id, result.patch);
@@ -242,7 +242,8 @@
 					busyLabel={m['admin.libraries.saving']()}
 					initialName={library.name}
 					initialSlug={library.slug}
-					onsave={(name, slug) => save(library, name, slug)}
+					initialIcon={library.icon ?? ''}
+					onsave={(name, slug, icon) => save(library, name, slug, icon)}
 					oncancel={closeLinkedEditor}
 				/>
 			{/key}
@@ -270,7 +271,8 @@
 								busyLabel={m['admin.libraries.saving']()}
 								initialName={library.name}
 								initialSlug={library.slug}
-								onsave={(name, slug) => save(library, name, slug)}
+								initialIcon={library.icon ?? ''}
+								onsave={(name, slug, icon) => save(library, name, slug, icon)}
 								oncancel={() => (editing = null)}
 							/>
 						{:else}

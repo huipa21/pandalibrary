@@ -7,6 +7,8 @@
 	import { listShelves } from '#lib/shelves/api.js';
 	import { shelfErrorKey } from '#lib/shelves/form.js';
 	import type { Shelf } from '#lib/shelves/types.js';
+	import Icon from '#lib/bookview/Icon.svelte';
+	import { entityIcon } from '#lib/navigation-icons.js';
 
 	const pager = new CursorPager<Shelf>();
 	let created = $state<Shelf | null>(null);
@@ -40,7 +42,7 @@
 	{#if created}
 		<p class="text-sm text-green-700" role="status">
 			{m['shelves.create.success']()}
-			<a class="ml-1 font-medium underline underline-offset-4 focus-visible:outline-2" href={`/shelves/${created.id}`}>{created.name}</a>
+			<a class="ml-1 inline-flex items-center gap-2 font-medium underline underline-offset-4 focus-visible:outline-2" href={`/shelves/${created.id}`}><Icon name={entityIcon(created.icon, `collection:${created.id}`)} class="size-4 shrink-0" />{created.name}</a>
 		</p>
 	{/if}
 
@@ -64,7 +66,7 @@
 					<li class="space-y-2 card p-4">
 						<div class="flex flex-wrap items-start justify-between gap-2">
 							<h3 class="min-w-0 font-semibold break-words">
-								<a class="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={`/shelves/${shelf.id}`}>{shelf.name}</a>
+								<a class="inline-flex items-center gap-2 rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={`/shelves/${shelf.id}`}><Icon name={entityIcon(shelf.icon, `collection:${shelf.id}`)} class="size-4 shrink-0" />{shelf.name}</a>
 							</h3>
 							<span class="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">{kindLabel(shelf)}</span>
 						</div>

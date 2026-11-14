@@ -388,9 +388,9 @@ func (q *Queries) CatalogClearBookTags(ctx context.Context, bookID int64) error 
 }
 
 const catalogCreateLibrary = `-- name: CatalogCreateLibrary :one
-INSERT INTO libraries (name, slug, created_at, updated_at)
-VALUES (?, ?, ?, ?)
-RETURNING id, name, slug, created_at, updated_at
+INSERT INTO libraries (name, slug, created_at, updated_at, icon)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, name, slug, created_at, updated_at, icon
 `
 
 type CatalogCreateLibraryParams struct {
@@ -398,6 +398,7 @@ type CatalogCreateLibraryParams struct {
 	Slug      string
 	CreatedAt int64
 	UpdatedAt int64
+	Icon      string
 }
 
 func (q *Queries) CatalogCreateLibrary(ctx context.Context, arg CatalogCreateLibraryParams) (Library, error) {
@@ -406,6 +407,7 @@ func (q *Queries) CatalogCreateLibrary(ctx context.Context, arg CatalogCreateLib
 		arg.Slug,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Icon,
 	)
 	var i Library
 	err := row.Scan(
@@ -414,6 +416,7 @@ func (q *Queries) CatalogCreateLibrary(ctx context.Context, arg CatalogCreateLib
 		&i.Slug,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Icon,
 	)
 	return i, err
 }
@@ -549,7 +552,7 @@ func (q *Queries) CatalogGetBook(ctx context.Context, arg CatalogGetBookParams) 
 }
 
 const catalogGetLibrary = `-- name: CatalogGetLibrary :one
-SELECT l.id, l.name, l.slug, l.created_at, l.updated_at FROM libraries l
+SELECT l.id, l.name, l.slug, l.created_at, l.updated_at, l.icon FROM libraries l
 WHERE l.id = ?1
 AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -572,6 +575,7 @@ func (q *Queries) CatalogGetLibrary(ctx context.Context, arg CatalogGetLibraryPa
 		&i.Slug,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Icon,
 	)
 	return i, err
 }
@@ -1237,7 +1241,7 @@ func (q *Queries) CatalogListHiddenBooks(ctx context.Context, arg CatalogListHid
 }
 
 const catalogListLibraries = `-- name: CatalogListLibraries :many
-SELECT l.id, l.name, l.slug, l.created_at, l.updated_at, (
+SELECT l.id, l.name, l.slug, l.created_at, l.updated_at, l.icon, (
     SELECT count(*) FROM books b
     WHERE b.library_id = l.id
     AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1
@@ -1272,6 +1276,7 @@ type CatalogListLibrariesRow struct {
 	Slug             string
 	CreatedAt        int64
 	UpdatedAt        int64
+	Icon             string
 	VisibleBookCount int64
 }
 
@@ -1296,6 +1301,7 @@ func (q *Queries) CatalogListLibraries(ctx context.Context, arg CatalogListLibra
 			&i.Slug,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Icon,
 			&i.VisibleBookCount,
 		); err != nil {
 			return nil, err
@@ -1618,13 +1624,14 @@ func (q *Queries) CatalogUpdateCover(ctx context.Context, arg CatalogUpdateCover
 }
 
 const catalogUpdateLibrary = `-- name: CatalogUpdateLibrary :one
-UPDATE libraries SET name = ?, slug = ?, updated_at = ? WHERE id = ?
-RETURNING id, name, slug, created_at, updated_at
+UPDATE libraries SET name = ?, slug = ?, icon = ?, updated_at = ? WHERE id = ?
+RETURNING id, name, slug, created_at, updated_at, icon
 `
 
 type CatalogUpdateLibraryParams struct {
 	Name      string
 	Slug      string
+	Icon      string
 	UpdatedAt int64
 	ID        int64
 }
@@ -1633,6 +1640,7 @@ func (q *Queries) CatalogUpdateLibrary(ctx context.Context, arg CatalogUpdateLib
 	row := q.db.QueryRowContext(ctx, catalogUpdateLibrary,
 		arg.Name,
 		arg.Slug,
+		arg.Icon,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -1643,6 +1651,7 @@ func (q *Queries) CatalogUpdateLibrary(ctx context.Context, arg CatalogUpdateLib
 		&i.Slug,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Icon,
 	)
 	return i, err
 }

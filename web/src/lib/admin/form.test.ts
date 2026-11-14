@@ -55,6 +55,16 @@ describe('IDs and library drafts', () => {
 		expect(libraryPatch(library, { name: 'Fiction', slug: 'novels' })).toEqual({ ok: true, patch: { slug: 'novels' } });
 		expect(libraryPatch(library, { name: ' Fiction ', slug: 'fiction' })).toMatchObject({ ok: false, error: 'no_changes' });
 	});
+
+	it('allows icon-only changes and clearing without overwriting an unchanged icon', () => {
+		const selected = { ...library, icon: 'star' };
+		expect(libraryPatch(selected, { name: 'Fiction', slug: 'fiction', icon: 'bookmark' }))
+			.toEqual({ ok: true, patch: { icon: 'bookmark' } });
+		expect(libraryPatch(selected, { name: 'Fiction', slug: 'fiction', icon: '' }))
+			.toEqual({ ok: true, patch: { icon: '' } });
+		expect(libraryPatch(selected, { name: 'Novels', slug: 'fiction', icon: 'star' }))
+			.toEqual({ ok: true, patch: { name: 'Novels' } });
+	});
 });
 
 describe('provider patches', () => {

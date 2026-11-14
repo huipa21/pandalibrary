@@ -5,6 +5,7 @@
 	import HeaderMenu from '#lib/shell/HeaderMenu.svelte';
 	import ShelfCreateDialog from './ShelfCreateDialog.svelte';
 	import type { Shelf } from './types.js';
+	import Icon from '#lib/bookview/Icon.svelte';
 
 	let { pathname, role, currentShelf }: { pathname: string; role: string; currentShelf?: Shelf } = $props();
 	let dialogOpen = $state(false);
@@ -44,10 +45,12 @@
 	{/snippet}
 	{#snippet children(close)}
 		<button type="button" role="menuitem" tabindex="-1" class="header-menu-item" onclick={() => void openCreate(close)}>
+			<Icon name="plus" class="size-4 shrink-0" />
 			{m['ux1.shelves.create']()}
 		</button>
 		{#if isCollection || isSystemCollection}
 			<a role="menuitem" tabindex="-1" class="header-menu-item" href={manageHref} data-menu-activate>
+				<Icon name={currentShelf && (role === 'admin' || currentShelf.kind === 'private') ? 'pencil' : 'info'} class="size-4 shrink-0" />
 				{currentShelf && (role === 'admin' || currentShelf.kind === 'private') ? m['collections.manage']() : m['shelves.details']()}
 			</a>
 		{/if}
@@ -59,6 +62,7 @@
 			aria-current={deLocalizeHref(pathname).replace(/\/+$/, '') === '/shelves' ? 'page' : undefined}
 			data-menu-activate
 		>
+			<Icon name="list-tree" class="size-4 shrink-0" />
 			{m['ux1.shelves.more']()}
 		</a>
 	{/snippet}

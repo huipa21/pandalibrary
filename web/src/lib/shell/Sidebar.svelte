@@ -8,6 +8,7 @@
 	import FavoritesCount from '#lib/shelves/FavoritesCount.svelte';
 	import { requestDashboardConfigure } from '#lib/dashboard/configure.svelte.js';
 	import SidebarShelves from './SidebarShelves.svelte';
+	import Icon from '#lib/bookview/Icon.svelte';
 
 	interface Props {
 		role: string;
@@ -33,6 +34,7 @@
 		{#each items as item (item.id)}
 			<li class="relative">
 				<a class={item.id === 'dashboard' ? 'shell-link pr-9' : 'shell-link'} href={item.href} aria-current={isActive(item, pathname) ? 'page' : undefined}>
+					<Icon name={item.icon} class="size-4.5 shrink-0" />
 					{#if item.id === 'bookheap'}
 						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
 						<BookheapCount />

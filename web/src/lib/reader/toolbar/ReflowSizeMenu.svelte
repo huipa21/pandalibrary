@@ -21,9 +21,9 @@
 	}
 </script>
 
-<ToolbarMenu {label} {disabled} text={`${size}%`}>
+<ToolbarMenu {label} {disabled} icon={typography ? 'type' : 'zoom-in'} text={`${size}%`}>
 	{#each percentages as percentage (percentage)}
-		<MenuItem label={`${percentage}%`} role="menuitemradio" checked={size === percentage}
+		<MenuItem label={`${percentage}%`} icon={typography ? 'type' : 'zoom-in'} role="menuitemradio" checked={size === percentage}
 			onchoose={() => onsize(percentage)} />
 	{/each}
 	<div class="pv4-separator" role="separator"></div>

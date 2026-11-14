@@ -10,7 +10,8 @@
 		| 'text-cursor' | 'insert'
 		| 'highlighter' | 'underline' | 'strikethrough' | 'message' | 'bookmark-plus'
 		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move'
-		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe' | 'maximize' | 'upload';
+		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe' | 'maximize' | 'upload'
+		| 'home' | 'inbox' | 'chart' | 'clock' | 'users';
 </script>
 
 <script lang="ts">
@@ -19,6 +20,7 @@
 
 <svg
 	aria-hidden="true"
+	data-icon={name}
 	class={className}
 	viewBox={['zoom-in', 'zoom-out', 'zoom-auto', 'fit-page', 'fit-width', 'actual-size', 'layout-single', 'layout-continuous', 'layout-split', 'layout-split-continuous', 'rotate-ccw', 'rotate-cw', 'hand', 'text-cursor', 'insert', 'highlighter', 'underline', 'strikethrough', 'message', 'bookmark-plus', 'type', 'pen', 'image', 'undo', 'check', 'move'].includes(name) ? '0 0 20 20' : '0 0 24 24'}
 	fill="none"
@@ -138,5 +140,15 @@
 		<path d="m11 17-5-5 5-5m7 10-5-5 5-5" />
 	{:else if name === 'maximize'}
 		<path d="M15 3h6v6m0-6-7 7M9 21H3v-6m0 6 7-7" />
+	{:else if name === 'home'}
+		<path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9" />
+	{:else if name === 'inbox'}
+		<path d="M3 13 6 4h12l3 9v7H3zM3 13h5l2 3h4l2-3h5" />
+	{:else if name === 'chart'}
+		<path d="M4 3v17h17M8 16v-5m5 5V6m5 10V9" />
+	{:else if name === 'clock'}
+		<circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+	{:else if name === 'users'}
+		<circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m5 10v-2a6 6 0 0 0-4-5.7" />
 	{/if}
 </svg>

@@ -221,6 +221,7 @@ type Library struct {
 	Slug      string
 	CreatedAt int64
 	UpdatedAt int64
+	Icon      string
 }
 
 type LibraryAccess struct {
@@ -360,6 +361,7 @@ type Shelf struct {
 	SystemKey   sql.NullString
 	Rules       sql.NullString
 	RuleGroups  string
+	Icon        string
 }
 
 type ShelfBook struct {

@@ -331,7 +331,7 @@ func (q *Queries) ShelfSystemEnsure(ctx context.Context, arg ShelfSystemEnsurePa
 
 const shelfSystemGet = `-- name: ShelfSystemGet :one
 
-SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules, s.rule_groups FROM shelves s
+SELECT s.id, s.kind, s.owner_id, s.name, s.description, s.created_by, s.created_at, s.updated_at, s.mode, s.system_key, s.rules, s.rule_groups, s.icon FROM shelves s
 WHERE s.owner_id = ?1 AND s.system_key = ?2
 `
 
@@ -360,6 +360,7 @@ func (q *Queries) ShelfSystemGet(ctx context.Context, arg ShelfSystemGetParams) 
 		&i.SystemKey,
 		&i.Rules,
 		&i.RuleGroups,
+		&i.Icon,
 	)
 	return i, err
 }
