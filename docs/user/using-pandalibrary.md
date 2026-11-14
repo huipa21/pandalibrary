@@ -498,8 +498,10 @@ publication-year and page-count metadata is shown as unknown. Genres use catalog
 tags; untagged books do not appear in the treemap. Books with multiple tags or
 formats can appear in more than one category. Distribution percentages use the
 total number of accessible books. Addition months follow your browser's time zone.
+On wider screens, the charts are paired by row: additions and publication years,
+genres and page counts, then languages and formats.
 
-**Reading** has three cards with independent scrollable **Year** selectors:
+**Reading** has independent scrollable **Year** selectors for its chart cards:
 
 - **Reading Heatmap** shows the full calendar year, including leap days, with
   Monday-first weeks. Its bottom summary shows active reading days, total hours,
@@ -507,18 +509,25 @@ total number of accessible books. Addition months follow your browser's time zon
   or Reading books. Read counts use completions in the selected year; the combined
   count also includes books with reading activity in that year whose status is
   Read or Reading. Skimmed and Abandoned books do not count as Read.
-- **Reading Habits** adds a **Month** selector (or **All months**). Vertical bars
-  show Monday through Sunday, and circular bars show the 24 hourly time ranges.
+- **Weekdays** and **Hours** are separate cards, side by side on wider screens,
+  each with a **Month** selector (or **All months**). Vertical bars
+  show Monday through Sunday, and circular bars show the 24 hourly time ranges
+  around a small hollow center, with 24-hour labels on the outside.
   Reading time is assigned to the session's local start day and hour, matching
   the heatmap and history.
-- **Reading Completion Race** shows a stepped line of calendar days to complete
-  Read books, ordered by finish date, with count, average, median, fastest and
-  slowest days above it. Each book appears once using its latest Read completion
-  in that year, including completed earlier reading cycles. Valid start and finish
-  dates are required for durations; same-day completion is 0 days.
+- **Reading Completion Race** shows a colored progress line for each book,
+  with book-title links in the legend and exact values on hover or keyboard focus.
+  The axes show days since the book's first recorded session and reading progress.
+  Only actual session observations are plotted; missing progress is not estimated.
+  Duration summaries retain the count, average, median, fastest and slowest days.
+  Each book appears once using its latest Read completion in the selected year,
+  including completed earlier reading cycles. Valid start and finish dates are
+  required for durations; same-day completion is 0 days.
 
 Dates and hours follow your browser's time zone. Charts include expandable data
-tables. The combined date-range reading view, including sessions, streaks, ended
+tables that omit empty, zero-value entries; same-day book completions remain
+valid data. The heatmap itself still shows the full calendar. The combined
+date-range reading view, including sessions, streaks, ended
 reading cycles per month and time per book, remains at `/stats`.
 
 **History** shows a newest-first waterfall for the selected year, separated by

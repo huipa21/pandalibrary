@@ -32,7 +32,7 @@ function stats(empty = false): BookStatsResponse {
 		genres: empty ? [] : [{ key: 'Fiction', count: 3 }, { key: 'Adventure', count: 2 }],
 		languages: empty ? [] : [{ key: 'en', count: 3 }, { key: 'unknown', count: 1 }],
 		formats: empty ? [] : [{ key: 'epub', count: 3 }, { key: 'pdf', count: 2 }],
-		page_counts: empty ? [] : [{ key: '1-100', count: 1 }, { key: '101-200', count: 2 }, { key: 'unknown', count: 1 }],
+		page_counts: empty ? [] : [{ key: '1-100', count: 1 }, { key: '101-200', count: 2 }, { key: '201-300', count: 0 }, { key: 'unknown', count: 1 }],
 		top_authors: empty ? [] : Array.from({ length: 25 }, (_, index) => ({ name: `Author ${index + 1}`, count: 25 - index })),
 		largest_books: empty ? [] : ranked.map((book) => ({ ...book, value: book.value * 1024 })),
 		most_pages: empty ? [] : ranked.map((book) => ({ ...book, value: book.value * 100 }))
@@ -40,8 +40,8 @@ function stats(empty = false): BookStatsResponse {
 }
 
 const titles = [
-	'Books Added Over Time', 'Publication Year Timeline', 'Genre Distribution', 'Language Distribution',
-	'Format Distribution', 'Page Count Distribution', 'Top 20 Authors', 'Top 20 Largest Books', 'Top 20 Books with Most Pages'
+	'Books Added Over Time', 'Publication Year Timeline', 'Genre Distribution', 'Page Count Distribution',
+	'Language Distribution', 'Format Distribution', 'Top 20 Authors', 'Top 20 Largest Books', 'Top 20 Books with Most Pages'
 ];
 
 test('catalog shows nine all-time cards with counts, percentage interactions and capped linked rankings', async ({ page }) => {
@@ -58,7 +58,9 @@ test('catalog shows nine all-time cards with counts, percentage interactions and
 	expect([...requests[0].searchParams.keys()]).toEqual(['timezone']);
 	expect(requests[0].searchParams.get('timezone')).toBe('America/New_York');
 	await expect(page.getByLabel('From', { exact: true })).toHaveCount(0);
-	await expect(page.getByRole('status').filter({ hasText: '4 books in your catalog.' })).toBeVisible();
+	const dashboard = page.locator('section[aria-labelledby="books-stats-heading"]');
+	await expect(dashboard.locator(':scope > p')).toHaveCount(0);
+	await expect(dashboard.locator('header p')).toHaveCount(0);
 
 	const added = page.getByRole('region', { name: titles[0], exact: true });
 	await expect(added.getByRole('button', { name: 'Jan 2026: 3', exact: true })).toBeVisible();
@@ -68,15 +70,24 @@ test('catalog shows nine all-time cards with counts, percentage interactions and
 	await expect(years.getByText('Unknown publication year: 1 (25%)')).toBeVisible();
 	await expect(years.getByRole('button', { name: /^Unknown:/ })).toHaveCount(0);
 
-	const language = page.getByRole('region', { name: titles[3], exact: true });
+	const language = page.getByRole('region', { name: titles[4], exact: true });
 	await language.locator('.legend').getByRole('button', { name: 'English: 3 (75%)', exact: true }).hover();
 	await expect(language.getByRole('status')).toContainText('English');
 	await expect(language.getByRole('status')).toContainText('3 (75%)');
-	const pages = page.getByRole('region', { name: titles[5], exact: true });
+	const pages = page.getByRole('region', { name: titles[3], exact: true });
 	await pages.getByRole('button', { name: '101-200: 2 (50%)', exact: true }).hover();
 	await expect(pages.getByRole('status')).toContainText('2 (50%)');
+	await expect(pages.getByRole('button', { name: '201-300: 0 (0%)', exact: true })).toBeVisible();
+	await pages.locator('summary').click();
+	const pageData = pages.getByRole('table', { name: titles[3], exact: true });
+	await expect(pageData).toBeVisible();
+	await expect(pageData.getByRole('row')).toHaveCount(3);
+	await expect(pageData.getByRole('row', { name: '1-100 1 (25%)', exact: true })).toBeVisible();
+	await expect(pageData.getByRole('row', { name: '101-200 2 (50%)', exact: true })).toBeVisible();
+	await expect(pageData.getByRole('row', { name: 'Unknown 1 (25%)', exact: true })).toBeVisible();
+	await expect(pageData.getByRole('rowheader', { name: '201-300', exact: true })).toHaveCount(0);
 
-	const formats = page.getByRole('region', { name: titles[4], exact: true });
+	const formats = page.getByRole('region', { name: titles[5], exact: true });
 	const epub = formats.locator('.legend').getByRole('button', { name: 'EPUB: 3 (75%)', exact: true });
 	await epub.click();
 	await expect(epub).toHaveAttribute('aria-pressed', 'true');
@@ -88,7 +99,7 @@ test('catalog shows nine all-time cards with counts, percentage interactions and
 	await page.keyboard.press('Enter');
 	await expect(pdf).toHaveAttribute('aria-pressed', 'true');
 	await expect(formats.getByRole('status')).toContainText('2 (50%)');
-	await expect(formats).toContainText('a book may appear in more than one format');
+	await expect(formats).not.toContainText('a book may appear in more than one format');
 
 	for (const title of titles.slice(6)) {
 		const ranking = page.getByRole('region', { name: title, exact: true });
@@ -102,6 +113,28 @@ test('catalog shows nine all-time cards with counts, percentage interactions and
 	await expect(mostPages.getByRole('listitem').first()).toContainText('2,500 pages');
 	await expect(mostPages.getByRole('link').last()).toHaveAttribute('href', '/books/20');
 });
+
+for (const width of [900, 1440]) {
+	test(`catalog pairs charts in two columns at ${width}px`, async ({ page }) => {
+		await authenticate(page);
+		await page.setViewportSize({ width, height: 1000 });
+		await page.route('**/api/v1/stats/books?*', (route) => route.fulfill({ json: stats() }));
+		await page.goto('/stats/books');
+		let previousBottom = 0;
+		for (let index = 0; index < 6; index += 2) {
+			const left = page.getByRole('region', { name: titles[index], exact: true });
+			const right = page.getByRole('region', { name: titles[index + 1], exact: true });
+			await expect(left).toBeVisible();
+			await expect(right).toBeVisible();
+			const leftBox = (await left.boundingBox())!;
+			const rightBox = (await right.boundingBox())!;
+			expect(leftBox.y).toBeCloseTo(rightBox.y, 0);
+			expect(rightBox.x).toBeGreaterThanOrEqual(leftBox.x + leftBox.width);
+			expect(leftBox.y).toBeGreaterThanOrEqual(previousBottom);
+			previousBottom = Math.max(leftBox.y + leftBox.height, rightBox.y + rightBox.height);
+		}
+	});
+}
 
 test('empty catalog keeps all nine cards and never renders invalid percentages', async ({ page }) => {
 	await authenticate(page);
@@ -158,6 +191,20 @@ test('Chinese catalog is localized and usable at mobile widths with accessible c
 	await details.click();
 	await expect(languages.getByRole('table', { name: '语言分布', exact: true })).toBeVisible();
 	await expect(page.getByRole('region', { name: '页数最多的 20 本图书', exact: true }).getByRole('listitem').first()).toContainText('2,500 页');
+	const cards = page.locator('section[aria-labelledby="books-stats-heading"] section[aria-label]');
+	await expect(cards).toHaveCount(9);
+	const cardBoxes = await cards.evaluateAll((elements) => elements.map((element) => {
+		const box = element.getBoundingClientRect();
+		return { x: box.x + window.scrollX, y: box.y + window.scrollY, height: box.height };
+	}));
+	let previousBottom = 0;
+	let columnLeft: number | undefined;
+	for (const box of cardBoxes) {
+		columnLeft ??= box.x;
+		expect(box.x).toBeCloseTo(columnLeft, 0);
+		expect(box.y).toBeGreaterThanOrEqual(previousBottom);
+		previousBottom = box.y + box.height;
+	}
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 	const accessibility = await new AxeBuilder({ page }).include('section[aria-labelledby="books-stats-heading"]').analyze();
 	expect(accessibility.violations).toEqual([]);

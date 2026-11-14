@@ -11,14 +11,14 @@
 	import ReadingHabits from './ReadingHabits.svelte';
 	import ReadingCompletionRace from './ReadingCompletionRace.svelte';
 
-	type Track = 'heatmap' | 'habits' | 'race';
+	type Track = 'heatmap' | 'weekdays' | 'hours' | 'race';
 	type LoadState =
 		| { status: 'loading' }
 		| { status: 'ready'; data: ReadingStats }
 		| { status: 'error'; error: unknown };
 	const timeZone = browserTimeZone();
 	const currentYear = new Date().getFullYear();
-	let years = $state<Record<Track, number>>({ heatmap: currentYear, habits: currentYear, race: currentYear });
+	let years = $state<Record<Track, number>>({ heatmap: currentYear, weekdays: currentYear, hours: currentYear, race: currentYear });
 	let results = $state<Record<number, LoadState>>({});
 	const controller = new AbortController();
 	const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900';
@@ -80,8 +80,8 @@
 				</div>
 			{:else if track === 'heatmap'}
 				<ReadingHeatmap data={result.data} />
-			{:else if track === 'habits'}
-				<ReadingHabits data={result.data} />
+			{:else if track === 'weekdays' || track === 'hours'}
+				<ReadingHabits data={result.data} mode={track} />
 			{:else}
 				<ReadingCompletionRace data={result.data} />
 			{/if}
@@ -91,8 +91,10 @@
 
 <section class="space-y-6" aria-labelledby="reading-stats-heading">
 	<h1 id="reading-stats-heading" class="sr-only">{m['organize.reading']()}</h1>
-	<p class="text-sm text-slate-600">{m['stats.range.timezone']({ timezone: timeZone })}</p>
 	{@render panel('heatmap', m['stats.reading.heatmap']())}
-	{@render panel('habits', m['stats.reading.habits']())}
+	<div class="grid grid-cols-1 items-start gap-6 md:grid-cols-2">
+		{@render panel('weekdays', m['stats.reading.weekdays']())}
+		{@render panel('hours', m['stats.reading.time_range']())}
+	</div>
 	{@render panel('race', m['stats.reading.race']())}
 </section>

@@ -89,7 +89,6 @@
 
 <section class="space-y-6" aria-labelledby="books-stats-heading" aria-busy={status === 'loading'}>
 	<h1 id="books-stats-heading" class="sr-only">{m['organize.books']()}</h1>
-	<p class="text-sm text-slate-600">{m['stats.catalog.description']()}</p>
 
 	{#if status === 'loading'}
 		<p role="status" class="text-slate-600">{m['stats.catalog.loading']()}</p>
@@ -104,29 +103,30 @@
 			{/if}
 		</div>
 	{:else if data}
-		<p class="text-sm text-slate-600" role="status">{m['stats.catalog.summary']({ count: formatCount(data.total_books, locale), timezone: data.timezone })}</p>
 		{#if data.total_books === 0}<p class="text-slate-600">{m['stats.catalog.empty']()}</p>{/if}
-		<div class="grid min-w-0 gap-6 md:grid-cols-2 xl:grid-cols-3">
-			<StatsCard title={m['stats.catalog.added.title']()} description={m['stats.catalog.added.description']()}>
+		<div class="grid min-w-0 gap-6 md:grid-cols-2">
+			<StatsCard title={m['stats.catalog.added.title']()}>
 				<DistributionChart data={added} kind="bar" label={m['stats.catalog.added.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} showValues />
 			</StatsCard>
-			<StatsCard title={m['stats.catalog.years.title']()} description={m['stats.catalog.years.description']()}>
+			<StatsCard title={m['stats.catalog.years.title']()}>
 				<DistributionChart data={years} kind="area" label={m['stats.catalog.years.title']()} empty={m['stats.catalog.years.empty']()} tableLabel={m['stats.catalog.details']()} />
 				<p class="mt-3 text-sm text-slate-600">{m['stats.catalog.years.unknown']({ value: formatBookShare(unknownYears, data.total_books, locale) })}</p>
 			</StatsCard>
-			<StatsCard title={m['stats.catalog.genres.title']()} description={m['stats.catalog.genres.description']()}>
+			<StatsCard title={m['stats.catalog.genres.title']()}>
 				<DistributionChart data={genres} kind="treemap" label={m['stats.catalog.genres.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} />
 			</StatsCard>
-			<StatsCard title={m['stats.catalog.languages.title']()} description={m['stats.catalog.share_hint']()}>
-				<DistributionChart data={languages} kind="pie" label={m['stats.catalog.languages.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="hover" />
-			</StatsCard>
-			<StatsCard title={m['stats.catalog.formats.title']()} description={m['stats.catalog.formats.description']()}>
-				<DistributionChart data={formats} kind="pie" label={m['stats.catalog.formats.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="click" />
-			</StatsCard>
-			<StatsCard title={m['stats.catalog.page_counts.title']()} description={m['stats.catalog.share_hint']()}>
+			<StatsCard title={m['stats.catalog.page_counts.title']()}>
 				<DistributionChart data={pages} kind="bar" label={m['stats.catalog.page_counts.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="hover" />
 			</StatsCard>
-			<StatsCard title={m['stats.catalog.authors.title']()} description={m['stats.catalog.authors.description']()}>
+			<StatsCard title={m['stats.catalog.languages.title']()}>
+				<DistributionChart data={languages} kind="pie" label={m['stats.catalog.languages.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="hover" />
+			</StatsCard>
+			<StatsCard title={m['stats.catalog.formats.title']()}>
+				<DistributionChart data={formats} kind="pie" label={m['stats.catalog.formats.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="click" />
+			</StatsCard>
+		</div>
+		<div class="grid min-w-0 gap-6 md:grid-cols-2 xl:grid-cols-3">
+			<StatsCard title={m['stats.catalog.authors.title']()}>
 				{#if authors.length}
 					<ol class="space-y-3">
 						{#each authors as author (author.name)}
@@ -140,10 +140,10 @@
 					<p class="text-sm text-slate-600">{m['stats.catalog.ranking_empty']()}</p>
 				{/if}
 			</StatsCard>
-			<StatsCard title={m['stats.catalog.largest.title']()} description={m['stats.catalog.largest.description']()}>
+			<StatsCard title={m['stats.catalog.largest.title']()}>
 				{@render rankedBooks(largest, 'size')}
 			</StatsCard>
-			<StatsCard title={m['stats.catalog.most_pages.title']()} description={m['stats.catalog.most_pages.description']()}>
+			<StatsCard title={m['stats.catalog.most_pages.title']()}>
 				{@render rankedBooks(mostPages, 'pages')}
 			</StatsCard>
 		</div>

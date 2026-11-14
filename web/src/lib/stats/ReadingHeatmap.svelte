@@ -16,6 +16,7 @@
 		session_count: byDate.get(cell.date)?.session_count ?? 0
 	})));
 	const summary = $derived(totals(daily));
+	const recordedDays = $derived(daily.filter((day) => day.active_seconds > 0));
 	const peak = $derived(Math.max(0, ...daily.map((day) => day.active_seconds)));
 	const numbers = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }));
 	const counts = $derived(new Intl.NumberFormat(locale));
@@ -107,7 +108,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each daily as day (day.date)}
+					{#each recordedDays as day (day.date)}
 						<tr>
 							<th scope="row"><time datetime={day.date}>{formatCalendar(day.date, locale)}</time></th>
 							<td>{exactDuration(day.active_seconds)}</td>

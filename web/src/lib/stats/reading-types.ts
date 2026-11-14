@@ -13,6 +13,14 @@ export interface ReadingCompletion {
 	started_on: string;
 	finished_on: string;
 	days: number;
+	first_session_on?: string;
+	progress?: ReadingProgressPoint[];
+}
+
+export interface ReadingProgressPoint {
+	days: number;
+	percentage: number;
+	recorded_on: string;
 }
 
 export interface ReadingStats {

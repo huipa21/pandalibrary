@@ -116,9 +116,16 @@ func TestReadingFinishedCountsDurationsAndVisibility(t *testing.T) {
 		{BookID: 113, Title: "Public", StartedOn: "2024-03-10", FinishedOn: "2024-03-11", Days: 1},
 		{BookID: 114, Title: "Own", StartedOn: "2024-03-10", FinishedOn: "2024-03-11", Days: 1},
 	}
+	for i := range want {
+		want[i].Progress = []ReadingProgressPoint{}
+		if want[i].BookID != 109 {
+			want[i].FirstSessionOn = "2024-03-11"
+		}
+	}
 	if !reflect.DeepEqual(got.Completions, want) {
 		t.Errorf("completions = %+v, want %+v", got.Completions, want)
 	}
+
 	var sessions int64
 	for _, day := range got.Daily {
 		sessions += day.SessionCount
@@ -129,6 +136,54 @@ func TestReadingFinishedCountsDurationsAndVisibility(t *testing.T) {
 	ungranted, err := f.service.Reading(context.Background(), Viewer{UserID: 4}, 2024, "UTC")
 	if err != nil || ungranted.Books.Read != 0 || len(ungranted.Completions) != 0 {
 		t.Fatalf("ungranted stats = %+v, %v", ungranted.Books, err)
+	}
+}
+
+func TestReadingRecordedCompletionProgress(t *testing.T) {
+	f := newStatsFixture(t)
+	start := instant(t, "2023-12-29T16:00:00Z")
+	finish := instant(t, "2024-01-03T16:00:00Z")
+	f.finish(t, 2, 101, finish, "finished")
+	f.exec(t, `UPDATE user_books SET started_at = ? WHERE book_id = 101`, start)
+	// No-percentage sessions still establish the first-session calendar day.
+	f.session(t, 2, 101, start, 60)
+	for _, entry := range []struct {
+		user     int64
+		at       string
+		from, to any
+	}{
+		{2, "2023-12-29T15:00:00Z", 0.0, 0.9}, // Outside the selected lifecycle.
+		{2, "2023-12-31T15:59:30Z", 0.0, 0.25},
+		{2, "2024-01-02T03:00:00Z", nil, 0.2},  // Keep real regressions and null endpoints.
+		{2, "2024-01-03T15:59:30Z", 0.5, 0.75}, // End is after completion: do not use it.
+		{2, "2024-01-04T03:00:00Z", 0.8, 1.0},  // After completion.
+		{3, "2024-01-01T03:00:00Z", 0.8, 1.0},  // Another viewer.
+	} {
+		at := instant(t, entry.at)
+		f.session(t, entry.user, 101, at, 60)
+		f.exec(t, `UPDATE reading_sessions SET start_percentage = ?, end_percentage = ?
+				WHERE user_id = ? AND book_id = 101 AND started_at = ?`, entry.from, entry.to, entry.user, at)
+	}
+	got, err := f.service.Reading(context.Background(), Viewer{UserID: 2}, 2024, "Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Completions) != 1 {
+		t.Fatalf("completions = %+v", got.Completions)
+	}
+	book := got.Completions[0]
+	want := []ReadingProgressPoint{
+		{Days: 1, Percentage: 0, RecordedOn: "2023-12-31"},
+		{Days: 2, Percentage: 0.25, RecordedOn: "2024-01-01"},
+		{Days: 3, Percentage: 0.2, RecordedOn: "2024-01-02"},
+		{Days: 4, Percentage: 0.5, RecordedOn: "2024-01-03"},
+	}
+	if book.FirstSessionOn != "2023-12-30" || !reflect.DeepEqual(book.Progress, want) {
+		t.Errorf("recorded progress = %+v, want %+v", book, want)
+	}
+	other, err := f.service.Reading(context.Background(), Viewer{UserID: 2}, 2023, "Asia/Shanghai")
+	if err != nil || len(other.Completions) != 0 {
+		t.Fatalf("completion-year filtering = %+v, %v", other.Completions, err)
 	}
 }
 
@@ -148,5 +203,38 @@ func TestReadingValidation(t *testing.T) {
 		if _, err := f.service.Reading(context.Background(), test.viewer, test.year, test.zone); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%+v: %v", test, err)
 		}
+
+	}
+}
+
+func TestReadingProgressCalendarDays(t *testing.T) {
+	for _, test := range []struct {
+		name, start, finish, zone string
+		days                      int
+	}{
+		{"same-day", "2024-03-10T12:00:00Z", "2024-03-10T12:01:00Z", "UTC", 0},
+		{"DST", "2024-03-10T05:00:00Z", "2024-03-11T04:00:00Z", "America/New_York", 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newStatsFixture(t)
+			start, finish := instant(t, test.start), instant(t, test.finish)
+			f.finish(t, 2, 101, finish, "finished")
+			f.exec(t, `UPDATE user_books SET started_at = ? WHERE book_id = 101`, start)
+			f.session(t, 2, 101, start, (finish-start)/1000)
+			f.exec(t, `UPDATE reading_sessions SET start_percentage = 0, end_percentage = 0.75`)
+			got, err := f.service.Reading(context.Background(), Viewer{UserID: 2}, 2024, test.zone)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Completions) != 1 {
+				t.Fatalf("completions = %+v", got.Completions)
+			}
+			book := got.Completions[0]
+			if book.Days != test.days || len(book.Progress) != 2 ||
+				book.Progress[0].Days != 0 || book.Progress[0].Percentage != 0 ||
+				book.Progress[1].Days != test.days || book.Progress[1].Percentage != 0.75 {
+				t.Errorf("calendar progress = %+v", book)
+			}
+		})
 	}
 }

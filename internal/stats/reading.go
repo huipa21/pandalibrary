@@ -84,10 +84,15 @@ func (s *Service) Reading(ctx context.Context, viewer Viewer, year int, timezone
 		hour.SessionCount += bucket.SessionCount
 	}
 	var completions []struct {
-		BookID    int64  `json:"book_id"`
-		Title     string `json:"title"`
-		StartedAt int64  `json:"started_at"`
-		EndedAt   int64  `json:"ended_at"`
+		BookID         int64  `json:"book_id"`
+		Title          string `json:"title"`
+		StartedAt      int64  `json:"started_at"`
+		EndedAt        int64  `json:"ended_at"`
+		FirstSessionAt *int64 `json:"first_session_at"`
+		Progress       []struct {
+			RecordedAt int64   `json:"recorded_at"`
+			Percentage float64 `json:"percentage"`
+		} `json:"progress"`
 	}
 	if err := json.Unmarshal([]byte(completionJSON), &completions); err != nil {
 		return ReadingResponse{}, fmt.Errorf("decode reading completions: %w", err)
@@ -108,10 +113,25 @@ func (s *Service) Reading(ctx context.Context, viewer Viewer, year int, timezone
 		if duration < 0 {
 			continue
 		}
-		result.Completions = append(result.Completions, ReadingCompletion{
+		completion := ReadingCompletion{
 			BookID: item.BookID, Title: item.Title, StartedOn: first.Format(time.DateOnly),
 			FinishedOn: last.Format(time.DateOnly), Days: duration,
-		})
+			Progress: []ReadingProgressPoint{},
+		}
+		if item.FirstSessionAt != nil {
+			origin := time.UnixMilli(*item.FirstSessionAt).In(cal.location)
+			completion.FirstSessionOn = origin.Format(time.DateOnly)
+			originDate := time.Date(origin.Year(), origin.Month(), origin.Day(), 0, 0, 0, 0, time.UTC)
+			for _, point := range item.Progress {
+				recorded := time.UnixMilli(point.RecordedAt).In(cal.location)
+				date := time.Date(recorded.Year(), recorded.Month(), recorded.Day(), 0, 0, 0, 0, time.UTC)
+				completion.Progress = append(completion.Progress, ReadingProgressPoint{
+					Days:       int((date.Unix() - originDate.Unix()) / 86400),
+					Percentage: point.Percentage, RecordedOn: recorded.Format(time.DateOnly),
+				})
+			}
+		}
+		result.Completions = append(result.Completions, completion)
 	}
 	sort.Slice(result.Completions, func(i, j int) bool {
 		a, b := result.Completions[i], result.Completions[j]

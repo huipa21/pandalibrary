@@ -22,9 +22,17 @@ type ReadingBooks struct {
 }
 
 type ReadingCompletion struct {
-	BookID     int64  `json:"book_id"`
-	Title      string `json:"title"`
-	StartedOn  string `json:"started_on"`
-	FinishedOn string `json:"finished_on"`
-	Days       int    `json:"days"`
+	BookID         int64                  `json:"book_id"`
+	Title          string                 `json:"title"`
+	StartedOn      string                 `json:"started_on"`
+	FinishedOn     string                 `json:"finished_on"`
+	Days           int                    `json:"days"`
+	FirstSessionOn string                 `json:"first_session_on,omitempty"`
+	Progress       []ReadingProgressPoint `json:"progress"`
+}
+
+type ReadingProgressPoint struct {
+	Days       int     `json:"days"`
+	Percentage float64 `json:"percentage"`
+	RecordedOn string  `json:"recorded_on"`
 }

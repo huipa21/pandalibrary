@@ -53,6 +53,17 @@ WITH visible_books AS (
     SELECT v.book_id, b.title, v.started_at, v.ended_at
     FROM valid_completions v JOIN visible_books b ON b.id = v.book_id
     WHERE v.position = 1 ORDER BY v.book_id LIMIT @result_limit
+), completion_sessions AS (
+    SELECT rs.*, l.ended_at AS completed_at
+    FROM latest l JOIN reading_sessions rs ON rs.book_id = l.book_id
+      AND rs.user_id = @user_id AND rs.started_at >= l.started_at
+      AND rs.started_at <= l.ended_at
+), progress AS (
+    SELECT book_id, seq, 0 AS phase, started_at AS recorded_at, start_percentage AS percentage
+    FROM completion_sessions WHERE start_percentage IS NOT NULL
+    UNION ALL
+    SELECT book_id, seq, 1, ended_at, end_percentage
+    FROM completion_sessions WHERE end_percentage IS NOT NULL AND ended_at <= completed_at
 )
 SELECT
     (SELECT json_group_array(json_object(
@@ -61,5 +72,12 @@ SELECT
     (SELECT COUNT(*) FROM read_books),
     (SELECT COUNT(*) FROM reading_books),
     (SELECT json_group_array(json_object(
-        'book_id', book_id, 'title', title, 'started_at', started_at, 'ended_at', ended_at
-    )) FROM latest);
+        'book_id', l.book_id, 'title', l.title, 'started_at', l.started_at, 'ended_at', l.ended_at,
+        'first_session_at', (SELECT MIN(started_at) FROM completion_sessions s WHERE s.book_id = l.book_id),
+        'progress', json((SELECT json_group_array(json_object(
+            'recorded_at', recorded_at, 'percentage', percentage
+        )) FROM (
+            SELECT recorded_at, percentage FROM progress p WHERE p.book_id = l.book_id
+            ORDER BY recorded_at, seq, phase
+        )))
+    )) FROM latest l);

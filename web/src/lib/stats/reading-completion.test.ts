@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReadingCompletion } from './reading-types.js';
-import { completionPoints, completionSummary, orderedCompletions, steppedPath } from './reading-completion.js';
+import { completionMaximum, completionPoints, completionSummary, orderedCompletions, recordedProgress, steppedPath } from './reading-completion.js';
 
 function completion(book_id: number, days: number, finished_on = '2026-06-01'): ReadingCompletion {
 	return { book_id, title: `Book ${book_id}`, started_on: '2026-05-01', finished_on, days };
@@ -24,18 +24,49 @@ describe('reading completion race', () => {
 		const valid = orderedCompletions([completion(1, NaN), completion(2, -1), completion(3, Infinity)]);
 		expect(completionSummary(valid))
 			.toEqual({ count: 0, average: null, median: null, fastest: null, slowest: null });
-		expect(steppedPath(completionPoints(valid))).toBe('');
+		expect(completionMaximum(valid)).toBe(0);
 	});
 
-	it('draws horizontal then vertical steps in completion order', () => {
-		const points = completionPoints([completion(1, 2), completion(2, 0), completion(3, 4)], 100, 80);
-		expect(points).toEqual([{ x: 0, y: 40 }, { x: 50, y: 80 }, { x: 100, y: 0 }]);
-		expect(steppedPath(points)).toBe('M 0 40 H 50 V 80 H 100 V 0');
+	it('draws a distinct stepped curve from each book’s actual recorded percentages', () => {
+		const first = { ...completion(1, 12), progress: [
+			{ days: 0, percentage: 0.25, recorded_on: '2026-05-01' },
+			{ days: 2, percentage: 0.5, recorded_on: '2026-05-03' },
+			{ days: 4, percentage: 0.75, recorded_on: '2026-05-05' }
+		] };
+		const second = { ...completion(2, 8), progress: [
+			{ days: 0, percentage: 0.5, recorded_on: '2026-05-01' },
+			{ days: 2, percentage: 0.25, recorded_on: '2026-05-03' }
+		] };
+		const maximum = completionMaximum([first, second]);
+		expect(maximum).toBe(4);
+		const points = completionPoints(first, maximum, 100, 80);
+		expect(points.map(({ x, y }) => ({ x, y }))).toEqual([{ x: 0, y: 60 }, { x: 50, y: 40 }, { x: 100, y: 20 }]);
+		expect(steppedPath(points)).toBe('M 0 60 H 50 V 40 H 100 V 20');
+		expect(steppedPath(completionPoints(second, maximum, 100, 80))).toBe('M 0 40 H 50 V 60');
+		expect(points.map((point) => point.progress)).toEqual(first.progress);
 	});
 
-	it('keeps all-zero durations visible at the baseline, including a single book', () => {
-		expect(completionPoints([completion(1, 0)], 100, 80)).toEqual([{ x: 50, y: 80 }]);
-		expect(steppedPath(completionPoints([completion(1, 0), completion(2, 0)], 100, 80)))
-			.toBe('M 0 80 H 100 V 80');
+	it('keeps same-day observations and zero percentages without synthetic endpoints', () => {
+		const book = { ...completion(1, 0), progress: [
+			{ days: 0, percentage: 0, recorded_on: '2026-05-01' },
+			{ days: 0, percentage: 0.5, recorded_on: '2026-05-01' }
+		] };
+		expect(steppedPath(completionPoints(book, 0, 100, 80))).toBe('M 0 80 H 0 V 40');
+		expect(completionPoints(completion(2, 0), 0)).toEqual([]);
+		expect(steppedPath([])).toBe('');
+	});
+
+	it('filters invalid observations but preserves chronological order and original data', () => {
+		const book = { ...completion(1, 8), progress: [
+			{ days: 2, percentage: 0.6, recorded_on: '2026-05-03' },
+			{ days: -1, percentage: 0.2, recorded_on: '2026-05-01' },
+			{ days: 1, percentage: NaN, recorded_on: '2026-05-02' },
+			{ days: Infinity, percentage: 0.2, recorded_on: '2026-05-02' },
+			{ days: 1, percentage: 1.1, recorded_on: '2026-05-02' },
+			{ days: 1, percentage: -0.1, recorded_on: '2026-05-02' },
+			{ days: 0, percentage: 0.3, recorded_on: '2026-05-01' }
+		] };
+		expect(recordedProgress(book)).toEqual([book.progress[6], book.progress[0]]);
+		expect(book.progress[0].days).toBe(2);
 	});
 });

@@ -18,6 +18,7 @@
 	let selected = $state<string | null>(null);
 	const weights = $derived(chartWeights(data.map((datum) => datum.value)));
 	const hasData = $derived(weights.some((weight) => weight > 0));
+	const recordedData = $derived(data.filter((datum) => datum.value > 0));
 	const rectangles = $derived(treemapRects(data.map((datum) => datum.value), 100, 70));
 	const slices = $derived(pieSlices(data.map((datum) => datum.value)));
 	const positions = $derived(chartPositions(data.map((datum) => datum.key)));
@@ -176,7 +177,7 @@
 			<table>
 				<caption>{label}</caption>
 				<tbody>
-					{#each data as datum (datum.key)}
+					{#each recordedData as datum (datum.key)}
 						<tr><th scope="row">{datum.label}</th><td>{datum.display}</td></tr>
 					{/each}
 				</tbody>
