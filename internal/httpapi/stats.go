@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -22,6 +23,40 @@ func StatsMount(service *stats.Service, authentication *auth.Service, logger *sl
 		router.With(SessionMiddleware(authentication, logger)).Get("/api/v1/stats", handler.get)
 		router.With(SessionMiddleware(authentication, logger)).Get("/api/v1/stats/history", handler.history)
 		router.With(SessionMiddleware(authentication, logger)).Get("/api/v1/stats/books", handler.books)
+		router.With(SessionMiddleware(authentication, logger)).Get("/api/v1/stats/reading", handler.reading)
+	}
+}
+
+func (h *statsHTTP) reading(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	user, ok := ViewerFromRequest(r)
+	if !ok {
+		WriteProblem(w, h.logger, http.StatusUnauthorized, "")
+		return
+	}
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	year, yearErr := strconv.Atoi(values.Get("year"))
+	if err != nil || len(values) != 2 || len(values["year"]) != 1 || len(values["timezone"]) != 1 ||
+		yearErr != nil || len(values.Get("year")) != 4 || values.Get("year") != fmt.Sprintf("%04d", year) ||
+		values.Get("timezone") == "" {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "Exactly one YYYY year and timezone are required.")
+		return
+	}
+	result, err := h.service.Reading(r.Context(), stats.Viewer{
+		UserID: user.ID, IsAdmin: user.Role == "admin",
+	}, year, values.Get("timezone"))
+	if err != nil {
+		if errors.Is(err, stats.ErrInvalid) {
+			WriteProblem(w, h.logger, http.StatusBadRequest, strings.TrimPrefix(err.Error(), "invalid stats request: "))
+		} else {
+			h.logger.Error("reading stats request failed", "request_id", RequestID(r), "error", err)
+			WriteProblem(w, h.logger, http.StatusInternalServerError, "")
+		}
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		h.logger.Error("write reading stats response", "error", err)
 	}
 }
 

@@ -499,9 +499,27 @@ tags; untagged books do not appear in the treemap. Books with multiple tags or
 formats can appear in more than one category. Distribution percentages use the
 total number of accessible books. Addition months follow your browser's time zone.
 
-**Reading** shows time, sessions, active days and streaks with the same card
-styling. Choose a date range for reading statistics. The combined reading view,
-including ended reading cycles per month and time per book, remains at `/stats`.
+**Reading** has three cards with independent scrollable **Year** selectors:
+
+- **Reading Heatmap** shows the full calendar year, including leap days, with
+  Monday-first weeks. Its bottom summary shows active reading days, total hours,
+  average hours per active reading day, distinct Read books, and distinct Read
+  or Reading books. Read counts use completions in the selected year; the combined
+  count also includes books with reading activity in that year whose status is
+  Read or Reading. Skimmed and Abandoned books do not count as Read.
+- **Reading Habits** adds a **Month** selector (or **All months**). Vertical bars
+  show Monday through Sunday, and circular bars show the 24 hourly time ranges.
+  Reading time is assigned to the session's local start day and hour, matching
+  the heatmap and history.
+- **Reading Completion Race** shows a stepped line of calendar days to complete
+  Read books, ordered by finish date, with count, average, median, fastest and
+  slowest days above it. Each book appears once using its latest Read completion
+  in that year, including completed earlier reading cycles. Valid start and finish
+  dates are required for durations; same-day completion is 0 days.
+
+Dates and hours follow your browser's time zone. Charts include expandable data
+tables. The combined date-range reading view, including sessions, streaks, ended
+reading cycles per month and time per book, remains at `/stats`.
 
 **History** shows a newest-first waterfall for the selected year, separated by
 month. Each row includes the date, cover, title, author and reading cycle.
