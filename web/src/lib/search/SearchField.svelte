@@ -37,7 +37,7 @@
 		value = '';
 		await onclear?.();
 		await tick();
-		input?.focus();
+		input?.focus({ preventScroll: true });
 	}
 </script>
 

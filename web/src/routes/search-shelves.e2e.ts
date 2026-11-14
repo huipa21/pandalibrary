@@ -161,8 +161,7 @@ test('searches only from the header, with a clear icon, opaque cursors, empty, a
 	await expect(clear).toBeVisible();
 
 	await clear.click();
-	await expect(page).toHaveURL(/\/search$/);
-	await expect(page.getByText('Enter a word or phrase in the search box at the top to search the books you can access.')).toBeVisible();
+	await expect(page).toHaveURL(new URL('/', page.url()).href);
 	await expect(search).toHaveValue('');
 	await expect(search).toBeFocused();
 	await expect(submit).toBeVisible();
@@ -175,6 +174,80 @@ test('searches only from the header, with a clear icon, opaque cursors, empty, a
 	await expect(search).toHaveValue('');
 	await expect(submit).toBeVisible();
 	await expect(clear).toHaveCount(0);
+});
+
+test('header clear restores the original filtered books URL and scroll after repeated searches', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 720 });
+	await authenticate(page);
+	const books = Array.from({ length: 40 }, (_, index) => ({
+		...book,
+		id: 200 + index,
+		title: `Browse book ${index + 1}`,
+		sort_title: `Browse book ${index + 1}`
+	}));
+	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: books, next_cursor: null } }));
+	await page.route('**/api/v1/search?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+
+	await page.goto('/books?sort=added#browse-origin');
+	const origin = page.url();
+	const search = page.getByRole('banner').getByRole('searchbox', { name: 'Search books' });
+	await expect(page.getByRole('img', { name: 'Browse book 40', exact: true })).toBeAttached();
+	await search.fill('dune');
+	await page.evaluate(() => window.scrollTo(0, 900));
+	await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(900);
+
+	await search.press('Enter');
+	await expect(page).toHaveURL(/\/search\?q=dune$/);
+	await expect(page.getByText('No books match “dune”.')).toBeVisible();
+	await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+	await search.press('Enter');
+	await expect(page).toHaveURL(/\/search\?q=dune$/);
+	await search.fill('nothing');
+	await search.press('Enter');
+	await expect(page.getByText('No books match “nothing”.')).toBeVisible();
+
+	await page.getByRole('banner').getByRole('button', { name: 'Clear search', exact: true }).click();
+	await expect(page).toHaveURL(origin);
+	await expect(page.getByRole('img', { name: 'Browse book 40', exact: true })).toBeAttached();
+	await expect(page.getByRole('combobox', { name: 'Sort', exact: true })).toHaveValue('added');
+	await expect(search).toHaveValue('');
+	await expect(search).toBeFocused();
+	await expect.poll(async () => Math.abs(await page.evaluate(() => window.scrollY) - 900)).toBeLessThanOrEqual(1);
+});
+
+test('clearing a directly opened search falls back to the dashboard', async ({ page }) => {
+	await authenticate(page);
+	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/search?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.goto('/search?q=nothing');
+	const dashboard = new URL('/', page.url()).href;
+	const header = page.getByRole('banner');
+	await expect(page.getByText('No books match “nothing”.')).toBeVisible();
+
+	await header.getByRole('button', { name: 'Clear search', exact: true }).click();
+	await expect(page).toHaveURL(dashboard);
+	await expect(header.getByRole('searchbox', { name: 'Search books' })).toHaveValue('');
+	await expect(header.getByRole('searchbox', { name: 'Search books' })).toBeFocused();
+	await expect(header.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
+});
+
+test('submitting an empty header search returns to its original page', async ({ page }) => {
+	await authenticate(page);
+	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: [book], next_cursor: null } }));
+	await page.route('**/api/v1/search?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.goto('/books?sort=added#browse-origin');
+	const origin = page.url();
+	const search = page.getByRole('banner').getByRole('searchbox', { name: 'Search books' });
+	await expect(page.getByRole('img', { name: 'A Book', exact: true })).toBeVisible();
+	await search.fill('nothing');
+	await search.press('Enter');
+	await expect(page.getByText('No books match “nothing”.')).toBeVisible();
+
+	await search.fill('');
+	await search.press('Enter');
+	await expect(page).toHaveURL(origin);
+	await expect(search).toHaveValue('');
+	await expect(page.getByRole('banner').getByRole('button', { name: 'Clear search', exact: true })).toHaveCount(0);
 });
 
 test('creates, browses, edits membership, and deletes a private shelf', async ({ page }) => {

@@ -8,6 +8,10 @@ only in the header; the sidebar has no Search entry. The sidebar holds
 navigation, libraries and collections; on small screens it opens as a drawer from the
 menu button. Select the PandaLibrary logo to return to the dashboard.
 
+Clearing a header search with **✕** (or submitting an empty search) returns to
+the page where you started, keeping its URL filters and scroll position. If you
+opened a search link directly, clearing it returns to the dashboard.
+
 The header, sidebar and main content keep the same width and position when
 switching between pages with and without a vertical scrollbar.
 
