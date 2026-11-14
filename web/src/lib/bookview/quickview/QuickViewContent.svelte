@@ -12,7 +12,8 @@
 	import IdentifierLinks from '../IdentifierLinks.svelte';
 	import RatingStars from '../RatingStars.svelte';
 	import { readTarget } from '../read.js';
-	import ReadStatusMenu from '../ReadStatusMenu.svelte';
+	import StatusIcon from '../StatusIcon.svelte';
+	import { readStatusLabel, statusTone } from '../user-book.js';
 	import type { QuickViewData } from './quick-view-data.js';
 	import ShelfPopover from './ShelfPopover.svelte';
 
@@ -20,6 +21,7 @@
 	let reading = $state(false);
 	let readError = $state('');
 	const book = $derived(data.book);
+	const status = $derived(data.userBook?.status ?? 'unread');
 	const formats = $derived(sortedFormats(book.files));
 	const readable = $derived(book.files.some((file) => readerFormat(file.format) !== null));
 	const resume = $derived((data.progress?.percentage ?? 0) > 0);
@@ -228,9 +230,14 @@
 				class="inline-flex min-w-0 items-center justify-center rounded-full border border-emerald-700 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
 				href={`/books/${book.id}`}
 			><span class="truncate">{m['bv5.details']()}</span></a>
-			<div class="status-slot">
-				<ReadStatusMenu bookId={book.id} userBook={data.userBook} percentage={data.progress?.percentage} variant="icon" />
-			</div>
+			<span
+				class="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-slate-300 text-slate-700"
+				role="img"
+				aria-label={m['bv3.status_menu_current']({ status: readStatusLabel(status) })}
+				title={m['bv3.status_menu_current']({ status: readStatusLabel(status) })}
+			>
+				<StatusIcon {status} class={`size-5 shrink-0 ${statusTone(status).text}`} />
+			</span>
 			{#if !data.offline}
 				<ShelfPopover bookId={book.id} {memberIds} />
 			{/if}
@@ -239,24 +246,3 @@
 		{#if readError}<p class="mt-2 text-sm text-red-800" role="alert">{readError}</p>{/if}
 	</footer>
 </div>
-
-<style>
-	/* The status menu opens upward from the sticky footer so it stays inside the viewport. */
-	.status-slot :global([role='menu']) {
-		top: auto;
-		right: 0;
-		bottom: 100%;
-		margin-top: 0;
-		margin-bottom: 0.5rem;
-	}
-
-	.status-slot :global([role='alert']) {
-		position: absolute;
-		right: 0;
-		bottom: 100%;
-		max-width: 16rem;
-		border-radius: 0.5rem;
-		background: white;
-		padding: 0.25rem 0.5rem;
-	}
-</style>

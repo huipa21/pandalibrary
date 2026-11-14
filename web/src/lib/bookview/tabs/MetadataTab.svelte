@@ -17,10 +17,6 @@
 	const editor = new MetadataEditorState(book, (updated) => { context.book = updated; });
 
 	$effect(() => {
-		if (view === 'search') untrack(() => editor.beginEdit());
-	});
-
-	$effect(() => {
 		const current = context.book;
 		if (current) untrack(() => editor.adopt(current));
 	});

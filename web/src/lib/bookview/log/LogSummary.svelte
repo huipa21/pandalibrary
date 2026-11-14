@@ -2,10 +2,10 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import Icon from '../Icon.svelte';
-	import ReadStatusMenu from '../ReadStatusMenu.svelte';
+	import StatusIcon from '../StatusIcon.svelte';
 	import { formatDate, formatDuration, formatPercent, formatRelative } from '../format.js';
 	import type { ReadingSummary } from '../log-api.js';
-	import { isCompletedStatus, type UserBook } from '../user-book.js';
+	import { isCompletedStatus, readStatusLabel, statusTone, type UserBook } from '../user-book.js';
 	import ProgressRing from '../ProgressRing.svelte';
 	import AddSessionDialog from './AddSessionDialog.svelte';
 	import { hoursToFinish } from './log-model.js';
@@ -20,6 +20,7 @@
 	let dialogOpen = $state(false);
 	const locale = $derived(getLocale());
 	const progress = $derived(Math.min(1, Math.max(0, summary.progress)));
+	const status = $derived(userBook?.status ?? 'unread');
 	const hoursLeft = $derived(hoursToFinish(summary.progress, summary.total_seconds));
 	const pace = $derived(hoursLeft === null
 		? m['bv8.no_data']()
@@ -40,7 +41,10 @@
 	<h2 id="bv8-summary-heading" class="text-xs font-semibold uppercase tracking-wider text-slate-500">{m['bv8.summary']()}</h2>
 	<div class="mt-5 flex flex-col items-center gap-3 text-center">
 		<ProgressRing fraction={progress} size="lg" {locale} label={m['bv8.progress']({ percent: formatPercent(progress, locale) })} />
-		<ReadStatusMenu {bookId} {userBook} variant="pill" />
+		<span class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700" aria-label={m['bv3.status_menu_current']({ status: readStatusLabel(status) })}>
+			<StatusIcon {status} class={`size-5 shrink-0 ${statusTone(status).text}`} />
+			<span>{readStatusLabel(status)}</span>
+		</span>
 		{#if isCompletedStatus(userBook?.status)}
 			<p class="text-sm text-slate-500">{m['bv8.read_completed']()}</p>
 		{:else if summary.estimated_seconds_left !== null}

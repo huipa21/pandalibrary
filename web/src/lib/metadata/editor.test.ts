@@ -216,6 +216,30 @@ describe('metadata editor drafts', () => {
 		expect(metadataDirty(book, draft, { title: undefined })).toBe(false);
 	});
 
+	it('treats normalized no-op values and reverted associations as clean', () => {
+		const draft = createDraft(book);
+		draft.title = ' Current ';
+		draft.subtitle = ' Subtitle ';
+		draft.page_count = '0100';
+		draft.age_rating = '012';
+		draft.authors = draft.authors.map((person, index) => index === 0 ? { ...person, name: ' First ' } : person);
+		draft.identifiers = draft.identifiers.map((identifier, index) =>
+			index === 0 ? { ...identifier, value: ' 9780000000001 ' } : identifier);
+		draft.series.name = ' Saga ';
+		draft.tags = [' Fantasy '];
+		draft.genres = [' Literary '];
+		expect(metadataDirty(book, draft, {})).toBe(false);
+		expect(buildManualPatch(book, draft, {})).toEqual({});
+
+		draft.authors.reverse();
+		expect(metadataDirty(book, draft, {})).toBe(true);
+		draft.authors.reverse();
+		draft.identifiers.push({ scheme: 'doi', value: '10.123/test' });
+		expect(metadataDirty(book, draft, {})).toBe(true);
+		draft.identifiers.pop();
+		expect(metadataDirty(book, draft, {})).toBe(false);
+	});
+
 	it('rethrows unexpected errors instead of reporting a dirty draft', () => {
 		const draft = createDraft(book);
 		const unexpected = new Error('Unexpected draft access failure');

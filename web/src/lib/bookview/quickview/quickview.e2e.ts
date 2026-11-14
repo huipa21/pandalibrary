@@ -203,7 +203,7 @@ test('shows the quick view structure and expands the synopsis', async ({ page })
 
 	await expect(drawer.getByRole('button', { name: 'Resume' })).toBeEnabled();
 	await expect(drawer.getByRole('link', { name: 'Details' })).toBeVisible();
-	await expect(drawer.getByRole('button', { name: 'Reading status' })).toBeVisible();
+	await expect(drawer.getByRole('button', { name: /Reading status/ })).toHaveCount(0);
 	await expect(drawer.getByRole('button', { name: 'Add to shelf' })).toBeVisible();
 	expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');
 });
@@ -242,38 +242,28 @@ test('Details navigates and closes; Read opens the reader', async ({ page }) => 
 	await expect(page).toHaveURL(/\/read\/2\/201$/);
 });
 
-test('changes the reading status with one mutation and adds the book to a shelf', async ({ page }) => {
+test('keeps status changes in Details while adding the book to a shelf', async ({ page }) => {
 	const state = mockState();
 	await mockApi(page, state);
 	await page.setViewportSize({ width: 1280, height: 900 });
 	const { drawer } = await openHarbor(page);
 
-	const status = drawer.getByRole('button', { name: 'Reading status' });
-	await expect(status).toHaveAttribute('title', 'Reading status: Unread');
-	await status.click();
-	const menu = page.getByRole('menu', { name: 'Reading status' });
-	const menuBox = await menu.boundingBox();
-	expect(menuBox?.x ?? -1).toBeGreaterThanOrEqual(0);
-	expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(1280);
-	expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(900);
-	await expect(menu.getByRole('menuitemradio', { name: 'Want to read' })).toHaveCount(0);
-	await menu.getByRole('menuitemradio', { name: 'Reading', exact: true }).click();
-	await expect(status).toHaveAttribute('title', 'Reading status: Reading');
-	await expect.poll(() => state.pushes.length).toBe(1);
-	expect(state.pushes[0]).toMatchObject({ entity: 'user_books', key: '2', data: { book_id: 2, status: 'reading' } });
-	await expect(status).toHaveAttribute('title', 'Reading status: Reading');
+	await expect(drawer.getByRole('button', { name: /Reading status/ })).toHaveCount(0);
+	await expect(drawer.getByRole('img', { name: 'Reading status: Unread', exact: true })).toBeVisible();
+	await expect(drawer.getByRole('link', { name: 'Details', exact: true })).toHaveAttribute('href', '/books/2');
+	expect(state.pushes).toHaveLength(0);
 
-	await drawer.getByRole('button', { name: 'Add to shelf' }).click();
-	const popover = drawer.getByRole('dialog', { name: 'Add to shelf' });
+	await drawer.getByRole('button', { name: 'Add to collection' }).click();
+	const popover = drawer.getByRole('dialog', { name: 'Add to collection' });
 	await expect(popover.getByRole('button', { name: /Weekend reads/ })).toHaveAttribute('aria-disabled', 'true');
 	await popover.getByRole('button', { name: /Classics/ }).click();
 	await expect.poll(() => state.shelfPuts).toEqual(['/shelves/14/books/2']);
 	await expect(drawer.getByRole('region', { name: 'Collections' }).getByRole('link'))
 		.toHaveText(['Favorites', 'Classics', 'Weekend reads']);
-	await expect(drawer.getByRole('button', { name: 'Add to shelf' })).toBeFocused();
+	await expect(drawer.getByRole('button', { name: 'Add to collection' })).toBeFocused();
 	await page.keyboard.press('Escape');
-	await expect(card(page, 'Quiet Harbor').getByRole('button',
-		{ name: 'Reading status: Reading. Change' })).toBeVisible();
+	await expect(card(page, 'Quiet Harbor').getByRole('img',
+		{ name: 'Reading status: Unread', exact: true })).toBeAttached();
 });
 
 test('the empty shelf picker points to the shelf menu and management page', async ({ page }) => {

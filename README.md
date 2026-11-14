@@ -15,6 +15,11 @@ The review checks file type,
 size, empty files, and repeated selections; import verifies contents and
 duplicates before attaching files without replacing existing editions.
 
+The **Metadata** tab lets authorized users edit fields directly without entering
+an edit mode. Its edit icon becomes a save action when values change.
+Reading-status badges on covers in Dashboard, Favorites, Library, and Collections
+are display-only; change reading status from the book's **Details** tab.
+
 ## Run with a container
 
 Build the image from a Git source checkout (Node.js and Docker are required):

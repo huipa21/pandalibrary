@@ -215,7 +215,7 @@ test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private co
 			await expect(heroStatus(reader)).toHaveAccessibleName('Reading status: Reading');
 			await reader.goto('/');
 			await expect(tile(reader.locator('[data-dashboard-section="continue_reading"]'), data.book.title)
-				.getByRole('button', { name: 'Reading status: Reading. Change' })).toBeVisible();
+				.getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
 			await progress(reader.request, data.book, 0.995);
 			await reader.goto(bookPath);
 			await expect(heroStatus(reader)).toHaveAccessibleName('Reading status: Read');

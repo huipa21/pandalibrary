@@ -112,12 +112,12 @@ function searchMetadata(page: Page) {
 	return page.getByRole('button', { name: 'Search metadata', exact: true });
 }
 
-async function expectReadOnly(page: Page) {
+async function expectClean(page: Page) {
 	await expect(edit(page)).toBeEnabled();
 	await expect(restore(page)).toBeDisabled();
 	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toHaveCount(0);
-	await expect(textInput(page, 'Title')).toBeDisabled();
-	await expect(form(page).locator('input:enabled, textarea:enabled, select:enabled')).toHaveCount(0);
+	await expect(textInput(page, 'Title')).toBeEnabled();
+	await expect(form(page).locator('input:disabled, textarea:disabled, select:disabled')).toHaveCount(0);
 	await expect(form(page).locator('.save-controls')).toHaveCount(0);
 }
 
@@ -166,14 +166,14 @@ test('the metadata tab sits between Details and Files and the old edit route red
 	await page.getByRole('region', { name: 'Details', exact: true }).getByRole('link', { name: 'Edit metadata' }).click();
 	await expect(page).toHaveURL(/\/books\/21\/metadata$/);
 	await expect(textInput(page, 'Title')).toHaveValue('Old Title');
-	await expectReadOnly(page);
+	await expectClean(page);
 	await page.goto('/books/21/edit?view=search');
 	await expect(page).toHaveURL(/\/books\/21\/metadata\?view=search$/);
 	await expect(page.getByRole('form', { name: 'Search metadata' })).toBeVisible();
 	await expect(metadata(page)).toBeEnabled();
 });
 
-test('metadata starts read-only and the icon row edits and saves fields without a lookup', async ({ page }) => {
+test('metadata is immediately editable and the icon row saves changed fields without a lookup', async ({ page }) => {
 	await authenticate(page);
 	let current = baseBook();
 	const patches: Record<string, unknown>[] = [];
@@ -193,7 +193,7 @@ test('metadata starts read-only and the icon row edits and saves fields without 
 	});
 
 	await page.goto('/books/21/metadata');
-	await expectReadOnly(page);
+	await expectClean(page);
 	await expect(page.getByRole('navigation', { name: 'Metadata view' })).toHaveCount(0);
 	await expect(searchMetadata(page)).toBeEnabled();
 	const icons = form(page).locator('.cover-actions').getByRole('button');
@@ -221,17 +221,16 @@ test('metadata starts read-only and the icon row edits and saves fields without 
 	await expect(field(page, 'Ratings')).toContainText('goodreads');
 	await expect(field(page, 'Ratings')).toContainText('4.25');
 	await expect(field(page, 'Identifiers').getByRole('combobox', { name: 'Scheme 1' })).toHaveValue('isbn13');
-	await expect(field(page, 'Identifiers').getByRole('combobox', { name: 'Scheme 1' })).toBeDisabled();
-	await edit(page).click();
-	await expect(edit(page)).toHaveCount(0);
+	await expect(field(page, 'Identifiers').getByRole('combobox', { name: 'Scheme 1' })).toBeEnabled();
 	await expect(textInput(page, 'Title')).toBeEnabled();
 	const save = page.getByRole('button', { name: 'Save metadata', exact: true });
-	await expect(save).toHaveCount(1);
+	await expect(save).toHaveCount(0);
 	await expect(form(page).locator('.save-controls')).toHaveCount(0);
-	await expect(save).toBeDisabled();
 	await expect(restore(page)).toBeDisabled();
 
 	await textInput(page, 'Title').fill('Edited Title');
+	await expect(edit(page)).toHaveCount(0);
+	await expect(save).toBeEnabled();
 	await textInput(page, 'Publisher').fill('');
 	await field(page, 'Tags').getByRole('textbox', { name: 'New tag', exact: true }).fill(' Space ');
 	await field(page, 'Tags').getByRole('textbox', { name: 'New tag', exact: true }).press('Enter');
@@ -248,7 +247,7 @@ test('metadata starts read-only and the icon row edits and saves fields without 
 		title: 'Edited Title', publisher: null, tags: ['Original', 'Space'], genres: [], moods: ['Hopeful'],
 		age_rating: 13, content_rating: 'teen', series: { name: 'Existing Saga', index: 1.5, total: 5 }
 	}]);
-	await expectReadOnly(page);
+	await expectClean(page);
 	await page.reload();
 	await expect(textInput(page, 'Title')).toHaveValue('Edited Title');
 	await expect(field(page, 'Tags').getByText('Space', { exact: true })).toBeVisible();
@@ -257,7 +256,56 @@ test('metadata starts read-only and the icon row edits and saves fields without 
 	expect(lookups).toBe(0);
 });
 
-test('restore keeps editing and restores the pre-edit snapshot, pending chips and the latest saved baseline', async ({ page }) => {
+test('reverted and semantically unchanged inputs keep the edit icon and do not warn on navigation', async ({ page }) => {
+	await authenticate(page);
+	const patches: unknown[] = [];
+	await page.route('**/api/v1/books/21', (route) => {
+		if (route.request().method() === 'PATCH') patches.push(route.request().postDataJSON());
+		return route.fulfill({ json: { book: baseBook() } });
+	});
+	await page.goto('/books/21/metadata');
+	await expectClean(page);
+	await edit(page).click();
+	await expect(textInput(page, 'Title')).toBeFocused();
+	await expectClean(page);
+
+	await textInput(page, 'Title').fill('Changed');
+	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeEnabled();
+	await textInput(page, 'Title').fill('Old Title');
+	await expectClean(page);
+
+	await textInput(page, 'Title').fill(' Old Title ');
+	await textInput(page, 'Publisher').fill(' Existing Press ');
+	await textInput(page, 'Pages').fill('0200');
+	await field(page, 'Series').getByRole('textbox', { name: 'Series index' }).fill('1.50');
+	await field(page, 'Series').getByRole('textbox', { name: 'Series total' }).fill('04');
+	await textInput(page, 'ISBN-13').fill(' 9780000000001 ');
+	await field(page, 'Contributors').getByRole('textbox', { name: 'Name 1', exact: true }).fill(' A Writer ');
+	await expectClean(page);
+
+	const pending = field(page, 'Tags').getByRole('textbox', { name: 'New tag', exact: true });
+	await pending.fill('New tag');
+	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeEnabled();
+	await pending.fill(' ');
+	await expectClean(page);
+	await field(page, 'Age rating').getByRole('combobox').selectOption('13');
+	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeEnabled();
+	await field(page, 'Age rating').getByRole('combobox').selectOption('');
+	await expectClean(page);
+	await field(page, 'Contributors').getByRole('button', { name: 'Add contributor', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeEnabled();
+	await field(page, 'Contributors').getByRole('button', { name: 'Remove contributor 2', exact: true }).click();
+	await expectClean(page);
+
+	const dialogs: string[] = [];
+	page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
+	await page.getByRole('navigation', { name: 'Book sections' }).getByRole('link', { name: /Files/ }).click();
+	await expect(page).toHaveURL(/\/books\/21\/files$/);
+	expect(dialogs).toEqual([]);
+	expect(patches).toEqual([]);
+});
+
+test('restore leaves fields editable and restores pending chips and the latest saved baseline', async ({ page }) => {
 	await authenticate(page);
 	let current = baseBook();
 	const patches: Record<string, unknown>[] = [];
@@ -272,7 +320,6 @@ test('restore keeps editing and restores the pre-edit snapshot, pending chips an
 	});
 	await lookupFixture(page);
 	await page.goto('/books/21/metadata');
-	await edit(page).click();
 	await textInput(page, 'Title').fill('Unsaved title');
 	await textInput(page, 'Publisher').fill('');
 	await field(page, 'Contributors').getByRole('textbox', { name: 'Name 1', exact: true }).fill('Unsaved writer');
@@ -308,17 +355,16 @@ test('restore keeps editing and restores the pre-edit snapshot, pending chips an
 		await expect(field(page, group).getByRole('textbox', { name, exact: true })).toHaveValue('');
 	}
 	await expect(restore(page)).toBeDisabled();
-	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeDisabled();
-	await expect(edit(page)).toHaveCount(0);
+	await expectClean(page);
 	expect(patches).toEqual([]);
 
 	await textInput(page, 'Title').fill('Saved baseline');
+	await field(page, 'Moods').getByRole('textbox', { name: 'New mood', exact: true }).fill(' ');
 	await field(page, 'Tags').getByRole('textbox', { name: 'New tag', exact: true }).fill('Saved tag');
 	await field(page, 'Tags').getByRole('button', { name: 'Add tag', exact: true }).click();
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
-	await expectReadOnly(page);
+	await expectClean(page);
 	expect(patches).toEqual([{ title: 'Saved baseline', tags: ['Original', 'Saved tag'] }]);
-	await edit(page).click();
 	await textInput(page, 'Title').fill('Discard this');
 	await field(page, 'Tags').getByRole('button', { name: 'Remove tag: Saved tag', exact: true }).click();
 	await field(page, 'Tags').getByRole('textbox', { name: 'New tag', exact: true }).fill('Discard pending');
@@ -328,7 +374,7 @@ test('restore keeps editing and restores the pre-edit snapshot, pending chips an
 	await expect(field(page, 'Tags').getByText('Saved tag', { exact: true })).toBeVisible();
 	await expect(field(page, 'Tags').getByRole('textbox', { name: 'New tag', exact: true })).toHaveValue('');
 	await expect(restore(page)).toBeDisabled();
-	await expect(page.getByRole('button', { name: 'Save metadata', exact: true })).toBeDisabled();
+	await expectClean(page);
 	expect(patches).toHaveLength(1);
 });
 
@@ -350,7 +396,6 @@ test('direct edits preserve contributor roles and order, pages and identifiers',
 		return route.fulfill({ json: { book: current } });
 	});
 	await page.goto('/books/21/metadata');
-	await edit(page).click();
 	const contributors = field(page, 'Contributors');
 	await contributors.getByRole('textbox', { name: 'Name 1', exact: true }).fill('Revised Writer');
 	await contributors.getByRole('combobox', { name: 'Role 1', exact: true }).selectOption('editor');
@@ -366,7 +411,7 @@ test('direct edits preserve contributor roles and order, pages and identifiers',
 	await identifiers.getByRole('textbox', { name: 'Value 3', exact: true }).fill('12345');
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
-	await expectReadOnly(page);
+	await expectClean(page);
 	expect(patches).toEqual([{
 		authors: [{ name: 'A Translator', role: 'translator' }, { name: 'Revised Writer', role: 'editor' }],
 		page_count: 321,
@@ -400,7 +445,6 @@ test('search sends the prefilled query and compares providers per field until on
 		await route.fulfill({ json: { book: current } });
 	});
 	await page.goto('/books/21/metadata');
-	await edit(page).click();
 	await textInput(page, 'Description').fill('My description');
 	await searchMetadata(page).click();
 	await expect(page).toHaveURL(/view=search/);
@@ -447,7 +491,7 @@ test('search sends the prefilled query and compares providers per field until on
 	expect(applies).toHaveLength(0);
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
-	await expectReadOnly(page);
+	await expectClean(page);
 	expect(applies).toEqual([{
 		request_key: 'key-1',
 		fields: {
@@ -491,7 +535,7 @@ test('use all copies new fields, manual edits clear references, and restore retu
 	await textInput(page, 'Title').fill('Handwritten Title');
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
-	await expectReadOnly(page);
+	await expectClean(page);
 	expect(applies).toEqual([{
 		request_key: 'key-1',
 		fields: {
@@ -502,7 +546,7 @@ test('use all copies new fields, manual edits clear references, and restore retu
 	}]);
 });
 
-test('provider save failure retains the search draft and success returns to read-only metadata', async ({ page }) => {
+test('provider save failure retains the search draft and success returns to clean editable metadata', async ({ page }) => {
 	await authenticate(page);
 	let current = baseBook();
 	await page.route('**/api/v1/books/21', (route) => route.fulfill({ json: { book: current } }));
@@ -517,7 +561,7 @@ test('provider save failure retains the search draft and success returns to read
 		return route.fulfill({ json: { book: current } });
 	});
 	await page.goto('/books/21/metadata');
-	await expectReadOnly(page);
+	await expectClean(page);
 	await searchMetadata(page).click();
 	const query = page.getByRole('form', { name: 'Search metadata' });
 	await query.getByRole('textbox', { name: 'Title' }).fill('Keep this query');
@@ -538,7 +582,7 @@ test('provider save failure retains the search draft and success returns to read
 	await expect(query).toHaveCount(0);
 	await expect(metadata(page)).toHaveCount(0);
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
-	await expectReadOnly(page);
+	await expectClean(page);
 	await expect(textInput(page, 'Title')).toHaveValue('Alternative Title');
 	const expected = {
 		request_key: 'key-1',
@@ -564,7 +608,6 @@ test('failed saves keep drafts and disable mutation while pending, and chip vali
 		await route.fulfill({ json: { book: current } });
 	});
 	await page.goto('/books/21/metadata');
-	await edit(page).click();
 	const tags = field(page, 'Tags');
 	await tags.getByRole('textbox', { name: 'New tag', exact: true }).fill(' original ');
 	await tags.getByRole('button', { name: 'Add tag', exact: true }).click();
@@ -590,7 +633,7 @@ test('failed saves keep drafts and disable mutation while pending, and chip vali
 	await expect(restore(page)).toBeEnabled();
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
-	await expectReadOnly(page);
+	await expectClean(page);
 	expect(patches).toEqual([{ title: 'Retry Title' }, { title: 'Retry Title' }]);
 });
 
@@ -619,7 +662,6 @@ test('stale candidate saves refresh results without losing manual edits or savin
 		return route.fulfill({ json: { book: current } });
 	});
 	await page.goto('/books/21/metadata');
-	await edit(page).click();
 	await textInput(page, 'Description').fill('Keep my manual text');
 	await searchMetadata(page).click();
 	await search(page);
@@ -634,7 +676,7 @@ test('stale candidate saves refresh results without losing manual edits or savin
 	await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
 	await expect(page.getByText('Metadata saved.', { exact: true })).toBeVisible();
 	await expect(page).toHaveURL(/\/books\/21\/metadata$/);
-	await expectReadOnly(page);
+	await expectClean(page);
 	expect(applies[1]).toEqual({
 		request_key: 'key-2',
 		fields: { title: { provider: 'openlibrary', reference: '/works/OL1W' } },
@@ -666,7 +708,6 @@ test('a failed conflict refresh blocks saving until existing values can be refre
 		return route.fulfill({ status: 409, json: { title: 'Conflict', status: 409 } });
 	});
 	await page.goto('/books/21/metadata');
-	await edit(page).click();
 	await textInput(page, 'Description').fill('Manual text survives recovery');
 	await searchMetadata(page).click();
 	await search(page);
@@ -700,9 +741,9 @@ test('covers are previewed through the server, source tabs work with keyboard, a
 		return route.abort();
 	});
 	await page.goto('/books/21/metadata');
-	await expectReadOnly(page);
-	const readOnlyAxe = await new AxeBuilder({ page }).include('.metadata-tab').analyze();
-	expect(readOnlyAxe.violations).toEqual([]);
+	await expectClean(page);
+	const cleanAxe = await new AxeBuilder({ page }).include('.metadata-tab').analyze();
+	expect(cleanAxe.violations).toEqual([]);
 	await searchMetadata(page).click();
 	await search(page);
 	const cover = field(page, 'Cover');
@@ -745,7 +786,6 @@ test('unsaved edits ask before leaving the metadata tab', async ({ page }) => {
 	await authenticate(page);
 	await page.route('**/api/v1/books/21', (route) => route.fulfill({ json: { book: baseBook() } }));
 	await page.goto('/books/21/metadata');
-	await edit(page).click();
 	await textInput(page, 'Title').fill('Unsaved');
 	await searchMetadata(page).click();
 	await expect(page).toHaveURL(/view=search/);

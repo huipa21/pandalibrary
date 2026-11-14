@@ -114,8 +114,24 @@ async function mockApi(page: Page, state: MockState) {
 		if (path === '/shelves/system/unshelved' || path === '/shelves/system/favorites') {
 			return route.fulfill({ json: { shelf: {
 				id: path.endsWith('favorites') ? 7 : 8, name: 'System shelf', system_key: path.split('/').at(-1),
-				visible_book_count: 0
+				kind: 'private', mode: 'manual', owner_id: 1, created_by: 1, description: null,
+				visible_book_count: books.length, created_at: timestamp, updated_at: timestamp
 			} } });
+		}
+		if (/^\/shelves\/\d+$/.test(path)) {
+			return route.fulfill({ json: { shelf: {
+				id: Number(path.split('/').at(-1)), name: 'Collection', system_key: null,
+				kind: 'private', mode: 'manual', owner_id: 1, created_by: 1, description: null,
+				visible_book_count: books.length, created_at: timestamp, updated_at: timestamp
+			} } });
+		}
+		if (/^\/shelves\/(?:\d+|system\/(?:favorites|unshelved))\/books$/.test(path)) {
+			return route.fulfill({ json: { items: books, next_cursor: null } });
+		}
+		if (/^\/dashboard\/sections\/[^/]+\/books$/.test(path)) {
+			return route.fulfill({ json: {
+				items: path.includes('/continue_reading/') ? [books[0]] : [], next_cursor: null
+			} });
 		}
 		if (path === '/sync/pull') return route.fulfill({ json: {
 			cursor: Number(url.searchParams.get('cursor') ?? 0),
@@ -196,6 +212,42 @@ async function mockApi(page: Page, state: MockState) {
 
 function card(page: Page, title: string) {
 	return page.locator('li').filter({ has: page.getByTitle(title, { exact: true }) }).first();
+}
+
+for (const [surface, path] of [
+	['dashboard', '/'],
+	['favorites', '/shelves/system/favorites'],
+	['library', '/books?library_id=1'],
+	['collection', '/shelves/9']
+] as const) {
+	test(`displays status without a status action on ${surface} and changes it in Details`, async ({ page }) => {
+		const state = mockState();
+		await mockApi(page, state);
+		await page.goto(path);
+		const generated = card(page, 'Generated Book');
+		const badge = generated.getByRole('img', { name: 'Reading status: Reading', exact: true });
+		await expect(badge).toBeVisible();
+		await expect(badge).not.toHaveAttribute('tabindex');
+		await expect(badge).not.toHaveAttribute('aria-haspopup');
+		await expect(generated.getByRole('button', { name: /Reading status/ })).toHaveCount(0);
+		await generated.getByRole('link', { name: 'Open book details' }).focus();
+		await page.keyboard.press('Tab');
+		await expect(generated.getByRole('button', { name: 'Quick view: Generated Book' })).toBeFocused();
+		expect(state.pushes).toHaveLength(0);
+		await generated.getByRole('link', { name: 'Open book details' }).click();
+		await expect(page).toHaveURL(/\/books\/2$/);
+		await page.getByRole('button', { name: 'Reading status: Reading', exact: true }).click();
+		await page.getByRole('menuitemradio', { name: 'On hold', exact: true }).click();
+		await expect.poll(() => state.pushes.length).toBe(1);
+		expect(state.pushes[0].data).toMatchObject({
+			book_id: 2, status: 'on_hold', rating: 7,
+			started_at: Date.parse('2026-01-02T03:04:05Z'), finished_at: null
+		});
+		await page.goto(path);
+		await expect(card(page, 'Generated Book').getByRole('img', {
+			name: 'Reading status: On hold', exact: true
+		})).toBeVisible();
+	});
 }
 
 async function mountKitFixture(page: Page) {
@@ -298,7 +350,7 @@ test('generates accessible, contrast-checked covers and badges in grid and list 
 	await expect(card(page, 'Generated Book').locator('[data-generated-cover]')).toBeVisible();
 	await expect(card(page, 'Generated Book').getByRole('img', { name: 'Formats: EPUB, PDF' })).toBeVisible();
 	await expect(card(page, 'Generated Book').getByRole('heading', { name: 'Generated Book' })).toBeVisible();
-	await expect(card(page, 'Generated Book').getByRole('button', { name: 'Reading status: Reading. Change' })).toBeVisible();
+	await expect(card(page, 'Generated Book').getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
 	await expect(card(page, 'Generated Book').getByRole('progressbar')).toHaveCount(0);
 	expect(await card(page, longTitle).locator('.cover-title').evaluate((node) => getComputedStyle(node).webkitLineClamp)).toBe('3');
 	await expect(page.getByText('Cover unavailable')).toHaveCount(0);
@@ -477,7 +529,7 @@ test('batches state loading without shifting the cover and renders cover-only ca
 	const before = await generated.boundingBox();
 	await expect(generated.locator('.cover-status, [role="progressbar"]')).toHaveCount(0);
 	release();
-	await expect(generated.getByRole('button', { name: 'Reading status: Reading. Change' })).toBeVisible();
+	await expect(generated.getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
 	const after = await generated.boundingBox();
 	expect(after?.width).toBe(before?.width);
 	expect(after?.height).toBe(before?.height);
@@ -495,7 +547,7 @@ test('keeps the format and status badges separate on narrow list covers', async 
 	await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
 	const generated = card(page, 'Generated Book');
 	const format = generated.getByRole('img', { name: 'Formats: EPUB, PDF' });
-	const status = generated.getByRole('button', { name: 'Reading status: Reading. Change' });
+	const status = generated.getByRole('img', { name: 'Reading status: Reading', exact: true });
 	await expect(format).toBeVisible();
 	await expect(status).toBeVisible();
 	for (const width of [390, 640]) {
@@ -515,10 +567,10 @@ test('shows status and progress on hover, including zero and finished cases', as
 	await page.goto('/books');
 	const generated = card(page, 'Generated Book');
 	const tile = generated.locator('.cover-frame');
-	const badge = generated.getByRole('button', { name: 'Reading status: Reading. Change' });
+	const badge = generated.getByRole('img', { name: 'Reading status: Reading', exact: true });
 	await expect(badge.locator('svg[data-status-icon="reading"]')).toHaveClass(/text-blue-600/);
 	const unread = card(page, 'PDF Book');
-	await expect(unread.getByRole('button', { name: 'Reading status: Unread. Change' })).toBeAttached();
+	await expect(unread.getByRole('img', { name: 'Reading status: Unread', exact: true })).toBeAttached();
 	await expect(unread.locator('.cover-status')).toHaveCSS('opacity', '0');
 	await expect(generated.locator('.cover-progress-visibility')).toHaveCSS('opacity', '0');
 
@@ -549,87 +601,11 @@ test('shows status and progress on hover, including zero and finished cases', as
 	await expect(tile).toHaveCSS('transition-duration', '0s');
 });
 
-test('changes the badge outside a clipped scroller without losing reading metadata', async ({ page }) => {
+test('preserves queued reading metadata when changing status in Details', async ({ page }) => {
 	const state = mockState();
 	await mockApi(page, state);
 	await page.goto('/books');
-	const generated = card(page, 'Generated Book');
-	const badge = generated.getByRole('button', { name: 'Reading status: Reading. Change' });
-	await expect(badge).toBeVisible();
-	await generated.evaluate((element) => {
-		element.style.height = '52px';
-		element.style.overflow = 'hidden';
-	});
-	await badge.click();
-	const menu = generated.getByRole('menu', { name: 'Reading status' });
-	const onHold = menu.getByRole('menuitemradio', { name: 'On hold' });
-	await expect(onHold).toBeVisible();
-	const cardBox = await generated.boundingBox();
-	const optionBox = await onHold.boundingBox();
-	expect(optionBox!.y).toBeGreaterThan(cardBox!.y + cardBox!.height);
-	await onHold.click();
-	await expect.poll(() => state.pushes.length).toBe(1);
-	expect(state.pushes[0]).toMatchObject({
-		entity: 'user_books', key: '2', data: {
-			book_id: 2, status: 'on_hold', rating: 7,
-			started_at: Date.parse('2026-01-02T03:04:05Z'),
-			finished_at: null
-		}
-	});
-	await expect(generated.getByRole('button', { name: 'Reading status: On hold. Change' })
-		.locator('svg[data-status-icon="on_hold"]')).toHaveClass(/text-amber-500/);
-	await expect(page).toHaveURL(/\/books$/);
-});
-
-test('keeps a clipped badge menu usable without native popover support', async ({ page }) => {
-	await page.addInitScript(() => {
-		Object.defineProperty(HTMLElement.prototype, 'showPopover', { configurable: true, value: undefined });
-	});
-	const state = mockState();
-	await mockApi(page, state);
-	await page.goto('/books');
-	const generated = card(page, 'Generated Book');
-	await generated.evaluate((element) => {
-		element.style.height = '52px';
-		element.style.overflow = 'hidden';
-	});
-	const badge = generated.getByRole('button', { name: 'Reading status: Reading. Change' });
-	await badge.click();
-	const menu = page.getByRole('menu', { name: 'Reading status' });
-	await expect(menu.getByRole('menuitemradio', { name: 'On hold' })).toBeVisible();
-	await page.keyboard.press('Escape');
-	await expect(menu).toHaveCount(0);
-	await expect(badge).toBeFocused();
-	await badge.click();
-	await menu.getByRole('menuitemradio', { name: 'On hold' }).click();
-	await expect.poll(() => state.pushes.length).toBe(1);
-	await expect(generated.getByRole('button', { name: 'Reading status: On hold. Change' })).toBeVisible();
-	await expect(menu).toHaveCount(0);
-});
-
-test('reports a menu opening failure and keeps the badge usable', async ({ page }) => {
-	await page.addInitScript(() => {
-		Object.defineProperty(HTMLElement.prototype, 'showPopover', {
-			configurable: true, value: () => { throw new Error('Popover unavailable'); }
-		});
-	});
-	await mockApi(page, mockState());
-	await page.goto('/books');
-	const generated = card(page, 'Generated Book');
-	const badge = generated.getByRole('button', { name: 'Reading status: Reading. Change' });
-	await badge.click();
-	await expect(generated.getByRole('alert')).toContainText('Could not open the reading status menu');
-	await expect(badge).toBeFocused();
-	await expect(generated.getByRole('menu')).toHaveCount(0);
-});
-
-test('preserves queued reading metadata when changing the badge', async ({ page }) => {
-	const state = mockState();
-	await mockApi(page, state);
-	await page.goto('/books');
-	const generated = card(page, 'Generated Book');
-	const badge = generated.getByRole('button', { name: 'Reading status: Reading. Change' });
-	await expect(badge).toBeVisible();
+	await expect(card(page, 'Generated Book').getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
 	await page.evaluate(async () => {
 		await navigator.locks.request('pandalibrary-session-and-sync', () => undefined);
 		const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -654,8 +630,11 @@ test('preserves queued reading metadata when changing the badge', async ({ page 
 		});
 		database.close();
 	});
-	await badge.click();
-	await generated.getByRole('menuitemradio', { name: 'On hold' }).click();
+	await page.getByRole('link', { name: 'Open book details' }).filter({ hasText: 'Generated Book' }).click();
+	const trigger = page.getByRole('button', { name: 'Reading status: Reading', exact: true });
+	await expect(trigger).toBeVisible();
+	await trigger.click();
+	await page.getByRole('menuitemradio', { name: 'On hold' }).click();
 	await expect.poll(() => state.pushes.length).toBe(1);
 	expect(state.pushes[0].data).toMatchObject({
 		status: 'on_hold', rating: 9,
@@ -681,52 +660,20 @@ test('hides unavailable state and recovers after a refresh', async ({ page }) =>
 	await page.evaluate(() => window.dispatchEvent(new CustomEvent('pandalibrary-book-state-changed', {
 		detail: { bookId: 2 }
 	})));
-	await expect(generated.getByRole('button', { name: 'Reading status: Reading. Change' })).toBeVisible();
-});
-
-test('reports a failed status lookup instead of overwriting existing metadata', async ({ page }) => {
-	const state = mockState();
-	state.failUserBook.add(2);
-	await mockApi(page, state);
-	await page.goto('/books');
-	const generated = card(page, 'Generated Book');
-	await generated.getByRole('button', { name: 'Reading status: Reading. Change' }).click();
-	await generated.getByRole('menuitemradio', { name: 'On hold' }).click();
-	await expect(generated.getByRole('alert')).toContainText('Could not update reading status');
-	await expect(generated.getByRole('button', { name: 'Reading status: Reading. Change' })).toBeVisible();
-	expect(state.pushes).toHaveLength(0);
-});
-
-test('reports a concurrent status change instead of overwriting it', async ({ page }) => {
-	const state = mockState();
-	state.holdUserBook = true;
-	await mockApi(page, state);
-	await page.goto('/books');
-	const generated = card(page, 'Generated Book');
-	await generated.getByRole('button', { name: 'Reading status: Reading. Change' }).click();
-	await generated.getByRole('menuitemradio', { name: 'On hold' }).click();
-	await expect.poll(() => state.releaseUserBook !== null).toBe(true);
-	state.summaries.set(2, { status: 'finished', percentage: 0.42 });
-	await page.evaluate(() => window.dispatchEvent(new CustomEvent('pandalibrary-book-state-changed', {
-		detail: { bookId: 2 }
-	})));
-	await expect(generated.getByRole('button', { name: 'Reading status: Read. Change' })).toBeVisible();
-	state.releaseUserBook?.();
-	await expect(generated.getByRole('alert')).toContainText('Could not update reading status');
-	expect(state.pushes).toHaveLength(0);
+	await expect(generated.getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
 });
 
 test('shows a non-interactive badge while offline', async ({ page }) => {
 	await mockApi(page, mockState());
 	await page.goto('/books');
 	const generated = card(page, 'Generated Book');
-	await expect(generated.getByRole('button', { name: 'Reading status: Reading. Change' })).toBeVisible();
+	await expect(generated.getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
 	await page.evaluate(() => {
 		Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
 		window.dispatchEvent(new Event('offline'));
 	});
-	await expect(generated.getByRole('img', { name: 'Reading status: Reading. Change' })).toBeVisible();
-	await expect(generated.getByRole('button', { name: 'Reading status: Reading. Change' })).toHaveCount(0);
+	await expect(generated.getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
+	await expect(generated.getByRole('button', { name: /Reading status/ })).toHaveCount(0);
 });
 
 test('reveals keyboard and hover actions, dispatches info, and resumes the saved file', async ({ page }) => {
@@ -758,8 +705,6 @@ test('reveals keyboard and hover actions, dispatches info, and resumes the saved
 	await expect(generated.getByRole('link', { name: 'Open book details' })).toHaveAccessibleDescription('Generated Book');
 	await expect(generated.locator('.cover-progress-visibility')).toHaveCSS('opacity', '1');
 	await page.keyboard.press('Tab');
-	await expect(generated.getByRole('button', { name: 'Reading status: Reading. Change' })).toBeFocused();
-	await page.keyboard.press('Tab');
 	await expect(info).toBeFocused();
 	await page.keyboard.press('Tab');
 	await expect(read).toBeFocused();
@@ -777,7 +722,7 @@ test('reveals the unread badge and lift on keyboard focus', async ({ page }) => 
 	await expect.poll(() => unread.locator('.cover-frame').evaluate((node) =>
 		getComputedStyle(node).transform)).toBe('matrix(1, 0, 0, 1, 0, -4)');
 	await page.keyboard.press('Tab');
-	await expect(unread.getByRole('button', { name: 'Reading status: Unread. Change' })).toBeFocused();
+	await expect(unread.getByRole('button', { name: 'Quick view: PDF Book' })).toBeFocused();
 });
 
 test('uses the first readable fallback and reports failures without navigation', async ({ page }) => {
@@ -823,7 +768,7 @@ test('localizes cover actions and badges', async ({ page }) => {
 	await generated.locator('div.cover-frame').hover();
 	await expect(generated.getByRole('button', { name: '快速查看：Generated Book' })).toBeVisible();
 	await expect(generated.getByRole('button', { name: '阅读 Generated Book' })).toBeVisible();
-	await expect(generated.getByRole('button', { name: '阅读状态：阅读中。更改' })).toBeVisible();
+	await expect(generated.getByRole('img', { name: '阅读状态：阅读中', exact: true })).toBeVisible();
 	await expect(generated.getByRole('progressbar', { name: '已读 42%' })).toBeVisible();
 	await mountKitFixture(page);
 	await expect(page.locator('[data-test="duration"]')).toHaveText('2小时 56分钟');
@@ -1045,7 +990,7 @@ test.describe('touch devices', () => {
 		await expect(generated.locator('[data-generated-cover]')).toBeVisible();
 		expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true);
 		await expect(generated.getByRole('button', { name: 'Quick view: Generated Book' })).toBeVisible();
-		await expect(generated.getByRole('button', { name: 'Reading status: Reading. Change' })).toBeVisible();
+		await expect(generated.getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
 		await expect(card(page, 'PDF Book').locator('.cover-status')).toHaveCSS('opacity', '1');
 		const progress = generated.getByRole('progressbar', { name: '42% read' });
 		await expect(progress).toBeVisible();

@@ -405,7 +405,7 @@ test('book view works end to end against the real server', async ({ page, browse
 		}
 	});
 
-	await test.step('cover badge and progress persist without changing the saved rating or dates', async () => {
+	await test.step('Details status changes persist on the cover without changing the saved rating or dates', async () => {
 		await page.goto('/books');
 		const covered = card(page, data.covered.title);
 		const beforeResponse = await page.request.get(`/api/v1/me/books/${data.covered.id}`);
@@ -415,9 +415,12 @@ test('book view works end to end against the real server', async ({ page, browse
 		expect(before).toMatchObject({ status: 'finished', rating: 8 });
 		await covered.locator('.cover-frame').hover();
 		await expect(covered.getByRole('progressbar', { name: '100% read' })).toBeVisible();
-		await covered.getByRole('button', { name: 'Reading status: Read. Change' }).click();
-		await covered.getByRole('menuitemradio', { name: 'On hold' }).click();
-		await expect(covered.getByRole('button', { name: 'Reading status: On hold. Change' })).toBeVisible();
+		await expect(covered.getByRole('img', { name: 'Reading status: Read', exact: true })).toBeVisible();
+		await expect(covered.getByRole('button', { name: /Reading status/ })).toHaveCount(0);
+		await covered.getByRole('link', { name: 'Open book details' }).click();
+		await page.getByRole('button', { name: 'Reading status: Read', exact: true }).click();
+		await page.getByRole('menuitemradio', { name: 'On hold' }).click();
+		await expect(page.getByRole('button', { name: 'Reading status: On hold', exact: true })).toBeVisible();
 		await expect.poll(async () => {
 			const response = await page.request.get(`/api/v1/me/books/${data.covered.id}`);
 			const result = await response.json() as { user_book: typeof before };
@@ -425,9 +428,9 @@ test('book view works end to end against the real server', async ({ page, browse
 		}).toMatchObject({
 			status: 'on_hold', rating: before.rating, started_at: before.started_at, finished_at: before.finished_at
 		});
-		await page.reload();
-		await expect(card(page, data.covered.title).getByRole('button',
-			{ name: 'Reading status: On hold. Change' })).toBeVisible();
+		await page.goto('/books');
+		await expect(card(page, data.covered.title).getByRole('img',
+			{ name: 'Reading status: On hold', exact: true })).toBeVisible();
 	});
 });
 

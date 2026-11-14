@@ -10,7 +10,7 @@ import {
 } from '#lib/metadata/editor.js';
 import { candidateOffers, findCandidate, sameCandidate, selectCandidateValues, selectField } from '#lib/metadata/merge.js';
 import { ObjectUrlSlot } from '#lib/metadata/object-url.js';
-import { InvalidTagsError, normalizeTags } from '#lib/metadata/tags.js';
+import { InvalidTagsError, normalizeTags, trimSpace } from '#lib/metadata/tags.js';
 import {
 	MERGE_FIELDS, type Candidate, type CandidateRef, type LookupQuery, type LookupResponse,
 	type MergeField, type Selections
@@ -56,7 +56,6 @@ export class MetadataEditorState {
 	// Assigned in the constructor; deriveds below only read them lazily.
 	book = $state<Book>(null!);
 	draft = $state<MetadataDraft>(null!);
-	editing = $state(false);
 	/** Text typed into a chip input but not yet added; it still counts as an edit. */
 	pending = $state<Record<TermField, string>>({ tags: '', genres: '', moods: '' });
 	error = $state('');
@@ -94,7 +93,7 @@ export class MetadataEditorState {
 	readonly candidateTotal = $derived(this.sources.reduce((count, provider) => count + provider.candidates.length, 0));
 	readonly partialFailure = $derived(this.lookup?.providers.some((provider) => provider.error !== null) ?? false);
 	readonly dirty = $derived(
-		TERM_FIELDS.some((field) => this.pending[field] !== '') || metadataDirty(this.book, this.draft, this.selections)
+		TERM_FIELDS.some((field) => trimSpace(this.pending[field]) !== '') || metadataDirty(this.book, this.draft, this.selections)
 	);
 	readonly busy = $derived(this.saving || this.recovering || this.recoveryBlocked);
 	readonly providerChoices = $derived(
@@ -109,11 +108,6 @@ export class MetadataEditorState {
 	readonly #preview = new ObjectUrlSlot();
 	readonly #chosenCover = new ObjectUrlSlot();
 	readonly #onBook: (book: Book) => void;
-	#editSnapshot: {
-		draft: MetadataDraft;
-		pending: Record<TermField, string>;
-		selections: Selections;
-	} | null = null;
 
 	constructor(book: Book, onBook: (book: Book) => void) {
 		this.book = book;
@@ -166,7 +160,7 @@ export class MetadataEditorState {
 
 	/** Adopts a book refreshed elsewhere; only safe while nothing is edited. */
 	adopt(book: Book) {
-		if (book === this.book || this.editing || this.dirty || this.busy || this.lookupPending) return;
+		if (book === this.book || this.dirty || this.busy || this.lookupPending) return;
 		this.book = book;
 		this.draft = createDraft(book);
 		this.search = defaultQuery(book);
@@ -389,21 +383,9 @@ export class MetadataEditorState {
 
 	restoreAll() {
 		if (this.busy) return;
-		const snapshot = this.#editSnapshot;
-		this.draft = snapshot ? structuredClone(snapshot.draft) : createDraft(this.book);
-		this.selections = snapshot ? structuredClone(snapshot.selections) : {};
-		this.pending = snapshot ? { ...snapshot.pending } : { tags: '', genres: '', moods: '' };
-		this.#clearMessages();
-	}
-
-	beginEdit() {
-		if (this.editing || this.busy || this.lookupPending) return;
-		this.#editSnapshot = {
-			draft: $state.snapshot(this.draft),
-			pending: $state.snapshot(this.pending),
-			selections: $state.snapshot(this.selections)
-		};
-		this.editing = true;
+		this.draft = createDraft(this.book);
+		this.selections = {};
+		this.pending = { tags: '', genres: '', moods: '' };
 		this.#clearMessages();
 	}
 
@@ -434,7 +416,7 @@ export class MetadataEditorState {
 			const pendingDraft = $state.snapshot(this.draft) as MetadataDraft;
 			const pendingSelections = $state.snapshot(this.selections) as Selections;
 			for (const field of TERM_FIELDS) {
-				if (this.pending[field] === '') continue;
+				if (trimSpace(this.pending[field]) === '') continue;
 				failedField = field;
 				pendingDraft[field] = normalizeTags([...pendingDraft[field], this.pending[field]]);
 				delete pendingSelections[field];
@@ -447,8 +429,6 @@ export class MetadataEditorState {
 			this.draft = createDraft(updated);
 			this.pending = { tags: '', genres: '', moods: '' };
 			this.selections = {};
-			this.editing = false;
-			this.#editSnapshot = null;
 			this.notice = m['metadata.save.success']();
 			this.#onBook(updated);
 			return true;

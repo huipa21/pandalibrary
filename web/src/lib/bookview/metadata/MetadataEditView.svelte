@@ -47,10 +47,10 @@
 
 <form aria-label={m['metadata.form.name']()} class="metadata-edit" onsubmit={(event) => {
 	event.preventDefault();
-	if (editor.editing && !editor.busy && !editor.lookupPending && editor.dirty) void editor.save();
+	if (!editor.busy && !editor.lookupPending && editor.dirty) void editor.save();
 }}>
 	<aside class="cover-column">
-		<fieldset class="field" data-field="cover" disabled={!editor.editing || editor.busy || editor.lookupPending}>
+		<fieldset class="field" data-field="cover" disabled={editor.busy || editor.lookupPending}>
 			<legend>{fieldLabels.cover()}</legend>
 			{@render badge('cover')}
 			{#if editor.selections.cover}
@@ -65,19 +65,19 @@
 			{/if}
 		</fieldset>
 		<div class="cover-actions">
-			{#if editor.editing}
+			{#if editor.dirty}
 				<button type="submit" class="icon-button" aria-label={m['metadata.save.submit']()} title={m['metadata.save.submit']()}
 					disabled={editor.busy || editor.lookupPending || !editor.dirty}>
 					<Icon name="save" />
 				</button>
 			{:else}
 				<button type="button" class="icon-button" aria-label={m['metadata.view.edit']()} title={m['metadata.view.edit']()}
-					disabled={editor.busy || editor.lookupPending} onclick={() => editor.beginEdit()}>
+					disabled={editor.busy || editor.lookupPending} onclick={() => document.getElementById('metadata-title')?.focus()}>
 					<Icon name="pencil" />
 				</button>
 			{/if}
 			<button type="button" class="icon-button" aria-label={m['metadata.restore_all']()} title={m['metadata.restore_all']()}
-				disabled={!editor.editing || editor.busy || editor.lookupPending || !editor.dirty} onclick={() => editor.restoreAll()}>
+				disabled={editor.busy || editor.lookupPending || !editor.dirty} onclick={() => editor.restoreAll()}>
 				<Icon name="undo" />
 			</button>
 			<button type="button" class="icon-button" aria-label={m['metadata.search.open']()} title={m['metadata.search.open']()}
@@ -92,7 +92,7 @@
 		{/if}
 	</aside>
 
-	<fieldset class="form-body" disabled={!editor.editing || editor.busy || editor.lookupPending}>
+	<fieldset class="form-body" disabled={editor.busy || editor.lookupPending}>
 		<div class="grid">
 			{@render text('title', 'span-3')}
 			{@render text('subtitle', 'span-2')}

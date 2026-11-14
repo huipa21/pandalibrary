@@ -305,7 +305,7 @@ test('batches a real 50-cover page and renders all statuses and progress', async
 	await expect(page.locator('main .book-grid > li')).toHaveCount(50);
 	for (const [index, status] of statuses.entries()) {
 		const tile = card(page, book(index).title);
-		const badge = tile.getByRole('button', { name: `Reading status: ${status.label}. Change` });
+		const badge = tile.getByRole('img', { name: `Reading status: ${status.label}`, exact: true });
 		await expect(badge.locator(`[data-status-icon="${status.value}"]`)).toHaveCount(1);
 	}
 	await page.mouse.move(0, 0);
@@ -357,7 +357,8 @@ test('uses the same 208 px tile on dashboard, catalog, shelves, related books an
 		stateRequests.length = 0;
 		await page.goto(surface.path);
 		await assertTile(surface.tile());
-		await expect(surface.tile().getByRole('button', { name: 'Reading status: Reading. Change' })).toBeVisible();
+		await expect(surface.tile().getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
+		await expect(surface.tile().getByRole('button', { name: /Reading status/ })).toHaveCount(0);
 		await page.waitForLoadState('networkidle');
 		expect(stateRequests, `${surface.path} book-state requests`).toHaveLength(1);
 	}
@@ -451,7 +452,7 @@ test('the rendered author colors meet contrast against the textured cloth', asyn
 	}
 });
 
-test('captures responsive rest, hover and edge-menu states and supports keyboard and reduced motion', async ({ page }, info) => {
+test('captures responsive rest, hover and static status states and supports keyboard and reduced motion', async ({ page }, info) => {
 	test.setTimeout(240_000);
 	await signInRealAdmin(page);
 	const title = book(2).title;
@@ -499,44 +500,22 @@ test('captures responsive rest, hover and edge-menu states and supports keyboard
 		await scroller.evaluate((node) => { node.scrollLeft = node.scrollWidth; });
 		const edgeTile = scroller.locator('li').last();
 		await edgeTile.locator('.cover-frame').hover();
-		await edgeTile.getByRole('button', { name: /^Reading status:/ }).click();
-		const menu = edgeTile.getByRole('menu', { name: 'Reading status' });
-		await expect(menu).toBeVisible();
-		const box = await menu.boundingBox();
-		expect(box).not.toBeNull();
-		expect(box!.x).toBeGreaterThanOrEqual(0);
-		expect(box!.x + box!.width).toBeLessThanOrEqual(width);
-		expect(box!.y).toBeGreaterThanOrEqual(0);
-		expect(box!.y + box!.height).toBeLessThanOrEqual(900);
-		expect(await menu.evaluate((node) => {
-			const box = node.getBoundingClientRect();
-			return [[box.left + 5, box.top + 5], [box.right - 5, box.bottom - 5]].every(([x, y]) => {
-				const hit = document.elementFromPoint(x, y);
-				return hit !== null && node.contains(hit);
-			});
-		})).toBe(true);
-		await attachScreenshot(page, info, `dashboard-${width}-edge-menu`);
-		await page.keyboard.press('Escape');
+		await expect(edgeTile.getByRole('img', { name: /^Reading status:/ })).toBeVisible();
+		await expect(edgeTile.getByRole('button', { name: /^Reading status:/ })).toHaveCount(0);
+		await attachScreenshot(page, info, `dashboard-${width}-edge-status`);
 	}
 
 	await page.goto(allBooksPath());
 	const unread = card(page, book(0).title);
-	const badge = unread.getByRole('button', { name: 'Reading status: Unread. Change' });
-	for (let i = 0; i < 100 && !(await badge.evaluate((node) => node === document.activeElement)); i++) {
+	const details = unread.getByRole('link', { name: 'Open book details' });
+	for (let i = 0; i < 100 && !(await details.evaluate((node) => node === document.activeElement)); i++) {
 		await page.keyboard.press('Tab');
 	}
-	await expect(badge).toBeFocused();
+	await expect(details).toBeFocused();
 	await expect(unread.locator('.cover-status.unread')).toHaveCSS('opacity', '1');
-	await page.keyboard.press('Enter');
-	const menu = unread.getByRole('menu', { name: 'Reading status' });
-	await expect(menu.getByRole('menuitemradio', { name: 'Unread' })).toBeFocused();
-	await page.keyboard.press('End');
-	await expect(menu.getByRole('menuitemradio', { name: 'Abandoned' })).toBeFocused();
-	await page.keyboard.press('Home');
-	await expect(menu.getByRole('menuitemradio', { name: 'Unread' })).toBeFocused();
-	await page.keyboard.press('Escape');
-	await expect(badge).toBeFocused();
-	await expect(menu).toHaveCount(0);
+	await page.keyboard.press('Tab');
+	await expect(unread.getByRole('button', { name: /^Quick view:/ })).toBeFocused();
+	await expect(unread.getByRole('menu', { name: 'Reading status' })).toHaveCount(0);
 
 	await page.emulateMedia({ reducedMotion: 'reduce' });
 	const frame = unread.locator('.book-tile-lift');
@@ -548,13 +527,14 @@ test('captures responsive rest, hover and edge-menu states and supports keyboard
 test.describe('touch viewport', () => {
 	test.use({ viewport: { width: 360, height: 900 }, hasTouch: true, isMobile: true });
 
-	test('keeps unread status and progress visible and usable', async ({ page }, info) => {
+	test('keeps unread status and progress visible without a status action', async ({ page }, info) => {
 		await signInRealAdmin(page);
 		await page.goto(allBooksPath());
 		expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true);
 
 		const unread = card(page, book(0).title);
-		const badge = unread.getByRole('button', { name: 'Reading status: Unread. Change' });
+		const badge = unread.getByRole('img', { name: 'Reading status: Unread', exact: true });
+		await expect(badge).toBeVisible();
 		await expect(unread.locator('.cover-status.unread')).toHaveCSS('opacity', '1');
 		await expect(unread.locator('.book-tile-lift')).toHaveCSS('transform', 'none');
 
@@ -574,14 +554,12 @@ test.describe('touch viewport', () => {
 		}
 		await attachScreenshot(page, info, 'all-books-360-touch');
 
-		await badge.tap();
-		await expect(unread.getByRole('menu', { name: 'Reading status' })).toBeVisible();
-		await page.keyboard.press('Escape');
+		await expect(unread.getByRole('button', { name: /Reading status/ })).toHaveCount(0);
 		await expect(unread.getByRole('menu', { name: 'Reading status' })).toHaveCount(0);
 	});
 });
 
-test('Play resumes the saved file and a status change moves the dashboard book', async ({ page }) => {
+test('Play resumes the saved file and a Details status change moves the dashboard book', async ({ page }) => {
 	test.setTimeout(120_000);
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await signInRealAdmin(page);
@@ -596,19 +574,22 @@ test('Play resumes the saved file and a status change moves the dashboard book',
 	await page.goto('/');
 	reading = card(continuing, title);
 	await reading.locator('.cover-frame').hover();
-	await reading.getByRole('button', { name: 'Reading status: Reading. Change' }).click();
-	await reading.getByRole('menuitemradio', { name: 'Skimmed' }).click();
+	await expect(reading.getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
+	await reading.getByRole('link', { name: 'Open book details' }).click();
+	await page.getByRole('button', { name: 'Reading status: Reading', exact: true }).click();
+	await page.getByRole('menuitemradio', { name: 'Skimmed' }).click();
 	await expect.poll(async () => {
 		const response = await page.request.get(`/api/v1/me/books/${book(2).id}`);
 		expect(response.ok(), await response.text()).toBe(true);
 		return (await response.json() as { user_book: { status: string; rating: number } }).user_book;
 	}).toMatchObject({ status: 'skimmed', rating: 7 });
+	await page.goto('/');
 	await expect(card(continuing, title)).toHaveCount(0);
 	const read = page.locator('[data-dashboard-section="read"]');
 	await read.scrollIntoViewIfNeeded();
-	await expect(card(read, title).getByRole('button', { name: 'Reading status: Skimmed. Change' })).toBeVisible();
+	await expect(card(read, title).getByRole('img', { name: 'Reading status: Skimmed', exact: true })).toBeVisible();
 	await page.reload();
 	await expect(card(continuing, title)).toHaveCount(0);
 	await read.scrollIntoViewIfNeeded();
-	await expect(card(read, title).getByRole('button', { name: 'Reading status: Skimmed. Change' })).toBeVisible();
+	await expect(card(read, title).getByRole('img', { name: 'Reading status: Skimmed', exact: true })).toBeVisible();
 });

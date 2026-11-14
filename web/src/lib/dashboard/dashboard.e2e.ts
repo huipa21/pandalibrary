@@ -495,27 +495,17 @@ test('renders cover-only tiles at the standard width without clipping the lift',
 	expect(frameBox && scrollerBox && frameBox.y + frameBox.height <= scrollerBox.y + scrollerBox.height).toBe(true);
 });
 
-test('opens a cover status menu beyond the dashboard scroller', async ({ page }) => {
+test('displays cover status without a status action in the dashboard scroller', async ({ page }) => {
 	const server = state();
 	await mockApi(page, server);
 	await page.goto('/');
 	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
-	const scroller = continuing.getByRole('region');
-	const badge = continuing.getByRole('button', { name: 'Reading status: Reading. Change' });
-	const badgeBox = await badge.boundingBox();
-	const initialScrollerBox = await scroller.boundingBox();
-	if (!badgeBox || !initialScrollerBox) throw new Error('Missing dashboard status badge or scroller.');
-	await scroller.evaluate((node, height) => {
-		node.style.maxHeight = `${height}px`;
-	}, badgeBox.y + badgeBox.height - initialScrollerBox.y + 8);
-	await badge.click();
-	const menu = continuing.getByRole('menu', { name: 'Reading status' });
-	const menuBox = await menu.boundingBox();
-	const scrollerBox = await scroller.boundingBox();
-	expect(menuBox && scrollerBox && (
-		menuBox.y < scrollerBox.y || menuBox.y + menuBox.height > scrollerBox.y + scrollerBox.height
-	)).toBe(true);
-	await menu.getByRole('menuitemradio', { name: 'On hold' }).click();
+	await expect(continuing.getByRole('img', { name: 'Reading status: Reading', exact: true })).toBeVisible();
+	await expect(continuing.getByRole('button', { name: /Reading status/ })).toHaveCount(0);
+	await continuing.getByRole('link', { name: 'Open book details' }).focus();
+	await page.keyboard.press('Tab');
+	await expect(continuing.getByRole('button', { name: 'Quick view: First Book' })).toBeFocused();
+	await expect(page.getByRole('menu', { name: 'Reading status' })).toHaveCount(0);
 	await expect(page).toHaveURL('/');
 });
 

@@ -2,22 +2,17 @@
 	import { goto } from '$app/navigation';
 	import type { Book } from '#lib/catalog/types.js';
 	import * as m from '#lib/paraglide/messages.js';
-	import { getBookState } from '#lib/reader/api.js';
 	import { readerFormat } from '#lib/reader/types.js';
 	import type { SearchResult } from '#lib/search/types.js';
-	import { currentAccount, offlineAvailable, offlineStatus } from '#lib/sync/client.js';
-	import { AccountChangedError } from '#lib/sync/db.js';
-	import { withSessionLock } from '#lib/sync/engine.js';
-	import { readerState } from '#lib/sync/state.js';
+	import { currentAccount, offlineStatus } from '#lib/sync/client.js';
 	import BookCover from './BookCover.svelte';
 	import { bookState } from './book-states.svelte.js';
 	import CoverProgress from './CoverProgress.svelte';
 	import { openQuickView } from './events.js';
 	import Icon from './Icon.svelte';
 	import { readTarget } from './read.js';
-	import ReadStatusMenu from './ReadStatusMenu.svelte';
 	import StatusIcon from './StatusIcon.svelte';
-	import { previewUserBook, readStatusLabel, statusTone, userBookFromState, type UserBook } from './user-book.js';
+	import { readStatusLabel, statusTone } from './user-book.js';
 
 	interface Props {
 		book: Book | SearchResult;
@@ -41,26 +36,10 @@
 		$offlineStatus.account;
 		return variant === 'search' ? null : bookState(book.id);
 	});
-	const userBook = $derived(coverState ? previewUserBook(null, { status: coverState.status }) : null);
 	const hasProgress = $derived(
 		tile && coverState !== null && !coverState.loading && !coverState.error &&
 		(coverState.status === 'finished' || (coverState.percentage !== null && coverState.percentage > 0))
 	);
-
-	async function loadCurrentUserBook(bookId: number): Promise<UserBook | null> {
-		const account = currentAccount();
-		const durable = offlineAvailable();
-		const load = async () => {
-			if (currentAccount() !== account) throw new AccountChangedError();
-			const online = await getBookState(bookId);
-			const current = durable
-				? (await readerState(account, bookId, { state: online, settings: [] })).state
-				: online;
-			if (currentAccount() !== account) throw new AccountChangedError();
-			return userBookFromState(current.user_book);
-		};
-		return durable ? withSessionLock(load, true) : load();
-	}
 
 	function info(event: MouseEvent) {
 		event.stopPropagation();
@@ -121,18 +100,14 @@
 			{/if}
 		</a>
 		{#if coverState && !coverState.loading && !coverState.error}
-			<div class="cover-status absolute top-2 right-2 z-10" class:unread={coverState.status === 'unread'}>
-				{#if $offlineStatus.online}
-					<ReadStatusMenu bookId={book.id} {userBook} percentage={coverState.percentage} variant="badge" {loadCurrentUserBook} />
-				{:else}
-					<span
-						class="inline-flex size-7 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/5"
-						role="img"
-						aria-label={m['bc1.status_badge']({ status: readStatusLabel(coverState.status) })}
-					>
-						<StatusIcon status={coverState.status} class={`size-5 shrink-0 ${statusTone(coverState.status).text}`} />
-					</span>
-				{/if}
+			<div class="cover-status pointer-events-none absolute top-2 right-2 z-10" class:unread={coverState.status === 'unread'}>
+				<span
+					class="inline-flex size-7 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/5"
+					role="img"
+					aria-label={m['bv3.status_menu_current']({ status: readStatusLabel(coverState.status) })}
+				>
+					<StatusIcon status={coverState.status} class={`size-5 shrink-0 ${statusTone(coverState.status).text}`} />
+				</span>
 			</div>
 		{/if}
 		<div class="cover-overlay rounded-lg">
