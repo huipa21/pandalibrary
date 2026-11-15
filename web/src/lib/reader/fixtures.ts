@@ -84,7 +84,7 @@ function zip(entries: Record<string, string | Buffer>): Buffer {
 
 export function epubFixture(
 	title = 'Fixture Book',
-	options: { author?: string; cover?: Buffer } = {}
+	options: { author?: string; cover?: Buffer; longContent?: boolean } = {}
 ): Buffer {
 	const image = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXcAAAAASUVORK5CYII=';
 	return zip({
@@ -113,7 +113,14 @@ export function epubFixture(
 					<li><a href="first.xhtml">First</a></li><li><a href="second.xhtml">Second</a></li>
 				</ol></nav></body>
 			</html>`,
-		'OEBPS/first.xhtml': `<?xml version="1.0"?>
+		'OEBPS/first.xhtml': options.longContent ? `<?xml version="1.0"?>
+			<html xmlns="http://www.w3.org/1999/xhtml"><head><title>First</title></head>
+				<body>${Array.from({ length: 20 }, (_, paragraph) =>
+					`<p data-pagination="${paragraph}">${Array.from({ length: 24 }, (_, sentence) =>
+						`Paragraph ${paragraph + 1}, sentence ${sentence + 1}: patient readers follow every line across the changing pages.`
+					).join(' ')}</p>`
+				).join('\n')}</body>
+			</html>` : `<?xml version="1.0"?>
 			<html xmlns="http://www.w3.org/1999/xhtml">
 				<head><title>First</title><meta http-equiv="refresh" content="0;url=/evil-redirect"/>
 					<script>window.top.__epubInline = true</script><script src="/evil.js"></script>

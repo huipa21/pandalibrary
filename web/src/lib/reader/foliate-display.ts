@@ -31,6 +31,9 @@ export class FoliateDisplay {
 	private readonly documentIndices = new WeakMap<Document, number>();
 	private readonly observer: ResizeObserver;
 	private readonly documentObservers: ResizeObserver[] = [];
+	private readonly paginationMeasurements = new Map<HTMLElement, {
+		descriptor: PropertyDescriptor | undefined; measure: () => DOMRect;
+	}>();
 	private settings: ReaderSettings | null = null;
 	private layout: PdfLayout = 'single';
 	private fixedLayout: PdfLayout | null = null;
@@ -76,6 +79,7 @@ export class FoliateDisplay {
 		this.native.addEventListener('load', (event) => {
 			const { doc, index } = (event as CustomEvent<{ doc: Document; index: number }>).detail;
 			this.documentIndices.set(doc, index);
+			this.preparePaginationMeasurements(doc);
 		});
 		this.native.addEventListener('relocate', (event) => {
 			const { index } = (event as CustomEvent<{ index?: number }>).detail;
@@ -288,15 +292,58 @@ export class FoliateDisplay {
 				height: `${Math.max(1, height / this.scale)}px`, margin: '0 auto'
 			});
 			this.native.setAttribute('max-inline-size', `${REFLOW_PAGE.width - 1}px`);
-			// The upstream portrait rule forces one column; the loaded document gives
-			// access to that closed root without depending on private element IDs.
 			for (const { doc } of this.original.getContents()) {
-				const root = doc.defaultView?.frameElement?.getRootNode() as ShadowRoot | undefined;
-				if (root?.host !== this.native) continue;
-				const top = root.querySelector<HTMLElement>('[part="container"]')?.parentElement;
-				top?.style.setProperty('--_max-column-count-portrait', split ? '2' : '1');
+				this.preparePaginationMeasurements(doc);
 			}
 		}
+	}
+
+	private preparePaginationMeasurements(doc: Document): void {
+		if (this.fixed || this.disposed) return;
+		for (const [element, measurement] of this.paginationMeasurements) {
+			if (!element.isConnected) this.restorePaginationMeasurement(element, measurement);
+		}
+		const frame = doc.defaultView?.frameElement;
+		const root = frame?.getRootNode() as ShadowRoot | undefined;
+		if (root?.host !== this.native) return;
+		// The load event precedes Foliate's first render. Its container and page
+		// probes must use the same logical pixels as CSS sizes and scroll offsets,
+		// not zoomed visual rects. Compose with rotation's existing overrides and
+		// leave iframe rectangles untouched for selection/annotation geometry.
+		for (let element = frame?.parentElement; element; element = element.parentElement) {
+			if (this.paginationMeasurements.has(element)) continue;
+			const original = element.getBoundingClientRect;
+			const measure = () => {
+				const rect = original.call(element);
+				const scale = Number(this.native.style.zoom) || 1;
+				if (scale === 1) return rect;
+				const width = rect.width / scale;
+				const height = rect.height / scale;
+				return new DOMRect(
+					rect.left + (rect.width - width) / 2,
+					rect.top + (rect.height - height) / 2, width, height
+				);
+			};
+			this.paginationMeasurements.set(element, {
+				descriptor: Object.getOwnPropertyDescriptor(element, 'getBoundingClientRect'), measure
+			});
+			element.getBoundingClientRect = measure;
+		}
+		// The upstream portrait rule otherwise forces a single column.
+		root.querySelector<HTMLElement>('[part="container"]')?.parentElement?.style
+			.setProperty('--_max-column-count-portrait', this.layout === 'split' ? '2' : '1');
+	}
+
+	private restorePaginationMeasurement(
+		element: HTMLElement,
+		measurement: { descriptor: PropertyDescriptor | undefined; measure: () => DOMRect }
+	): void {
+		// Rotation cleanup may already have restored the original method.
+		if (element.getBoundingClientRect === measurement.measure) {
+			if (measurement.descriptor) Object.defineProperty(element, 'getBoundingClientRect', measurement.descriptor);
+			else delete (element as Partial<HTMLElement>).getBoundingClientRect;
+		}
+		this.paginationMeasurements.delete(element);
 	}
 
 	private async goTo(target: FoliateResolved): Promise<void> {
@@ -353,6 +400,9 @@ export class FoliateDisplay {
 		cancelAnimationFrame(this.scrollFrame);
 		this.observer.disconnect();
 		for (const observer of this.documentObservers) observer.disconnect();
+		for (const [element, measurement] of this.paginationMeasurements) {
+			this.restorePaginationMeasurement(element, measurement);
+		}
 		this.pane.remove();
 		// View.close removes the original renderer after calling destroy.
 		this.viewport.parentNode?.appendChild(this.native);

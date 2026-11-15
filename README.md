@@ -250,6 +250,12 @@ keep page placeholders but render only nearby canvases. Highlight rectangles
 remain normalized in the page's original orientation; rotation is applied
 only when selecting or painting them.
 
+Reflowable readers keep viewport zoom separate from typography size. Paginated
+layouts reflow to the available viewport height after zooming or resizing, so
+text that no longer fits moves to the next page rather than being clipped.
+Run the focused zoom/resize browser regressions with
+`pnpm --dir web exec playwright test src/lib/reader/views/reflow-display.e2e.ts`.
+
 ### Annotation image assets
 
 Session-authenticated `POST /api/v1/me/annotation-assets` accepts a raw PNG, JPEG

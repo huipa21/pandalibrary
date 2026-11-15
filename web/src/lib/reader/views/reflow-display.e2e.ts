@@ -3,8 +3,8 @@ import { cbzFixture, epubFixture, pngFixture } from '../fixtures.js';
 
 test.use({ serviceWorkers: 'block' });
 
-async function setup(page: Page, format: 'epub' | 'cbz') {
-	const bytes = format === 'epub' ? epubFixture() : cbzFixture(pngFixture(720, 960, [180, 90, 50]));
+async function setup(page: Page, format: 'epub' | 'cbz', longContent = false) {
+	const bytes = format === 'epub' ? epubFixture('Fixture Book', { longContent }) : cbzFixture(pngFixture(720, 960, [180, 90, 50]));
 	const file = { id: 31, format, size_bytes: bytes.length, download_url: `/api/v1/books/21/files/31?v=${'a'.repeat(64)}` };
 	const timestamp = '2026-11-03T00:00:00Z';
 	const book = {
@@ -43,6 +43,18 @@ async function setup(page: Page, format: 'epub' | 'cbz') {
 }
 
 async function choose(page: Page, menu: string, value: string) {
+	if (menu === 'Zoom' && /^\d+%$/.test(value)) {
+		await choose(page, menu, 'Actual size');
+		const steps = (Number.parseInt(value) - 100) / 10;
+		await page.getByRole('button', { name: /^Zoom(?:\s|$)/ }).click();
+		for (let step = 0; step < Math.abs(steps); step++) {
+			await page.getByRole('menuitem', { name: steps > 0 ? 'Zoom in' : 'Zoom out', exact: true }).click();
+			await expect(page.getByRole('button', { name: /^Zoom(?:\s|$)/ }))
+				.toContainText(`${100 + (step + 1) * Math.sign(steps) * 10}%`);
+		}
+		await page.keyboard.press('Escape');
+		return;
+	}
 	await page.getByRole('button', {
 		name: menu === 'Zoom' ? /^Zoom(?:\s|$)/ : menu === 'Display' ? 'Page display' : menu, exact: true
 	}).click();
@@ -98,6 +110,92 @@ test('EPUB zoom magnifies the viewport separately from typography and all displa
 		const root = body.ownerDocument.defaultView!.frameElement!.getRootNode() as ShadowRoot;
 		return root.host.getAttribute('max-column-count');
 	})).toBe('1');
+});
+
+test('EPUB zoom and resize keep complete lines and consecutive page text visible', async ({ page }) => {
+	test.setTimeout(90_000);
+	await setup(page, 'epub', true);
+	await choose(page, 'Display', 'Single page');
+
+	const geometry = async () => (await visibleFrame(page)).locator('body').evaluate((body) => {
+		const iframe = body.ownerDocument.defaultView!.frameElement as HTMLIFrameElement;
+		// Read visual clipping, bypassing renderer-specific logical measurement overrides.
+		const visualRect = (element: Element) => Element.prototype.getBoundingClientRect.call(element);
+		const frameRect = visualRect(iframe);
+		const scale = frameRect.width / iframe.offsetWidth;
+		const clip = { left: frameRect.left, right: frameRect.right, top: frameRect.top, bottom: frameRect.bottom };
+		let ancestor: Element | null = iframe;
+		while (ancestor) {
+			const style = ancestor.ownerDocument.defaultView!.getComputedStyle(ancestor);
+			const rect = visualRect(ancestor);
+			if (/(hidden|clip|auto|scroll)/.test(style.overflowX)) {
+				clip.left = Math.max(clip.left, rect.left);
+				clip.right = Math.min(clip.right, rect.right);
+			}
+			if (/(hidden|clip|auto|scroll)/.test(style.overflowY)) {
+				clip.top = Math.max(clip.top, rect.top);
+				clip.bottom = Math.min(clip.bottom, rect.bottom);
+			}
+			ancestor = ancestor.parentElement ?? (ancestor.getRootNode() as ShadowRoot).host ?? null;
+		}
+		const text = [...body.querySelectorAll('[data-pagination]')].map((p) => p.textContent ?? '').join('');
+		const visible: number[] = [];
+		const clipped: { offset: number; top: number; bottom: number }[] = [];
+		let offset = 0;
+		for (const paragraph of body.querySelectorAll('[data-pagination]')) {
+			const walker = body.ownerDocument.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+			while (walker.nextNode()) {
+				const node = walker.currentNode;
+				for (let index = 0; index < node.textContent!.length; index++, offset++) {
+					if (/\s/.test(node.textContent![index])) continue;
+					const range = body.ownerDocument.createRange();
+					range.setStart(node, index);
+					range.setEnd(node, index + 1);
+					const rect = range.getBoundingClientRect();
+					const left = frameRect.left + rect.left * scale;
+					const right = frameRect.left + rect.right * scale;
+					if (left < clip.left - 1 || right > clip.right + 1 || rect.width === 0) continue;
+					const top = frameRect.top + rect.top * scale;
+					const bottom = frameRect.top + rect.bottom * scale;
+					if (top < clip.top - 1 || bottom > clip.bottom + 1) clipped.push({ offset, top, bottom });
+					else visible.push(offset);
+				}
+			}
+		}
+		return { first: visible[0], last: visible.at(-1)!, clipped: clipped.slice(0, 3), count: visible.length, text, clip };
+	});
+
+	let currentZoom = '';
+	for (const { zoom, size } of [
+		{ zoom: '110%' },
+		{ zoom: '150%' },
+		{ zoom: '80%' },
+		{ zoom: '80%', size: { width: 1137, height: 713 } },
+		{ zoom: '150%' },
+		{ zoom: '150%', size: { width: 1463, height: 897 } }
+	]) {
+		await test.step(`${zoom}${size ? ` at ${size.width}x${size.height}` : ''}`, async () => {
+			if (size) await page.setViewportSize(size);
+			if (zoom !== currentZoom) {
+				await choose(page, 'Zoom', zoom);
+				currentZoom = zoom;
+			}
+			let before!: Awaited<ReturnType<typeof geometry>>;
+			await expect(async () => {
+				before = await geometry();
+				expect(before.count).toBeGreaterThan(100);
+				expect(before.clipped, JSON.stringify(before.clip)).toEqual([]);
+			}).toPass({ timeout: 5_000 });
+			await page.getByRole('button', { name: 'Next page', exact: true }).click();
+			await expect(async () => {
+				const after = await geometry();
+				expect(after.count).toBeGreaterThan(100);
+				expect(after.clipped, JSON.stringify(after.clip)).toEqual([]);
+				expect(after.first).toBeGreaterThan(before.last);
+				expect(after.text.slice(before.last + 1, after.first).trim()).toBe('');
+			}).toPass({ timeout: 5_000 });
+		});
+	}
 });
 
 test('CBZ layouts show one page, a spread, a scrolling stack, and a scrolling spread', async ({ page }) => {
