@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page } from '@playwright/test';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { resolve } from 'node:path';
@@ -109,23 +110,20 @@ test('tags respect permissions; Cancel keeps a tag, OK sends one DELETE and move
 	const chips = section.locator('li[data-shelf-id]');
 	await expect(chips.locator('a')).toHaveText(['Favorites', 'Owned shelf', 'Shared shelf']);
 	await expect(section.getByRole('link', { name: 'Favorites', exact: true })).toHaveAttribute('href', '/shelves/system/favorites');
-	await expect(section.getByRole('button', { name: 'Remove from Shared shelf', exact: true })).toHaveCount(0);
-	const remove = section.getByRole('button', { name: 'Remove from Owned shelf', exact: true });
+	await expect(section.getByRole('button', { name: 'Remove manual membership in Shared shelf', exact: true })).toHaveCount(0);
+	const remove = section.getByRole('button', { name: 'Remove manual membership in Owned shelf', exact: true });
 	await section.getByRole('link', { name: 'Owned shelf', exact: true }).hover();
 	const corner = await remove.boundingBox();
 	const chip = await chips.filter({ hasText: 'Owned shelf' }).boundingBox();
 	expect(corner!.y).toBeLessThan(chip!.y);
 	expect(corner!.x + corner!.width).toBeGreaterThan(chip!.x + chip!.width);
-	page.once('dialog', async (dialog) => {
-		expect(dialog.message()).toBe('Remove “Shelf Book 21” from “Owned shelf”?');
-		await dialog.dismiss();
+	await confirmInApp(page, () => remove.click(), false, (message) => {
+		expect(message).toBe('Remove manual membership of “Shelf Book 21” in “Owned shelf”? Books matching automatic rules remain.');
 	});
-	await remove.click();
 	await expect(section.getByRole('link', { name: 'Owned shelf', exact: true })).toBeVisible();
 	expect(state.deletes).toEqual([]);
-	page.once('dialog', (dialog) => dialog.accept());
-	await remove.click();
-	await expect(section.getByRole('status')).toHaveText('Removed from Owned shelf');
+	await confirmInApp(page, () => remove.click());
+	await expect(section.getByRole('status')).toHaveText('Manual membership removed from Owned shelf; matching rules still apply.');
 	await expect(section.getByRole('link', { name: 'Shared shelf', exact: true })).toBeFocused();
 	expect(state.deletes).toEqual(['/shelves/1/books/21']);
 	expect(state.loads).toBe(1);
@@ -155,11 +153,10 @@ test('keyboard reaches corner X and a failed DELETE restores the tag with an ale
 	state.failDelete = true;
 	await section.getByRole('link', { name: 'Owned shelf', exact: true }).focus();
 	await page.keyboard.press('Tab');
-	const remove = section.getByRole('button', { name: 'Remove from Owned shelf', exact: true });
+	const remove = section.getByRole('button', { name: 'Remove manual membership in Owned shelf', exact: true });
 	await expect(remove).toBeFocused();
 	await expect(remove).toHaveCSS('opacity', '1');
-	page.once('dialog', (dialog) => dialog.accept());
-	await page.keyboard.press('Enter');
+	await confirmInApp(page, () => page.keyboard.press('Enter'));
 	await expect(section.getByRole('alert')).toBeVisible();
 	await expect(section.getByRole('link', { name: 'Owned shelf', exact: true })).toBeVisible();
 	expect(state.deletes).toHaveLength(1);
@@ -169,7 +166,7 @@ test('offline chips are read-only and the factory reloads on book changes', asyn
 	const { section } = await mount(page);
 	await section.getByRole('checkbox', { name: 'Offline shelves' }).check();
 	await expect(section.getByRole('link', { name: 'Owned shelf', exact: true })).toBeVisible();
-	await expect(section.getByRole('button', { name: /^Remove from/ })).toHaveCount(0);
+	await expect(section.getByRole('button', { name: /^Remove manual membership/ })).toHaveCount(0);
 	await section.getByRole('button', { name: 'Switch shelf book' }).click();
 	await expect(section).toContainText('Not on any shelf');
 	await expect(section.locator('li[data-shelf-id]')).toHaveCount(0);
@@ -192,8 +189,7 @@ test('removing the final chip focuses the label and shows the empty state', asyn
 	await page.evaluate(() => window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed')));
 	await expect(section.locator('li[data-shelf-id]')).toHaveCount(1);
 	await section.getByRole('link', { name: 'Owned shelf', exact: true }).hover();
-	page.once('dialog', (dialog) => dialog.accept());
-	await section.getByRole('button', { name: 'Remove from Owned shelf', exact: true }).click();
+	await confirmInApp(page, () => section.getByRole('button', { name: 'Remove manual membership in Owned shelf', exact: true }).click());
 	await expect(section).toContainText('Not on any shelf');
 	await expect(section.locator('p[tabindex="-1"]')).toBeFocused();
 });
@@ -202,12 +198,10 @@ test('localizes shelf labels, removal confirmation, and notices in Chinese', asy
 	const { section } = await mount(page, 'zh');
 	await expect(section.getByRole('link', { name: '收藏', exact: true })).toHaveAttribute('href', '/shelves/system/favorites');
 	await section.getByRole('link', { name: 'Owned shelf', exact: true }).hover();
-	page.once('dialog', async (dialog) => {
-		expect(dialog.message()).toBe('确定将《Shelf Book 21》从“Owned shelf”移除吗？');
-		await dialog.accept();
+	await confirmInApp(page, () => section.getByRole('button', { name: '移除在Owned shelf中的手动成员资格', exact: true }).click(), true, (message) => {
+		expect(message).toBe('确定移除《Shelf Book 21》在“Owned shelf”中的手动成员资格吗？仍匹配自动规则的图书会保留。');
 	});
-	await section.getByRole('button', { name: '从Owned shelf移除', exact: true }).click();
-	await expect(section.getByRole('status')).toHaveText('已从Owned shelf移除');
+	await expect(section.getByRole('status')).toHaveText('已移除在Owned shelf中的手动成员资格；自动规则仍然适用。');
 });
 
 test('downward picker is clamped near the viewport edge, including after resize', async ({ page }) => {
@@ -234,6 +228,6 @@ test.describe('touch controls', () => {
 	test('corner X is visible without hover', async ({ page }) => {
 		const { section } = await mount(page);
 		expect(await page.evaluate(() => matchMedia('(hover: none)').matches)).toBe(true);
-		await expect(section.getByRole('button', { name: 'Remove from Owned shelf', exact: true })).toHaveCSS('opacity', '1');
+		await expect(section.getByRole('button', { name: 'Remove manual membership in Owned shelf', exact: true })).toHaveCSS('opacity', '1');
 	});
 });

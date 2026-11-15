@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 
 // getComputedStyle cannot inspect ::-webkit-search-cancel-button, so compare pixels against a forced native icon.
@@ -346,14 +347,11 @@ test('creates, browses, edits, and deletes a private shelf', async ({ page }) =>
 
 	await page.goto('/shelves/7?manage=1');
 	await expect(page.getByText('Deleting a collection removes only the collection, not the books on it.')).toBeVisible();
-	page.once('dialog', (dialog) => dialog.dismiss());
-	await page.getByRole('button', { name: 'Delete collection' }).click();
+	await confirmInApp(page, () => page.getByRole('button', { name: 'Delete collection' }).click(), false);
 	expect(deleted).toBe(false);
-	page.once('dialog', (dialog) => {
-		expect(dialog.message()).toContain('will not be deleted');
-		void dialog.accept();
+	await confirmInApp(page, () => page.getByRole('button', { name: 'Delete collection' }).click(), true, (message) => {
+		expect(message).toContain('will not be deleted');
 	});
-	await page.getByRole('button', { name: 'Delete collection' }).click();
 	await expect(page).toHaveURL(/\/shelves$/);
 	expect(deleted).toBe(true);
 });

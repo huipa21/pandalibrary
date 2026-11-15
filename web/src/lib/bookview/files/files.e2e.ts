@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page } from '@playwright/test';
 import type { Book, BookFile } from '../../catalog/types.js';
 import { pdfFixture } from '../../reader/fixtures.js';
@@ -297,18 +298,15 @@ test('saves files, confirms removal of all downloaded copies, and preserves them
 	await saveFromPanel(page, 'A.epub');
 	await expect.poll(async () => (await storedRows(page, 'files')).length).toBe(2);
 
-	page.once('dialog', (dialog) => {
-		expect(dialog.message()).toBe('Remove this book and its downloaded files from this device? Queued reading changes are kept.');
-		void dialog.dismiss();
-	});
 	await page.getByRole('button', { name: 'Actions for A.epub' }).click();
-	await page.getByRole('menuitem', { name: 'Remove offline copy' }).click();
+	await confirmInApp(page, () => page.getByRole('menuitem', { name: 'Remove offline copy' }).click(), false, (message) => {
+		expect(message).toBe('Remove this book and its downloaded files from this device? Queued reading changes are kept.');
+	});
 	expect(await storedRows(page, 'files')).toHaveLength(2);
 	await expect(panel(page)).toContainText('Offline');
 
-	page.once('dialog', (dialog) => void dialog.accept());
 	await page.getByRole('button', { name: 'Actions for A.epub' }).click();
-	await page.getByRole('menuitem', { name: 'Remove offline copy' }).click();
+	await confirmInApp(page, () => page.getByRole('menuitem', { name: 'Remove offline copy' }).click());
 	await expect(page.getByText('Downloaded book data removed.')).toBeVisible();
 	await expect.poll(async () => (await storedRows(page, 'files')).length).toBe(0);
 	await expect(panel(page)).not.toContainText('Offline');
@@ -387,9 +385,8 @@ test('loads synchronized progress and legacy metadata offline, then reloads afte
 	await expect(panel(page)).toContainText('Offline');
 	await expect(panel(page).getByRole('link', { name: 'Download' })).toHaveCount(0);
 	await expect(group(page, 'Ebook')).toHaveCount(0);
-	page.once('dialog', (dialog) => void dialog.accept());
 	await page.getByRole('button', { name: 'Actions for Multi-format Book.pdf' }).click();
-	await page.getByRole('menuitem', { name: 'Remove offline copy' }).click();
+	await confirmInApp(page, () => page.getByRole('menuitem', { name: 'Remove offline copy' }).click());
 	await expect(page.getByRole('main').getByRole('alert').filter({ hasText: 'This book or file is not available offline.' })).toBeVisible();
 	await expect.poll(async () => (await storedRows(page, 'files')).length).toBe(0);
 });

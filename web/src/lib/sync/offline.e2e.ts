@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page } from '@playwright/test';
 import { pdfFixture } from '../reader/fixtures';
 import { openAnnotationsPanel } from '../real-pdf.js';
@@ -163,8 +164,7 @@ test('a genuine rejection links to its reason and can be discarded explicitly', 
 	await expect(storage.getByText('Rejected by the server')).toBeVisible();
 	await expect(storage.getByText('Server reason: book is unavailable')).toBeVisible();
 	await expect(storage.getByRole('link', { name: 'Book #21' })).toHaveAttribute('href', '/books/21');
-	page.once('dialog', (dialog) => void dialog.accept());
-	await storage.getByRole('button', { name: 'Discard change' }).click();
+	await confirmInApp(page, () => storage.getByRole('button', { name: 'Discard change' }).click());
 	await expect(storage.getByText('No queued changes.')).toBeVisible();
 	await expect(page.getByText('Some changes were rejected or conflicted. Review them in offline storage settings.')).toHaveCount(0);
 });

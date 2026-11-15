@@ -1,5 +1,6 @@
 <script lang="ts">
 	import BookCover from './BookCover.svelte';
+	import ConfirmationDialog from '#lib/shell/ConfirmationDialog.svelte';
 	import ExpandableText from './ExpandableText.svelte';
 	import IdentifierLinks from './IdentifierLinks.svelte';
 	import Icon, { type IconName } from './Icon.svelte';
@@ -43,6 +44,7 @@
 	const compactTitle = '星'.repeat(90);
 </script>
 
+<ConfirmationDialog />
 <div class="space-y-5 bg-white p-4 text-slate-900">
 	<p data-test="duration">{formatDuration(10560)}</p>
 	<section aria-label="Editable rating"><RatingStars value={rating} editable onChange={(next) => (rating = next)} /></section>

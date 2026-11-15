@@ -1,4 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
+import { autoConfirmInApp, confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page } from '@playwright/test';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { resolve } from 'node:path';
@@ -101,7 +102,7 @@ async function setup(page: Page, options: { large?: boolean; splitOther?: boolea
 		}
 		return route.fulfill({ json: { items: [], next_cursor: null } });
 	});
-	page.on('dialog', (dialog) => dialog.accept());
+	await autoConfirmInApp(page);
 	await page.goto('/read/21/31');
 	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
 	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
@@ -280,14 +281,11 @@ test('closing a dialog protects an unsaved comment draft', async ({ page }) => {
 	await expand(page, 1).click();
 	await detail(page).getByRole('button', { name: 'Add comment' }).click();
 	await detail(page).getByRole('textbox').fill('Unfinished comment');
-	page.removeAllListeners('dialog');
-	page.on('dialog', (dialog) => dialog.dismiss());
-	await page.keyboard.press('Escape');
+	await page.removeLocatorHandler(page.locator('#app-confirmation'));
+	await confirmInApp(page, () => page.keyboard.press('Escape'), false);
 	await expect(detail(page)).toBeVisible();
 	await expect(detail(page).getByRole('textbox')).toHaveValue('Unfinished comment');
-	page.removeAllListeners('dialog');
-	page.on('dialog', (dialog) => dialog.accept());
-	await page.keyboard.press('Escape');
+	await confirmInApp(page, () => page.keyboard.press('Escape'));
 	await expect(detail(page)).toHaveCount(0);
 	await expect(expand(page, 1)).toBeFocused();
 });

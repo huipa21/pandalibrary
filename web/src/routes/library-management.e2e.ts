@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -9,6 +10,9 @@ async function mockManagement(page: Page, role = 'admin') {
 	const creates: Record<string, string>[] = [];
 	const patches: Record<string, string>[] = [];
 	const deletes: number[] = [];
+	const destinations: string[] = [];
+	let multipleLibraries = false;
+	let deleteFails = false;
 	const grants: number[] = [];
 	const revokes: number[] = [];
 	const searches: string[] = [];
@@ -35,6 +39,9 @@ async function mockManagement(page: Page, role = 'admin') {
 		if (path === '/me/notes' || path === '/admin/bookheap/items') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		if (path === '/books/count') return route.fulfill({ json: { count: 7 } });
 		if (path === '/libraries') return route.fulfill({ json: { items: [library], next_cursor: null } });
+		if (path === '/admin/libraries' && request.method() === 'GET') return route.fulfill({
+			json: { items: multipleLibraries ? [library, { ...library, id: 2, name: 'Archive', slug: 'archive' }] : [library], next_cursor: null }
+		});
 		if (path === '/libraries/1') return route.fulfill({ json: { library } });
 		if (path === '/admin/libraries' && request.method() === 'POST') {
 			creates.push(request.postDataJSON());
@@ -48,6 +55,8 @@ async function mockManagement(page: Page, role = 'admin') {
 		}
 		if (path === '/admin/libraries/1' && request.method() === 'DELETE') {
 			deletes.push(1);
+			destinations.push(url.searchParams.get('destination_library_id') ?? '');
+			if (deleteFails) return route.fulfill({ status: 409, json: { title: 'Conflict', status: 409 } });
 			return route.fulfill({ json: { deleted: true } });
 		}
 		if (path === '/admin/libraries/1/access') return route.fulfill({ json: { items: entries, next_cursor: null } });
@@ -74,7 +83,10 @@ async function mockManagement(page: Page, role = 'admin') {
 		unexpected.push(`${request.method()} ${path}`);
 		return route.fulfill({ status: 404, json: { title: 'Unexpected request', status: 404 } });
 	});
-	return { creates, patches, deletes, grants, revokes, searches, unexpected, failCreate: (value: boolean) => { createFails = value; } };
+	return { creates, patches, deletes, destinations, grants, revokes, searches, unexpected,
+		failCreate: (value: boolean) => { createFails = value; },
+		multipleLibraries: () => { multipleLibraries = true; },
+		failDelete: (value: boolean) => { deleteFails = value; } };
 }
 
 async function expectSettingsLayout(container: ReturnType<Page['locator']>, heading: string) {
@@ -199,8 +211,7 @@ test('library settings save fields and access search narrows paginated, scrollab
 	await page.getByRole('button', { name: 'Grant access', exact: true }).click();
 	await expect.poll(() => server.grants).toEqual([31]);
 	await expect(page.getByRole('table')).toContainText('31');
-	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByRole('button', { name: 'Remove for user #31', exact: true }).click();
+	await confirmInApp(page, () => page.getByRole('button', { name: 'Remove for user #31', exact: true }).click());
 	await expect.poll(() => server.revokes).toEqual([31]);
 	await expect(page.getByRole('table')).toHaveCount(0);
 	await search.fill('');
@@ -231,21 +242,63 @@ test('reader library management opens read-only settings without requesting priv
 
 test('library deletion requires confirmation and cancellation preserves the entry and access', async ({ page }) => {
 	const server = await mockManagement(page);
+	server.multipleLibraries();
+	const browserDialogs: string[] = [];
+	page.on('dialog', async (dialog) => { browserDialogs.push(dialog.message()); await dialog.dismiss(); });
 	await page.goto('/libraries/1');
 	const remove = page.getByRole('button', { name: 'Delete Fiction', exact: true });
 	await expect(remove).toBeVisible();
-	const confirmation = page.waitForEvent('dialog');
-	const clicked = remove.click();
-	const dialog = await confirmation;
-	expect(dialog.type()).toBe('confirm');
-	expect(dialog.message()).toBe('Delete the library “Fiction”? This cannot be undone.');
-	await dialog.dismiss();
-	await clicked;
+	await remove.click();
+	const dialog = page.getByRole('dialog', { name: 'Delete', exact: true });
+	await expect(dialog).toContainText('Delete the library “Fiction”? This cannot be undone.');
+	await expect(dialog.getByRole('button', { name: 'Delete', exact: true })).toBeDisabled();
+	await expect(dialog).toContainText('including hidden and private books');
+	await dialog.getByLabel('Move all books to').selectOption('2');
+	await page.keyboard.press('Escape');
+	await expect(dialog).toHaveCount(0);
+	await expect(remove).toBeFocused();
 	await expect(page).toHaveURL('/libraries/1');
 	await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Fiction');
 	await expect(page.getByRole('heading', { name: 'Manage access', exact: true })).toBeVisible();
 	await expect(remove).toBeEnabled();
 	expect(server.deletes).toEqual([]);
+	expect(browserDialogs).toEqual([]);
+	expect(server.unexpected).toEqual([]);
+});
+
+test('the last library cannot be deleted and never sends a deletion request', async ({ page }) => {
+	const server = await mockManagement(page);
+	await page.goto('/libraries/1');
+	await page.getByRole('button', { name: 'Delete Fiction', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Delete', exact: true });
+	await expect(dialog.getByRole('alert')).toContainText('This is the last library.');
+	await expect(dialog.getByRole('button', { name: 'Delete', exact: true })).toBeDisabled();
+	await expect(dialog.getByLabel('Move all books to')).toHaveCount(0);
+	await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+	expect(server.deletes).toEqual([]);
+	expect(server.unexpected).toEqual([]);
+});
+
+test('deletion requires a destination, keeps failures in the dialog, and refreshes after success', async ({ page }) => {
+	const server = await mockManagement(page);
+	server.multipleLibraries();
+	server.failDelete(true);
+	await page.goto('/libraries/1');
+	await page.getByRole('button', { name: 'Delete Fiction', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Delete', exact: true });
+	const destination = dialog.getByLabel('Move all books to');
+	await expect(destination.locator('option')).toHaveCount(2);
+	await expect(destination.locator('option[value="1"]')).toHaveCount(0);
+	await destination.selectOption('2');
+	await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+	await expect(dialog.getByRole('alert')).toContainText('The library could not be deleted.');
+	await expect(destination).toHaveValue('2');
+	await expect(page).toHaveURL('/libraries/1');
+	expect(server.destinations).toEqual(['2']);
+	server.failDelete(false);
+	await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+	await expect(page).toHaveURL('/libraries');
+	expect(server.destinations).toEqual(['2', '2']);
 	expect(server.unexpected).toEqual([]);
 });
 

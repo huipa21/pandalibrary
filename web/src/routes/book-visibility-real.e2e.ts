@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, request, test, type APIRequestContext } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { mkdir, utimes, writeFile } from 'node:fs/promises';
@@ -75,12 +76,10 @@ test('upload visibility persists and confirmed owner toggles control authenticat
 		await page.goto(`/books/${book.id}`);
 		const makePublic = page.getByRole('button', { name: 'Make public', exact: true });
 		await expect(makePublic).toBeVisible();
-		page.once('dialog', (dialog) => dialog.dismiss());
-		await makePublic.click();
+		await confirmInApp(page, () => makePublic.click(), false);
 		await expect(makePublic).toBeVisible();
 		expect((await reader.request.get(`/api/v1/books/${book.id}`)).status()).toBe(404);
-		page.once('dialog', (dialog) => dialog.accept());
-		await makePublic.click();
+		await confirmInApp(page, () => makePublic.click());
 		const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
 		await expect(makePrivate).toBeVisible();
 		await page.reload();
@@ -101,8 +100,7 @@ test('upload visibility persists and confirmed owner toggles control authenticat
 		await expect(reader.getByRole('button', { name: /^Make (private|public)$/ })).toHaveCount(0);
 		await expect(reader.getByRole('button', { name: 'Book visibility: Public — all signed-in users', exact: true })).toBeDisabled();
 
-		page.once('dialog', (dialog) => dialog.accept());
-		await makePrivate.click();
+		await confirmInApp(page, () => makePrivate.click());
 		await expect(makePublic).toBeVisible();
 		expect((await reader.request.get(book.files[0].download_url)).status()).toBe(404);
 		expect((await reader.request.get(`/api/v1/books/${book.id}`)).status()).toBe(404);
@@ -201,23 +199,19 @@ test('administrators can claim scanned PDF and EPUB books and control their visi
 			await page.goto(`/books/${book.id}`);
 			const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
 			await expect(makePrivate).toHaveAccessibleDescription('Library access — based on library permissions');
-			page.once('dialog', async (dialog) => {
-				expect(dialog.message()).toContain('You will become its owner');
-				expect(dialog.message()).toContain('library-based access cannot be restored');
-				await dialog.dismiss();
+			await confirmInApp(page, () => makePrivate.click(), false, (message) => {
+				expect(message).toContain('You will become its owner');
+				expect(message).toContain('library-based access cannot be restored');
 			});
-			await makePrivate.click();
 			expect((await reader.request.get(`/api/v1/books/${book.id}`)).status()).toBe(200);
-			page.once('dialog', (dialog) => dialog.accept());
-			await makePrivate.click();
+			await confirmInApp(page, () => makePrivate.click());
 			const makePublic = page.getByRole('button', { name: 'Make public', exact: true });
 			await expect(makePublic).toBeVisible();
 			expect((await reader.request.get(`/api/v1/books/${book.id}`)).status()).toBe(404);
 			expect((await reader.request.get(book.files[0].download_url)).status()).toBe(404);
 			await page.reload();
 			await expect(makePublic).toBeVisible();
-			page.once('dialog', (dialog) => dialog.accept());
-			await makePublic.click();
+			await confirmInApp(page, () => makePublic.click());
 			await expect(makePrivate).toBeVisible();
 			const publicResponse = await checked(await reader.request.get(`/api/v1/books/${book.id}`));
 			const { book: publicBook } = await publicResponse.json() as { book: Book };

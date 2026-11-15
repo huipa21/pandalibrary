@@ -1,12 +1,10 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
 	import * as m from '#lib/paraglide/messages.js';
 	import HeapDialog from '#lib/bookheap/HeapDialog.svelte';
 	import { primaryButton, secondaryButton } from '#lib/admin/ui.js';
 	import { confirmation, cancelConfirmation } from './confirmation.js';
 
-	afterNavigate(cancelConfirmation);
 	onDestroy(cancelConfirmation);
 </script>
 

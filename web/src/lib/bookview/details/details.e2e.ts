@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page } from '@playwright/test';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { dirname, resolve } from 'node:path';
@@ -223,20 +224,16 @@ test('visibility confirms before requests, supports cancellation and updates aft
 	await expect(makePrivate).toHaveAccessibleDescription('Public — all signed-in users');
 	await expect(makePrivate.locator('svg path')).toHaveCount(1);
 	await expect(makePrivate).toHaveAttribute('title', 'Public — all signed-in users; Make private: only you');
-	page.once('dialog', async (dialog) => {
-		expect(dialog.message()).toContain('only you');
+	await confirmInApp(page, () => makePrivate.click(), false, (message) => {
+		expect(message).toContain('only you');
 		expect(state.visibilityRequests).toEqual([]);
-		await dialog.dismiss();
 	});
-	await makePrivate.click();
 	expect(state.visibilityRequests).toEqual([]);
 	await expect(makePrivate).toBeEnabled();
 
-	page.once('dialog', async (dialog) => {
+	await confirmInApp(page, () => makePrivate.click(), true, (message) => {
 		expect(state.visibilityRequests).toEqual([]);
-		await dialog.accept();
 	});
-	await makePrivate.click();
 	const makePublic = page.getByRole('button', { name: 'Make public', exact: true });
 	await expect(makePublic).toBeVisible();
 	await expect(makePublic).toHaveText('');
@@ -245,11 +242,9 @@ test('visibility confirms before requests, supports cancellation and updates aft
 	await expect(makePublic).toHaveAttribute('title', 'Private — only you; Make public: visible to all signed-in users');
 	expect(state.visibilityRequests).toEqual(['private']);
 	await expect(page.getByRole('status').filter({ hasText: 'This book is now private: only you can see it.' })).toBeAttached();
-	page.once('dialog', async (dialog) => {
-		expect(dialog.message()).toContain('visible to all signed-in users');
-		await dialog.accept();
+	await confirmInApp(page, () => makePublic.click(), true, (message) => {
+		expect(message).toContain('visible to all signed-in users');
 	});
-	await makePublic.click();
 	await expect(makePrivate).toBeVisible();
 	expect(state.visibilityRequests).toEqual(['private', 'public']);
 });
@@ -290,22 +285,18 @@ for (const format of ['epub', 'pdf']) {
 		await page.goto('/books/21');
 		const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
 		await expect(makePrivate).toHaveAccessibleDescription('Library access — based on library permissions');
-		page.once('dialog', async (dialog) => {
-			expect(dialog.message()).toContain('You will become its owner');
-			expect(dialog.message()).toContain('library-based access cannot be restored');
-			await dialog.dismiss();
+		await confirmInApp(page, () => makePrivate.click(), false, (message) => {
+			expect(message).toContain('You will become its owner');
+			expect(message).toContain('library-based access cannot be restored');
 		});
-		await makePrivate.click();
 		expect(state.visibilityRequests).toEqual([]);
-		page.once('dialog', (dialog) => dialog.accept());
-		await makePrivate.click();
+		await confirmInApp(page, () => makePrivate.click());
 		const makePublic = page.getByRole('button', { name: 'Make public', exact: true });
 		await expect(makePublic).toBeVisible();
 		expect(state.book.owner_id).toBe(1);
 		await page.reload();
 		await expect(makePublic).toBeVisible();
-		page.once('dialog', (dialog) => dialog.accept());
-		await makePublic.click();
+		await confirmInApp(page, () => makePublic.click());
 		await expect(makePrivate).toBeVisible();
 		expect(state.visibilityRequests).toEqual(['private', 'public']);
 	});
@@ -315,8 +306,7 @@ test('an authorized legacy book can be made private', async ({ page }) => {
 	const state = await setup(page);
 	state.book = { ...book, visibility: 'library' };
 	await page.goto('/books/21');
-	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByRole('button', { name: 'Make private', exact: true }).click();
+	await confirmInApp(page, () => page.getByRole('button', { name: 'Make private', exact: true }).click());
 	await expect(page.getByRole('button', { name: 'Make public', exact: true })).toBeVisible();
 	expect(state.visibilityRequests).toEqual(['private']);
 });
@@ -328,8 +318,7 @@ test('visibility is disabled while saving or offline and preserves state on fail
 	state.visibilityWait = new Promise<void>((resolve) => { release = resolve; });
 	await page.goto('/books/21');
 	const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
-	page.once('dialog', (dialog) => dialog.accept());
-	await makePrivate.click();
+	await confirmInApp(page, () => makePrivate.click());
 	await expect(makePrivate).toBeDisabled();
 	await expect(makePrivate).toHaveAttribute('aria-busy', 'true');
 	release();
@@ -386,12 +375,10 @@ test('localizes the ownerless visibility control and confirmation', async ({ pag
 	await page.goto('/books/21');
 	const makePrivate = page.getByRole('button', { name: '设为私密', exact: true });
 	await expect(makePrivate).toHaveAccessibleDescription('书库访问 — 根据书库权限');
-	page.once('dialog', async (dialog) => {
-		expect(dialog.message()).toContain('你将成为其所有者');
-		expect(dialog.message()).toContain('无法通过此控件恢复');
-		await dialog.accept();
+	await confirmInApp(page, () => makePrivate.click(), true, (message) => {
+		expect(message).toContain('你将成为其所有者');
+		expect(message).toContain('无法通过此控件恢复');
 	});
-	await makePrivate.click();
 	await expect(page.getByRole('button', { name: '设为公开', exact: true })).toBeVisible();
 	expect(state.visibilityRequests).toEqual(['private']);
 });
@@ -531,8 +518,7 @@ test('Favorites toggles once while busy, persists, and synchronizes Home and she
 	await expect(toggle).toBeEnabled();
 	await page.goto('/books/21/files');
 	await expect(tags.getByRole('link', { name: 'Favorites', exact: true })).toBeVisible();
-	page.once('dialog', (dialog) => dialog.accept());
-	await tags.getByRole('button', { name: 'Remove manual membership in Favorites', exact: true }).click();
+	await confirmInApp(page, () => tags.getByRole('button', { name: 'Remove manual membership in Favorites', exact: true }).click());
 	await expect(tags.getByRole('link', { name: 'Favorites', exact: true })).toHaveCount(0);
 	await expect(count).toHaveText('0');
 	await page.goto('/books/21');
@@ -980,24 +966,20 @@ test('manages shelf tags on the real tab with permissions, confirmation, keyboar
 	await tags.getByRole('link', { name: 'Owned shelf' }).focus();
 	await page.keyboard.press('Tab');
 	await expect(remove).toBeFocused();
-	page.once('dialog', async (dialog) => {
-		expect(dialog.message()).toBe('Remove manual membership of “The Emerald Library” in “Owned shelf”? Books matching automatic rules remain.');
-		await dialog.dismiss();
+	await confirmInApp(page, () => page.keyboard.press('Enter'), false, (message) => {
+		expect(message).toBe('Remove manual membership of “The Emerald Library” in “Owned shelf”? Books matching automatic rules remain.');
 	});
-	await page.keyboard.press('Enter');
 	await expect(tags.getByRole('link', { name: 'Owned shelf' })).toBeVisible();
 	expect(state.shelfDeletes).toEqual([]);
 
 	state.failShelfDelete = true;
-	page.once('dialog', (dialog) => dialog.accept());
-	await remove.click();
+	await confirmInApp(page, () => remove.click());
 	await expect(page.getByRole('alert').filter({ hasText: 'The collection request failed.' })).toBeVisible();
 	await expect(tags.getByRole('link', { name: 'Owned shelf' })).toBeVisible();
 	expect(state.shelfDeletes).toEqual(['/shelves/43/books/21']);
 
 	state.failShelfDelete = false;
-	page.once('dialog', (dialog) => dialog.accept());
-	await remove.click();
+	await confirmInApp(page, () => remove.click());
 	await expect(page.getByRole('status').filter({ hasText: 'Manual membership removed from Owned shelf' })).toBeVisible();
 	await expect(tags.getByRole('link')).toHaveText(['Shared shelf']);
 	expect(state.shelfDeletes).toEqual(['/shelves/43/books/21', '/shelves/43/books/21']);

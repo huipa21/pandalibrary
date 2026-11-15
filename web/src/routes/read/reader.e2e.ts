@@ -310,7 +310,7 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 			return original.call(this, event);
 		};
 	});
-	page.on('dialog', (dialog) => dialog.accept());
+	await autoConfirmInApp(page);
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/read/21/31');
 	await expect(page).toHaveTitle('Fixture Book · PandaLibrary');
@@ -1070,3 +1070,4 @@ test('reports missing files and unsupported formats without downloading them', a
 	await expect(page.getByRole('alert')).toContainText('This file format is not supported');
 	expect(downloads).toBe(0);
 });
+import { autoConfirmInApp } from '#lib/shell/confirmation.e2e-helper.js';

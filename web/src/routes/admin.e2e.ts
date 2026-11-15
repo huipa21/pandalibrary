@@ -403,15 +403,14 @@ test('edits metadata providers without exposing tokens', async ({ page }) => {
 	await form.getByRole('button', { name: 'Save' }).click();
 	await expect(form.getByText('Set a token before enabling this provider.')).toBeVisible();
 	await form.getByLabel('Enabled', { exact: true }).uncheck();
-	const dialogs: string[] = [];
-	page.on('dialog', (dialog) => {
-		dialogs.push(dialog.message());
-		void dialog.accept();
-	});
 	await form.getByRole('button', { name: 'Save' }).click();
+	const confirmation = page.locator('#app-confirmation');
+	await expect(confirmation).toContainText('Remove the stored token for NeoDB?');
+	await confirmation.locator('button').last().click();
+	await expect(confirmation).toContainText('Disable NeoDB? Books will no longer get details from it.');
+	await confirmation.locator('button').last().click();
 	await expect(form.getByText('Saved NeoDB.')).toBeVisible();
 	expect(patches.at(-1)).toEqual({ api_token: null, enabled: false });
-	expect(dialogs).toEqual(['Remove the stored token for NeoDB?', 'Disable NeoDB? Books will no longer get details from it.']);
 	await expect(form.getByLabel('No token')).toBeChecked();
 
 	await form.getByLabel('Set a token').check();
@@ -445,15 +444,13 @@ test('runs maintenance jobs and handles a job that is already running', async ({
 			json: { jobs: [backup, { name: 'wal-checkpoint', schedule: '5m0s', status: 'idle', last_run: null }] }
 		});
 	});
-	page.on('dialog', (dialog) => void dialog.accept());
-
 	await page.goto('/admin/maintenance');
 	const backupCard = page.getByRole('listitem').filter({ hasText: 'Database backup' });
 	await expect(backupCard.getByText('Every 24 h')).toBeVisible();
 	await expect(backupCard.getByText('Not since the server started')).toBeVisible();
 	await expect(page.getByText('resets when the server restarts')).toBeVisible();
 
-	await page.getByRole('button', { name: 'Run Database backup now' }).click();
+	await confirmInApp(page, () => page.getByRole('button', { name: 'Run Database backup now' }).click());
 	await expect(backupCard.getByText('“Database backup” was started.')).toBeVisible();
 	await expect(backupCard.getByRole('button', { name: 'Run Database backup now' })).toBeDisabled();
 	await page.clock.runFor(2100);
@@ -463,7 +460,7 @@ test('runs maintenance jobs and handles a job that is already running', async ({
 
 	const walCard = page.getByRole('listitem').filter({ hasText: 'Database checkpoint' });
 	await expect(walCard.getByText('Every 5 min')).toBeVisible();
-	await page.getByRole('button', { name: 'Run Database checkpoint now' }).click();
+	await confirmInApp(page, () => page.getByRole('button', { name: 'Run Database checkpoint now' }).click());
 	await expect(walCard.getByText('This job is already running. Its status will refresh automatically.')).toBeVisible();
 	await expect(page.getByText('server detail that must not be shown')).toHaveCount(0);
 });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable } from 'svelte/store';
 import { confirmAction } from '#lib/shell/confirmation.js';
+import { goto } from '$app/navigation';
 import { getBook } from '#lib/catalog/api.js';
 import { downloadBookFile, getBookState, getSettings } from '../api.js';
 import { createReader } from '../index.js';
@@ -340,6 +341,24 @@ describe('reader controller PDF extensions', () => {
 		vi.stubGlobal('document', { hidden: true });
 		await controller.attach({} as HTMLElement);
 		expect(controller.actionError).not.toBe('');
+		controller.dispose();
+	});
+
+	it('awaits an in-app draft confirmation before resuming navigation', async () => {
+		const controller = createReaderController(params);
+		const cancel = vi.fn();
+		let respond!: (accepted: boolean) => void;
+		controller.setDraftGuard(() => new Promise<boolean>((resolve) => { respond = resolve; }));
+		const to = { url: new URL('http://localhost/books/21') };
+		controller.beforeNavigate({ cancel, type: 'link', to });
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(goto).not.toHaveBeenCalled();
+		respond(false);
+		await Promise.resolve();
+		expect(goto).not.toHaveBeenCalled();
+		controller.beforeNavigate({ cancel, type: 'link', to });
+		respond(true);
+		await vi.waitFor(() => expect(goto).toHaveBeenCalledWith(to.url));
 		controller.dispose();
 	});
 

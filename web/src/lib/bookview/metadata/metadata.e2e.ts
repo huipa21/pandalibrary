@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
@@ -790,13 +791,11 @@ test('unsaved edits ask before leaving the metadata tab', async ({ page }) => {
 	await searchMetadata(page).click();
 	await expect(page).toHaveURL(/view=search/);
 	const files = page.getByRole('navigation', { name: 'Book sections' }).getByRole('link', { name: /Files/ });
-	page.once('dialog', (dialog) => dialog.dismiss());
-	await files.click();
+	await confirmInApp(page, () => files.click(), false);
 	await expect(page).toHaveURL(/\/metadata\?view=search$/);
 	await metadata(page).click();
 	await expect(textInput(page, 'Title')).toHaveValue('Unsaved');
-	page.once('dialog', (dialog) => dialog.accept());
-	await files.click();
+	await confirmInApp(page, () => files.click());
 	await expect(page).toHaveURL(/\/books\/21\/files$/);
 });
 

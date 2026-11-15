@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, request as playwrightRequest, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -305,8 +306,7 @@ test('book view works end to end against the real server', async ({ page, browse
 		await expect(page.getByText('Attempts 2', { exact: true })).toBeVisible();
 		await expect(page.getByText(/Attempt 2 began/)).toBeVisible();
 		await expect(page.getByText('Showing 4 of 4')).toBeVisible();
-		page.once('dialog', (dialog) => void dialog.accept());
-		await page.getByRole('button', { name: /Delete session from/ }).first().click();
+		await confirmInApp(page, () => page.getByRole('button', { name: /Delete session from/ }).first().click());
 		await expect(page.getByText('Showing 3 of 3')).toBeVisible();
 		await expect.poll(async () => (await bookSessionCount(page.request, data.covered.id)).session_count).toBe(3);
 		expect((await bookSessionCount(page.request, data.covered.id)).active_seconds).toBeLessThan(before.active_seconds);

@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { pdfFixture, epubFixture } from '../lib/reader/fixtures.js';
@@ -91,12 +92,10 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await reader.goto('/admin/users');
 		await expect(reader.getByText('Only administrators can open this area.')).toBeVisible();
 		expect((await reader.request.get('/api/v1/admin/users')).status()).toBe(403);
-		page.once('dialog', (dialog) => dialog.accept());
-		await page.getByRole('toolbar').getByRole('button', { name: 'Disable', exact: true }).click();
+		await confirmInApp(page, () => page.getByRole('toolbar').getByRole('button', { name: 'Disable', exact: true }).click());
 		await expect(row).toContainText('Disabled');
 		expect((await reader.request.get('/api/v1/auth/me')).status()).toBe(401);
-		page.once('dialog', (dialog) => dialog.accept());
-		await row.getByRole('checkbox').check();
+		await confirmInApp(page, () => row.getByRole('checkbox').check());
 		await page.getByRole('toolbar').getByRole('button', { name: 'Enable', exact: true }).click();
 		await expect(row).toContainText('Active');
 		await row.getByRole('checkbox').check();
@@ -110,8 +109,7 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await reset.getByRole('button', { name: 'Save changes' }).click();
 		await expect(page.getByText('Password reset. Sessions and device credentials were revoked.')).toBeVisible();
 		await login(reader, 'ux-reader', 'ux-replacement-password');
-		page.once('dialog', (dialog) => dialog.accept());
-		await page.getByRole('toolbar').getByRole('button', { name: 'Revoke credentials', exact: true }).click();
+		await confirmInApp(page, () => page.getByRole('toolbar').getByRole('button', { name: 'Revoke credentials', exact: true }).click());
 		await expect(page.getByText('Completed for 1 account(s).', { exact: true })).toBeVisible();
 		expect((await reader.request.get('/api/v1/auth/me')).status()).toBe(401);
 		await page.goto('/admin/libraries');
@@ -129,13 +127,11 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await expect(page.getByRole('heading', { name: `Books hidden from user #${id}` })).toBeVisible();
 		await page.goto('/admin/users');
 		await page.screenshot({ path: info.outputPath('admin-users-en.png'), fullPage: true });
-		page.once('dialog', (dialog) => dialog.accept());
-		await row.getByRole('checkbox').check();
+		await confirmInApp(page, () => row.getByRole('checkbox').check());
 		await page.getByRole('toolbar').getByRole('button', { name: 'Delete', exact: true }).click();
 		await expect(row).toHaveCount(0);
 		const own = page.getByRole('row').filter({ has: page.getByRole('cell', { name: realAdmin.username, exact: true }) });
-		page.once('dialog', (dialog) => dialog.accept());
-		await own.getByRole('checkbox').check();
+		await confirmInApp(page, () => own.getByRole('checkbox').check());
 		await page.getByRole('toolbar').getByRole('button', { name: 'Disable', exact: true }).click();
 		await expect(page.getByRole('alert')).toContainText('administrator');
 		// Self reset and revoke use a separate admin so other real-server tests keep their session.
@@ -161,8 +157,7 @@ test('real accounts lifecycle, selectors, denied access and self credential reti
 		await expect(reader).toHaveURL('/login');
 		await login(reader, 'ux-self', 'ux-self-new-password');
 		await reader.goto('/admin/users');
-		reader.once('dialog', (dialog) => dialog.accept());
-		await selfRow.getByRole('checkbox').check();
+		await confirmInApp(reader, () => selfRow.getByRole('checkbox').check());
 		await reader.getByRole('toolbar').getByRole('button', { name: 'Revoke credentials', exact: true }).click();
 		await expect(reader).toHaveURL('/login');
 		await expect.poll(() => reader.evaluate(() => localStorage.getItem('pandalibrary.offline.signed-out'))).toBe('1');

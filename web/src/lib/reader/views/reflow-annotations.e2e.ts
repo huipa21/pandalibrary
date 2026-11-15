@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Frame, type Page } from '@playwright/test';
 import { azw3Fixture, cbzFixture, epubFixture, fb2Fixture, fbzFixture, mobiFixture } from '../fixtures';
 
@@ -177,8 +178,7 @@ for (const width of [1440, 375]) {
 			await expect(bookmarks).toHaveCount(0);
 			await page.getByRole('tab', { name: 'Bookmarks', exact: true }).click();
 		}
-		page.once('dialog', (dialog) => dialog.accept());
-		await row.getByRole('button', { name: 'Delete', exact: true }).click();
+		await confirmInApp(page, () => row.getByRole('button', { name: 'Delete', exact: true }).click());
 		await expect(row).toHaveCount(0);
 		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 		await expect.poll(() => state.bookmarks.length).toBe(0);
@@ -415,8 +415,7 @@ test('EPUB annotation pane reflects toolbar comments and highlight edits and del
 
 	await openAnnotations(page);
 	await row.locator('.rp7-edit').click();
-	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+	await confirmInApp(page, () => page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click());
 	await expect.poll(() => state.notes.length).toBe(0);
 	await page.getByRole('button', { name: 'Close annotation details', exact: true }).click();
 	await expect(row.locator('.rp7-comment')).toHaveText('');

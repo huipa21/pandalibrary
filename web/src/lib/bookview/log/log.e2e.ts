@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import type { BookSession, ReadingSummary } from '../log-api.js';
@@ -227,16 +228,14 @@ test('optimistically deletes a session and rolls back a failed delete', async ({
 	const label = await first.getAttribute('aria-label');
 	expect(label).toBeTruthy();
 	state.failDelete = true;
-	page.once('dialog', (dialog) => void dialog.accept());
-	await first.click();
+	await confirmInApp(page, () => first.click());
 	await expect(page.getByRole('button', { name: label! })).toHaveCount(0);
-	await expect(page.getByRole('alert')).toContainText('Could not delete the session. It has been restored.');
+	await expect(page.getByRole('main').getByRole('alert')).toContainText('Could not delete the session. It has been restored.');
 	await expect(page.getByRole('button', { name: label! })).toHaveCount(1);
 	await expect(page.getByText('Showing 25 of 31')).toBeVisible();
 
 	state.failDelete = false;
-	page.once('dialog', (dialog) => void dialog.accept());
-	await page.getByRole('button', { name: label! }).click();
+	await confirmInApp(page, () => page.getByRole('button', { name: label! }).click());
 	await expect.poll(() => state.requests.filter((item) => item.method === 'DELETE').length).toBe(2);
 	await expect(page.getByRole('button', { name: label! })).toHaveCount(0);
 	await expect(page.getByText('Showing 25 of 30')).toBeVisible();
@@ -250,8 +249,7 @@ test('does not insert an old optimistic row into a newly selected range', async 
 	const first = page.getByRole('button', { name: /Delete session from/ }).first();
 	const label = await first.getAttribute('aria-label');
 	expect(label).toBeTruthy();
-	page.once('dialog', (dialog) => void dialog.accept());
-	await first.click();
+	await confirmInApp(page, () => first.click());
 	await page.getByRole('button', { name: 'Last 30 days' }).click();
 	await expect(page.getByText('Showing 25 of 27')).toBeVisible();
 	await expect(page.getByRole('alert')).toContainText('Please retry in its original range.');

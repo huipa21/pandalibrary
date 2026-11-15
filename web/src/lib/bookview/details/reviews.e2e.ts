@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page } from '@playwright/test';
 import type { Book } from '#lib/catalog/types.js';
 import type { Review } from '../reviews-api.js';
@@ -148,15 +149,12 @@ test('writes, edits and deletes my pinned review with the Plus button', async ({
 	await expect(card.locator('[data-review-total]')).toHaveText('26');
 	expect(state.puts).toEqual(['My first thoughts.\nSecond line.', 'Changed my mind.']);
 
-	page.once('dialog', (dialog) => dialog.dismiss());
-	await mine.getByRole('button', { name: 'Delete your review', exact: true }).click();
+	await confirmInApp(page, () => mine.getByRole('button', { name: 'Delete your review', exact: true }).click(), false);
 	await expect(mine).toBeVisible();
 	expect(state.deletes).toEqual([]);
-	page.once('dialog', async (dialog) => {
-		expect(dialog.message()).toBe('Delete this review? This cannot be undone.');
-		await dialog.accept();
+	await confirmInApp(page, () => mine.getByRole('button', { name: 'Delete your review', exact: true }).click(), true, (message) => {
+		expect(message).toBe('Delete this review? This cannot be undone.');
 	});
-	await mine.getByRole('button', { name: 'Delete your review', exact: true }).click();
 	await expect(mine).toHaveCount(0);
 	await expect(plus).toBeFocused();
 	await expect(card.locator('[data-review-total]')).toHaveText('25');
@@ -185,8 +183,7 @@ test('lets an administrator delete another user\'s review', async ({ page }) => 
 	await page.goto('/books/21');
 	const card = reviewsCard(page);
 	const target = card.getByRole('article', { name: 'Reader 25', exact: true });
-	page.once('dialog', (dialog) => dialog.accept());
-	await target.getByRole('button', { name: 'Delete review by Reader 25', exact: true }).click();
+	await confirmInApp(page, () => target.getByRole('button', { name: 'Delete review by Reader 25', exact: true }).click());
 	await expect(target).toHaveCount(0);
 	await expect(card.getByRole('heading', { name: 'Reviews' })).toBeFocused();
 	await expect(card.locator('[data-review-total]')).toHaveText('24');

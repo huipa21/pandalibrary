@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { confirmAction } from '#lib/shell/confirmation.js';
+	import { confirmAction, checkDraftGuards } from '#lib/shell/confirmation.js';
 	import { onMount, tick, untrack } from 'svelte';
 	import { v7 as uuidv7 } from 'uuid';
 	import * as m from '#lib/paraglide/messages.js';
@@ -97,11 +97,10 @@
 		window.addEventListener('offline', connectionChanged);
 		if (!surface) throw new Error('The reader surface is unavailable.');
 		readerChrome.set('full');
-		controller.setDraftGuard(async () => {
-			if (!await canOpenNote()) return false;
-			if (bookmarkDraft && bookmarkDraft.label !== bookmarkDraft.original && !await confirmAction(m['ux6.discard_confirm']())) return false;
-			return true;
-		});
+		controller.setDraftGuard(() => checkDraftGuards([
+			canOpenNote,
+			() => !bookmarkDraft || bookmarkDraft.label === bookmarkDraft.original || confirmAction(m['ux6.discard_confirm']())
+		]));
 		let destroyed = false;
 		void controller.attach(surface).then((reader) => {
 			if (destroyed) return;

@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, request, test, type APIRequestContext, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { argon2Sync, createHash, randomUUID } from 'node:crypto';
@@ -174,8 +175,7 @@ test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private co
 				await reader.reload();
 				await expect(tag).toBeVisible();
 				await tag.hover();
-				reader.once('dialog', (dialog) => dialog.accept());
-				await tag.getByRole('button', { name: `Remove from ${name}`, exact: true }).click();
+				await confirmInApp(reader, () => tag.getByRole('button', { name: `Remove from ${name}`, exact: true }).click());
 				await expect(tag).toHaveCount(0);
 				await reader.reload();
 				await expect(tag).toHaveCount(0);
@@ -293,8 +293,7 @@ test('BD8 R1-R13: origins, memberships, lifecycle, public reviews and private co
 			await expect(page.getByText('BD8 STRICTLY PRIVATE COMMENT', { exact: true })).toHaveCount(0);
 			const readerReview = reviews(page).locator('article').filter({ hasText: 'BD8 public reader review' });
 			await expect(readerReview).toBeVisible();
-			page.once('dialog', (dialog) => dialog.accept());
-			await readerReview.getByRole('button', { name: /^Delete review by / }).click();
+			await confirmInApp(page, () => readerReview.getByRole('button', { name: /^Delete review by / }).click());
 			await expect(readerReview).toHaveCount(0);
 			await reader.reload();
 			await expect(reviews(reader).getByText('BD8 public reader review', { exact: true })).toHaveCount(0);
@@ -416,8 +415,7 @@ test('BD8 visual matrix: light/dark 360/768/1440, keyboard and reduced motion', 
 			expect(await contrast(remove)).toBeGreaterThanOrEqual(3);
 			await screenshot(page, info, `${prefix}-hover`);
 			await keyboardFocus(page, remove);
-			page.once('dialog', (dialog) => dialog.dismiss());
-			await page.keyboard.press('Enter');
+			await confirmInApp(page, () => page.keyboard.press('Enter'), false);
 			await expect(tag).toBeVisible();
 			const plus = reviews(page).getByRole('button', { name: 'Write a review' });
 			await keyboardFocus(page, plus);
@@ -447,8 +445,7 @@ test('BD8 visual matrix: light/dark 360/768/1440, keyboard and reduced motion', 
 	await keyboardFocus(page, reviews(page).getByRole('button', { name: 'Cancel', exact: true }));
 	await page.keyboard.press('Enter');
 	await keyboardFocus(page, reviews(page).getByRole('button', { name: 'Delete your review', exact: true }));
-	page.once('dialog', (dialog) => dialog.accept());
-	await page.keyboard.press('Enter');
+	await confirmInApp(page, () => page.keyboard.press('Enter'));
 	await expect(reviews(page).getByRole('button', { name: 'Write a review' })).toBeFocused();
 	await keyboardFocus(page, back(page));
 	await page.keyboard.press('Enter');

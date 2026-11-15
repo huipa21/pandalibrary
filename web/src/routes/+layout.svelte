@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
+	import { cancelConfirmation } from '#lib/shell/confirmation.js';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale, getTextDirection, locales, setLocale, type Locale } from '#lib/paraglide/runtime.js';
@@ -16,6 +17,8 @@
 	import { applyTheme, readTheme } from '#lib/shell/theme.js';
 	import './layout.css';
 	import type { LayoutProps } from './$types';
+
+	afterNavigate(cancelConfirmation);
 
 	if (typeof document !== 'undefined') {
 		applyTheme(readTheme());

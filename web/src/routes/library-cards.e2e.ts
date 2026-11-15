@@ -108,7 +108,10 @@ test('library deletion lives in settings and keeps confirmation, conflict locali
 	await page.route('**/api/v1/libraries?*', (route) =>
 		route.fulfill({ json: { items: deleted ? [] : [library(1, 'Main', 12)], next_cursor: null } })
 	);
-	await page.route('**/api/v1/admin/libraries/1', (route) => {
+	await page.route('**/api/v1/admin/libraries?*', (route) =>
+		route.fulfill({ json: { items: [library(1, 'Main'), library(2, 'Archive')], next_cursor: null } })
+	);
+	await page.route('**/api/v1/admin/libraries/1?*', (route) => {
 		if (conflict) return route.fulfill({ status: 409, contentType: 'application/problem+json', json: { status: 409, title: 'Conflict' } });
 		deleted = true;
 		return route.fulfill({ json: { deleted: true } });
@@ -126,12 +129,13 @@ test('library deletion lives in settings and keeps confirmation, conflict locali
 			document.body.dataset.libraryChanges = String(Number(document.body.dataset.libraryChanges) + 1);
 		});
 	});
-	page.once('dialog', (dialog) => dialog.accept());
 	await main.getByRole('button', { name: 'Delete Main', exact: true }).click();
-	await expect(page.getByRole('alert')).toContainText('This library cannot be deleted while it contains books');
+	const dialog = page.getByRole('dialog', { name: 'Delete', exact: true });
+	await dialog.getByLabel('Move all books to').selectOption('2');
+	await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+	await expect(dialog.getByRole('alert')).toContainText('The library could not be deleted.');
 	conflict = false;
-	page.once('dialog', (dialog) => dialog.accept());
-	await main.getByRole('button', { name: 'Delete Main', exact: true }).click();
+	await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
 	await expect(page).toHaveURL('/libraries');
 	await expect(page.getByRole('heading', { name: 'Main', exact: true })).toHaveCount(0);
 	await expect(page.locator('body')).toHaveAttribute('data-library-changes', '1');

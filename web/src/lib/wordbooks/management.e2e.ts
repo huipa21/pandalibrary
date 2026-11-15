@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page } from '@playwright/test';
 import type { Wordbook, WordbookEntry } from './api.js';
 
@@ -155,8 +156,7 @@ for (const operation of ['edit', 'delete', 'import'] as const) {
 			await apple.getByRole('button', { name: 'Save', exact: true }).click();
 			await expect(apple).toContainText('Updated definition');
 		} else if (operation === 'delete') {
-			page.once('dialog', (dialog) => dialog.accept());
-			await apple.getByRole('button', { name: 'Delete', exact: true }).click();
+			await confirmInApp(page, () => apple.getByRole('button', { name: 'Delete', exact: true }).click());
 			await expect(apple).toHaveCount(0);
 		} else {
 			await page.getByLabel('Import JSON', { exact: true }).setInputFiles({
@@ -484,11 +484,9 @@ test('failed edits/imports are visible, unsaved input survives, deletion require
 	await expect(apple).toContainText('Unsaved draft');
 	await page.getByLabel('Import JSON', { exact: true }).setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{') });
 	await expect(page.getByRole('alert')).toContainText('Choose a valid version 1 wordbook JSON export.');
-	page.once('dialog', (dialog) => dialog.dismiss());
-	await apple.getByRole('button', { name: 'Delete', exact: true }).click();
+	await confirmInApp(page, () => apple.getByRole('button', { name: 'Delete', exact: true }).click(), false);
 	await expect(apple).toBeVisible();
-	page.once('dialog', (dialog) => dialog.accept());
-	await apple.getByRole('button', { name: 'Delete', exact: true }).click();
+	await confirmInApp(page, () => apple.getByRole('button', { name: 'Delete', exact: true }).click());
 	await expect(apple).toHaveCount(0);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
