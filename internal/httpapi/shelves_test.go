@@ -420,7 +420,7 @@ func TestShelfHTTPSystemAndAutomaticShelves(t *testing.T) {
 		"missing rules":  `{"kind":"private","mode":"automatic","name":"S"}`,
 		"unknown key":    `{"kind":"private","mode":"automatic","name":"S","rules":{"match":"all","extra":1,"conditions":[{"field":"format","op":"eq","value":"epub"}]}}`,
 		"nested":         `{"kind":"private","mode":"automatic","name":"S","rules":{"match":"all","conditions":[{"match":"any","conditions":[]}]}}`,
-		"condition key":  `{"kind":"private","mode":"automatic","name":"S","rules":{"match":"all","conditions":[{"field":"format","op":"eq","value":"epub","not":true}]}}`,
+		"condition key":  `{"kind":"private","mode":"automatic","name":"S","rules":{"match":"all","conditions":[{"field":"format","op":"eq","value":"epub","nott":true}]}}`,
 		"string id":      `{"kind":"private","mode":"automatic","name":"S","rules":{"match":"all","conditions":[{"field":"tag_id","op":"eq","value":"1"}]}}`,
 		"rules array":    `{"kind":"private","mode":"automatic","name":"S","rules":[]}`,
 		"manual + rules": `{"kind":"private","name":"S","rules":` + rulesJSON + `}`,

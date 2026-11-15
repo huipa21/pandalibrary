@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { FoliateReader, ReflowInsertionTarget } from '#lib/reader/foliate.js';
 	import type { ReaderController } from '#lib/reader/session/reader-controller.svelte.js';
@@ -56,7 +57,7 @@
 		target = null; kind = null; editing = null; text = ''; strokes = []; image = null; mode = null;
 	}
 	function canDiscard() {
-		return !target || !text.trim() && !strokes.length && !image || window.confirm(m['pv9.discard_insert']());
+		return !target || !text.trim() && !strokes.length && !image || confirmAction(m['pv9.discard_insert']());
 	}
 	function place(placement: ReflowInsertionTarget) {
 		kind = mode;
@@ -72,19 +73,39 @@
 	}
 	$effect(() => {
 		if (!mode) return;
-		if (target && !canDiscard()) { mode = null; return; }
-		target = null; selected = null; editing = null;
-		return engine.subscribeInsertion(place);
+		let cancelled = false;
+		let unsubscribe: (() => void) | undefined;
+		untrack(() => {
+			const start = () => {
+				if (cancelled) return;
+				target = null; selected = null; editing = null;
+				unsubscribe = engine.subscribeInsertion(place);
+			};
+			const allowed = canDiscard();
+			if (allowed instanceof Promise) {
+				void allowed.then((accepted) => {
+					if (cancelled) return;
+					if (accepted) start();
+					else mode = null;
+				}).catch((error) => {
+					console.error('Could not confirm discarding an insertion', error);
+					announce(m['pv9.save_failed']());
+				});
+			} else if (allowed) start();
+			else mode = null;
+		});
+		return () => { cancelled = true; unsubscribe?.(); };
 	});
 	onMount(() => {
 		const unsubscribe = engine.subscribeSelection(refresh);
 		const unguard = controller.registerDraftGuard(() => !saving && canDiscard());
 		const resize = new ResizeObserver(refresh);
 		resize.observe(surface);
-		const key = (event: KeyboardEvent) => {
+		const key = async (event: KeyboardEvent) => {
+			if (event.target instanceof Element && event.target.closest('#app-confirmation')) return;
 			if (event.key === 'Escape' && (mode || target || selected)) {
 				event.preventDefault(); event.stopPropagation();
-				if (!saving && canDiscard()) { discard(); selected = null; }
+				if (!saving && await canDiscard()) { discard(); selected = null; }
 			}
 		};
 		window.addEventListener('keydown', key, true);
@@ -142,8 +163,8 @@
 		stroke.push(...point(event));
 		strokes = [...strokes];
 	}
-	function edit(row: PageAnnotation) {
-		if (row.locator.type !== 'cfi' || row.kind !== 'text' || !canDiscard()) return;
+	async function edit(row: PageAnnotation) {
+		if (row.locator.type !== 'cfi' || row.kind !== 'text' || !await canDiscard()) return;
 		mode = null; editing = row; selected = null; kind = 'text';
 		target = { locator: row.locator, position: row.position }; text = row.data.text;
 		void tick().then(() => textarea?.focus());
@@ -221,7 +242,7 @@
 					<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/webp" disabled={saving} onchange={upload} aria-label={m['pv9.image']()} />
 				{/if}
 				<button disabled={saving || kind === 'image' && !image} onclick={save}>{m['pv9.done']()}</button>
-				<button disabled={saving} onclick={() => { if (canDiscard()) discard(); }}>{m['pv9.cancel']()}</button>
+				<button disabled={saving} onclick={async () => { if (await canDiscard()) discard(); }}>{m['pv9.cancel']()}</button>
 				{#if saving}<span role="status">{m['reader.loading']()}</span>{/if}
 			</div>
 		</div>
@@ -231,7 +252,7 @@
 {#if target && !draftBounds}
 	<div class="placement-hint" role="status">
 		<button onclick={() => engine.goTo(target!.locator)}>{m['rp7.go_to_page']()}</button>
-		<button disabled={saving} onclick={() => { if (canDiscard()) discard(); }}>{m['pv9.cancel']()}</button>
+		<button disabled={saving} onclick={async () => { if (await canDiscard()) discard(); }}>{m['pv9.cancel']()}</button>
 	</div>
 {/if}
 <style>

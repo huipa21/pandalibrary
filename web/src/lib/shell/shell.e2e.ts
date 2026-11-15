@@ -98,6 +98,32 @@ test('Favorites stays under Home on desktop and mobile, never in the shelf secti
 	}
 });
 
+test('Collections is a non-linked sidebar heading with the same font size as other headings', async ({ page }) => {
+	await authenticate(page);
+	await mockCatalog(page);
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.goto('/books');
+
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	const collections = sidebar.locator('#sidebar-shelves-heading');
+	await expect(collections).toHaveText('Collections');
+	await expect(collections.locator('a')).toHaveCount(0);
+
+	const fontSizes = await sidebar.evaluate(() =>
+		[
+			'sidebar-home-heading',
+			'sidebar-libraries-heading',
+			'sidebar-shelves-heading',
+			'sidebar-browse-heading'
+		].map((id) => {
+			const heading = document.getElementById(id);
+			if (!heading) throw new Error(`Missing sidebar heading: ${id}`);
+			return getComputedStyle(heading).fontSize;
+		})
+	);
+	expect(new Set(fontSizes).size).toBe(1);
+});
+
 test('header and sidebar float as matching panels, content cards sit on an invisible area and scroll under an opaque header band', async ({ page }) => {
 	await authenticate(page);
 	await mockCatalog(page);

@@ -1,3 +1,4 @@
+import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 async function authenticate(page: Page, role = 'admin', locale = 'en') {
@@ -94,8 +95,7 @@ test('Users searches all pages and exposes selection-aware actions above numbere
 	await expect(toolbar.getByRole('button', { name: 'Reset password', exact: true })).toBeDisabled();
 	await expect(toolbar.getByRole('button', { name: 'Enable', exact: true })).toBeEnabled();
 	await expect(toolbar.getByRole('button', { name: 'Disable', exact: true })).toBeEnabled();
-	page.once('dialog', (dialog) => dialog.accept());
-	await toolbar.getByRole('button', { name: 'Enable', exact: true }).click();
+	await confirmInApp(page, () => toolbar.getByRole('button', { name: 'Enable', exact: true }).click());
 	await expect(page.getByText('Completed for 1 account(s).')).toBeVisible();
 	expect(changes).toEqual([42]);
 	await page.getByRole('checkbox', { name: 'Select all loaded users' }).uncheck();
@@ -141,11 +141,9 @@ test('creates a server backup and stages a confirmed replacement restore', async
 	const row = page.getByRole('row').filter({ hasText: backup.name });
 	await expect(row.getByRole('cell', { name: '1.00 MiB' })).toBeVisible();
 	await expect(row.getByRole('link', { name: `Download ${backup.name}` })).toHaveAttribute('href', `/api/v1/admin/backups/${backup.name}`);
-	page.once('dialog', (dialog) => dialog.dismiss());
-	await row.getByRole('button', { name: `Restore ${backup.name}` }).click();
+	await confirmInApp(page, () => row.getByRole('button', { name: `Restore ${backup.name}` }).click(), false);
 	expect(restoreBody).toBeUndefined();
-	page.once('dialog', (dialog) => dialog.accept());
-	await row.getByRole('button', { name: `Restore ${backup.name}` }).click();
+	await confirmInApp(page, () => row.getByRole('button', { name: `Restore ${backup.name}` }).click());
 	await expect(page.getByText('Restore is staged. Restart the PandaLibrary server to apply it. Data has not been replaced yet.')).toBeVisible();
 	expect(restoreBody).toEqual({ name: backup.name, confirm: true });
 	await expect(page.getByRole('button', { name: 'Create backup', exact: true })).toBeDisabled();
@@ -169,8 +167,7 @@ test('uploads a backup for restore and reports invalid archives without staging'
 	await page.getByLabel('Backup archive (.tar.gz)').setInputFiles({
 		name: 'saved.tar.gz', mimeType: 'application/gzip', buffer: Buffer.from('not a real archive')
 	});
-	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByRole('button', { name: 'Upload and restore', exact: true }).click();
+	await confirmInApp(page, () => page.getByRole('button', { name: 'Upload and restore', exact: true }).click());
 	await expect(page.getByRole('alert')).toContainText('This backup is invalid, damaged, incompatible, or cannot be restored safely.');
 	expect(multipart).toContain('name="file"; filename="saved.tar.gz"');
 	expect(multipart).toContain('name="confirm"\r\n\r\ntrue');
@@ -229,12 +226,17 @@ test('manages libraries and access grants with conflicts', async ({ page }) => {
 	await expect(page.getByText('Created “Main Copy”.')).toBeVisible();
 	await expect(page.getByRole('listitem', { name: 'Main Copy' })).toBeVisible();
 
-	page.once('dialog', (dialog) => dialog.accept());
 	await page.getByRole('button', { name: 'Delete Main', exact: true }).click();
-	await expect(page.getByText('This library cannot be deleted while it contains books')).toBeVisible();
+	let deleteDialog = page.getByRole('dialog', { name: 'Delete', exact: true });
+	await deleteDialog.getByLabel('Move all books to').selectOption({ label: 'Comics' });
+	await deleteDialog.getByRole('button', { name: 'Delete', exact: true }).click();
+	await expect(deleteDialog.getByRole('alert')).toContainText('The library could not be deleted');
+	await deleteDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
-	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByRole('button', { name: 'Delete Comics' }).click();
+	await page.getByRole('button', { name: 'Delete Comics', exact: true }).click();
+	deleteDialog = page.getByRole('dialog', { name: 'Delete', exact: true });
+	await deleteDialog.getByLabel('Move all books to').selectOption({ label: 'Main' });
+	await deleteDialog.getByRole('button', { name: 'Delete', exact: true }).click();
 	await expect(page.getByText('Deleted “Comics”.')).toBeVisible();
 	await expect(page.getByRole('listitem', { name: 'Comics' })).toHaveCount(0);
 
@@ -249,8 +251,7 @@ test('manages libraries and access grants with conflicts', async ({ page }) => {
 	await expect(accessPanel.getByText('User #9 can now see “Main”.')).toBeVisible();
 	await expect(accessPanel.getByRole('cell', { name: '9', exact: true })).toBeVisible();
 
-	page.once('dialog', (dialog) => dialog.accept());
-	await accessPanel.getByRole('button', { name: 'Remove for user #7' }).click();
+	await confirmInApp(page, () => accessPanel.getByRole('button', { name: 'Remove for user #7' }).click());
 	await expect(accessPanel.getByText('User #7 can no longer see “Main”.')).toBeVisible();
 	await expect(accessPanel.getByRole('cell', { name: '7', exact: true })).toHaveCount(0);
 	expect(requests).toContain('PUT /api/v1/admin/libraries/1/access/9');
@@ -285,14 +286,12 @@ test('hides and unhides a book for a user', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Books hidden from user #5' })).toBeVisible();
 	await expect(page.getByRole('cell', { name: '30', exact: true })).toBeVisible();
 
-	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByLabel('Book ID').fill('41');
+	await confirmInApp(page, () => page.getByLabel('Book ID').fill('41'));
 	await page.getByRole('button', { name: 'Hide book', exact: true }).click();
 	await expect(page.getByText('Book #41 is now hidden from user #5.')).toBeVisible();
 	await expect(page.getByRole('cell', { name: '41', exact: true })).toBeVisible();
 
-	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByRole('button', { name: 'Unhide book #30' }).click();
+	await confirmInApp(page, () => page.getByRole('button', { name: 'Unhide book #30' }).click());
 	await expect(page.getByText('Book #30 is visible to user #5 again.')).toBeVisible();
 	await expect(page.getByRole('cell', { name: '30', exact: true })).toHaveCount(0);
 });

@@ -54,12 +54,33 @@ test('library creation saves the chosen icon and resets the picker', async ({ pa
 	const dialog = page.getByRole('dialog', { name: 'New Library', exact: true });
 	const name = dialog.getByLabel('Name', { exact: true });
 	await expect(name).toBeFocused();
+	const slug = dialog.getByLabel('Slug', { exact: true });
+	const nameBox = await name.boundingBox();
+	const slugBox = await slug.boundingBox();
+	if (!nameBox || !slugBox) throw new Error('Library form fields are missing');
+	expect(slugBox.y).toBeGreaterThan(nameBox.y + nameBox.height);
+	await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+	await expect(dialog.getByRole('heading', { name: 'Automatic rules', exact: true })).toHaveCount(0);
 	const form = name.locator('xpath=ancestor::form');
+	for (const width of [320, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		const controls = form.getByRole('group', { name: 'Icon' }).locator('label, button');
+		const positions = await controls.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top));
+		expect(new Set(positions).size).toBe(1);
+		await expect(form.getByRole('button', { name: 'Show more icons' })).toHaveAttribute('aria-expanded', 'false');
+	}
 	await name.fill('History');
-	await form.getByRole('radio', { name: 'Star', exact: true }).check();
+	await form.getByRole('button', { name: 'Show more icons' }).click();
+	const tray = form.locator('[id$="-icon-tray"]');
+	await expect(tray.getByRole('radio')).toHaveCount(101);
+	expect(await tray.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+	await form.getByRole('radio', { name: 'Telescope', exact: true }).check();
+	await form.getByRole('button', { name: 'Show fewer icons' }).click();
+	await expect(form.getByRole('radio', { name: 'Telescope', exact: true })).toBeChecked();
+	await expect(form.locator('svg[data-icon="telescope"]')).toBeVisible();
 	await form.getByRole('button', { name: 'Create library', exact: true }).click();
 	await expect.poll(() => server.creates.length).toBe(1);
-	expect(server.creates[0]).toEqual({ name: 'History', slug: 'history', icon: 'star' });
+	expect(server.creates[0]).toEqual({ name: 'History', slug: 'history', icon: 'telescope' });
 	await expect(dialog).toHaveCount(0);
 	await page.goto('/libraries?create=1');
 	await expect(dialog.getByRole('radio', { name: 'Automatic', exact: true })).toBeChecked();

@@ -50,6 +50,25 @@ WHERE slug = sqlc.arg(slug) AND id != sqlc.arg(exclude_id);
 -- name: CatalogLibraryBookCount :one
 SELECT count(*) FROM books WHERE library_id = ?;
 
+-- name: CatalogLibraryCount :one
+SELECT count(*) FROM libraries;
+
+-- name: CatalogMoveLibraryBooks :exec
+UPDATE books SET library_id = sqlc.arg(destination_id), updated_at = sqlc.arg(updated_at)
+WHERE library_id = sqlc.arg(source_id);
+
+-- name: CatalogMoveLibraryImports :exec
+UPDATE import_jobs SET library_id = sqlc.arg(destination_id)
+WHERE library_id = sqlc.arg(source_id);
+
+-- name: CatalogMoveLibraryHeapTargets :exec
+UPDATE bookheap_items SET target_library_id = sqlc.arg(destination_id)
+WHERE target_library_id = sqlc.arg(source_id);
+
+-- name: CatalogReplaceDefaultLibrary :exec
+UPDATE server_settings SET value = sqlc.arg(value), updated_at = sqlc.arg(updated_at)
+WHERE key = 'default_library_id';
+
 -- name: CatalogLibraryVisibleBookCount :one
 SELECT count(*) FROM books b
 WHERE b.library_id = sqlc.arg(library_id)

@@ -68,6 +68,105 @@ func TestLibraryCRUDAndDefaultGuard(t *testing.T) {
 	}
 }
 
+func TestDeleteLibraryTransfersAllBooksAndDefaultAtomically(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	ctx := context.Background()
+	admin := Viewer{UserID: 1, IsAdmin: true}
+	for _, statement := range []string{
+		`INSERT INTO server_settings (key, value, updated_at) VALUES ('default_library_id', '10', 1)`,
+		`UPDATE books SET visibility = 'private', owner_id = 2 WHERE id = 104`,
+		`INSERT INTO import_jobs (id, source, library_id, original_name, created_at) VALUES (1, 'upload', 10, 'book.epub', 1)`,
+		`CREATE TRIGGER reject_library_delete BEFORE DELETE ON libraries BEGIN SELECT RAISE(ABORT, 'test rollback'); END`,
+	} {
+		if _, err := fixture.db.Writer.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := fixture.service.DeleteLibrary(ctx, admin, 10, 20); err == nil {
+		t.Fatal("expected injected deletion failure")
+	}
+	var sourceBooks int
+	var setting string
+	if err := fixture.db.Reader.QueryRowContext(ctx, `SELECT count(*) FROM books WHERE library_id = 10`).Scan(&sourceBooks); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.Reader.QueryRowContext(ctx, `SELECT value FROM server_settings WHERE key = 'default_library_id'`).Scan(&setting); err != nil {
+		t.Fatal(err)
+	}
+	if sourceBooks != 3 || setting != "10" {
+		t.Fatalf("failed deletion was not rolled back: books=%d default=%s", sourceBooks, setting)
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `DROP TRIGGER reject_library_delete`); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		viewer Viewer
+		dest   int64
+		want   error
+	}{
+		{Viewer{UserID: 2}, 20, ErrForbidden},
+		{admin, 10, ErrInvalid},
+		{admin, 0, ErrInvalid},
+		{admin, 999, ErrNotFound},
+	} {
+		if err := fixture.service.DeleteLibrary(ctx, test.viewer, 10, test.dest); !errors.Is(err, test.want) {
+			t.Fatalf("delete to %d = %v, want %v", test.dest, err, test.want)
+		}
+	}
+	if err := fixture.service.DeleteLibrary(ctx, admin, 10, 20); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{101, 102, 104} {
+		var libraryID int64
+		if err := fixture.db.Reader.QueryRowContext(ctx, `SELECT library_id FROM books WHERE id = ?`, id).Scan(&libraryID); err != nil || libraryID != 20 {
+			t.Fatalf("book %d destination = %d, %v", id, libraryID, err)
+		}
+		var files int
+		if err := fixture.db.Reader.QueryRowContext(ctx, `SELECT count(*) FROM book_files WHERE book_id = ?`, id).Scan(&files); err != nil || files == 0 {
+			t.Fatalf("book %d lost files: %d, %v", id, files, err)
+		}
+	}
+	var importLibrary int64
+	if err := fixture.db.Reader.QueryRowContext(ctx, `SELECT library_id FROM import_jobs WHERE id = 1`).Scan(&importLibrary); err != nil || importLibrary != 20 {
+		t.Fatalf("import destination = %d, %v", importLibrary, err)
+	}
+	if err := fixture.db.Reader.QueryRowContext(ctx, `SELECT value FROM server_settings WHERE key = 'default_library_id'`).Scan(&setting); err != nil || setting != "20" {
+		t.Fatalf("default library = %s, %v", setting, err)
+	}
+	if _, err := fixture.service.GetBook(ctx, Viewer{UserID: 2}, 101); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("source access was copied to destination: %v", err)
+	}
+	if _, err := fixture.service.GetBook(ctx, Viewer{UserID: 2}, 104); err != nil {
+		t.Fatalf("private book ownership was lost: %v", err)
+	}
+	if _, err := fixture.service.GetLibrary(ctx, admin, 10); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("source library still exists: %v", err)
+	}
+}
+
+func TestDeleteLibraryNeverDeletesLastLibrary(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	ctx := context.Background()
+	admin := Viewer{UserID: 1, IsAdmin: true}
+	if err := fixture.service.DeleteLibrary(ctx, admin, 10, 30); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.DeleteLibrary(ctx, admin, 20, 30); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.DeleteLibrary(ctx, admin, 30); !errors.Is(err, ErrConflict) {
+		t.Fatalf("delete last populated library = %v", err)
+	}
+	if _, err := fixture.db.Writer.ExecContext(ctx, `DELETE FROM books`); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.DeleteLibrary(ctx, admin, 30); !errors.Is(err, ErrConflict) {
+		t.Fatalf("delete last empty library = %v", err)
+	}
+	if _, err := fixture.service.GetLibrary(ctx, admin, 30); err != nil {
+		t.Fatalf("last library was removed: %v", err)
+	}
+}
 func TestAccessAndHideChangesAffectVisibility(t *testing.T) {
 	fixture := newCatalogFixture(t)
 	ctx := context.Background()

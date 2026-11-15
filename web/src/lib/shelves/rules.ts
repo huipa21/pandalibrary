@@ -19,7 +19,8 @@ export function validRuleGroups(groups: readonly RuleGroup[]): boolean {
 		ids.add(group.id);
 		const { match, conditions } = group.rules;
 		return (match === 'all' || match === 'any') && conditions.length > 0 && conditions.length <= 20 &&
-			conditions.every(({ field, op, value }) => {
+			conditions.every(({ field, op, value, not }) => {
+				if (not !== undefined && typeof not !== 'boolean') return false;
 				if (!(RULE_FIELDS as readonly string[]).includes(field) || op !== (field === 'title' ? 'contains' : 'eq')) return false;
 				if (isIDField(field)) return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 				if (typeof value !== 'string') return false;

@@ -1,3 +1,4 @@
+import { checkDraftGuards, type DraftGuard } from '#lib/shell/confirmation.js';
 export const SIDEBAR_TABS = ['toc', 'pages', 'annotations', 'bookmarks', 'search'] as const;
 export type SidebarTab = (typeof SIDEBAR_TABS)[number];
 export type RevealKind = 'mark' | 'bookmark' | 'insert' | 'note';
@@ -18,7 +19,7 @@ export interface SidebarState {
 	toggle(tab: SidebarTab): void;
 	reveal(kind: RevealKind, id: string): void;
 	/** Tab content registers a guard that may veto unmounting it (for example to keep an unsaved draft). */
-	registerGuard(guard: () => boolean): () => void;
+	registerGuard(guard: DraftGuard): () => void;
 	dispose(): void;
 }
 
@@ -79,7 +80,7 @@ export function createSidebarState(options: SidebarOptions = {}): SidebarState {
 	let docked = $state(media?.matches ?? true);
 	const onMedia = (event: MediaQueryListEvent) => { docked = event.matches; };
 	media?.addEventListener('change', onMedia);
-	const guards = new Set<() => boolean>();
+	const guards = new Set<DraftGuard>();
 	let seq = 0;
 
 	function persist() {
@@ -91,8 +92,11 @@ export function createSidebarState(options: SidebarOptions = {}): SidebarState {
 	}
 
 	/** Switching away from the mounted tab unmounts it; collapsing only hides it. */
-	function canSwitch(next: SidebarTab) {
-		return next === tab || [...guards].every((guard) => guard());
+	function switchWhenAllowed(next: SidebarTab, action: () => void) {
+		const allowed = next === tab || checkDraftGuards([...guards]);
+		if (allowed instanceof Promise) {
+			void allowed.then((accepted) => { if (accepted) action(); }).catch((error) => console.error('Could not confirm sidebar navigation', error));
+		} else if (allowed) action();
 	}
 
 	function set(nextOpen: boolean, nextTab: SidebarTab) {
@@ -103,8 +107,8 @@ export function createSidebarState(options: SidebarOptions = {}): SidebarState {
 	}
 
 	function show(next: SidebarTab) {
-		if (!tabs.includes(next) || !canSwitch(next)) return;
-		set(true, next);
+		if (!tabs.includes(next)) return;
+		switchWhenAllowed(next, () => set(true, next));
 	}
 
 	return {
@@ -120,9 +124,10 @@ export function createSidebarState(options: SidebarOptions = {}): SidebarState {
 		},
 		reveal(kind, id) {
 			const next: SidebarTab = kind === 'bookmark' ? 'bookmarks' : 'annotations';
-			if (!canSwitch(next)) return;
-			set(true, next);
-			target = { kind, id, seq: ++seq };
+			switchWhenAllowed(next, () => {
+				set(true, next);
+				target = { kind, id, seq: ++seq };
+			});
 		},
 		registerGuard(guard) {
 			guards.add(guard);

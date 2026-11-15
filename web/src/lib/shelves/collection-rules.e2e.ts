@@ -165,16 +165,22 @@ test('edits several independent all/any rules while allowing manual additions to
 	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
 	await sidebar.getByRole('menuitem', { name: 'All Collections', exact: true }).click();
 	await main.getByRole('link', { name: 'Across libraries', exact: true }).click();
-	await main.getByRole('button', { name: 'Add automatic rule' }).click();
+	await main.getByRole('button', { name: 'Add group' }).click();
 	await page.getByLabel('Rule name', { exact: true }).nth(1).fill('Authors');
 	await page.locator('#edit-shelf-rules-1-match').selectOption('any');
 	await page.locator('#edit-shelf-rules-1-0-field').selectOption('author_id');
 	await page.getByLabel('Numeric ID', { exact: true }).fill('12');
+	await page.getByLabel('NOT (exclude matching books)', { exact: true }).nth(1).check();
+	await page.getByRole('button', { name: 'Add rule', exact: true }).nth(1).click();
+	await page.locator('#edit-shelf-rules-1-1-value').fill('Moon');
 	await page.getByRole('button', { name: 'Save changes', exact: true }).click();
 	await expect.poll(() => server.patches.length).toBe(1);
 	expect(server.patches[0].rule_groups).toEqual([
 		{ id: 'legacy', name: 'Novels', rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: 'Novel' }] } },
-		expect.objectContaining({ name: 'Authors', rules: { match: 'any', conditions: [{ field: 'author_id', op: 'eq', value: 12 }] } })
+		expect.objectContaining({ name: 'Authors', rules: { match: 'any', conditions: [
+			{ field: 'author_id', op: 'eq', value: 12, not: true },
+			{ field: 'title', op: 'contains', value: 'Moon' }
+		] } })
 	]);
 	await page.goto('/books/42');
 	await page.getByRole('main').getByRole('button', { name: 'Add to collection', exact: true }).click();
@@ -209,6 +215,8 @@ test('Chinese collection rule controls and deletion choices are localized', asyn
 	await page.getByRole('main').getByRole('link', { name: 'Across libraries', exact: true }).click();
 	await expect(page.getByRole('heading', { name: '合集设置' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: '自动规则' })).toBeVisible();
+	await page.getByRole('button', { name: '显示更多图标' }).click();
+	await expect(page.getByRole('radio', { name: '望远镜', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: '删除规则', exact: true }).click();
 	await expect(page.getByLabel('将匹配的图书保留为手动成员')).toBeVisible();
 	await expect(page.getByRole('main')).not.toContainText('书架');
@@ -240,7 +248,7 @@ test('creates a collection with optional automatic rules instead of exclusive me
 	await page.getByRole('menuitem', { name: 'New collection', exact: true }).click();
 	const dialog = page.getByRole('dialog', { name: 'Create collection' });
 	await dialog.getByLabel('Collection name', { exact: true }).fill('Mixed collection');
-	await dialog.getByRole('button', { name: 'Add automatic rule' }).click();
+	await dialog.getByRole('button', { name: 'Add group' }).click();
 	await dialog.getByLabel('Rule name', { exact: true }).fill('Reading list');
 	await page.locator('#create-shelf-rules-0-0-field').selectOption('reading_status');
 	await page.locator('#create-shelf-rules-0-0-value').selectOption('reading');

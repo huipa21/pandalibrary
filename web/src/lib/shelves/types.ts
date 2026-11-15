@@ -14,6 +14,7 @@ export interface RuleCondition {
 	field: string;
 	op: string;
 	value: string | number;
+	not?: boolean;
 }
 
 export interface RuleSet {

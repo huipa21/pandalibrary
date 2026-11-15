@@ -114,8 +114,9 @@ export async function updateLibrary(id: number, patch: LibraryPatch): Promise<Li
 	return (await api.request<{ library: Library }>(`/admin/libraries/${id}`, { method: 'PATCH', body })).library;
 }
 
-export async function deleteLibrary(id: number): Promise<void> {
-	await api.request<{ deleted: boolean }>(`/admin/libraries/${id}`, { method: 'DELETE' });
+export async function deleteLibrary(id: number, destinationLibraryID?: number): Promise<void> {
+	const query = destinationLibraryID === undefined ? '' : `?destination_library_id=${destinationLibraryID}`;
+	await api.request<{ deleted: boolean }>(`/admin/libraries/${id}${query}`, { method: 'DELETE' });
 }
 
 export async function listLibraryAccess(libraryID: number, options: RequestOptions = {}): Promise<Page<AccessEntry>> {

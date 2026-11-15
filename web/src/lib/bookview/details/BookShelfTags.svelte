@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { Shelf } from '#lib/shelves/types.js';
@@ -33,7 +34,7 @@
 
 	async function remove(shelf: Shelf) {
 		const name = shelfName(shelf);
-		if (offline || !window.confirm(m['bd5.remove_confirm']({ title: bookTitle, shelf: name }))) return;
+		if (offline || !await confirmAction(m['bd5.remove_confirm']({ title: bookTitle, shelf: name }))) return;
 		const title = bookTitle;
 		const ids = shelves.memberIds;
 		const index = ids.indexOf(shelf.id);

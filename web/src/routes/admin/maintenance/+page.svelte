@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
@@ -95,7 +96,7 @@
 	async function run(job: MaintenanceJob) {
 		if (running[job.name] || isMaintenanceActive(job)) return;
 		const name = jobName(job.name);
-		if (!window.confirm(m['admin.maintenance.run_confirm']({ name }))) return;
+		if (!await confirmAction(m['admin.maintenance.run_confirm']({ name }))) return;
 		running[job.name] = true;
 		delete messages[job.name];
 		try {

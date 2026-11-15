@@ -1,7 +1,6 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 	import LibraryForm from '#lib/admin/LibraryForm.svelte';
-	import Icon from '#lib/bookview/Icon.svelte';
 	import { createLibrary } from '#lib/admin/api.js';
 	import { adminErrorKey } from '#lib/admin/form.js';
 	import { translate } from '#lib/paging/translate.js';
@@ -50,17 +49,11 @@
 </script>
 
 {#if open}
-	<dialog bind:this={dialogElement} class="fixed inset-0 m-auto max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-0 text-slate-950 shadow-lg"
+	<dialog bind:this={dialogElement} class="fixed inset-0 m-auto max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 text-slate-950 shadow-lg"
 		aria-label={m['ux1.library.new']()} oncancel={cancel} {onkeydown}>
-		<section class="card space-y-4 p-6">
-			<header class="flex items-center justify-between gap-4">
-				<h1 class="text-xl font-semibold">{m['ux1.library.new']()}</h1>
-				<button type="button" class="shell-icon-button" aria-label={m['bd1.back']()} title={m['bd1.back']()}
-					disabled={submitting} onclick={onclose}><Icon name="arrow-left" /></button>
-			</header>
-			<LibraryForm idPrefix="new-library" suggestSlugFromName submitLabel={m['admin.libraries.create']()} busyLabel={m['admin.libraries.creating']()}
-				onsave={save} />
-		</section>
+		<h2 class="mb-4 text-lg font-semibold">{m['ux1.library.new']()}</h2>
+		<LibraryForm idPrefix="new-library" suggestSlugFromName stacked submitLabel={m['admin.libraries.create']()} busyLabel={m['admin.libraries.creating']()}
+			onsave={save} oncancel={() => { if (!submitting) onclose(); }} />
 	</dialog>
 {/if}
 

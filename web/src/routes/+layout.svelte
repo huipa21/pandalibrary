@@ -7,6 +7,7 @@
 	import { ApiError, api } from '#lib/api/client.js';
 	import BuildVersion from '#lib/buildinfo/BuildVersion.svelte';
 	import AppShell from '#lib/shell/AppShell.svelte';
+	import ConfirmationDialog from '#lib/shell/ConfirmationDialog.svelte';
 	import { readerChrome } from '#lib/shell/reader-chrome.js';
 	import { initializeBookDisplay } from '#lib/catalog/book-display.svelte.js';
 	import ShelfNavigation from '#lib/shelves/ShelfNavigation.svelte';
@@ -183,6 +184,7 @@
 	<meta name="description" content={m['home.description']()} />
 </svelte:head>
 
+<ConfirmationDialog />
 <AppShell pathname={page.url.pathname} {viewer} onlogout={logout} onlocale={changeLocale}>
 	{#snippet shelves()}
 		<ShelfNavigation pathname={page.url.pathname} role={viewer?.role ?? ''} />

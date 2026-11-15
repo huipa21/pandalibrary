@@ -39,6 +39,29 @@ type catalogHTTPFixture struct {
 	hash   string
 }
 
+func TestCatalogHTTPDeleteLibraryWithDestination(t *testing.T) {
+	fixture := newCatalogHTTPFixture(t)
+	for _, query := range []string{
+		"?destination_library_id=10", "?destination_library_id=0", "?destination_library_id=bad",
+		"?destination_library_id=20&destination_library_id=30",
+	} {
+		requireProblem(t, fixture.request(http.MethodDelete, "/api/v1/admin/libraries/10"+query, nil, fixture.admin, nil), http.StatusBadRequest)
+	}
+	requireProblem(t, fixture.request(http.MethodDelete, "/api/v1/admin/libraries/10?destination_library_id=999", nil, fixture.admin, nil), http.StatusNotFound)
+	requireProblem(t, fixture.request(http.MethodDelete, "/api/v1/admin/libraries/10?destination_library_id=20", nil, fixture.reader, nil), http.StatusForbidden)
+	for _, source := range []string{"10", "20"} {
+		response := fixture.request(http.MethodDelete, "/api/v1/admin/libraries/"+source+"?destination_library_id=30", nil, fixture.admin, nil)
+		if response.Code != http.StatusOK {
+			t.Fatalf("transfer and delete = %d %s", response.Code, response.Body.String())
+		}
+	}
+	requireProblem(t, fixture.request(http.MethodDelete, "/api/v1/admin/libraries/30", nil, fixture.admin, nil), http.StatusConflict)
+	var books int
+	if err := fixture.db.Reader.QueryRow(`SELECT count(*) FROM books WHERE library_id = 30`).Scan(&books); err != nil || books != 3 {
+		t.Fatalf("destination books = %d, %v", books, err)
+	}
+}
+
 func newCatalogHTTPFixture(t *testing.T) catalogHTTPFixture {
 	t.Helper()
 	ctx := context.Background()

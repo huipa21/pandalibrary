@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { currentAccount, offlineAvailable, offlineStatus, refreshStatus, syncNow } from './client.js';
@@ -85,7 +86,7 @@
 		const confirm = bookId === undefined
 			? m['offline.storage.remove_all_confirm']()
 			: m['offline.storage.remove_confirm']();
-		if (!window.confirm(confirm)) return;
+		if (!await confirmAction(confirm)) return;
 		busy = true;
 		error = '';
 		notice = '';
@@ -103,7 +104,7 @@
 	}
 
 	async function discard(sequence: number) {
-		if (!window.confirm(m['offline.outbox.discard_confirm']())) return;
+		if (!await confirmAction(m['offline.outbox.discard_confirm']())) return;
 		busy = true;
 		error = '';
 		try {

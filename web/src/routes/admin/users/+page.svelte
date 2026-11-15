@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
@@ -118,7 +119,7 @@
 		};
 		const warning = action === 'delete' ? m['admin.users.bulk_delete_warning']()
 			: action === 'disable' || action === 'revoke' ? m['admin.users.bulk_credentials_warning']() : '';
-		if (!window.confirm(m['admin.users.bulk_confirm']({
+		if (!await confirmAction(m['admin.users.bulk_confirm']({
 			action: labels[action], users: targets.map((user) => user.username).join(', '), warning
 		}))) return;
 		actionInProgress = true;

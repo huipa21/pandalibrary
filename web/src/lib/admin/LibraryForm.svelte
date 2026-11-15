@@ -13,6 +13,7 @@
 		initialIcon = '',
 		initialSlug = '',
 		suggestSlugFromName = false,
+		stacked = false,
 		resetOnSuccess = false,
 		onsave,
 		oncancel
@@ -25,6 +26,7 @@
 		initialSlug?: string;
 		/** Fills the slug from the name until the administrator edits the slug. */
 		suggestSlugFromName?: boolean;
+		stacked?: boolean;
 		resetOnSuccess?: boolean;
 		/** Returns an error message, or null when the save succeeded. Values are kept on error. */
 		onsave: (name: string, slug: string, icon: string) => Promise<string | null>;
@@ -86,44 +88,48 @@
 	}
 </script>
 
-<form class="grid gap-4 sm:grid-cols-2" onsubmit={submit} novalidate>
+<form class={`grid gap-4 ${stacked ? '' : 'sm:grid-cols-2'}`} onsubmit={submit} novalidate>
 	<div class="grid content-start gap-1">
-		<label class="text-sm font-medium" for={`${idPrefix}-name`}>{m['admin.libraries.form.name']()}</label>
-		<input
-			id={`${idPrefix}-name`}
-			class={inputClass}
-			autocomplete="off"
-			required
-			aria-invalid={nameError ? 'true' : undefined}
-			aria-describedby={nameError ? `${idPrefix}-name-error` : undefined}
-			bind:value={name}
-			bind:this={nameInput}
-			oninput={nameChanged}
-		/>
-		{#if nameError}<p id={`${idPrefix}-name-error`} class="text-sm text-red-700">{nameError}</p>{/if}
+		<label class="grid gap-1 text-sm font-medium" for={`${idPrefix}-name`}>
+			<span>{m['admin.libraries.form.name']()}</span>
+			<input
+				id={`${idPrefix}-name`}
+				class={inputClass}
+				autocomplete="off"
+				required
+				aria-invalid={nameError ? 'true' : undefined}
+				aria-describedby={nameError ? `${idPrefix}-name-error` : undefined}
+				bind:value={name}
+				bind:this={nameInput}
+				oninput={nameChanged}
+			/>
+		</label>
+		{#if nameError}<p id={`${idPrefix}-name-error`} class="-mt-2 text-sm text-red-700" role="alert">{nameError}</p>{/if}
 	</div>
 	<div class="grid content-start gap-1">
-		<label class="text-sm font-medium" for={`${idPrefix}-slug`}>{m['admin.libraries.form.slug']()}</label>
-		<input
-			id={`${idPrefix}-slug`}
-			class={`${inputClass} font-mono`}
-			autocomplete="off"
-			spellcheck="false"
-			required
-			aria-invalid={slugError ? 'true' : undefined}
-			aria-describedby={`${idPrefix}-slug-hint${slugError ? ` ${idPrefix}-slug-error` : ''}`}
-			bind:value={slug}
-			bind:this={slugInput}
-			oninput={() => (slugEdited = true)}
-		/>
+		<label class="grid gap-1 text-sm font-medium" for={`${idPrefix}-slug`}>
+			<span>{m['admin.libraries.form.slug']()}</span>
+			<input
+				id={`${idPrefix}-slug`}
+				class={`${inputClass} font-mono`}
+				autocomplete="off"
+				spellcheck="false"
+				required
+				aria-invalid={slugError ? 'true' : undefined}
+				aria-describedby={`${idPrefix}-slug-hint${slugError ? ` ${idPrefix}-slug-error` : ''}`}
+				bind:value={slug}
+				bind:this={slugInput}
+				oninput={() => (slugEdited = true)}
+			/>
+		</label>
 		<p id={`${idPrefix}-slug-hint`} class="text-xs text-slate-500">{m['admin.libraries.form.slug_hint']()}</p>
-		{#if slugError}<p id={`${idPrefix}-slug-error`} class="text-sm text-red-700">{slugError}</p>{/if}
+		{#if slugError}<p id={`${idPrefix}-slug-error`} class="-mt-2 text-sm text-red-700" role="alert">{slugError}</p>{/if}
 	</div>
-	<div class="sm:col-span-2">
+	<div class={stacked ? '' : 'sm:col-span-2'}>
 		<IconPicker {idPrefix} bind:value={icon} disabled={busy} />
 	</div>
-	{#if error}<p class={`sm:col-span-2 ${errorBox}`} role="alert">{error}</p>{/if}
-	<div class="flex flex-wrap gap-3 sm:col-span-2">
+	{#if error}<p class={`${stacked ? '' : 'sm:col-span-2'} ${errorBox}`} role="alert">{error}</p>{/if}
+	<div class={`flex flex-wrap gap-3 ${stacked ? '' : 'sm:col-span-2'}`}>
 		<button type="submit" class={primaryButton} disabled={busy}>{busy ? busyLabel : submitLabel}</button>
 		{#if oncancel}
 			<button type="button" class={secondaryButton} onclick={oncancel}>{m['admin.cancel']()}</button>

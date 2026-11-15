@@ -48,6 +48,7 @@ type RuleCondition struct {
 	Field string          `json:"field"`
 	Op    string          `json:"op"`
 	Value json.RawMessage `json:"value"`
+	Not   bool            `json:"not,omitempty"`
 }
 
 // normalizeRules validates a RuleSet and returns it with canonical JSON values plus
@@ -65,7 +66,7 @@ func normalizeRules(rules RuleSet) (RuleSet, string, error) {
 		if err != nil {
 			return RuleSet{}, "", fmt.Errorf("%w (condition %d)", err, index+1)
 		}
-		result.Conditions = append(result.Conditions, RuleCondition{Field: condition.Field, Op: condition.Op, Value: value})
+		result.Conditions = append(result.Conditions, RuleCondition{Field: condition.Field, Op: condition.Op, Value: value, Not: condition.Not})
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {

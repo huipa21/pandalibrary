@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction, type DraftGuard } from '#lib/shell/confirmation.js';
 	import { onMount, tick } from 'svelte';
 	import { v7 as uuidv7 } from 'uuid';
 	import * as m from '#lib/paraglide/messages.js';
@@ -20,7 +21,7 @@
 		entry: AnnotationEntry;
 		readonly: boolean;
 		controller: ReaderController;
-		registerGuard: (guard: () => boolean) => () => void;
+		registerGuard: (guard: DraftGuard) => () => void;
 		ondeleteNote: (note: Note) => Promise<void>;
 		onclose: (restoreFocus: boolean, checkDraft?: boolean) => void;
 		onjump: (entry: AnnotationEntry) => Promise<boolean>;
@@ -39,10 +40,10 @@
 	function guard() {
 		const dirty = (draft && draft.body !== draft.original) ||
 			(textDraft && JSON.stringify(textDraft) !== textOriginal);
-		return !dirty || window.confirm(m['reader.note.discard_confirm']());
+		return !dirty || confirmAction(m['reader.note.discard_confirm']());
 	}
-	function editNote(note?: Note) {
-		if (!guard()) return;
+	async function editNote(note?: Note) {
+		if (!await guard()) return;
 		draft = {
 			id: note?.id ?? uuidv7(), highlightId: entry.id, body: note?.body_md ?? '',
 			original: note?.body_md ?? '', editing: !!note
@@ -87,6 +88,7 @@
 			void tick().then(() => dialog?.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true }));
 		}
 		const escape = (event: KeyboardEvent) => {
+			if (event.target instanceof Element && event.target.closest('#app-confirmation')) return;
 			if (event.key !== 'Escape' || !dialog?.open) return;
 			event.preventDefault();
 			event.stopPropagation();
@@ -191,7 +193,7 @@
 					</div>
 					<div class="flex gap-3">
 						<button type="submit" class="rp7-footer-button" disabled={controller.busy || !textDraft.text.trim()}>{m['pv9.done']()}</button>
-						<button type="button" class="rp7-footer-button" disabled={controller.busy} onclick={() => { if (guard()) textDraft = null; }}>{m['reader.note.cancel']()}</button>
+						<button type="button" class="rp7-footer-button" disabled={controller.busy} onclick={async () => { if (await guard()) textDraft = null; }}>{m['reader.note.cancel']()}</button>
 					</div>
 				</form>
 			{:else}
@@ -234,14 +236,14 @@
 						{#if !readonly}
 							<div class="mt-2 flex gap-3 text-xs">
 								<button type="button" disabled={controller.busy} onclick={() => editNote(note)}>{m['reader.note.edit']()}</button>
-								<button type="button" disabled={controller.busy} onclick={async () => { if (guard() && await ondeleteNote(note) && draft?.id === note.id) draft = null; }}>{m['reader.annotations.delete']()}</button>
+								<button type="button" disabled={controller.busy} onclick={async () => { if (await guard() && await ondeleteNote(note) && draft?.id === note.id) draft = null; }}>{m['reader.annotations.delete']()}</button>
 							</div>
 						{/if}
 					</div>
 				{/each}
 				{#if draft}
 					{#key draft.id}
-						<StickyNote initial={draft.body} disabled={controller.busy} onchange={(body) => { if (draft) draft.body = body; }} onsave={(body) => { void saveNote(body); }} oncancel={(body) => { if (draft) draft.body = body; if (guard()) draft = null; }} />
+						<StickyNote initial={draft.body} disabled={controller.busy} onchange={(body) => { if (draft) draft.body = body; }} onsave={(body) => { void saveNote(body); }} oncancel={async (body) => { if (draft) draft.body = body; if (await guard()) draft = null; }} />
 					{/key}
 				{:else if !readonly}
 					<button type="button" class="rp7-link" disabled={controller.busy} onclick={() => editNote()}>{m['rp7.add_comment']()}</button>

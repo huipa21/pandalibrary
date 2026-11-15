@@ -115,7 +115,7 @@
 <section class="shell-section" aria-labelledby="sidebar-shelves-heading" data-slot="sidebar-shelves">
 	<div class="flex items-center justify-between gap-2 pr-1">
 		<h2 id="sidebar-shelves-heading" class="shell-heading min-w-0">
-			<a href="/shelves" aria-current={deLocalizeHref(pathname).replace(/\/+$/, '') === '/shelves' ? 'page' : undefined} class="block truncate hover:underline focus-visible:outline-2">{m['organize.collections']()}</a>
+			{m['organize.collections']()}
 		</h2>
 		<ShelfActionsMenu {pathname} {role} />
 	</div>

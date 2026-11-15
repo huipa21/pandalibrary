@@ -48,6 +48,7 @@
 
 {#if open}
 	<dialog
+		{id}
 		bind:this={dialogElement}
 		class="fixed inset-0 m-auto max-h-[90vh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-lg bg-white p-6 text-slate-950 shadow-lg"
 		aria-labelledby={`${id}-title`}

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writable } from 'svelte/store';
+import { confirmAction } from '#lib/shell/confirmation.js';
 import { getBook } from '#lib/catalog/api.js';
 import { downloadBookFile, getBookState, getSettings } from '../api.js';
 import { createReader } from '../index.js';
@@ -13,6 +14,10 @@ import { wordbooks } from '#lib/wordbooks/api.js';
 import type { WordbookEntry } from '#lib/wordbooks/api.js';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
+vi.mock('#lib/shell/confirmation.js', async (original) => ({
+	...await original<typeof import('#lib/shell/confirmation.js')>(),
+	confirmAction: vi.fn(async () => true)
+}));
 vi.mock('#lib/catalog/api.js', () => ({ getBook: vi.fn() }));
 vi.mock('../api.js', async (original) => ({
 	...await original<typeof import('../api.js')>(),
@@ -57,6 +62,7 @@ const params = () => ({ bookId: '21', fileId: '31', bookmarkId: null, highlightI
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.mocked(confirmAction).mockResolvedValue(true);
 	vi.mocked(getBook).mockResolvedValue(book);
 	vi.mocked(getBookState).mockResolvedValue(empty);
 	vi.mocked(getSettings).mockResolvedValue([]);
@@ -369,8 +375,7 @@ describe('reader controller PDF extensions', () => {
 		const controller = createReaderController(params);
 		await controller.retry();
 		vi.stubGlobal('document', { hidden: true });
-		const confirm = vi.fn(() => true);
-		vi.stubGlobal('window', { confirm });
+		const confirm = vi.mocked(confirmAction);
 		await controller.attach({} as HTMLElement);
 		await controller.addHighlight({ text: 'Mark', fraction: 0, locator: { type: 'pdf', page: 1 } }, 'green', 'strikeout');
 		const mark = controller.highlights[0];
@@ -388,7 +393,7 @@ describe('reader controller PDF extensions', () => {
 		expect(await controller.restoreDeletedAnnotation({ kind: 'bookmark', row: bookmark })).toBe(true);
 		expect(controller.bookmarks).toEqual([bookmark]);
 		confirm.mockClear();
-		confirm.mockReturnValue(false);
+		confirm.mockResolvedValue(false);
 		expect(await controller.removeBookmark(bookmark)).toBeUndefined();
 		expect(controller.bookmarks).toEqual([bookmark]);
 		expect(confirm).toHaveBeenCalledTimes(1);
@@ -397,7 +402,7 @@ describe('reader controller PDF extensions', () => {
 		expect(confirm).not.toHaveBeenCalled();
 		expect(controller.bookmarks).toEqual([]);
 		expect(await controller.restoreDeletedAnnotation({ kind: 'bookmark', row: bookmark })).toBe(true);
-		confirm.mockReturnValue(true);
+		confirm.mockResolvedValue(true);
 		await controller.deleteNote(attached);
 		expect(await controller.restoreDeletedAnnotation({ kind: 'note', row: attached })).toBe(true);
 		expect(controller.notes).toEqual([attached]);
@@ -599,7 +604,7 @@ describe('reader controller PDF extensions', () => {
 		const controller = createReaderController(params);
 		await controller.retry();
 		vi.stubGlobal('document', { hidden: true });
-		vi.stubGlobal('window', { confirm: () => true });
+		vi.mocked(confirmAction).mockResolvedValue(true);
 		await controller.attach({} as HTMLElement);
 		const mark = await controller.addHighlight({ text: 'Passage', fraction: 0, locator }, 'yellow');
 		expect(mark).toBeTruthy();

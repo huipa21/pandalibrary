@@ -949,6 +949,17 @@ func (q *Queries) CatalogLibraryBookCount(ctx context.Context, libraryID int64) 
 	return count, err
 }
 
+const catalogLibraryCount = `-- name: CatalogLibraryCount :one
+SELECT count(*) FROM libraries
+`
+
+func (q *Queries) CatalogLibraryCount(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, catalogLibraryCount)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const catalogLibraryNameTaken = `-- name: CatalogLibraryNameTaken :one
 SELECT count(*) FROM libraries
 WHERE name = ?1 COLLATE NOCASE AND id != ?2
@@ -1667,6 +1678,67 @@ func (q *Queries) CatalogMoveFileConflict(ctx context.Context, arg CatalogMoveFi
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const catalogMoveLibraryBooks = `-- name: CatalogMoveLibraryBooks :exec
+UPDATE books SET library_id = ?1, updated_at = ?2
+WHERE library_id = ?3
+`
+
+type CatalogMoveLibraryBooksParams struct {
+	DestinationID int64
+	UpdatedAt     int64
+	SourceID      int64
+}
+
+func (q *Queries) CatalogMoveLibraryBooks(ctx context.Context, arg CatalogMoveLibraryBooksParams) error {
+	_, err := q.db.ExecContext(ctx, catalogMoveLibraryBooks, arg.DestinationID, arg.UpdatedAt, arg.SourceID)
+	return err
+}
+
+const catalogMoveLibraryHeapTargets = `-- name: CatalogMoveLibraryHeapTargets :exec
+UPDATE bookheap_items SET target_library_id = ?1
+WHERE target_library_id = ?2
+`
+
+type CatalogMoveLibraryHeapTargetsParams struct {
+	DestinationID sql.NullInt64
+	SourceID      sql.NullInt64
+}
+
+func (q *Queries) CatalogMoveLibraryHeapTargets(ctx context.Context, arg CatalogMoveLibraryHeapTargetsParams) error {
+	_, err := q.db.ExecContext(ctx, catalogMoveLibraryHeapTargets, arg.DestinationID, arg.SourceID)
+	return err
+}
+
+const catalogMoveLibraryImports = `-- name: CatalogMoveLibraryImports :exec
+UPDATE import_jobs SET library_id = ?1
+WHERE library_id = ?2
+`
+
+type CatalogMoveLibraryImportsParams struct {
+	DestinationID int64
+	SourceID      int64
+}
+
+func (q *Queries) CatalogMoveLibraryImports(ctx context.Context, arg CatalogMoveLibraryImportsParams) error {
+	_, err := q.db.ExecContext(ctx, catalogMoveLibraryImports, arg.DestinationID, arg.SourceID)
+	return err
+}
+
+const catalogReplaceDefaultLibrary = `-- name: CatalogReplaceDefaultLibrary :exec
+UPDATE server_settings SET value = ?1, updated_at = ?2
+WHERE key = 'default_library_id'
+`
+
+type CatalogReplaceDefaultLibraryParams struct {
+	Value     string
+	UpdatedAt int64
+}
+
+func (q *Queries) CatalogReplaceDefaultLibrary(ctx context.Context, arg CatalogReplaceDefaultLibraryParams) error {
+	_, err := q.db.ExecContext(ctx, catalogReplaceDefaultLibrary, arg.Value, arg.UpdatedAt)
+	return err
 }
 
 const catalogRevokeLibraryAccess = `-- name: CatalogRevokeLibraryAccess :exec

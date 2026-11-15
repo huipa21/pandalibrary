@@ -170,25 +170,48 @@ func (s *Service) UpdateLibrary(ctx context.Context, viewer Viewer, id int64, pa
 	return result, err
 }
 
-// DeleteLibrary removes an empty, non-default library.
-func (s *Service) DeleteLibrary(ctx context.Context, viewer Viewer, id int64) error {
+// DeleteLibrary optionally transfers all books and the default setting to another
+// library before deletion. The last library can never be deleted.
+func (s *Service) DeleteLibrary(ctx context.Context, viewer Viewer, id int64, destinations ...int64) error {
 	if err := checkAdmin(viewer); err != nil {
 		return err
 	}
 	if id < 1 {
 		return invalid("library ID is invalid")
 	}
+	if len(destinations) > 1 {
+		return invalid("at most one destination library is allowed")
+	}
+	var destination int64
+	if len(destinations) == 1 {
+		destination = destinations[0]
+		if destination < 1 || destination == id {
+			return invalid("destination must be a different library")
+		}
+	}
 	return db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
 		if _, err := libraryInTx(ctx, queries, viewer, id); err != nil {
 			return err
 		}
+		libraries, err := queries.CatalogLibraryCount(ctx)
+		if err != nil {
+			return fmt.Errorf("count libraries: %w", err)
+		}
+		if libraries <= 1 {
+			return conflict("the last library cannot be deleted")
+		}
+		if destination != 0 {
+			if _, err := libraryInTx(ctx, queries, viewer, destination); err != nil {
+				return err
+			}
+		}
 		count, err := queries.CatalogLibraryBookCount(ctx, id)
 		if err != nil {
 			return fmt.Errorf("count library books: %w", err)
 		}
-		if count > 0 {
-			return conflict("library contains books")
+		if count > 0 && destination == 0 {
+			return conflict("choose a destination library for all books")
 		}
 		setting, err := queries.CatalogDefaultLibrarySetting(ctx)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -203,7 +226,36 @@ func (s *Service) DeleteLibrary(ctx context.Context, viewer Viewer, id int64) er
 				return errors.New("default library setting is invalid")
 			}
 			if defaultID != nil && *defaultID == id {
-				return conflict("default library must be reconfigured before deletion")
+				if destination == 0 {
+					return conflict("default library must be reconfigured before deletion")
+				}
+				value, err := json.Marshal(destination)
+				if err != nil {
+					return fmt.Errorf("encode default library: %w", err)
+				}
+				if err := queries.CatalogReplaceDefaultLibrary(ctx, sqlc.CatalogReplaceDefaultLibraryParams{
+					Value: string(value), UpdatedAt: s.now().UnixMilli(),
+				}); err != nil {
+					return fmt.Errorf("replace default library: %w", err)
+				}
+			}
+		}
+		if destination != 0 {
+			if err := queries.CatalogMoveLibraryBooks(ctx, sqlc.CatalogMoveLibraryBooksParams{
+				DestinationID: destination, SourceID: id, UpdatedAt: s.now().UnixMilli(),
+			}); err != nil {
+				return fmt.Errorf("move library books: %w", err)
+			}
+			if err := queries.CatalogMoveLibraryImports(ctx, sqlc.CatalogMoveLibraryImportsParams{
+				DestinationID: destination, SourceID: id,
+			}); err != nil {
+				return fmt.Errorf("move library imports: %w", err)
+			}
+			if err := queries.CatalogMoveLibraryHeapTargets(ctx, sqlc.CatalogMoveLibraryHeapTargetsParams{
+				DestinationID: sql.NullInt64{Int64: destination, Valid: true},
+				SourceID:      sql.NullInt64{Int64: id, Valid: true},
+			}); err != nil {
+				return fmt.Errorf("move library upload targets: %w", err)
 			}
 		}
 		deleted, err := queries.CatalogDeleteLibrary(ctx, id)

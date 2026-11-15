@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
@@ -45,7 +46,7 @@
 	async function revoke(entry: AccessEntry) {
 		if (revoking !== null) return;
 		const current = library;
-		if (!window.confirm(m['admin.access.revoke_confirm']({ user: entry.user_id, library: current.name }))) return;
+		if (!await confirmAction(m['admin.access.revoke_confirm']({ user: entry.user_id, library: current.name }))) return;
 		notice = '';
 		error = '';
 		revoking = entry.user_id;

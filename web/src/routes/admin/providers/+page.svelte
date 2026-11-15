@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
@@ -96,8 +97,8 @@
 			return;
 		}
 		const name = providerName(row.settings.provider);
-		if (result.removesToken && !window.confirm(m['admin.providers.remove_token_confirm']({ name }))) return;
-		if (result.disablesCredentialProvider && !window.confirm(m['admin.providers.disable_confirm']({ name }))) return;
+		if (result.removesToken && !await confirmAction(m['admin.providers.remove_token_confirm']({ name }))) return;
+		if (result.disablesCredentialProvider && !await confirmAction(m['admin.providers.disable_confirm']({ name }))) return;
 
 		row.saving = true;
 		try {

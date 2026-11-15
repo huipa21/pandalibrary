@@ -1,5 +1,8 @@
 <script lang="ts" module>
+	import { extraIcons, isExtraIcon, type ExtraIconName } from '#lib/entity-icons.js';
+
 	export type IconName =
+		| ExtraIconName
 		| 'info' | 'play' | 'book-open' | 'notebook' | 'books' | 'library' | 'folder' | 'external' | 'eye' | 'eye-off' | 'folder-plus'
 		| 'download' | 'x' | 'chevron-left' | 'chevron-right' | 'chevron-down'
 		| 'trash' | 'copy' | 'more' | 'star' | 'star-half' | 'pencil' | 'save'
@@ -18,6 +21,10 @@
 	let { name, class: className = 'size-5' }: { name: IconName; class?: string } = $props();
 </script>
 
+{#if isExtraIcon(name)}
+	{@const ExtraIcon = extraIcons[name].component}
+	<ExtraIcon class={className} strokeWidth={1.75} aria-hidden="true" data-icon={name} />
+{:else}
 <svg
 	aria-hidden="true"
 	data-icon={name}
@@ -165,3 +172,4 @@
 		<path d="M4 6h16M4 18h16M4 12h16" /><circle cx="8" cy="6" r="2" fill="white" /><circle cx="16" cy="12" r="2" fill="white" /><circle cx="10" cy="18" r="2" fill="white" />
 	{/if}
 </svg>
+{/if}

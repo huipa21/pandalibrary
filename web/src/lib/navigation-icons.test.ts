@@ -19,6 +19,9 @@ describe('entityIcon', () => {
 	});
 
 	it('keeps stable, varied fallbacks for other entity types', () => {
+		expect(entityIcon(undefined, 'other:0')).toBe('file');
+		expect(entityIcon(undefined, 'other:1')).toBe('list-tree');
+		expect(entityIcon(undefined, 'other:2')).toBe('image');
 		const keys = Array.from({ length: 40 }, (_, index) => `other:${index}`);
 		const icons = keys.map((key) => entityIcon(undefined, key));
 		expect(new Set(icons).size).toBeGreaterThan(1);

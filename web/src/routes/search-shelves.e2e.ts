@@ -250,7 +250,7 @@ test('submitting an empty header search returns to its original page', async ({ 
 	await expect(page.getByRole('banner').getByRole('button', { name: 'Clear search', exact: true })).toHaveCount(0);
 });
 
-test('creates, browses, edits membership, and deletes a private shelf', async ({ page }) => {
+test('creates, browses, edits, and deletes a private shelf', async ({ page }) => {
 	await authenticate(page);
 	const created: unknown[] = [];
 	let favoritesBooks = [book];
@@ -287,10 +287,6 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 		bookQueries.push(params);
 		if (params.get('cursor') === 'shelf-cursor') return problem(route, 400);
 		return route.fulfill({ json: { items: favoritesBooks, next_cursor: favoritesBooks.length ? 'shelf-cursor' : null } });
-	});
-	await page.route('**/api/v1/shelves/7/books/21', (route) => {
-		favoritesBooks = [];
-		return route.fulfill({ json: { removed: true } });
 	});
 	await page.route('**/api/v1/shelves/8', (route) => route.fulfill({ json: { shelf: shelf(8, 'Staff picks', 'shared') } }));
 	await page.route('**/api/v1/shelves/8/books?*', (route) => route.fulfill({ json: { items: [book], next_cursor: null } }));
@@ -343,14 +339,10 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 
 	await page.goto('/shelves/7');
 	await expect(page.getByRole('link', { name: 'Open book details', exact: true })).toHaveAttribute('href', '/books/21');
+	await expect(page.getByRole('button', { name: 'Remove manual membership of “A Book” in this collection' })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Load more books', exact: true }).click();
 	await expect(page.getByRole('alert')).toContainText('This collection changed while you were browsing.');
 	expect(bookQueries.at(-1)?.get('cursor')).toBe('shelf-cursor');
-
-	await page.getByRole('button', { name: 'Remove manual membership of “A Book” in this collection' }).click();
-	await expect(page.getByText('No books match these filters.')).toBeVisible();
-	await expect(page.getByText('Manual membership removed.', { exact: false })).toBeVisible();
-	expect(bookQueries.at(-1)?.has('cursor')).toBe(false);
 
 	await page.goto('/shelves/7?manage=1');
 	await expect(page.getByText('Deleting a collection removes only the collection, not the books on it.')).toBeVisible();
@@ -442,11 +434,10 @@ test('manual and system shelves use the standard tile grid', async ({ page }) =>
 	await expect(page.getByTitle('Shelf Book 1', { exact: true })).toHaveAttribute('href', '/books/61');
 	await expectStandardTiles(page, books.length);
 	const remove = page.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' });
-	await expect(remove).toHaveText('Remove manual membership');
-	await expect(remove).toBeVisible();
+	await expect(remove).toHaveCount(0);
 	await expectFluidTwoColumns(page);
 	await page.getByRole('main').getByRole('button', { name: 'Switch to list view', exact: true }).click();
-	await expect(remove).toBeVisible();
+	await expect(remove).toHaveCount(0);
 	await expect(page.locator('ul.book-grid')).toHaveCount(0);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	await page.getByRole('button', { name: 'Open navigation menu', exact: true }).click();
@@ -462,5 +453,6 @@ test('manual and system shelves use the standard tile grid', async ({ page }) =>
 	await expect(page.getByTitle('Shelf Book 1', { exact: true })).toHaveAttribute('href', '/books/61');
 	await expectStandardTiles(page, books.length);
 	await expect(page.locator('ul.book-grid li li')).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' })).toHaveCount(0);
 	await expectFluidTwoColumns(page);
 });

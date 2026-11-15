@@ -15,7 +15,7 @@
 		engine: FoliateReader;
 		controller: ReaderController;
 		surface: HTMLElement;
-		cancomment: () => boolean;
+		cancomment: () => boolean | Promise<boolean>;
 		oncomment: (highlightId: string) => void;
 		onerror: (message: string) => void;
 	} = $props();
@@ -147,9 +147,9 @@
 		}
 	}
 
-	function mark(style: HighlightStyle, color = markColors.get(style), comment = false) {
+	async function mark(style: HighlightStyle, color = markColors.get(style), comment = false) {
 		const selection = chosen;
-		if (!selection || (comment && !cancomment())) return;
+		if (!selection || (comment && !await cancomment())) return;
 		void run(async () => {
 			const created = await controller.addHighlight(selection, color, style);
 			if (!created) return;

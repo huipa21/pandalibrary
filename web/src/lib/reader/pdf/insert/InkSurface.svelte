@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { PageLayerContext } from '../types.js';
@@ -17,10 +18,11 @@
 		const data = finishInk(all, color, width);
 		save({ kind: 'ink', locator: { type: 'pdf', page: ctx.page, rect: inkBounds(data.strokes) }, position: 0, data });
 	}
-	function discard(event: KeyboardEvent) {
+	async function discard(event: KeyboardEvent) {
+		if (event.target instanceof Element && event.target.closest('#app-confirmation')) return;
 		if (event.key !== 'Escape') return;
 		event.preventDefault(); event.stopImmediatePropagation();
-		if ((!strokes.length && !active.length) || confirm(m['pv9.discard_drawing']())) cancel();
+		if ((!strokes.length && !active.length) || await confirmAction(m['pv9.discard_drawing']())) cancel();
 	}
 	onMount(() => {
 		document.addEventListener('keydown', discard, true);

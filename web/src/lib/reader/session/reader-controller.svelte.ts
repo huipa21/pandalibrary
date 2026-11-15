@@ -1,4 +1,5 @@
 import { untrack } from 'svelte';
+import { confirmAction, checkDraftGuards, type DraftGuard } from '#lib/shell/confirmation.js';
 import { goto } from '$app/navigation';
 import { v7 as uuidv7 } from 'uuid';
 import * as m from '#lib/paraglide/messages.js';
@@ -100,15 +101,15 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		const { bookId, fileId, bookmarkId, highlightId, annotationId, contextLocator, contextFraction } = params();
 		untrack(() => { void openBook(bookId, fileId, bookmarkId, highlightId, annotationId, contextLocator, contextFraction); });
 	});
-	let draftGuard = () => true;
-	function setDraftGuard(guard: () => boolean) { draftGuard = guard; }
-	const additionalDraftGuards = new Set<() => boolean>();
-	function registerDraftGuard(guard: () => boolean) {
+	let draftGuard: DraftGuard = () => true;
+	function setDraftGuard(guard: DraftGuard) { draftGuard = guard; }
+	const additionalDraftGuards = new Set<DraftGuard>();
+	function registerDraftGuard(guard: DraftGuard) {
 		additionalDraftGuards.add(guard);
 		return () => { additionalDraftGuards.delete(guard); };
 	}
 	function canLeaveDrafts() {
-		return draftGuard() && [...additionalDraftGuards].every((guard) => guard());
+		return checkDraftGuards([draftGuard, ...additionalDraftGuards]);
 	}
 	let saveView = async () => {};
 	function setViewSave(save: () => Promise<void>) { saveView = save; }
@@ -175,10 +176,24 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
-	function beforeNavigate(navigation: { cancel(): void }) {
-		if (!closing && !canLeaveDrafts()) {
-			navigation.cancel();
-			return;
+	let leavingDrafts = false;
+	function beforeNavigate(navigation: { cancel(): void; type?: string; to?: { url: URL } | null }) {
+		if (!closing && !leavingDrafts && navigation.type !== 'leave') {
+			const allowed = canLeaveDrafts();
+			if (allowed instanceof Promise) {
+				navigation.cancel();
+				void allowed.then(async (accepted) => {
+					if (!accepted || !navigation.to) return;
+					leavingDrafts = true;
+					try { await goto(navigation.to.url); }
+					finally { leavingDrafts = false; }
+				}).catch(reportActionError);
+				return;
+			}
+			if (!allowed) {
+				navigation.cancel();
+				return;
+			}
 		}
 		sessionClock?.stop();
 		if (!closing) void saveView().catch(reportPendingError);
@@ -382,7 +397,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 
 	async function closeReader() {
 		if (!book || closing) return;
-		if (!canLeaveDrafts()) return;
+		if (!await canLeaveDrafts()) return;
 		closing = true;
 		sessionClock?.stop();
 		try {
@@ -597,7 +612,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 
 	async function removeHighlight(highlight: Highlight, options: { confirm?: boolean } = {}) {
 		if (!reader || !file || !format || busy) return;
-		if (options.confirm !== false && !window.confirm(m['reader.annotations.delete_highlight_confirm']())) return;
+		if (options.confirm !== false && !await confirmAction(m['reader.annotations.delete_highlight_confirm']())) return;
 		busy = true;
 		actionError = '';
 		try {
@@ -662,7 +677,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	async function removeNote(note: Note) {
-		if (busy || !window.confirm(m['reader.annotations.delete_note_confirm']())) return;
+		if (busy || !await confirmAction(m['reader.annotations.delete_note_confirm']())) return;
 		busy = true;
 		actionError = '';
 		try {
@@ -712,7 +727,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	async function removeBookmark(bookmark: Bookmark, options: { confirm?: boolean } = {}) {
-		if (busy || (options.confirm !== false && !window.confirm(m['ux6.delete_confirm']()))) return;
+		if (busy || (options.confirm !== false && !await confirmAction(m['ux6.delete_confirm']()))) return;
 		busy = true;
 		actionError = '';
 		try {

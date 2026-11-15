@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -6,7 +7,7 @@
 	import BookBrowser from '#lib/catalog/BookBrowser.svelte';
 	import Icon from '#lib/bookview/Icon.svelte';
 	import type { PageOptions } from '#lib/catalog/api.js';
-	import type { Book, BookFilters, BookSort } from '#lib/catalog/types.js';
+	import type { BookFilters, BookSort } from '#lib/catalog/types.js';
 	import { translate } from '#lib/paging/translate.js';
 	import {
 		collectionLibraryID,
@@ -14,7 +15,6 @@
 		getSessionViewer,
 		getShelf,
 		listShelfBooks,
-		removeBookFromShelf,
 		updateShelf
 	} from '#lib/shelves/api.js';
 	import { offersShelfManagement, shelfErrorKey, type ShelfFormValue } from '#lib/shelves/form.js';
@@ -29,14 +29,11 @@
 	let deleting = $state(false);
 	let notice = $state('');
 	let actionError = $state('');
-	let removing = $state<number | null>(null);
-	let membershipVersion = $state(0);
 	let requestVersion = 0;
 	let libraryID = $state<number | undefined>(undefined);
 	let metadataController: AbortController | null = null;
 	const manageable = $derived(shelf !== null && offersShelfManagement(shelf, viewer));
 	const editable = $derived(manageable && !shelf?.system_key);
-	const membershipEditable = $derived(manageable && shelf?.system_key !== 'unshelved');
 	const initialRuleGroups = $derived(shelf ? shelfRuleGroups(shelf, m['ux3.shelves.rules_label']()) : []);
 	const currentID = $derived(page.params.id ?? '');
 	const libraryScope = $derived(collectionLibraryID(page.url));
@@ -132,7 +129,7 @@
 
 	async function remove() {
 		if (!shelf || deleting) return;
-		if (!window.confirm(m['shelves.delete.confirm']({ name: shelf.name }))) return;
+		if (!await confirmAction(m['shelves.delete.confirm']({ name: shelf.name }))) return;
 		deleting = true;
 		actionError = '';
 		notice = '';
@@ -147,31 +144,6 @@
 		}
 	}
 
-	async function removeBook(book: Book) {
-		if (!shelf || !membershipEditable || removing !== null) return;
-		const id = shelf.id;
-		const request = requestVersion;
-		removing = book.id;
-		actionError = '';
-		notice = '';
-		try {
-			await removeBookFromShelf(id, book.id);
-			window.dispatchEvent(new CustomEvent('pandalibrary-shelves-changed'));
-			if (request !== requestVersion) return;
-			notice = m['shelves.books.removed']();
-			membershipVersion += 1;
-			try {
-				const updated = await getShelf(id, { library_id: libraryID });
-				if (request === requestVersion) shelf = updated;
-			} catch (cause) {
-				console.error('Could not refresh shelf details', cause);
-			}
-		} catch (cause) {
-			if (request === requestVersion) actionError = translate(shelfErrorKey(cause, 'remove_book'));
-		} finally {
-			removing = null;
-		}
-	}
 </script>
 
 <svelte:head>
@@ -225,21 +197,7 @@
 			<h1 id="shelf-heading" class="sr-only">{shelf.name}</h1>
 			{#if notice}<p class="mb-4 rounded-md bg-green-50 p-3 text-green-800" role="status">{notice}</p>{/if}
 			{#if actionError}<p class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">{actionError}</p>{/if}
-			{#if membershipEditable && (initialRuleGroups.length || shelf.mode === 'automatic')}
-				<p class="mb-4 text-sm text-slate-600">{m['collections.membership.remove_help']()}</p>
-			{/if}
-			{#snippet bookActions(book: Book)}
-				<button
-					class="inline-flex max-w-full items-center gap-1 text-sm text-red-800 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
-					aria-label={m['shelves.books.remove_label']({ title: book.title })}
-					disabled={removing !== null}
-					onclick={() => removeBook(book)}
-				>
-					<Icon name="trash" class="size-3.5 shrink-0" />
-					<span class="min-w-0 truncate">{removing === book.id ? m['shelves.books.removing']() : m['shelves.books.remove']()}</span>
-				</button>
-			{/snippet}
-			<BookBrowser scope={browseScope} showHeading={false} {fetchBooks} {bookErrorMessage} refreshKey={membershipVersion} bookActions={membershipEditable ? bookActions : undefined} />
+			<BookBrowser scope={browseScope} showHeading={false} {fetchBooks} {bookErrorMessage} />
 		</article>
 	{/if}
 {/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { tick, untrack } from 'svelte';
 	import { ApiError } from '#lib/api/client.js';
 	import * as m from '#lib/paraglide/messages.js';
@@ -134,7 +135,7 @@
 	}
 
 	async function remove(review: Review, own: boolean) {
-		if (offline || deleting !== null || !window.confirm(m['bd7.delete_review_confirm']())) return;
+		if (offline || deleting !== null || !await confirmAction(m['bd7.delete_review_confirm']())) return;
 		const id = bookId;
 		deleting = review.id;
 		actionError = '';

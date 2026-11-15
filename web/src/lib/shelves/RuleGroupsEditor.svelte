@@ -32,12 +32,17 @@
 			<label class="grid gap-1 text-sm" for={`${idPrefix}-${groupIndex}-match`}>
 				{m['collections.rules.match']()}
 				<select id={`${idPrefix}-${groupIndex}-match`} class="rounded-md border border-slate-300 px-2 py-1" bind:value={group.rules.match}>
-					<option value="all">{m['ux3.shelves.rules_match_all']()}</option>
-					<option value="any">{m['ux3.shelves.rules_match_any']()}</option>
+					<option value="all">{m['collections.rules.match_all']()}</option>
+					<option value="any">{m['collections.rules.match_any']()}</option>
 				</select>
 			</label>
 			{#each group.rules.conditions as condition, index (index)}
 				<div class="grid gap-2 rounded-md border border-slate-200 p-2">
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" checked={condition.not ?? false}
+							onchange={(event) => condition.not = event.currentTarget.checked ? true : undefined} />
+						{m['collections.rules.not']()}
+					</label>
 					<label class="grid gap-1 text-sm" for={`${idPrefix}-${groupIndex}-${index}-field`}>
 						{m['ux3.shelves.rules_condition_field']()}
 						<select id={`${idPrefix}-${groupIndex}-${index}-field`} class="rounded border border-slate-300 px-2 py-1" value={condition.field}
@@ -70,9 +75,16 @@
 					<button type="button" class="justify-self-start text-sm text-red-700 underline" onclick={() => group.rules.conditions = group.rules.conditions.filter((_, i) => i !== index)}>{m['ux3.shelves.rules_condition_delete']()}</button>
 				</div>
 			{/each}
-			<button type="button" class="justify-self-start text-sm underline" disabled={group.rules.conditions.length >= 20} onclick={() => group.rules.conditions.push({ field: 'title', op: 'contains', value: '' })}>{m['ux3.shelves.rules_add']()}</button>
+			<div class="flex flex-wrap gap-3">
+				<button type="button" class="rounded-xl border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 disabled:opacity-60" disabled={group.rules.conditions.length >= 20} onclick={() => group.rules.conditions.push({ field: 'title', op: 'contains', value: '' })}>{m['collections.rules.add_rule']()}</button>
+				{#if groupIndex === groups.length - 1}
+					<button type="button" class="rounded-xl border border-dashed border-indigo-200 px-3 py-2 text-sm text-indigo-600 disabled:opacity-60" disabled={disabled || groups.length >= 20} onclick={addGroup}>{m['collections.rules.add']()}</button>
+				{/if}
+			</div>
 			<button type="button" class="justify-self-start text-sm text-red-700 underline" onclick={() => groups = groups.filter((candidate) => candidate.id !== group.id)}>{m['collections.rules.remove']()}</button>
 		</fieldset>
 	{/each}
-	<button type="button" class="justify-self-start rounded-md border border-slate-300 px-3 py-2 text-sm" disabled={disabled || groups.length >= 20} onclick={addGroup}>{m['collections.rules.add']()}</button>
+	{#if groups.length === 0}
+		<button type="button" class="justify-self-start rounded-xl border border-dashed border-indigo-200 px-3 py-2 text-sm text-indigo-600 disabled:opacity-60" disabled={disabled} onclick={addGroup}>{m['collections.rules.add']()}</button>
+	{/if}
 </section>

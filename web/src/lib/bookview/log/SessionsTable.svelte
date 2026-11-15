@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onDestroy, tick, untrack } from 'svelte';
@@ -120,7 +121,7 @@
 	async function remove(session: BookSession) {
 		if (deletePending !== null) return;
 		const when = timestamp(session);
-		if (!window.confirm(m['bv8.delete_confirm']({ date: when }))) return;
+		if (!await confirmAction(m['bv8.delete_confirm']({ date: when }))) return;
 		const index = pager.items.findIndex((item) => item.id === session.id);
 		if (index < 0) return;
 		const version = queryVersion;

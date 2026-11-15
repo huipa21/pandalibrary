@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onMount, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getPdfReaderContext } from '../context.js';
@@ -116,22 +117,22 @@
 	onMount(() => {
 		const unregister = context.engine.pageLayers.register(painter);
 		const surface = context.engine.viewport;
-		function startInsert(event: Event) {
+		async function startInsert(event: Event) {
 			if (!(event instanceof CustomEvent) || !['text', 'draw', 'image'].includes(event.detail)) return;
 			if (event.detail === 'image' && context.offline) return;
-			if (mode && !confirm(m['pv9.discard_insert']())) return;
+			if (mode && !await confirmAction(m['pv9.discard_insert']())) return;
 			mode = null; target = null; editing = null; selected = null;
 			pending = event.detail;
 			context.tool.set('insert');
 		}
-		function editFromSidebar(event: Event) {
+		async function editFromSidebar(event: Event) {
 			if (!(event instanceof CustomEvent) || typeof event.detail !== 'string') return;
 			const item = context.controller.pageAnnotations.find((item): item is PdfAnnotation => item.id === event.detail && item.locator.type === 'pdf');
 			if (!item) {
 				context.announce(m['ux6.unavailable']());
 				return;
 			}
-			if (mode && !confirm(m['pv9.discard_insert']())) return;
+			if (mode && !await confirmAction(m['pv9.discard_insert']())) return;
 			mode = null; target = null; editing = null; pending = null;
 			context.tool.set('select');
 			selected = item.id;
@@ -196,7 +197,7 @@
 		if (context.tool.current === 'hand') selected = null;
 	});
 	$effect(() => {
-		return context.controller.registerDraftGuard(() => !mode || confirm(m['pv9.discard_insert']()));
+		return context.controller.registerDraftGuard(() => !mode || confirmAction(m['pv9.discard_insert']()));
 	});
 </script>
 

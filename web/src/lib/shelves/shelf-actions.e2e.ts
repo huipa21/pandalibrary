@@ -177,6 +177,8 @@ test('one creation dialog refreshes the management page and sidebar', async ({ p
 	const name = creator.getByLabel('Collection name');
 	await expect(name).toBeFocused();
 	await expectSelectedIconBorder(creator.getByRole('radio', { name: 'Automatic', exact: true }));
+	const controls = creator.getByRole('group', { name: 'Icon' }).locator('label, button');
+	expect(new Set(await controls.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top))).size).toBe(1);
 	await expect(creator.getByLabel('Shared', { exact: true })).toHaveCount(0);
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(name).toHaveAttribute('aria-invalid', 'true');
@@ -187,14 +189,16 @@ test('one creation dialog refreshes the management page and sidebar', async ({ p
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(creator.getByRole('alert')).toContainText('A collection with this name already exists.');
 	await name.fill('  New reading  ');
-	await creator.getByRole('radio', { name: 'Star', exact: true }).check();
-	await expectSelectedIconBorder(creator.getByRole('radio', { name: 'Star', exact: true }));
+	await creator.getByRole('button', { name: 'Show more icons' }).click();
+	await creator.getByRole('radio', { name: 'Clock', exact: true }).check();
+	await creator.getByRole('button', { name: 'Show fewer icons' }).click();
+	await expectSelectedIconBorder(creator.getByRole('radio', { name: 'Clock', exact: true }));
 	await creator.getByLabel('Description (optional)').fill('  Notes  ');
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(creator).toHaveCount(0);
 	await expect(trigger).toBeFocused();
 	expect(server.requests.at(-1)).toEqual({
-		kind: 'private', name: 'New reading', description: '  Notes  ', icon: 'star', rule_groups: []
+		kind: 'private', name: 'New reading', description: '  Notes  ', icon: 'clock', rule_groups: []
 	});
 	await expect(main.getByRole('status').filter({ hasText: 'Collection created.' })).toBeVisible();
 	await expect(main.locator('ul.book-grid').getByRole('link', { name: 'New reading', exact: true })).toBeVisible();
@@ -223,6 +227,10 @@ test('mobile administrator drawer keeps focus and creates a private collection w
 
 	let creator = page.getByRole('dialog', { name: 'Create collection' });
 	await expect(creator.getByLabel('Collection name')).toBeFocused();
+	const controls = creator.getByRole('group', { name: 'Icon' }).locator('label, button');
+	await expect(creator.getByRole('button', { name: 'Show more icons' })).toBeVisible();
+	expect(await controls.count()).toBeGreaterThan(2);
+	expect(new Set(await controls.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top))).size).toBe(1);
 	for (let i = 0; i < 12; i++) {
 		await page.keyboard.press('Tab');
 		expect(await creator.evaluate((node) => node.contains(document.activeElement))).toBe(true);
@@ -240,9 +248,14 @@ test('mobile administrator drawer keeps focus and creates a private collection w
 	await drawer.getByRole('menuitem', { name: 'New collection' }).click();
 	creator = page.getByRole('dialog', { name: 'Create collection' });
 	await creator.getByLabel('Collection name').fill('Private recommendations');
+	await creator.getByRole('button', { name: 'Show more icons' }).click();
+	await creator.getByRole('radio', { name: 'Rocket', exact: true }).check();
+	await expect(creator.getByRole('button', { name: 'Show fewer icons' })).toBeVisible();
+	await creator.getByRole('button', { name: 'Show fewer icons' }).click();
+	await expect(creator.getByRole('radio', { name: 'Rocket', exact: true })).toBeChecked();
 	await expect(creator.getByLabel('Shared', { exact: true })).toHaveCount(0);
 	await expect(creator.getByRole('group', { name: 'Visibility', exact: true })).toHaveCount(0);
-	await creator.getByRole('button', { name: 'Add automatic rule' }).click();
+	await creator.getByRole('button', { name: 'Add group' }).click();
 	await creator.getByLabel('Rule name', { exact: true }).fill('Moon titles');
 	await creator.getByRole('combobox', { name: 'Field', exact: true }).selectOption('title');
 	await creator.getByLabel('Value', { exact: true }).fill('Moon');
@@ -257,7 +270,7 @@ test('mobile administrator drawer keeps focus and creates a private collection w
 	}
 	await expect(creator).toHaveCount(0);
 	expect(server.requests).toEqual([{
-		kind: 'private', name: 'Private recommendations', description: null, icon: '',
+		kind: 'private', name: 'Private recommendations', description: null, icon: 'rocket',
 		rule_groups: [{ id: expect.any(String), name: 'Moon titles', rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: 'Moon' }] } }]
 	}]);
 	await expect(drawer).toBeVisible();

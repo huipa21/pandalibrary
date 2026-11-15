@@ -93,13 +93,26 @@ Use the **⋮** beside the library heading for **New Library** or **All Librarie
 Creation opens a dialog with name, slug and icon selection. Open a library cover in
 **All Libraries** to see its settings, including access management for
 administrators. Creating, editing, and deleting libraries requires an administrator
-account. Deletion requires confirmation; only empty, non-default libraries can
-be deleted. Readers can use **All Libraries** to return to the library cards.
+account. Deletion opens an in-app confirmation dialog, never a browser popup.
+The last library cannot be deleted; create another first. Select a destination
+library to receive **all books**, including hidden and private books, then confirm.
+The transfer and deletion are atomic: book IDs, files, ownership, visibility,
+collections, and reading data are preserved. Library-visible books follow the
+destination's access permissions; the deleted library's grants are not copied.
+If the deleted library was the default, the destination becomes the default.
+Cancel or press Escape to leave everything unchanged.
+Other destructive actions and unsaved-change warnings also use in-app dialogs.
+Save drafts before refreshing, closing the tab, or leaving the app: these actions
+cannot wait for an in-app dialog, and the app does not request browser popups.
+Readers can use **All Libraries** to return to the library cards.
 Library actions live in this **⋮** menu, not in the Admin tabs.
 
 The **Collections** heading opens all collections. Use its **⋮** menu to
 create a collection or open **All Collections**. Collection covers open settings
 (or read-only details); sidebar collection links open the books instead.
+When choosing an icon for a library or collection, select the last button in
+the icon row to show all 100 choices. Scroll the tray to see the rest, or
+select the button again to collapse it.
 
 ## Book pages
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { checkDraftGuards, type DraftGuard } from '#lib/shell/confirmation.js';
 	import { onMount, tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import SearchField from '#lib/search/SearchField.svelte';
@@ -24,7 +25,7 @@
 	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 	let jumpVersion = 0;
 	let handledReveal = 0;
-	const guards = new Set<() => boolean>();
+	const guards = new Set<DraftGuard>();
 
 	const list = $derived(buildAnnotationList({
 		highlights: controller.highlights, notes: controller.notes,
@@ -39,11 +40,11 @@
 			entry.id === selected?.entry.id && entry.kind === selected.entry.kind) ?? selected.entry
 		: null);
 
-	function registerGuard(guard: () => boolean) {
+	function registerGuard(guard: DraftGuard) {
 		guards.add(guard);
 		return () => { guards.delete(guard); };
 	}
-	function canDiscard() { return [...guards].every((guard) => guard()); }
+	function canDiscard() { return checkDraftGuards([...guards]); }
 
 	onMount(() => {
 		const unregisterDraft = controller.registerDraftGuard(canDiscard);
@@ -102,7 +103,7 @@
 	}
 
 	async function dialogJump(entry: AnnotationEntry): Promise<boolean> {
-		return canDiscard() && await jump(entry);
+		return await canDiscard() && await jump(entry);
 	}
 
 	function offerUndo(value: NonNullable<typeof undo>) {
@@ -112,7 +113,7 @@
 		ctx.announce(m['pv10.deleted']());
 	}
 	async function remove(entry: AnnotationEntry): Promise<boolean> {
-		if (!canDiscard()) return false;
+		if (!await canDiscard()) return false;
 		if (entry.kind === 'mark') {
 			if (await controller.removeHighlight(entry.row, { confirm: false })) {
 				offerUndo({ kind: 'mark', row: entry.row, notes: entry.notes });
@@ -125,7 +126,7 @@
 		return false;
 	}
 	async function removeNote(note: Note) {
-		if (!canDiscard()) return;
+		if (!await canDiscard()) return;
 		if (await controller.deleteNote(note)) offerUndo({ kind: 'note', row: note });
 	}
 	async function restore() {
@@ -140,7 +141,7 @@
 		selected = { entry, readonly, trigger, editing: false };
 	}
 	async function edit(entry: AnnotationEntry, trigger: HTMLButtonElement) {
-		if (!canDiscard()) return;
+		if (!await canDiscard()) return;
 		if (entry.kind === 'ink' || entry.kind === 'image') {
 			if (await jump(entry)) {
 				ctx.engine.viewport.dispatchEvent(new CustomEvent('reader-edit-insert', { detail: entry.id }));
@@ -149,8 +150,8 @@
 		}
 		selected = { entry, readonly: false, trigger, editing: true };
 	}
-	function closeDialog(restoreFocus: boolean, checkDraft = true) {
-		if (checkDraft && !canDiscard()) return;
+	async function closeDialog(restoreFocus: boolean, checkDraft = true) {
+		if (checkDraft && !await canDiscard()) return;
 		const trigger = selected?.trigger;
 		selected = null;
 		if (restoreFocus) void tick().then(() => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }); });

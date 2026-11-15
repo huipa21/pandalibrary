@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
@@ -43,7 +44,7 @@
 	async function hide(bookID: number): Promise<string | null> {
 		const user = userID;
 		if (user === null) return null;
-		if (!window.confirm(m['admin.hidden.hide_confirm']({ book: bookID, user }))) return null;
+		if (!await confirmAction(m['admin.hidden.hide_confirm']({ book: bookID, user }))) return null;
 		notice = '';
 		error = '';
 		try {
@@ -62,7 +63,7 @@
 	async function unhide(entry: HiddenEntry) {
 		const user = userID;
 		if (user === null || unhiding !== null) return;
-		if (!window.confirm(m['admin.hidden.unhide_confirm']({ book: entry.book_id, user }))) return;
+		if (!await confirmAction(m['admin.hidden.unhide_confirm']({ book: entry.book_id, user }))) return;
 		notice = '';
 		error = '';
 		unhiding = entry.book_id;

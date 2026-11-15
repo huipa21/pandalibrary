@@ -40,7 +40,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
-            ELSE 0 END, 0) = 0)
+            ELSE 0 END, 0) != (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
     WHEN 'any' THEN EXISTS (
         SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
@@ -55,7 +55,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
-            ELSE 0 END, 0) = 1)
+            ELSE 0 END, 0) = (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
     ELSE 0 END) = 1));
 
 -- name: ShelfAutomaticBooks :many
@@ -87,7 +87,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
-            ELSE 0 END, 0) = 0)
+            ELSE 0 END, 0) != (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
     WHEN 'any' THEN EXISTS (
         SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
@@ -102,7 +102,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
-            ELSE 0 END, 0) = 1)
+            ELSE 0 END, 0) = (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
     ELSE 0 END) = 1))
 AND (CAST(sqlc.arg(series_id) AS INTEGER) = 0 OR b.series_id = sqlc.arg(series_id))
 AND (CAST(sqlc.arg(author_id) AS INTEGER) = 0 OR EXISTS (
@@ -159,7 +159,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
-            ELSE 0 END, 0) = 0)
+            ELSE 0 END, 0) != (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
     WHEN 'any' THEN EXISTS (
         SELECT 1 FROM json_each(g.value, '$.rules.conditions') c
         WHERE COALESCE(CASE json_extract(c.value, '$.field')
@@ -174,7 +174,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
                 WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
-            ELSE 0 END, 0) = 1)
+            ELSE 0 END, 0) = (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
     ELSE 0 END) = 1)
 ORDER BY b.sort_title, b.id;
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -33,14 +34,17 @@
 		untrack(() => { void editor.loadCover(ref, requestKey, true); });
 	});
 
+	let leaving = false;
 	beforeNavigate((navigation) => {
-		if (!editor.dirty || editor.saving) return;
+		if (!editor.dirty || editor.saving || leaving || navigation.type === 'leave') return;
 		if (navigation.to && navigation.to.url.pathname === page.url.pathname) return;
-		if (navigation.type === 'leave') {
-			navigation.cancel();
-			return;
-		}
-		if (!confirm(m['metadata.unsaved_confirm']())) navigation.cancel();
+		navigation.cancel();
+		void confirmAction(m['metadata.unsaved_confirm']()).then(async (accepted) => {
+			if (!accepted || !navigation.to) return;
+			leaving = true;
+			try { await goto(navigation.to.url); }
+			finally { leaving = false; }
+		}).catch((error) => console.error('Could not leave the metadata editor', error));
 	});
 
 	onDestroy(() => editor.destroy());

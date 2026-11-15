@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { WordbookEntry } from './api.js';
 	import { lexicalEntry, sourceHref } from './management.js';
@@ -40,8 +41,8 @@
 		{#if !editing}
 			<div class="flex gap-3">
 				<button class="action" {disabled} onclick={edit}>{m['wordbooks.edit']()}</button>
-				<button class="action text-red-700" {disabled} onclick={() => {
-					if (confirm(m['wordbooks.delete_confirm']())) void ondelete(entry.id);
+				<button class="action text-red-700" {disabled} onclick={async () => {
+					if (await confirmAction(m['wordbooks.delete_confirm']())) await ondelete(entry.id);
 				}}>{m['wordbooks.delete']()}</button>
 			</div>
 		{/if}

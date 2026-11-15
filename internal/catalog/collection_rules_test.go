@@ -82,6 +82,30 @@ func TestCollectionIndependentGroupsAndLiveMembership(t *testing.T) {
 	}
 }
 
+func TestCollectionRuleConditionNegationRespectsAndOr(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	ctx := context.Background()
+	viewer := Viewer{UserID: 1, IsAdmin: true}
+	negatedAuthor := condition("author_id", "eq", `2`)
+	negatedAuthor.Not = true
+	group := testRuleGroup("logic", "any", negatedAuthor, condition("title", "contains", `"Tie A"`))
+	shelf, err := fixture.service.CreateShelf(ctx, viewer, ShelfInput{
+		Kind: "private", Name: "Negated", RuleGroups: []RuleGroup{group},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCollectionBooks(t, fixture, viewer, shelf.ID, 101, 102, 104)
+
+	group.Rules.Match = "all"
+	if _, err := fixture.service.UpdateShelf(ctx, viewer, shelf.ID, ShelfPatch{
+		RuleGroups: Optional[[]RuleGroup]{Set: true, Value: &[]RuleGroup{group}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertCollectionBooks(t, fixture, viewer, shelf.ID, 101)
+}
+
 func TestCollectionRemoveRuleProvenance(t *testing.T) {
 	for _, remove := range []bool{false, true} {
 		t.Run(map[bool]string{false: "retain default", true: "remove rule books"}[remove], func(t *testing.T) {

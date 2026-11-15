@@ -13,7 +13,7 @@ describe('independent collection rules', () => {
 	it('accepts mixed all/any groups and numeric identifiers while rejecting malformed conditions', () => {
 		const first = group();
 		const second: RuleGroup = { id: 'b', name: 'Authors', rules: { match: 'any', conditions: [
-			{ field: 'author_id', op: 'eq', value: 12 }, { field: 'language', op: 'eq', value: 'zh-Hans' }
+			{ field: 'author_id', op: 'eq', value: 12, not: true }, { field: 'language', op: 'eq', value: 'zh-Hans' }
 		] } };
 		expect(validRuleGroups([first, second])).toBe(true);
 		expect(validRuleGroups([])).toBe(true);

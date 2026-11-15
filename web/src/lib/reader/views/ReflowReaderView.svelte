@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onMount, tick, untrack } from 'svelte';
 	import { v7 as uuidv7 } from 'uuid';
 	import * as m from '#lib/paraglide/messages.js';
@@ -96,9 +97,9 @@
 		window.addEventListener('offline', connectionChanged);
 		if (!surface) throw new Error('The reader surface is unavailable.');
 		readerChrome.set('full');
-		controller.setDraftGuard(() => {
-			if (!canOpenNote()) return false;
-			if (bookmarkDraft && bookmarkDraft.label !== bookmarkDraft.original && !window.confirm(m['ux6.discard_confirm']())) return false;
+		controller.setDraftGuard(async () => {
+			if (!await canOpenNote()) return false;
+			if (bookmarkDraft && bookmarkDraft.label !== bookmarkDraft.original && !await confirmAction(m['ux6.discard_confirm']())) return false;
 			return true;
 		});
 		let destroyed = false;
@@ -131,15 +132,15 @@
 			announcement = m['reader.error.render']();
 		}
 	}
-	function openNote(highlightId: string, note?: Note) {
-		if (!canOpenNote()) return;
+	async function openNote(highlightId: string, note?: Note) {
+		if (!await canOpenNote()) return;
 		noteTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		createdCommentMark = null;
 		draft = { id: note?.id ?? uuidv7(), highlightId, body: note?.body_md ?? '', original: note?.body_md ?? '', editing: !!note };
 	}
 	function canOpenNote() {
 		const body = stickyHost?.querySelector('textarea')?.value ?? draft?.body;
-		return !draft || body === draft.original || window.confirm(m['reader.note.discard_confirm']());
+		return !draft || body === draft.original || confirmAction(m['reader.note.discard_confirm']());
 	}
 	function commentOnSelection(highlightId: string) {
 		noteTrigger = surface ?? null;
@@ -201,8 +202,8 @@
 			restoreNoteFocus();
 		}
 	}
-	function editAnnotation(entry: AnnotationEntry, trigger: HTMLButtonElement, readonly = false) {
-		if (!canOpenNote()) return;
+	async function editAnnotation(entry: AnnotationEntry, trigger: HTMLButtonElement, readonly = false) {
+		if (!await canOpenNote()) return;
 		draft = null;
 		detail = { id: entry.id, readonly, trigger };
 	}
@@ -230,7 +231,7 @@
 	}
 	async function removeAnnotation(entry: AnnotationEntry): Promise<boolean> {
 		if (entry.kind !== 'mark') return !!await controller.removePageAnnotation(entry.row);
-		if (!canOpenNote()) return false;
+		if (!await canOpenNote()) return false;
 		const removed = !!await controller.removeHighlight(entry.row, { confirm: false });
 		if (removed && detail?.id === entry.id) closeDetail();
 		return removed;

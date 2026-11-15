@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
@@ -66,7 +67,7 @@
 	}
 
 	async function restore(source: string | File) {
-		if (blocked || !window.confirm(m['admin.backup.confirm_restore']())) return;
+		if (blocked || !await confirmAction(m['admin.backup.confirm_restore']())) return;
 		busy = true;
 		error = '';
 		notice = '';

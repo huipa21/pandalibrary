@@ -292,7 +292,20 @@ func (h *catalogHTTP) deleteLibrary(w http.ResponseWriter, r *http.Request, view
 	if !ok {
 		return
 	}
-	if err := h.service.DeleteLibrary(r.Context(), viewer, id); err != nil {
+	values, ok := h.query(w, r, "destination_library_id")
+	if !ok {
+		return
+	}
+	var destinations []int64
+	if values.Has("destination_library_id") {
+		destination, err := strconv.ParseInt(values.Get("destination_library_id"), 10, 64)
+		if err != nil || destination < 1 {
+			WriteProblem(w, h.logger, http.StatusBadRequest, "Destination library ID must be positive.")
+			return
+		}
+		destinations = append(destinations, destination)
+	}
+	if err := h.service.DeleteLibrary(r.Context(), viewer, id, destinations...); err != nil {
 		h.writeError(w, r, err)
 		return
 	}

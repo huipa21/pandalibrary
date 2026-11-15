@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { ApiError } from '#lib/api/client.js';
 	import { getLibrary } from '#lib/catalog/api.js';
 	import * as m from '#lib/paraglide/messages.js';
@@ -174,7 +175,7 @@
 	}
 
 	async function removeOffline(file: FileItem) {
-		if (!book || busyAction !== null || !window.confirm(m['offline.storage.remove_confirm']())) return;
+		if (!book || busyAction !== null || !await confirmAction(m['offline.storage.remove_confirm']())) return;
 		const id = book.id;
 		const loadedOffline = context.offline;
 		busyFileId = file.id;

@@ -5,8 +5,9 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
 	import LibraryForm from '#lib/admin/LibraryForm.svelte';
-	import { deleteLibrary, updateLibrary } from '#lib/admin/api.js';
-	import { dangerButton, errorBox } from '#lib/admin/ui.js';
+	import { updateLibrary } from '#lib/admin/api.js';
+	import { dangerButton } from '#lib/admin/ui.js';
+	import LibraryDeleteDialog from '#lib/libraries/LibraryDeleteDialog.svelte';
 	import Icon from '#lib/bookview/Icon.svelte';
 	import { adminErrorKey, libraryFieldErrorKey, libraryPatch } from '#lib/admin/form.js';
 	import type { Library } from '#lib/catalog/types.js';
@@ -22,8 +23,7 @@
 	let loading = $state(true);
 	let error = $state('');
 	let notice = $state('');
-	let deleting = $state(false);
-	let deleteError = $state('');
+	let deleteTarget = $state<Library | null>(null);
 	let request = 0;
 
 	$effect(() => {
@@ -37,7 +37,7 @@
 		loading = true;
 		error = '';
 		notice = '';
-		deleteError = '';
+		deleteTarget = null;
 		library = null;
 		isAdmin = false;
 		const id = Number(rawID);
@@ -76,25 +76,10 @@
 		}
 	}
 
-	async function remove() {
-		if (!library || !isAdmin || deleting) return;
-		const current = library;
-		if (!window.confirm(m['admin.libraries.delete_confirm']({ name: current.name }))) return;
-		deleting = true;
-		deleteError = '';
-		notice = '';
-		try {
-			await deleteLibrary(current.id);
-			window.dispatchEvent(new CustomEvent('pandalibrary-libraries-changed'));
-			if (library?.id === current.id) await goto('/libraries');
-		} catch (cause) {
-			if (library?.id === current.id) deleteError = translate(adminErrorKey(cause, 'delete_library'));
-		} finally {
-			deleting = false;
-		}
-	}
 </script>
 
+<LibraryDeleteDialog library={deleteTarget} onclose={() => deleteTarget = null}
+	ondeleted={async (deleted) => { if (library?.id === deleted.id) await goto('/libraries'); }} />
 <svelte:head>
 	<title>{library?.name ?? m['ux1.library.settings']()} · {m['common.app_name']()}</title>
 </svelte:head>
@@ -125,9 +110,8 @@
 		{#if isAdmin}
 			{#key library.id}<LibraryAccess {library} />{/key}
 			<p class="text-sm text-slate-600">{m['admin.libraries.delete_rule']()}</p>
-			{#if deleteError}<p class={errorBox} role="alert">{deleteError}</p>{/if}
-			<button type="button" class={dangerButton} disabled={deleting} aria-label={m['catalog.library.delete']({ name: library.name })}
-				onclick={remove}>{deleting ? m['admin.libraries.deleting']() : m['admin.libraries.delete']()}</button>
+			<button type="button" class={dangerButton} aria-label={m['catalog.library.delete']({ name: library.name })}
+				onclick={() => deleteTarget = library}>{m['admin.libraries.delete']()}</button>
 		{/if}
 	{/if}
 </section>

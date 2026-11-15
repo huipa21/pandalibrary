@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -6,10 +7,10 @@
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
 	import UserSelector from '#lib/admin/users/UserSelector.svelte';
 	import LibraryForm from '#lib/admin/LibraryForm.svelte';
+	import LibraryDeleteDialog from '#lib/libraries/LibraryDeleteDialog.svelte';
 	import PagerFooter from '#lib/admin/PagerFooter.svelte';
 	import {
 		createLibrary,
-		deleteLibrary,
 		grantLibraryAccess,
 		listAdminLibraries,
 		listLibraryAccess,
@@ -28,7 +29,7 @@
 	const access = new CursorPager<AccessEntry>();
 	let notice = $state('');
 	let editing = $state<number | null>(null);
-	let deleting = $state<number | null>(null);
+	let deleteTarget = $state<Library | null>(null);
 	let rowErrors = $state<Record<number, string>>({});
 	let selected = $state<Library | null>(null);
 	let accessNotice = $state('');
@@ -96,10 +97,6 @@
 		access.dispose();
 	});
 
-	function setRowError(id: number, message: string) {
-		rowErrors = { ...rowErrors, [id]: message };
-	}
-
 	function clearRowError(id: number) {
 		const next = { ...rowErrors };
 		delete next[id];
@@ -137,23 +134,13 @@
 		}
 	}
 
-	async function remove(library: Library) {
-		if (deleting !== null) return;
-		if (!window.confirm(m['admin.libraries.delete_confirm']({ name: library.name }))) return;
+	function removed(library: Library) {
 		notice = '';
 		clearRowError(library.id);
-		deleting = library.id;
-		try {
-			await deleteLibrary(library.id);
-			notice = m['admin.libraries.deleted']({ name: library.name });
-			if (selected?.id === library.id) selectLibrary(null);
-			void libraries.reload();
-			librariesChanged();
-		} catch (cause) {
-			setRowError(library.id, translate(adminErrorKey(cause, 'delete_library')));
-		} finally {
-			deleting = null;
-		}
+		notice = m['admin.libraries.deleted']({ name: library.name });
+		if (selected?.id === library.id) selectLibrary(null);
+		if (linkedLibrary?.id === library.id) closeLinkedEditor();
+		void libraries.reload();
 	}
 
 	function selectLibrary(library: Library | null) {
@@ -184,7 +171,7 @@
 	async function revoke(entry: AccessEntry) {
 		const library = selected;
 		if (!library || revoking !== null) return;
-		if (!window.confirm(m['admin.access.revoke_confirm']({ user: entry.user_id, library: library.name }))) return;
+		if (!await confirmAction(m['admin.access.revoke_confirm']({ user: entry.user_id, library: library.name }))) return;
 		accessNotice = '';
 		accessError = '';
 		revoking = entry.user_id;
@@ -201,6 +188,7 @@
 	}
 </script>
 
+<LibraryDeleteDialog library={deleteTarget} onclose={() => deleteTarget = null} ondeleted={removed} />
 <svelte:head>
 	<title>{m['admin.libraries.title']()} · {m['common.app_name']()}</title>
 </svelte:head>
@@ -215,6 +203,7 @@
 		<h2 id="create-library-heading" class="text-xl font-semibold">{m['admin.libraries.create_heading']()}</h2>
 		<LibraryForm
 			idPrefix="create-library"
+			stacked
 			submitLabel={m['admin.libraries.create']()}
 			busyLabel={m['admin.libraries.creating']()}
 			suggestSlugFromName
@@ -301,8 +290,8 @@
 										aria-pressed={selected?.id === library.id}
 										onclick={() => selectLibrary(library)}
 									>{m['admin.libraries.manage_access']()}<span class="sr-only"> {library.name}</span></button>
-									<button type="button" class={smallDangerButton} disabled={deleting !== null} onclick={() => remove(library)}>
-										{deleting === library.id ? m['admin.libraries.deleting']() : m['admin.libraries.delete']()}<span class="sr-only"> {library.name}</span>
+									<button type="button" class={smallDangerButton} onclick={() => deleteTarget = library}>
+										{m['admin.libraries.delete']()}<span class="sr-only"> {library.name}</span>
 									</button>
 								</div>
 							</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy } from 'svelte';
 	import type { Book } from '#lib/catalog/types.js';
 	import * as m from '#lib/paraglide/messages.js';
@@ -39,7 +40,7 @@
 		if (book.owner_id === null) {
 			confirmation += `\n\n${book.visibility === 'library' ? m['bv.visibility.claim_library']() : m['bv.visibility.claim_owner']()}`;
 		}
-		if (!window.confirm(confirmation)) return;
+		if (!await confirmAction(confirmation)) return;
 		const bookId = book.id;
 		const account = currentAccount();
 		controller = new AbortController();
