@@ -101,7 +101,7 @@ test('failed deep-link lookup is visible and retryable', async ({ page }) => {
 	await expect(page.locator('#library-settings-99-name')).toHaveValue('Archive');
 });
 
-test('card deletion keeps conflict localization and refreshes after success', async ({ page }) => {
+test('library deletion lives in settings and keeps confirmation, conflict localization and refresh', async ({ page }) => {
 	await authenticate(page);
 	let conflict = true;
 	let deleted = false;
@@ -113,7 +113,13 @@ test('card deletion keeps conflict localization and refreshes after success', as
 		deleted = true;
 		return route.fulfill({ json: { deleted: true } });
 	});
+	await page.route('**/api/v1/libraries/1', (route) =>
+		route.fulfill({ json: { library: library(1, 'Main', 12) } })
+	);
 	await page.goto('/libraries');
+	const main = page.getByRole('main');
+	await expect(main.getByRole('button', { name: 'Delete Main', exact: true })).toHaveCount(0);
+	await main.getByRole('link', { name: 'Main', exact: true }).click();
 	await page.evaluate(() => {
 		document.body.dataset.libraryChanges = '0';
 		window.addEventListener('pandalibrary-libraries-changed', () => {
@@ -121,12 +127,56 @@ test('card deletion keeps conflict localization and refreshes after success', as
 		});
 	});
 	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByRole('button', { name: 'Delete Main', exact: true }).click();
+	await main.getByRole('button', { name: 'Delete Main', exact: true }).click();
 	await expect(page.getByRole('alert')).toContainText('This library cannot be deleted while it contains books');
 	conflict = false;
 	page.once('dialog', (dialog) => dialog.accept());
-	await page.getByRole('button', { name: 'Delete Main', exact: true }).click();
+	await main.getByRole('button', { name: 'Delete Main', exact: true }).click();
+	await expect(page).toHaveURL('/libraries');
 	await expect(page.getByRole('heading', { name: 'Main', exact: true })).toHaveCount(0);
-	await expect(page.getByText('Deleted “Main”.')).toBeVisible();
 	await expect(page.locator('body')).toHaveAttribute('data-library-changes', '1');
 });
+
+for (const width of [1280, 390]) {
+	test(`library and collection listings share the cover layout without visibility or deletion at ${width}px`, async ({ page }) => {
+		await authenticate(page);
+		await page.setViewportSize({ width, height: 900 });
+		await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: {
+			items: [{
+				id: 11, name: 'Weekend', kind: 'private', mode: 'manual', system_key: null,
+				owner_id: 1, description: null, created_by: 1, visible_book_count: 12,
+				created_at: stamp, updated_at: stamp
+			}], next_cursor: null
+		} }));
+		const layouts = [];
+		for (const destination of [
+			{ path: '/libraries', heading: 'All Libraries', name: 'Main', href: '/libraries/1' },
+			{ path: '/shelves', heading: 'All Collections', name: 'Weekend', href: '/shelves/11?manage=1' }
+		]) {
+			await page.goto(destination.path);
+			const main = page.getByRole('main');
+			const heading = main.getByRole('heading', { name: destination.heading, level: 1, exact: true });
+			await expect(heading).toBeVisible();
+			const card = main.getByRole('listitem').filter({ has: page.getByRole('heading', { name: destination.name, exact: true }) });
+			await expect(card.getByRole('link')).toHaveAttribute('href', destination.href);
+			await expect(card).toContainText('12 books');
+			await expect(card.getByRole('button')).toHaveCount(0);
+			await expect(card.getByText(/^(Private|Shared)$/)).toHaveCount(0);
+			layouts.push(await heading.evaluate((element) => {
+				const headingRect = element.getBoundingClientRect();
+				const grid = document.querySelector('main .book-grid');
+				const cover = grid?.querySelector('li > a');
+				if (!grid || !cover) throw new Error('Management cover grid is missing');
+				const coverRect = cover.getBoundingClientRect();
+				return {
+					fontSize: getComputedStyle(element).fontSize,
+					gap: getComputedStyle(grid).columnGap,
+					width: coverRect.width, height: coverRect.height,
+					headingGap: coverRect.top - headingRect.bottom
+				};
+			}));
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+		}
+		expect(layouts[1]).toEqual(layouts[0]);
+	});
+}

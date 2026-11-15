@@ -2,7 +2,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { translate } from '#lib/paging/translate.js';
 	import { fieldErrorKey, validateShelfDraft, type ShelfFormValue } from './form.js';
-	import type { RuleGroup, ShelfKind } from './types.js';
+	import type { RuleGroup } from './types.js';
 	import RuleGroupsEditor from './RuleGroupsEditor.svelte';
 	import { removedRuleGroups, validRuleGroups } from './rules.js';
 	import IconPicker from './IconPicker.svelte';
@@ -11,16 +11,12 @@
 		idPrefix,
 		submitLabel,
 		busyLabel,
-		allowShared = false,
 		initialName = '',
 		initialIcon = '',
 		initialDescription = '',
-		initialKind = 'private',
-		showVisibility = false,
 		readOnly = false,
 		initialRuleGroups = [],
 		nameLabel,
-		compactKindLabels = false,
 		resetOnSuccess = false,
 		onsave,
 		oncancel
@@ -28,16 +24,12 @@
 		idPrefix: string;
 		submitLabel: string;
 		busyLabel: string;
-		allowShared?: boolean;
 		initialName?: string;
 		initialIcon?: string;
 		initialDescription?: string;
-		initialKind?: ShelfKind;
-		showVisibility?: boolean;
 		readOnly?: boolean;
 		initialRuleGroups?: RuleGroup[];
 		nameLabel?: string;
-		compactKindLabels?: boolean;
 		resetOnSuccess?: boolean;
 		/** Returns an error message, or null when the save succeeded. */
 		onsave: (value: ShelfFormValue) => Promise<string | null>;
@@ -47,7 +39,6 @@
 	let name = $state('');
 	let icon = $state('');
 	let description = $state('');
-	let kind = $state<ShelfKind>('private');
 	let busy = $state(false);
 	let error = $state('');
 	let nameError = $state('');
@@ -60,7 +51,6 @@
 		name = initialName;
 		icon = initialIcon;
 		description = initialDescription;
-		kind = initialKind;
 		groups = initialRuleGroups.map((group) => ({ ...group, rules: { ...group.rules, conditions: group.rules.conditions.map((condition) => ({ ...condition })) } }));
 		removeRuleBooks = undefined;
 	});
@@ -91,7 +81,7 @@
 		busy = true;
 		try {
 			const failure = await onsave({
-				kind: allowShared ? kind : 'private', name: result.name, description: result.description, icon,
+				kind: 'private', name: result.name, description: result.description, icon,
 				rule_groups: groups, ...(hasRemovedRules ? { remove_rule_books: removeRuleBooks } : {})
 			});
 			if (failure) error = failure;
@@ -99,7 +89,6 @@
 				name = '';
 				icon = '';
 				description = '';
-				kind = 'private';
 				groups = [];
 			}
 		} finally {
@@ -133,32 +122,6 @@
 			bind:value={description}
 		></textarea>
 	</label>
-	{#if allowShared}
-		<fieldset class="grid gap-2 text-sm">
-			<legend class="mb-1 font-medium">{m['shelves.form.kind']()}</legend>
-			<label class="flex items-center gap-2">
-				<input type="radio" name={`${idPrefix}-kind`} value="private" bind:group={kind} />
-				<span>{compactKindLabels ? m['ux3.shelves.kind_private']() : m['shelves.form.kind_private']()}</span>
-			</label>
-			<label class="flex items-center gap-2">
-				<input type="radio" name={`${idPrefix}-kind`} value="shared" bind:group={kind} />
-				<span>{compactKindLabels ? m['ux3.shelves.kind_shared']() : m['shelves.form.kind_shared']()}</span>
-			</label>
-		</fieldset>
-	{/if}
-	{#if showVisibility && !allowShared}
-		<label class="grid gap-1 text-sm font-medium" for={`${idPrefix}-visibility`}>
-			<span>{m['shelves.form.kind']()}</span>
-			<input
-				id={`${idPrefix}-visibility`}
-				class="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 font-normal"
-				value={initialKind === 'shared' ? m['shelves.kind.shared']() : m['shelves.kind.private']()}
-				readonly
-				aria-describedby={`${idPrefix}-visibility-help`}
-			/>
-		</label>
-		<p id={`${idPrefix}-visibility-help`} class="-mt-2 text-sm text-slate-500">{m['collections.settings.visibility_help']()}</p>
-	{/if}
 	<RuleGroupsEditor idPrefix={`${idPrefix}-rules`} bind:groups disabled={busy} />
 	{#if hasRemovedRules}
 		<fieldset class="grid gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm" disabled={busy}>

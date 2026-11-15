@@ -115,11 +115,9 @@ for (const theme of ['light', 'dark']) {
 		for (const destination of [
 			{ path: '/bookheap', label: 'Search', button: 'Search' },
 			{ path: '/notes', label: 'Search annotations', button: 'Search' },
-			{ path: '/shelves/7?manage=1', label: 'Find a book to add', button: 'Find' },
 			{ path: '/books/21/highlights', label: 'Search annotations', button: 'Search' }
 		]) {
 			await page.goto(destination.path);
-			if (destination.path.includes('manage=1')) await page.getByText('Manage book membership', { exact: true }).click();
 			const main = page.getByRole('main');
 			const field = main.getByRole('searchbox');
 			await expect(field).toHaveAccessibleName(destination.label);
@@ -212,11 +210,10 @@ for (const theme of ['light', 'dark']) {
 		await expect(page.getByRole('main').getByRole('button', { name: 'Search', exact: true })).toHaveCSS('background-color', 'rgb(4, 120, 87)');
 		await checkNarrowLayout(page, notes);
 
-		await page.goto('/shelves/7?manage=1');
-		await page.getByText('Manage book membership', { exact: true }).click();
-		const shelfSearch = page.locator('#add-book-query');
-		expect.soft(await fieldStyle(shelfSearch), 'Shelf search').toEqual(standardSearch);
-		await checkNarrowLayout(page, shelfSearch);
+		await page.goto('/shelves/7');
+		const collectionSort = page.getByRole('combobox', { name: 'Sort', exact: true });
+		expect.soft(await fieldStyle(collectionSort), 'Collection sort').toEqual(standard);
+		await checkNarrowLayout(page, collectionSort);
 
 		await page.goto('/books/21/files');
 		await expect(page.getByRole('combobox', { name: 'Sort files', exact: true })).toHaveCount(0);

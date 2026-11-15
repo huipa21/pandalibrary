@@ -53,4 +53,4 @@
 	{/snippet}
 </HeaderMenu>
 
-<ShelfCreateDialog open={dialogOpen} allowShared={role === 'admin'} onclose={() => { dialogOpen = false; }} />
+<ShelfCreateDialog open={dialogOpen} onclose={() => { dialogOpen = false; }} />

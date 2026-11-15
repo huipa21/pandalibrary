@@ -35,7 +35,13 @@ to see the rest. The Libraries three-dot menu offers **All Libraries** and, for
 administrators, **New Library** in a creation dialog. The Collections menu offers
 **New collection** and **All Collections**. Both all-items pages use cover cards
 that open the item's settings; sidebar library and collection links still browse
-their books. Library settings include a searchable, scrollable access picker.
+their books. Library and collection settings use a Back icon in the top-right
+corner of their settings card; New Library uses the same layout. Library deletion
+is available inside a library's settings, with confirmation, rather than on its
+cover card. Library settings include a searchable, scrollable access picker.
+Collections are private: add books from a library or a book's **Details** tab,
+and remove them while browsing the collection. Collection settings contain only
+the collection's details and rules, without membership or visibility controls.
 
 ## Run with a container
 

@@ -142,7 +142,7 @@ test('shelf actions are a keyboard-accessible three-dot menu in both themes', as
 	await expect(trigger).toBeFocused();
 
 	await trigger.click();
-	await page.getByRole('heading', { name: 'Available collections' }).click();
+	await page.getByRole('heading', { name: 'All Collections' }).click();
 	await expect(menu).toHaveCount(0);
 	await trigger.click();
 	const lightBackground = await menu.evaluate((element) => getComputedStyle(element).backgroundColor);
@@ -167,7 +167,7 @@ test('one creation dialog refreshes the management page and sidebar', async ({ p
 	await sidebar.getByRole('menuitem', { name: 'All Collections' }).click();
 	await expect(page).toHaveURL('/shelves');
 	const main = page.getByRole('main');
-	await expect(main.getByRole('heading', { name: 'Available collections' })).toBeVisible();
+	await expect(main.getByRole('heading', { name: 'All Collections' })).toBeVisible();
 	await expect(main.getByRole('button', { name: 'Create collection' })).toHaveCount(0);
 	await expect(main.getByLabel('Collection name')).toHaveCount(0);
 
@@ -197,11 +197,11 @@ test('one creation dialog refreshes the management page and sidebar', async ({ p
 		kind: 'private', name: 'New reading', description: '  Notes  ', icon: 'star', rule_groups: []
 	});
 	await expect(main.getByRole('status').filter({ hasText: 'Collection created.' })).toBeVisible();
-	await expect(main.getByRole('region', { name: 'Available collections' }).getByRole('link', { name: 'New reading' })).toBeVisible();
+	await expect(main.locator('ul.book-grid').getByRole('link', { name: 'New reading', exact: true })).toBeVisible();
 	await expect(sidebar.getByRole('link', { name: 'New reading 0' })).toBeVisible();
 });
 
-test('mobile drawer keeps focus and creates a shared collection with automatic rules', async ({ page }, info) => {
+test('mobile administrator drawer keeps focus and creates a private collection with automatic rules', async ({ page }, info) => {
 	let releaseCreate = () => {};
 	const pendingCreate = new Promise<void>((resolve) => { releaseCreate = resolve; });
 	const server = await mockApi(page, { role: 'admin', beforeCreate: () => pendingCreate });
@@ -239,8 +239,9 @@ test('mobile drawer keeps focus and creates a shared collection with automatic r
 	await trigger.click();
 	await drawer.getByRole('menuitem', { name: 'New collection' }).click();
 	creator = page.getByRole('dialog', { name: 'Create collection' });
-	await creator.getByLabel('Collection name').fill('Shared recommendations');
-	await creator.getByLabel('Shared', { exact: true }).check();
+	await creator.getByLabel('Collection name').fill('Private recommendations');
+	await expect(creator.getByLabel('Shared', { exact: true })).toHaveCount(0);
+	await expect(creator.getByRole('group', { name: 'Visibility', exact: true })).toHaveCount(0);
 	await creator.getByRole('button', { name: 'Add automatic rule' }).click();
 	await creator.getByLabel('Rule name', { exact: true }).fill('Moon titles');
 	await creator.getByRole('combobox', { name: 'Field', exact: true }).selectOption('title');
@@ -256,12 +257,12 @@ test('mobile drawer keeps focus and creates a shared collection with automatic r
 	}
 	await expect(creator).toHaveCount(0);
 	expect(server.requests).toEqual([{
-		kind: 'shared', name: 'Shared recommendations', description: null, icon: '',
+		kind: 'private', name: 'Private recommendations', description: null, icon: '',
 		rule_groups: [{ id: expect.any(String), name: 'Moon titles', rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: 'Moon' }] } }]
 	}]);
 	await expect(drawer).toBeVisible();
 	await expect(trigger).toBeFocused();
-	await expect(drawer.getByRole('link', { name: 'Shared recommendations 0' })).toBeVisible();
+	await expect(drawer.getByRole('link', { name: 'Private recommendations 0' })).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(drawer).toBeHidden();
 	await expect(toggle).toBeFocused();
@@ -278,7 +279,7 @@ test('shelf actions stay available when sidebar shelf loading fails', async ({ p
 	await expect(sidebar.getByRole('menuitem', { name: 'New collection' })).toBeVisible();
 	await sidebar.getByRole('menuitem', { name: 'All Collections' }).click();
 	await expect(page).toHaveURL('/shelves');
-	await expect(page.getByRole('main').getByRole('heading', { name: 'Available collections' })).toBeVisible();
+	await expect(page.getByRole('main').getByRole('heading', { name: 'All Collections' })).toBeVisible();
 });
 
 test('the full shelf menu remains visible in a short mobile drawer', async ({ page }) => {

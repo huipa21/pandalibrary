@@ -27,18 +27,16 @@
 			pager.dispose();
 		};
 	});
-
-	function kindLabel(shelf: Shelf): string {
-		return shelf.kind === 'shared' ? m['shelves.kind.shared']() : m['shelves.kind.private']();
-	}
 </script>
 
 <svelte:head>
-	<title>{m['shelves.title']()} · {m['common.app_name']()}</title>
+	<title>{m['ux1.shelves.more']()} · {m['common.app_name']()}</title>
 </svelte:head>
 
-<section class="space-y-10" aria-labelledby="shelves-heading">
-	<h1 id="shelves-heading" class="sr-only">{m['shelves.title']()}</h1>
+<section class="space-y-8" aria-labelledby="shelves-heading">
+	<header class="flex flex-wrap items-center justify-between gap-4">
+		<h1 id="shelves-heading" class="text-3xl font-semibold tracking-tight">{m['ux1.shelves.more']()}</h1>
+	</header>
 
 	{#if created}
 		<p class="text-sm text-green-700" role="status">
@@ -47,9 +45,7 @@
 		</p>
 	{/if}
 
-	<section class="space-y-4" aria-labelledby="shelf-list-heading" aria-busy={pager.status === 'loading'}>
-		<h2 id="shelf-list-heading" class="text-xl font-semibold">{m['shelves.list_heading']()}</h2>
-		<p class="text-sm text-slate-600">{m['collections.settings.list_help']()}</p>
+	<div class="space-y-4" aria-busy={pager.status === 'loading'}>
 		{#if pager.status === 'error'}
 			<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">
 				<p>{translate(shelfErrorKey(pager.error, 'load'))}</p>
@@ -71,16 +67,15 @@
 							name={shelf.name}
 							icon={entityIcon(shelf.icon, `collection:${shelf.id}`)}
 						/>
-						<div class="flex flex-wrap items-start justify-between gap-2">
-							<h3 class="min-w-0 font-semibold break-words">
+						<div class="min-w-0">
+							<h2 class="font-semibold break-words">
 								{shelf.name}
-							</h3>
-							<span class="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">{kindLabel(shelf)}</span>
+							</h2>
+							<p class="text-sm text-slate-600">{m['catalog.library.book_count']({ count: shelf.visible_book_count })}</p>
 						</div>
 						{#if shelf.description}
 							<p class="line-clamp-3 text-sm whitespace-pre-wrap text-slate-600">{shelf.description}</p>
 						{/if}
-						<p class="text-sm text-slate-500">{m['shelves.book_count']({ count: shelf.visible_book_count })}</p>
 					</li>
 				{/each}
 			</ul>
@@ -104,5 +99,5 @@
 				<p class="text-center text-sm text-slate-500" role="status">{m['shelves.end']()}</p>
 			{/if}
 		{/if}
-	</section>
+	</div>
 </section>

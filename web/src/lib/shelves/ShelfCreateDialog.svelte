@@ -6,7 +6,7 @@
 	import { focusableWithin, nextTrappedFocus } from '#lib/shell/focus.js';
 	import ShelfForm from './ShelfForm.svelte';
 
-	let { open, allowShared, onclose }: { open: boolean; allowShared: boolean; onclose: () => void } = $props();
+	let { open, onclose }: { open: boolean; onclose: () => void } = $props();
 	let dialogElement = $state<HTMLDialogElement | null>(null);
 	let submitting = $state(false);
 
@@ -52,7 +52,7 @@
 	<dialog bind:this={dialogElement} class="fixed inset-0 m-auto max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 text-slate-950 shadow-lg"
 		aria-label={m['ux3.shelves.create_dialog_title']()} oncancel={cancel} {onkeydown}>
 		<h2 class="mb-4 text-lg font-semibold">{m['ux3.shelves.create_dialog_title']()}</h2>
-		<ShelfForm idPrefix="create-shelf" {allowShared} compactKindLabels nameLabel={m['ux3.shelves.name_label']()} submitLabel={m['ux3.shelves.create_submit']()} busyLabel={m['ux3.shelves.creating']()}
+		<ShelfForm idPrefix="create-shelf" nameLabel={m['ux3.shelves.name_label']()} submitLabel={m['ux3.shelves.create_submit']()} busyLabel={m['ux3.shelves.creating']()}
 			onsave={save} oncancel={() => { if (!submitting) onclose(); }} />
 	</dialog>
 {/if}

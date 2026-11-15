@@ -7,9 +7,6 @@
 	import { listLibraries } from '#lib/catalog/api.js';
 	import { hasNextPage } from '#lib/catalog/query.js';
 	import type { Library } from '#lib/catalog/types.js';
-	import { deleteLibrary } from '#lib/admin/api.js';
-	import { adminErrorKey } from '#lib/admin/form.js';
-	import { translate } from '#lib/paging/translate.js';
 	import { getSessionViewer } from '#lib/shelves/api.js';
 	import { isAdministrator } from '#lib/shelves/form.js';
 	import EntityManagementCover from '#lib/EntityManagementCover.svelte';
@@ -23,9 +20,6 @@
 	let error = $state('');
 	let moreError = $state('');
 	let isAdmin = $state(false);
-	let deleting = $state<number | null>(null);
-	let rowErrors = $state<Record<number, string>>({});
-	let notice = $state('');
 	let dialogOpen = $state(false);
 	let loadVersion = 0;
 
@@ -99,34 +93,16 @@
 			if (version === loadVersion) loadingMore = false;
 		}
 	}
-
-	async function remove(library: Library) {
-		if (!isAdmin || deleting !== null) return;
-		if (!window.confirm(m['admin.libraries.delete_confirm']({ name: library.name }))) return;
-		deleting = library.id;
-		rowErrors = { ...rowErrors, [library.id]: '' };
-		notice = '';
-		try {
-			await deleteLibrary(library.id);
-			notice = m['admin.libraries.deleted']({ name: library.name });
-			window.dispatchEvent(new CustomEvent('pandalibrary-libraries-changed'));
-		} catch (cause) {
-			rowErrors = { ...rowErrors, [library.id]: translate(adminErrorKey(cause, 'delete_library')) };
-		} finally {
-			deleting = null;
-		}
-	}
 </script>
 
-<section class="space-y-8">
-	<header class="flex flex-wrap items-center justify-between gap-4">
-		<h1 class="text-3xl font-semibold tracking-tight">{m['ux1.library.manage']()}</h1>
-			{#if isAdmin}
-			<button type="button" class="button-primary rounded-md px-4 py-2 font-medium" onclick={() => { dialogOpen = true; }}>{m['ux1.library.new']()}</button>
-			{/if}
-	</header>
-	{#if notice}<p class="text-sm text-green-700" role="status">{notice}</p>{/if}
+<svelte:head>
+	<title>{m['ux1.library.manage']()} · {m['common.app_name']()}</title>
+</svelte:head>
 
+<section class="space-y-8" aria-labelledby="libraries-heading">
+	<header class="flex flex-wrap items-center justify-between gap-4">
+		<h1 id="libraries-heading" class="text-3xl font-semibold tracking-tight">{m['ux1.library.manage']()}</h1>
+	</header>
 	{#if error}
 		<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">
 			<p>{error}</p>
@@ -141,19 +117,11 @@
 			{#each libraries as library (library.id)}
 				<li class="min-w-0 space-y-3">
 					<EntityManagementCover href={`/libraries/${library.id}`} name={library.name} icon={entityIcon(library.icon, `library:${library.id}`)} />
-					<div class="flex items-start justify-between gap-2">
-						<div class="min-w-0">
-							<h2 class="font-semibold break-words">{library.name}</h2>
-							<p class="text-sm text-slate-600">{m['catalog.library.book_count']({ count: library.visible_book_count })}</p>
-							<p class="break-words text-sm text-slate-500">{library.slug}</p>
-						</div>
-					{#if isAdmin}
-							<button type="button" class="shell-icon-button text-red-700 disabled:opacity-50" disabled={deleting !== null} onclick={() => remove(library)} aria-label={m['catalog.library.delete']({ name: library.name })} title={m['catalog.library.delete']({ name: library.name })}>
-								<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7" /></svg>
-							</button>
-					{/if}
+					<div class="min-w-0">
+						<h2 class="font-semibold break-words">{library.name}</h2>
+						<p class="text-sm text-slate-600">{m['catalog.library.book_count']({ count: library.visible_book_count })}</p>
+						<p class="break-words text-sm text-slate-500">{library.slug}</p>
 					</div>
-					{#if rowErrors[library.id]}<p class="text-sm text-red-800" role="alert">{rowErrors[library.id]}</p>{/if}
 				</li>
 			{/each}
 		</ul>

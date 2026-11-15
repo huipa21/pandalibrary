@@ -187,7 +187,6 @@
 										onchange={(event) => toggleShelf(shelf.id, event.currentTarget.checked)}
 									/>
 									<span>{shelfLabel(shelf)}</span>
-									{#if shelf.kind === 'shared'}<span class="text-xs text-slate-500">({m['shelves.kind.shared']()})</span>{/if}
 								</label>
 							</li>
 						{/each}

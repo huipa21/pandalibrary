@@ -586,17 +586,18 @@ test('changing collection filters while another page loads starts a fresh pageab
 	}
 });
 
-test('legacy collection settings links preserve explicit browse scope', async ({ page }) => {
+test('collection settings have an icon-only Back link to All Collections', async ({ page }) => {
 	await mockLibraries(page);
 	await page.goto('/shelves/11?library_id=2&author_id=4&manage=1');
 	await expect(page.getByRole('main').getByLabel('Name', { exact: true })).toHaveValue('Weekend reads');
 	expect(new URL(page.url()).searchParams.get('library_id')).toBe('2');
 	expect(new URL(page.url()).searchParams.get('author_id')).toBe('4');
-	await page.getByRole('main').getByRole('link', { name: 'Back to books' }).click();
-	await expect(page.getByRole('main').getByRole('combobox', { name: 'Author' })).toBeVisible();
-	expect(new URL(page.url()).searchParams.get('library_id')).toBe('2');
-	expect(new URL(page.url()).searchParams.get('author_id')).toBe('4');
-	expect(new URL(page.url()).searchParams.has('manage')).toBe(false);
+	const back = page.getByRole('main').getByRole('link', { name: 'Back to collections' });
+	await expect(back).toHaveText('');
+	await expect(back.locator('svg')).toHaveAttribute('data-icon', 'arrow-left');
+	await back.click();
+	await expect(page).toHaveURL('/shelves');
+	await expect(page.getByRole('main').getByRole('heading', { name: 'All Collections', exact: true })).toBeVisible();
 });
 
 test('failed library and collection pages keep retry without back links', async ({ page }) => {

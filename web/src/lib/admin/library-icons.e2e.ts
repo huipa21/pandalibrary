@@ -21,6 +21,10 @@ async function mockLibraries(page: Page) {
 			cursor: 0, user_books: [], reading_progress: [], highlights: [], bookmarks: [], notes: [], user_settings: []
 		} });
 		if (path === '/me/settings') return route.fulfill({ json: { settings: [] } });
+		if (path === '/wordbooks') return route.fulfill({ json: { wordbooks: [] } });
+		if (path === '/shelves/system/favorites') return route.fulfill({ json: {
+			shelf: { key: 'favorites', name: 'Favorites', mode: 'manual', shelf_id: null, visible_book_count: 0 }
+		} });
 		if (path === '/version') return route.fulfill({ json: {
 			version: 'test', commit: 'test', commit_date: library.created_at, dirty: false, release: null
 		} });
@@ -46,8 +50,9 @@ async function mockLibraries(page: Page) {
 
 test('library creation saves the chosen icon and resets the picker', async ({ page }) => {
 	const server = await mockLibraries(page);
-	await page.goto('/admin/libraries?create=1');
-	const name = page.locator('#create-library-name');
+	await page.goto('/libraries?create=1');
+	const dialog = page.getByRole('dialog', { name: 'New Library', exact: true });
+	const name = dialog.getByLabel('Name', { exact: true });
 	await expect(name).toBeFocused();
 	const form = name.locator('xpath=ancestor::form');
 	await name.fill('History');
@@ -55,27 +60,29 @@ test('library creation saves the chosen icon and resets the picker', async ({ pa
 	await form.getByRole('button', { name: 'Create library', exact: true }).click();
 	await expect.poll(() => server.creates.length).toBe(1);
 	expect(server.creates[0]).toEqual({ name: 'History', slug: 'history', icon: 'star' });
-	await expect(form.getByRole('radio', { name: 'Automatic', exact: true })).toBeChecked();
+	await expect(dialog).toHaveCount(0);
+	await page.goto('/libraries?create=1');
+	await expect(dialog.getByRole('radio', { name: 'Automatic', exact: true })).toBeChecked();
+	await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('');
 });
 
 test('library edits preserve the chosen icon, allow icon-only changes, and clear to automatic', async ({ page }) => {
 	const server = await mockLibraries(page);
-	await page.goto('/admin/libraries?edit=4');
-	let form = page.locator('#linked-library-4-name').locator('xpath=ancestor::form');
+	await page.goto('/libraries/4');
+	const form = page.locator('#library-settings-4-name').locator('xpath=ancestor::form');
 	await expect(form.getByRole('radio', { name: 'Bookmark', exact: true })).toBeChecked();
 	await form.getByLabel('Name', { exact: true }).fill('Novels');
 	await form.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect.poll(() => server.patches.length).toBe(1);
 	expect(server.patches[0]).toEqual({ name: 'Novels' });
-	await expect(page).toHaveURL('/admin/libraries');
+	await expect(page).toHaveURL('/libraries/4');
+	await expect(page.getByText('Saved “Novels”.', { exact: true })).toBeVisible();
 
 	for (const [label, icon] of [['Star', 'star'], ['Automatic', '']] as const) {
-		await page.goto('/admin/libraries?edit=4');
-		form = page.locator('#linked-library-4-name').locator('xpath=ancestor::form');
 		await expect(form.getByRole('radio', { name: icon ? 'Bookmark' : 'Star', exact: true })).toBeChecked();
 		await form.getByRole('radio', { name: label, exact: true }).check();
 		await form.getByRole('button', { name: 'Save', exact: true }).click();
 		await expect.poll(() => server.patches.at(-1)).toEqual({ icon });
-		await expect(page).toHaveURL('/admin/libraries');
+		await expect(page).toHaveURL('/libraries/4');
 	}
 });

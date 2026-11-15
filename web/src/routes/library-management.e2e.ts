@@ -8,6 +8,7 @@ async function mockManagement(page: Page, role = 'admin') {
 	let library = { id: 1, name: 'Fiction', slug: 'fiction', icon: 'bookmark', visible_book_count: 7, created_at: timestamp, updated_at: timestamp };
 	const creates: Record<string, string>[] = [];
 	const patches: Record<string, string>[] = [];
+	const deletes: number[] = [];
 	const grants: number[] = [];
 	const revokes: number[] = [];
 	const searches: string[] = [];
@@ -45,6 +46,10 @@ async function mockManagement(page: Page, role = 'admin') {
 			library = { ...library, ...request.postDataJSON() };
 			return route.fulfill({ json: { library } });
 		}
+		if (path === '/admin/libraries/1' && request.method() === 'DELETE') {
+			deletes.push(1);
+			return route.fulfill({ json: { deleted: true } });
+		}
 		if (path === '/admin/libraries/1/access') return route.fulfill({ json: { items: entries, next_cursor: null } });
 		const access = /^\/admin\/libraries\/1\/access\/(\d+)$/.exec(path);
 		if (access && request.method() === 'PUT') {
@@ -69,7 +74,19 @@ async function mockManagement(page: Page, role = 'admin') {
 		unexpected.push(`${request.method()} ${path}`);
 		return route.fulfill({ status: 404, json: { title: 'Unexpected request', status: 404 } });
 	});
-	return { creates, patches, grants, revokes, searches, unexpected, failCreate: (value: boolean) => { createFails = value; } };
+	return { creates, patches, deletes, grants, revokes, searches, unexpected, failCreate: (value: boolean) => { createFails = value; } };
+}
+
+async function expectSettingsLayout(container: ReturnType<Page['locator']>, heading: string) {
+	await expect(container).toContainClass('card space-y-4 p-6');
+	const header = container.locator(':scope > header');
+	await expect(header).toContainClass('flex items-center justify-between gap-4');
+	await expect(header.getByRole('heading', { name: heading, level: 1, exact: true })).toContainClass('text-xl font-semibold');
+	const back = header.getByRole('button', { name: 'Back', exact: true }).or(header.getByRole('link', { name: 'Back', exact: true }));
+	await expect(back).toContainClass('shell-icon-button');
+	await expect(back).toHaveAttribute('title', 'Back');
+	await expect(back).toHaveText('');
+	await expect(back.locator('svg')).toHaveCount(1);
 }
 
 test('New Library is a keyboard-accessible modal with creation fields and a visible selected icon border', async ({ page }) => {
@@ -80,10 +97,12 @@ test('New Library is a keyboard-accessible modal with creation fields and a visi
 	await page.keyboard.press('ArrowDown');
 	await page.keyboard.press('Enter');
 	const dialog = page.getByRole('dialog', { name: 'New Library', exact: true });
+	await expectSettingsLayout(dialog.locator(':scope > section'), 'New Library');
+	await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
 	await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused();
 	await expect(page).toHaveURL('/libraries');
 	await page.keyboard.press('Shift+Tab');
-	await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+	await expect(dialog.getByRole('button', { name: 'Back', exact: true })).toBeFocused();
 	await page.keyboard.press('Tab');
 	await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused();
 	await dialog.getByLabel('Name', { exact: true }).fill('Science');
@@ -128,6 +147,9 @@ test('library settings save fields and access search narrows paginated, scrollab
 	const server = await mockManagement(page);
 	await page.goto('/libraries/1');
 	const settings = page.getByRole('region', { name: 'Library settings', exact: true });
+	await expectSettingsLayout(settings, 'Library settings');
+	await expect(settings.getByRole('link', { name: 'Back', exact: true })).toHaveAttribute('href', '/libraries');
+	await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toHaveCount(1);
 	await expect(settings.getByLabel('Name', { exact: true })).toHaveValue('Fiction');
 	await expect(settings.getByRole('radio', { name: 'Bookmark', exact: true })).toBeChecked();
 	await settings.getByRole('radio', { name: 'Star', exact: true }).check();
@@ -200,9 +222,30 @@ test('reader library management opens read-only settings without requesting priv
 	await cover.click();
 	await expect(page.getByRole('region', { name: 'Library settings', exact: true })).toContainText('fiction');
 	await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Delete Fiction', exact: true })).toHaveCount(0);
 	await expect(page.getByRole('heading', { name: 'Manage access', exact: true })).toHaveCount(0);
 	await expect(page.getByRole('radio', { name: 'Bookmark', exact: true })).toBeDisabled();
 	expect(server.patches).toEqual([]);
+	expect(server.unexpected).toEqual([]);
+});
+
+test('library deletion requires confirmation and cancellation preserves the entry and access', async ({ page }) => {
+	const server = await mockManagement(page);
+	await page.goto('/libraries/1');
+	const remove = page.getByRole('button', { name: 'Delete Fiction', exact: true });
+	await expect(remove).toBeVisible();
+	const confirmation = page.waitForEvent('dialog');
+	const clicked = remove.click();
+	const dialog = await confirmation;
+	expect(dialog.type()).toBe('confirm');
+	expect(dialog.message()).toBe('Delete the library “Fiction”? This cannot be undone.');
+	await dialog.dismiss();
+	await clicked;
+	await expect(page).toHaveURL('/libraries/1');
+	await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Fiction');
+	await expect(page.getByRole('heading', { name: 'Manage access', exact: true })).toBeVisible();
+	await expect(remove).toBeEnabled();
+	expect(server.deletes).toEqual([]);
 	expect(server.unexpected).toEqual([]);
 });
 
@@ -211,7 +254,7 @@ test('creation links open the library modal and dismiss without retaining the cr
 	await page.goto('/libraries?create=1');
 	const dialog = page.getByRole('dialog', { name: 'New Library', exact: true });
 	await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused();
-	await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+	await dialog.getByRole('button', { name: 'Back', exact: true }).click();
 	await expect(dialog).toHaveCount(0);
 	await expect(page).toHaveURL('/libraries');
 	await page.reload();

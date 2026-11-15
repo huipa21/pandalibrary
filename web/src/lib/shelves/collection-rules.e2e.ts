@@ -3,6 +3,12 @@ import type { Shelf, ShelfInput, ShelfPatch } from './types.js';
 
 test.use({ serviceWorkers: 'block' });
 const timestamp = '2026-11-04T00:00:00Z';
+const anotherBook = {
+	id: 42, library_id: 2, title: 'From another library', sort_title: 'From another library',
+	subtitle: null, description: null, language: null, publisher: null, published_date: null,
+	page_count: null, cover_url: null, cover_source: null, authors: [], series: null, tags: [],
+	identifiers: [], files: [], field_sources: [], created_at: timestamp, updated_at: timestamp
+};
 
 async function mockCollection(page: Page, locale = 'en', kind: Shelf['kind'] = 'private') {
 	let collection: Shelf = {
@@ -44,6 +50,7 @@ async function mockCollection(page: Page, locale = 'en', kind: Shelf['kind'] = '
 			searchURLs.push(request.url());
 			return route.fulfill({ json: { items: [{ id: 42, title: 'From another library', authors: [], series: null, cover_url: null, rank: 0 }], next_cursor: null } });
 		}
+		if (path === '/books/42') return route.fulfill({ json: { book: anotherBook } });
 		if (path === '/shelves' && request.method() === 'POST') {
 			const body = request.postDataJSON() as ShelfInput;
 			creates.push(body);
@@ -81,13 +88,29 @@ test('All Collections covers open settings while sidebar links still browse book
 	await expect(main.getByLabel('Name', { exact: true })).toHaveValue('Across libraries');
 	await expect(main.getByRole('radio', { name: 'Bookmark', exact: true })).toBeChecked();
 	await expect(main.getByLabel('Description (optional)')).toBeVisible();
-	await expect(main.getByLabel('Visibility', { exact: true })).toHaveValue('Private');
+	await expect(main.getByLabel('Visibility', { exact: true })).toHaveCount(0);
+	const settings = main.getByRole('region', { name: 'Collection settings', exact: true });
+	await expect(main.locator('.app-panel > *')).toHaveCount(1);
+	await expect(settings).toHaveClass('card space-y-4 p-6');
+	await expect(settings.getByRole('heading', { level: 1 })).toHaveText('Collection settings');
+	await expect(settings.locator('header')).toHaveClass('flex items-center justify-between gap-4');
+	const back = settings.getByRole('link', { name: 'Back to collections', exact: true });
+	await expect(main.getByRole('link')).toHaveCount(1);
+	await expect(back).toHaveAttribute('href', '/shelves');
+	await expect(back).toHaveAttribute('title', 'Back to collections');
+	await expect(back).toHaveClass('shell-icon-button');
+	await expect(back).toHaveText('');
+	await expect(back.locator('svg')).toBeVisible();
+	await expect(main.getByText('Manage book membership', { exact: true })).toHaveCount(0);
+	await expect(main.getByRole('heading', { name: 'Add books', exact: true })).toHaveCount(0);
 	await expect(main.getByRole('heading', { name: 'Automatic rules', exact: true })).toBeVisible();
 	await expect(main.getByRole('button', { name: 'Display settings', exact: true })).toHaveCount(0);
 	await expect(main.getByRole('combobox', { name: 'Sort', exact: true })).toHaveCount(0);
 	await expect(main.getByLabel('Find a book to add')).toHaveCount(0);
 	expect(server.bookURLs).toHaveLength(0);
 
+	await back.click();
+	await expect(page).toHaveURL('/shelves');
 	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Across libraries 0' }).click();
 	await expect(page).toHaveURL('/shelves/7');
 	await expect(main.getByLabel('Name', { exact: true })).toHaveCount(0);
@@ -102,7 +125,7 @@ test('shared collection settings are read-only for a non-administrator', async (
 	await main.getByRole('link', { name: 'Across libraries', exact: true }).click();
 	await expect(main.getByLabel('Name', { exact: true })).toBeDisabled();
 	await expect(main.getByRole('radio', { name: 'Bookmark', exact: true })).toBeDisabled();
-	await expect(main.getByLabel('Visibility', { exact: true })).toHaveValue('Shared');
+	await expect(main.getByLabel('Visibility', { exact: true })).toHaveCount(0);
 	await expect(main.getByRole('button', { name: 'Save changes', exact: true })).toHaveCount(0);
 	await expect(main.getByRole('button', { name: 'Delete collection', exact: true })).toHaveCount(0);
 	await expect(main.getByText('Manage book membership', { exact: true })).toHaveCount(0);
@@ -153,13 +176,11 @@ test('edits several independent all/any rules while allowing manual additions to
 		{ id: 'legacy', name: 'Novels', rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: 'Novel' }] } },
 		expect.objectContaining({ name: 'Authors', rules: { match: 'any', conditions: [{ field: 'author_id', op: 'eq', value: 12 }] } })
 	]);
-	await main.getByText('Manage book membership', { exact: true }).click();
-	await page.getByLabel('Find a book to add').fill('another library');
-	await page.getByRole('button', { name: 'Find', exact: true }).click();
-	await page.getByRole('button', { name: 'Add “From another library” to this collection', exact: true }).click();
+	await page.goto('/books/42');
+	await page.getByRole('main').getByRole('button', { name: 'Add to collection', exact: true }).click();
+	await page.getByRole('dialog', { name: 'Add to collection', exact: true }).getByRole('button', { name: /Across libraries/ }).click();
 	await expect.poll(() => server.added).toEqual([42]);
-	expect(server.searchURLs).toHaveLength(1);
-	expect(new URL(server.searchURLs[0]).searchParams.has('library_id')).toBe(false);
+	expect(server.searchURLs).toHaveLength(0);
 	expect(server.detailURLs.every((url) => !new URL(url).searchParams.has('library_id'))).toBe(true);
 });
 
@@ -193,15 +214,16 @@ test('Chinese collection rule controls and deletion choices are localized', asyn
 	await expect(page.getByRole('main')).not.toContainText('书架');
 });
 
-test('explicit legacy library filters affect detail only, not manual candidate search', async ({ page }) => {
+test('explicit legacy library filters scope collection details and browsing without membership search', async ({ page }) => {
 	const server = await mockCollection(page);
 	await page.goto('/shelves/7?library_id=3&manage=1');
-	await page.getByText('Manage book membership', { exact: true }).click();
-	await page.getByLabel('Find a book to add').fill('another library');
-	await page.getByRole('button', { name: 'Find', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Add “From another library” to this collection', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Collection settings', exact: true })).toBeVisible();
+	expect(server.bookURLs).toHaveLength(0);
+	await page.goto('/shelves/7?library_id=3');
+	await expect.poll(() => server.bookURLs.length).toBeGreaterThan(0);
 	expect(server.detailURLs.every((url) => new URL(url).searchParams.get('library_id') === '3')).toBe(true);
-	expect(server.searchURLs.every((url) => !new URL(url).searchParams.has('library_id'))).toBe(true);
+	expect(server.bookURLs.every((url) => new URL(url).searchParams.get('library_id') === '3')).toBe(true);
+	expect(server.searchURLs).toHaveLength(0);
 });
 
 test('invalid explicit legacy library filters show an error without requesting collection details', async ({ page }) => {

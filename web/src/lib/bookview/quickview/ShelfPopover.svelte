@@ -195,8 +195,7 @@
 								<span class="min-w-0 truncate">{shelf.name}</span>
 								<span class="shrink-0 text-xs text-slate-500">
 									{#if member}<span aria-hidden="true">✓</span><span class="sr-only">{m['bv5.shelf_member']()}</span>
-									{:else if busy === shelf.id}{m['shelves.book.adding']()}
-									{:else}{shelf.kind === 'shared' ? m['shelves.kind.shared']() : m['shelves.kind.private']()}{/if}
+									{:else if busy === shelf.id}{m['shelves.book.adding']()}{/if}
 								</span>
 							</button>
 						</li>

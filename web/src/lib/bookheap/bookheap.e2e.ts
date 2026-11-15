@@ -304,6 +304,8 @@ test('Assign skips items that cannot be assigned and the combined active filter 
 	const dialog = page.getByRole('dialog', { name: 'Assign to a library' });
 	await expect(dialog.getByTestId('bh4-assign-count')).toHaveText('Files to assign: 1');
 	await expect(dialog.getByTestId('bh4-assign-skipped')).toContainText(': 1');
+	await expect(dialog.getByRole('checkbox', { name: 'Classics', exact: true })).toBeVisible();
+	await expect(dialog.getByText('(Shared)', { exact: true })).toHaveCount(0);
 	await dialog.getByRole('button', { name: 'Cancel' }).click();
 	await expect(dialog).toBeHidden();
 	await expect(page.getByRole('button', { name: 'Assign…' })).toBeFocused();

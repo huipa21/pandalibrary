@@ -133,11 +133,12 @@ test('tags respect permissions; Cancel keeps a tag, OK sends one DELETE and move
 
 test('button picker opens downward, disables members, and adds a tag via the change event', async ({ page }) => {
 	const { state, section } = await mount(page);
-	const trigger = section.getByRole('button', { name: 'Add to shelf', exact: true });
+	const trigger = section.getByRole('button', { name: 'Add to collection', exact: true });
 	await trigger.click();
-	const dialog = section.getByRole('dialog', { name: 'Add to shelf' });
+	const dialog = section.getByRole('dialog', { name: 'Add to collection' });
 	const option = dialog.getByRole('button', { name: /New shelf/ });
 	await expect(option).toBeVisible();
+	await expect(dialog.getByText('Private', { exact: true })).toHaveCount(0);
 	await expect(dialog.getByRole('button', { name: /Owned shelf/ })).toHaveAttribute('aria-disabled', 'true');
 	await expect(dialog.getByRole('button', { name: /Shared shelf/ })).toHaveCount(0);
 	const buttonBox = await trigger.boundingBox();

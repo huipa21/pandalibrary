@@ -297,7 +297,7 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 
 	await page.goto('/shelves');
 	await expect(page.getByRole('main').getByRole('link', { name: 'Favorites' })).toBeVisible();
-	await expect(page.getByText('Shared', { exact: true })).toBeVisible();
+	await expect(page.getByRole('main').getByText('Shared', { exact: true })).toHaveCount(0);
 	await expect(page.getByRole('main').getByRole('button', { name: 'Create collection' })).toHaveCount(0);
 
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
@@ -318,13 +318,13 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await expect(page.getByRole('status').filter({ hasText: 'Collection created.' })).toBeVisible();
 	expect(created.at(-1)).toEqual({ kind: 'private', name: 'To read', description: null, icon: '', rule_groups: [] });
 	await expect(creator).toHaveCount(0);
-	await expect(page.getByRole('main').getByRole('link', { name: 'To read', exact: true })).toHaveCount(2);
+	await expect(page.getByRole('main').locator('ul.book-grid').getByRole('link', { name: 'To read', exact: true })).toHaveCount(1);
 
 	await page.goto('/shelves/8');
 	await expect(page.getByRole('heading', { name: 'Staff picks' })).toHaveClass('sr-only');
 	await expect(page.getByTitle('A Book', { exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
-	await expect(page.getByRole('button', { name: /Remove “A Book”/ })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Remove manual membership of “A Book” in this collection' })).toHaveCount(0);
 
 	await page.goto('/shelves/7');
 	await expect(page.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
@@ -336,22 +336,23 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await page.getByLabel('Name').fill('Best books');
 	await page.getByLabel('Description (optional)').fill('');
 	await page.getByRole('button', { name: 'Save changes' }).click();
-	await expect(page.getByRole('heading', { name: 'Best books', level: 1 })).toHaveClass('sr-only');
+	await expect(page.getByRole('heading', { name: 'Collection settings', level: 1 })).toBeVisible();
 	await expect(page.getByText('Collection updated.')).toBeVisible();
 	await expect(page.getByText('Old notes')).toHaveCount(0);
 	expect(patches).toEqual([{ name: 'Best books', description: null, rule_groups: [] }]);
 
-	await page.getByText('Manage book membership', { exact: true }).click();
+	await page.goto('/shelves/7');
 	await expect(page.getByRole('link', { name: 'Open book details', exact: true })).toHaveAttribute('href', '/books/21');
-	await page.getByRole('button', { name: 'Load more books' }).click();
+	await page.getByRole('button', { name: 'Load more books', exact: true }).click();
 	await expect(page.getByRole('alert')).toContainText('This collection changed while you were browsing.');
 	expect(bookQueries.at(-1)?.get('cursor')).toBe('shelf-cursor');
 
 	await page.getByRole('button', { name: 'Remove manual membership of “A Book” in this collection' }).click();
-	await expect(page.getByText('This collection has no books you can see.')).toBeVisible();
+	await expect(page.getByText('No books match these filters.')).toBeVisible();
 	await expect(page.getByText('Manual membership removed.', { exact: false })).toBeVisible();
 	expect(bookQueries.at(-1)?.has('cursor')).toBe(false);
 
+	await page.goto('/shelves/7?manage=1');
 	await expect(page.getByText('Deleting a collection removes only the collection, not the books on it.')).toBeVisible();
 	page.once('dialog', (dialog) => dialog.dismiss());
 	await page.getByRole('button', { name: 'Delete collection' }).click();
@@ -365,7 +366,7 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	expect(deleted).toBe(true);
 });
 
-test('offers shared shelves to administrators and reports shelf permission failures', async ({ page }) => {
+test('creates private collections for administrators and reports legacy shared collection permission failures', async ({ page }) => {
 	await authenticate(page, 'admin', 'zh');
 	const created: unknown[] = [];
 	let attempts = 0;
@@ -375,7 +376,7 @@ test('offers shared shelves to administrators and reports shelf permission failu
 	await page.route('**/api/v1/shelves', (route) => {
 		const body = route.request().postDataJSON();
 		created.push(body);
-		return route.fulfill({ status: 201, json: { shelf: { ...shelf(10, body.name, 'shared', 0) } } });
+		return route.fulfill({ status: 201, json: { shelf: { ...shelf(10, body.name, 'private', 0) } } });
 	});
 	await page.route('**/api/v1/books/21', (route) => route.fulfill({ json: { book } }));
 	await page.route('**/api/v1/shelves/8/books/21', (route) => {
@@ -389,16 +390,16 @@ test('offers shared shelves to administrators and reports shelf permission failu
 	await sidebar.getByRole('menuitem', { name: '新建合集' }).click();
 	const creator = page.getByRole('dialog', { name: '创建合集' });
 	await creator.getByLabel('合集名称').fill('Staff favourites');
-	await creator.getByLabel('共享', { exact: true }).check();
+	await expect(creator.getByLabel('共享', { exact: true })).toHaveCount(0);
 	await creator.getByRole('button', { name: '创建合集' }).click();
 	await expect(page.getByText('合集已创建。')).toBeVisible();
-	expect(created).toEqual([{ kind: 'shared', name: 'Staff favourites', description: null, icon: '', rule_groups: [] }]);
+	expect(created).toEqual([{ kind: 'private', name: 'Staff favourites', description: null, icon: '', rule_groups: [] }]);
 
 	await page.goto('/books/21');
 	const picker = page.getByRole('dialog', { name: '添加到合集' });
 	await page.getByRole('main').getByRole('button', { name: '添加到合集', exact: true }).click();
 	const staffPicks = picker.getByRole('button', { name: /Staff picks/ });
-	await expect(staffPicks).toContainText('共享');
+	await expect(picker.getByText('共享', { exact: true })).toHaveCount(0);
 	await staffPicks.click();
 	await expect(picker.getByText('你没有权限更改此合集。')).toBeVisible();
 	await staffPicks.click();
@@ -440,16 +441,21 @@ test('manual and system shelves use the standard tile grid', async ({ page }) =>
 	await page.goto('/shelves/7');
 	await expect(page.getByTitle('Shelf Book 1', { exact: true })).toHaveAttribute('href', '/books/61');
 	await expectStandardTiles(page, books.length);
-	await expect(page.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' })).toHaveCount(0);
+	const remove = page.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' });
+	await expect(remove).toHaveText('Remove manual membership');
+	await expect(remove).toBeVisible();
+	await expectFluidTwoColumns(page);
+	await page.getByRole('main').getByRole('button', { name: 'Switch to list view', exact: true }).click();
+	await expect(remove).toBeVisible();
+	await expect(page.locator('ul.book-grid')).toHaveCount(0);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await page.getByRole('button', { name: 'Open navigation menu', exact: true }).click();
 	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
 	await sidebar.getByRole('menuitem', { name: 'All Collections', exact: true }).click();
 	await page.getByRole('main').getByRole('link', { name: 'Favorites', exact: true }).click();
 	await expect(page.getByRole('main').getByRole('button', { name: 'Display settings' })).toHaveCount(0);
-	await page.getByText('Manage book membership', { exact: true }).click();
-	const remove = page.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' });
-	await expect(remove).toHaveText('Remove manual membership');
-	await expect(remove).toBeVisible();
+	await expect(page.getByText('Manage book membership', { exact: true })).toHaveCount(0);
+	await expect(remove).toHaveCount(0);
 
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await page.goto('/shelves/system/favorites');

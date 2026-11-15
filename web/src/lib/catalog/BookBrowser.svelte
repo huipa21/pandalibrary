@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
@@ -21,7 +21,9 @@
 		rememberSettings = false,
 		fetchBooks = listBooks,
 		displayStorageKey,
-		bookErrorMessage
+		bookErrorMessage,
+		bookActions,
+		refreshKey = 0
 	}: {
 		scope: BookFilters;
 		showHeading?: boolean;
@@ -29,6 +31,8 @@
 		fetchBooks?: typeof listBooks;
 		displayStorageKey?: string;
 		bookErrorMessage?: (cause: unknown, more: boolean) => string;
+		bookActions?: Snippet<[Book]>;
+		refreshKey?: number;
 	} = $props();
 	const filtersKey = 'pandalibrary.books.filters';
 	const viewKey = 'pandalibrary.books.view';
@@ -116,6 +120,7 @@
 		const search = page.url.searchParams.toString();
 		const currentScope = scope;
 		const refresh = reloadVersion;
+		refreshKey;
 		const fetch = fetchBooks;
 		void loadFirstPage(search, currentScope, refresh, fetch);
 	});
@@ -325,7 +330,8 @@
 	{:else}
 		<ul class={mode === 'grid' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${coverSize}px; --book-cover-spacing: ${spacing}px`}>
 			{#each books as book (book.id)}
-				<BookCard {book} {mode} />
+				{#snippet actions()}{@render bookActions?.(book)}{/snippet}
+				<BookCard {book} {mode} actions={bookActions ? actions : undefined} />
 			{/each}
 		</ul>
 		{#if moreError}
