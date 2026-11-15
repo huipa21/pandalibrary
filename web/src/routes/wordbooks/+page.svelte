@@ -8,9 +8,11 @@
 	import Header from '#lib/wordbooks/Header.svelte';
 	import WordbookDialog from '#lib/wordbooks/WordbookDialog.svelte';
 	import BookCover from '#lib/bookview/BookCover.svelte';
+	import Icon from '#lib/bookview/Icon.svelte';
 	import {
 		downloadWordbook, filterEntries, filterWordbooks, involvedBookCount, readPreferences,
-		sortEntries, writePreferences, type Category, type EntrySort, type EntryView
+		readWordbookPreferences, sortEntries, writePreferences, writeWordbookPreferences,
+		type Category, type EntrySort, type EntryView, type WordbookSort, type WordbookStatus
 	} from '#lib/wordbooks/management.js';
 
 	let books = $state<Wordbook[]>([]);
@@ -21,12 +23,13 @@
 	let notice = $state('');
 	let view = $state<EntryView>('cards');
 	let sort = $state<EntrySort>('chronological');
+	let wordbookSort = $state<WordbookSort>('recent');
+	let status = $state<WordbookStatus>('active');
 	let category = $state<Category>('wordbooks');
 	let keyword = $state('');
 	let settingsOpen = $state(false);
 	let coverSize = $state(208);
 	let spacing = $state(20);
-	let showArchived = $state(false);
 	let showDescriptions = $state(true);
 	let showSources = $state(true);
 	let nameMode = $state<'new' | 'rename' | null>(null);
@@ -35,14 +38,21 @@
 	const selected = $derived(books.find((book) => book.id === selectedId));
 	const entries = $derived(selectedId === null ? [] : cached[selectedId] ?? []);
 	const sorted = $derived(sortEntries(filterEntries(entries, category, keyword), sort));
-	const visibleBooks = $derived(filterWordbooks(books, cached, category, keyword, showArchived, sort));
+	const visibleBooks = $derived(filterWordbooks(books, cached, category, keyword, status, wordbookSort));
 
 	$effect(() => {
 		const id = selectedId;
 		untrack(() => {
-			const saved = readPreferences(id ?? 0, id === null ? 'cards' : 'list');
-			view = saved.view;
-			sort = saved.sort;
+			if (id === null) {
+				const saved = readWordbookPreferences();
+				view = saved.view;
+				wordbookSort = saved.sort;
+				status = saved.status;
+			} else {
+				const saved = readPreferences(id);
+				view = saved.view;
+				sort = saved.sort;
+			}
 			keyword = '';
 			category = 'wordbooks';
 			nameMode = null;
@@ -91,8 +101,15 @@
 	}
 	function changePreferences(nextView: EntryView, nextSort: EntrySort) {
 		view = nextView;
+		if (selectedId === null) {
+			saveOverviewPreferences();
+			return;
+		}
 		sort = nextSort;
-		writePreferences(selectedId ?? 0, { view, sort });
+		writePreferences(selectedId, { view, sort });
+	}
+	function saveOverviewPreferences() {
+		writeWordbookPreferences({ view, sort: wordbookSort, status });
 	}
 	function beginName(mode: 'new' | 'rename') {
 		nameMode = mode;
@@ -120,12 +137,15 @@
 		await operate(async () => {
 			const updated = await wordbooks.update(book.id, { archived: !book.archived });
 			books = books.map((item) => item.id === book.id ? updated : item);
-			if (updated.archived && !showArchived) await navigate(null);
+			if (updated.archived && status === 'active') await navigate(null);
 		});
 	}
 	function replaceEntries(id: number, next: WordbookEntry[]) {
 		cached[id] = next;
 		books = books.map((book) => book.id === id ? { ...book, entry_count: next.length, book_count: involvedBookCount(next) } : book);
+	}
+	async function refreshBooks() {
+		books = await wordbooks.list();
 	}
 	async function saveEntry(id: number, changes: { text: string; definition?: string; note?: string }) {
 		const bookId = selectedId;
@@ -133,6 +153,7 @@
 		return operate(async () => {
 			const updated = await wordbooks.edit(bookId, id, changes);
 			replaceEntries(bookId, cached[bookId].map((item) => item.id === id ? updated : item));
+			await refreshBooks();
 		});
 	}
 	async function deleteEntry(id: number) {
@@ -141,6 +162,7 @@
 		await operate(async () => {
 			await wordbooks.remove(bookId, id);
 			replaceEntries(bookId, cached[bookId].filter((item) => item.id !== id));
+			await refreshBooks();
 		});
 	}
 	async function exportBook() {
@@ -157,6 +179,7 @@
 		await operate(async () => {
 			const result = await wordbooks.import(id, file);
 			replaceEntries(id, await wordbooks.entries(id));
+			await refreshBooks();
 			notice = m['wordbooks.imported']({ count: result.imported });
 		});
 	}
@@ -173,14 +196,12 @@
 			{/if}
 		</div>
 	{/if}
-	<Header bind:category bind:keyword bind:size={coverSize} bind:spacing {sort} {view} inside={selectedId !== null} {settingsOpen} disabled={busy || loading} onchange={changePreferences} onsettings={() => settingsOpen = !settingsOpen} oncreate={() => beginName('new')} />
-	{#if selectedId === null}
-		<label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={showArchived} />{m['wordbooks.show_archived']()}</label>
-	{:else if settingsOpen}
+	<Header bind:category bind:keyword bind:size={coverSize} bind:spacing bind:wordbookSort bind:status {sort} {view} inside={selectedId !== null} {settingsOpen} disabled={busy || loading} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} onsettings={() => settingsOpen = !settingsOpen} oncreate={() => beginName('new')} />
+	{#if selectedId !== null && settingsOpen}
 		<div class="flex flex-wrap gap-4 rounded-md border border-slate-200 p-3 text-sm" aria-label={m['wordbooks.display_settings']()}>
 			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showDescriptions} />{m['wordbooks.show_descriptions']()}</label>
 			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showSources} />{m['wordbooks.show_sources']()}</label>
-			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showArchived} />{m['wordbooks.show_archived']()}</label>
+			<label class="flex items-center gap-2"><input type="checkbox" checked={status !== 'active'} onchange={(event) => { status = event.currentTarget.checked ? 'all' : 'active'; saveOverviewPreferences(); }} />{m['wordbooks.show_archived']()}</label>
 		</div>
 	{/if}
 	{#if error}<p role="alert" class="whitespace-pre-wrap break-words rounded-md border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>{/if}
@@ -215,7 +236,7 @@
 							<span data-entry-count class="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs text-slate-700" aria-label={m['wordbooks.entry_count']({ count: book.entry_count ?? cached[book.id]?.length ?? 0 })}>{book.entry_count ?? cached[book.id]?.length ?? 0}</span>
 							<span data-book-count class="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-xs text-slate-700" aria-label={m['wordbooks.book_count']({ count: book.book_count ?? involvedBookCount(cached[book.id] ?? []) })}>
 								{book.book_count ?? involvedBookCount(cached[book.id] ?? [])}
-								<svg aria-hidden="true" viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1m0-15c3-2 6-2 10-1v15c-4-1-7-1-10 1V5Z" /></svg>
+								<Icon name="books" class="size-3.5" />
 							</span>
 						</div>
 						{#if view === 'list'}

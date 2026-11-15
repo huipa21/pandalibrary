@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EntrySource, Wordbook, WordbookEntry } from './api.js';
-import { filterEntries, filterWordbooks, involvedBookCount, readPreferences, sortEntries, sourceHref, writePreferences } from './management.js';
+import { filterEntries, filterWordbooks, involvedBookCount, readPreferences, readWordbookPreferences, sortEntries, sourceHref, writePreferences, writeWordbookPreferences, type WordbookSort } from './management.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -37,14 +37,17 @@ describe('entry sorting', () => {
 			3: [entry(3, 'archived term', '2026-11-03')]
 		};
 		it('searches notebook names and descriptions, not entry text, and respects archive settings', () => {
-			expect(filterWordbooks(books, entries, 'wordbooks', 'TRAVEL', false, 'alphabetical').map((book) => book.id)).toEqual([1]);
-			expect(filterWordbooks(books, entries, 'wordbooks', 'depart', false, 'alphabetical')).toEqual([]);
-			expect(filterWordbooks(books, entries, 'wordbooks', '', true, 'chronological').map((book) => book.id)).toEqual([3, 2, 1]);
+			expect(filterWordbooks(books, entries, 'wordbooks', 'TRAVEL', 'active', 'name-asc').map((book) => book.id)).toEqual([1]);
+			expect(filterWordbooks(books, entries, 'wordbooks', 'depart', 'active', 'name-asc')).toEqual([]);
+			expect(filterWordbooks(books, entries, 'wordbooks', '', 'all', 'recent').map((book) => book.id)).toEqual([3, 2, 1]);
+			expect(filterWordbooks(books, entries, 'wordbooks', '', 'archived', 'recent').map((book) => book.id)).toEqual([3]);
+			expect(filterWordbooks(books, entries, 'wordbooks', 'Travel', 'archived', 'recent')).toEqual([]);
+			expect(filterWordbooks(books.slice(0, 2), entries, 'wordbooks', '', 'archived', 'recent')).toEqual([]);
 		});
 		it('finds notebooks by entry text/definition/note and category', () => {
-			expect(filterWordbooks(books, entries, 'passages', ' travel ', false, 'alphabetical').map((book) => book.id)).toEqual([2]);
-			expect(filterWordbooks(books, entries, 'lexical', 'depart', false, 'alphabetical').map((book) => book.id)).toEqual([1]);
-			expect(filterWordbooks(books, entries, 'lexical', 'journey', false, 'alphabetical')).toEqual([]);
+			expect(filterWordbooks(books, entries, 'passages', ' travel ', 'active', 'name-asc').map((book) => book.id)).toEqual([2]);
+			expect(filterWordbooks(books, entries, 'lexical', 'depart', 'active', 'name-asc').map((book) => book.id)).toEqual([1]);
+			expect(filterWordbooks(books, entries, 'lexical', 'journey', 'active', 'name-asc')).toEqual([]);
 			expect(filterEntries([...entries[1], ...entries[2]], 'passages', '').map((entry) => entry.id)).toEqual([2]);
 		});
 		it('counts distinct involved books without counting unavailable sources', () => {
@@ -60,6 +63,61 @@ describe('entry sorting', () => {
 	});
 	it('breaks identical/invalid creation timestamps consistently', () => {
 		expect(sortEntries([entry(1, 'a', 'invalid'), entry(2, 'a', 'invalid')], 'chronological').map((item) => item.id)).toEqual([2, 1]);
+	});
+});
+
+describe('wordbook overview sorting', () => {
+	const book = (id: number, name: string, created_at: string, updated_at: string): Wordbook => ({
+		id, name, created_at, updated_at, description: '', archived: false,
+		entry_count: 0, book_count: 0, is_default: id === 1
+	});
+	const books = [
+		book(1, 'Zebra', '2026-11-02', '2026-11-02'),
+		book(2, 'apple', '2026-11-01', '2026-11-04'),
+		book(3, 'Middle', '2026-11-03', '2026-11-03')
+	];
+	it.each<[WordbookSort, number[]]>([
+		['recent', [2, 3, 1]],
+		['created-asc', [2, 1, 3]],
+		['created-desc', [3, 1, 2]],
+		['name-asc', [2, 3, 1]],
+		['name-desc', [1, 3, 2]]
+	])('sorts all notebooks by %s without pinning the default notebook', (sort, ids) => {
+		expect(filterWordbooks(books, {}, 'wordbooks', '', 'active', sort).map((book) => book.id)).toEqual(ids);
+		expect(books.map((book) => book.id)).toEqual([1, 2, 3]);
+	});
+	it('uses deterministic timestamp and name ties', () => {
+		const tied = books.map((book) => ({ ...book, name: 'Same', created_at: 'invalid', updated_at: 'invalid' }));
+		expect(filterWordbooks(tied, {}, 'wordbooks', '', 'all', 'recent').map((book) => book.id)).toEqual([3, 2, 1]);
+		expect(filterWordbooks(tied, {}, 'wordbooks', '', 'all', 'created-asc').map((book) => book.id)).toEqual([1, 2, 3]);
+		expect(filterWordbooks(tied, {}, 'wordbooks', '', 'all', 'name-desc').map((book) => book.id)).toEqual([3, 2, 1]);
+	});
+});
+
+describe('overview preferences', () => {
+	it('defaults to most recently modified active notebooks when storage is unavailable or malformed', () => {
+		vi.stubGlobal('localStorage', undefined);
+		expect(readWordbookPreferences()).toEqual({ view: 'cards', sort: 'recent', status: 'active' });
+		vi.stubGlobal('localStorage', {
+			getItem: () => '{broken',
+			setItem: () => { throw new Error('QuotaExceededError'); }
+		});
+		expect(readWordbookPreferences()).toEqual({ view: 'cards', sort: 'recent', status: 'active' });
+		expect(() => writeWordbookPreferences({ view: 'list', sort: 'name-desc', status: 'archived' })).not.toThrow();
+	});
+	it('migrates existing overview sorting, validates values, and isolates entry preferences', () => {
+		const values = new Map<string, string>([['pandalibrary.wordbooks.0.view', '{"view":"list","sort":"alphabetical"}']]);
+		vi.stubGlobal('localStorage', {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => values.set(key, value)
+		});
+		expect(readWordbookPreferences()).toEqual({ view: 'list', sort: 'name-asc', status: 'active' });
+		writePreferences(1, { view: 'cards', sort: 'alphabetical' });
+		writeWordbookPreferences({ view: 'list', sort: 'created-asc', status: 'archived' });
+		expect(readWordbookPreferences()).toEqual({ view: 'list', sort: 'created-asc', status: 'archived' });
+		expect(readPreferences(1)).toEqual({ view: 'cards', sort: 'alphabetical' });
+		values.set('pandalibrary.wordbooks.0.view', '{"view":"obsolete","sort":"obsolete","status":"obsolete"}');
+		expect(readWordbookPreferences()).toEqual({ view: 'cards', sort: 'recent', status: 'active' });
 	});
 });
 

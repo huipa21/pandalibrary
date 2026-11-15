@@ -113,7 +113,7 @@
 <section class="shell-section" aria-labelledby="sidebar-shelves-heading" data-slot="sidebar-shelves">
 	<div class="flex items-center justify-between gap-2 pr-1">
 		<h2 id="sidebar-shelves-heading" class="shell-heading min-w-0">
-			<a href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined} class="flex items-center gap-2 truncate hover:underline focus-visible:outline-2"><Icon name="folder-plus" class="size-4 shrink-0" />{m['organize.collections']()}</a>
+			<a href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined} class="flex items-center gap-2 truncate hover:underline focus-visible:outline-2"><Icon name="folder" class="size-4 shrink-0" />{m['organize.collections']()}</a>
 		</h2>
 		<ShelfActionsMenu {pathname} {role} {currentShelf} />
 	</div>

@@ -231,7 +231,7 @@
 	.cover-editor { display: grid; min-width: 0; gap: 0.65rem; }
 	legend { margin-bottom: 0.5rem; font-weight: 600; }
 	.preview { width: 8rem; margin-inline: auto; }
-	label { display: grid; gap: 0.25rem; font-size: 0.875rem; }
+	label { display: grid; gap: 0.5rem; font-size: 0.875rem; }
 	select, .generated { border: 1px solid #94a3b8; border-radius: 0.375rem; padding: 0.4rem; }
 	select { background: white; color: #0f172a; }
 	input[type='range'] { width: 100%; }

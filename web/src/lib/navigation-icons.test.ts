@@ -9,8 +9,17 @@ describe('entityIcon', () => {
 		}
 	});
 
-	it('gives legacy and invalid icons a stable, varied fallback', () => {
-		const keys = Array.from({ length: 40 }, (_, index) => `collection:${index}`);
+	it('uses semantic automatic icons for libraries and collections, including legacy invalid values', () => {
+		for (const icon of [undefined, '', null, '<script>', 'unknown']) {
+			for (const id of [1, 4, 42]) {
+				expect(entityIcon(icon, `library:${id}`)).toBe('library');
+				expect(entityIcon(icon, `collection:${id}`)).toBe('folder');
+			}
+		}
+	});
+
+	it('keeps stable, varied fallbacks for other entity types', () => {
+		const keys = Array.from({ length: 40 }, (_, index) => `other:${index}`);
 		const icons = keys.map((key) => entityIcon(undefined, key));
 		expect(new Set(icons).size).toBeGreaterThan(1);
 		for (const [index, key] of keys.entries()) {

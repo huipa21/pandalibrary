@@ -1,6 +1,6 @@
 <script lang="ts" module>
 	export type IconName =
-		| 'info' | 'play' | 'book-open' | 'external' | 'eye' | 'eye-off' | 'folder-plus'
+		| 'info' | 'play' | 'book-open' | 'notebook' | 'books' | 'library' | 'folder' | 'external' | 'eye' | 'eye-off' | 'folder-plus'
 		| 'download' | 'x' | 'chevron-left' | 'chevron-right' | 'chevron-down'
 		| 'trash' | 'copy' | 'more' | 'star' | 'star-half' | 'pencil' | 'save'
 		| 'search' | 'plus' | 'refresh' | 'file' | 'arrow-left'
@@ -35,6 +35,14 @@
 		<path d="m8 5 11 7-11 7z" />
 	{:else if name === 'book-open'}
 		<path d="M12 6.5c-2-2-5-2.5-9-1.5v13c4-1 7-.5 9 1.5m0-13c2-2 5-2.5 9-1.5v13c-4-1-7-.5-9 1.5m0-13v13" />
+	{:else if name === 'notebook'}
+		<rect x="5" y="3" width="15" height="18" rx="2" /><path d="M8 3v18M3 7h4M3 12h4M3 17h4M12 8h4M12 12h4" />
+	{:else if name === 'books'}
+		<path d="M3 4h4v16H3zM7 4h4v16H7zM14 4l4-1 4 16-4 1-4-16ZM3 8h8M3 16h8" />
+	{:else if name === 'library'}
+		<path d="M3 21h18M4 10h16M3 7l9-4 9 4v3H3V7Zm3 3v11m6-11v11m6-11v11" />
+	{:else if name === 'folder'}
+		<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
 	{:else if name === 'external'}
 		<path d="M13 5h6v6m0-6-9 9M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4" />
 	{:else if name === 'eye' || name === 'eye-off'}

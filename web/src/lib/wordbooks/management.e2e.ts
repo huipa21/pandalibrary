@@ -21,8 +21,8 @@ const makeEntry = (id: number, text: string, kind: WordbookEntry['kind'] = 'word
 	}
 });
 
-async function mockAPI(page: Page) {
-	let books = [makeBook(1, 'Default', true), makeBook(2, 'Study'), { ...makeBook(3, 'Travel'), description: 'Journey notebook', entry_count: 1 }];
+async function mockAPI(page: Page, initialBooks?: Wordbook[]) {
+	let books = initialBooks ?? [makeBook(1, 'Default', true), makeBook(2, 'Study'), { ...makeBook(3, 'Travel'), description: 'Journey notebook', entry_count: 1 }];
 	const entries = new Map<number, WordbookEntry[]>([[1, [makeEntry(1, 'apple'), makeEntry(2, 'Zebra'), makeEntry(3, 'A sentence.', 'sentence')]], [2, []], [3, [{ ...makeEntry(4, 'Travel phrase', 'phrase'), wordbook_id: 3 }]]]);
 	let failEdits = false;
 	let failEntries = false;
@@ -58,6 +58,7 @@ async function mockAPI(page: Page) {
 					if (data.version !== 1 || !Array.isArray(data.entries)) throw new Error('invalid');
 					const imported = data.entries.map((item: WordbookEntry, index: number) => ({ ...item, id: 100 + index, wordbook_id: id }));
 					entries.set(id, [...entries.get(id)!, ...imported]);
+					book.updated_at = '2100-01-01T00:00:00Z';
 					return route.fulfill({ json: { imported: imported.length } });
 				} catch {
 					return route.fulfill({ status: 400, contentType: 'application/problem+json', json: { title: 'Invalid wordbook JSON', detail: 'Choose a valid version 1 wordbook JSON export.' } });
@@ -69,17 +70,108 @@ async function mockAPI(page: Page) {
 			const entryId = Number(match[3]);
 			if (method === 'DELETE') {
 				entries.set(id, entries.get(id)!.filter((item) => item.id !== entryId));
+				book.updated_at = '2100-01-01T00:00:00Z';
 				return route.fulfill({ status: 204 });
 			}
 			if (failEdits) return route.fulfill({ status: 503, contentType: 'application/problem+json', json: { title: 'Service unavailable', detail: 'Please try again later.' } });
 			const entry = entries.get(id)!.find((item) => item.id === entryId)!;
 			Object.assign(entry, request.postDataJSON());
+			book.updated_at = '2100-01-01T00:00:00Z';
 			return route.fulfill({ json: entry });
 		}
 		if (path.startsWith('/shelves/system/')) return route.fulfill({ json: { shelf: { id: 9, name: 'Favorites', mode: 'system', system_key: 'favorites', kind: 'private', owner_id: 1, visible_book_count: 0 } } });
 		return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 	});
 	return { failEdits: (value: boolean) => { failEdits = value; }, failEntries: (value: boolean) => { failEntries = value; } };
+}
+
+test('overview offers five global sort orders and persistent All, Active and Archived filters', async ({ page }) => {
+	await mockAPI(page, [
+		{ ...makeBook(1, 'Zebra', true), created_at: '2026-11-02', updated_at: '2026-11-02' },
+		{ ...makeBook(2, 'apple'), created_at: '2026-11-01', updated_at: '2026-11-04' },
+		{ ...makeBook(3, 'Middle'), created_at: '2026-11-03', updated_at: '2026-11-03', archived: true }
+	]);
+	await page.goto('/wordbooks');
+	const sort = page.getByRole('combobox', { name: 'Sort', exact: true });
+	const status = page.getByRole('combobox', { name: 'Status', exact: true });
+	const links = page.locator('[data-wordbooks] a');
+	const expectOrder = async (ids: number[]) => {
+		await expect.poll(() => links.evaluateAll((items) => items.map((item) =>
+			Number(new URL((item as HTMLAnchorElement).href).searchParams.get('id'))))).toEqual(ids);
+	};
+	await expect(sort.locator('option')).toHaveText(['Most Recent', 'Old - New', 'New - Old', 'A - Z', 'Z - A']);
+	await expect(status.locator('option')).toHaveText(['All', 'Active', 'Archived']);
+	await expect(sort).toHaveValue('recent');
+	await expect(status).toHaveValue('active');
+	const sortBounds = await sort.boundingBox();
+	const statusBounds = await status.boundingBox();
+	expect(statusBounds!.x).toBeGreaterThanOrEqual(sortBounds!.x + sortBounds!.width);
+	expect(statusBounds!.y).toBeCloseTo(sortBounds!.y, 0);
+	await expect(page.getByRole('checkbox', { name: 'Show archived wordbooks' })).toHaveCount(0);
+	await expectOrder([2, 1]);
+	await status.selectOption('all');
+	for (const [value, ids] of [
+		['recent', [2, 3, 1]],
+		['created-asc', [2, 1, 3]],
+		['created-desc', [3, 1, 2]],
+		['name-asc', [2, 3, 1]],
+		['name-desc', [1, 3, 2]]
+	] as const) {
+		await sort.selectOption(value);
+		await expectOrder([...ids]);
+	}
+	await status.selectOption('archived');
+	await expectOrder([3]);
+	await page.reload();
+	await expect(sort).toHaveValue('name-desc');
+	await expect(status).toHaveValue('archived');
+	await expectOrder([3]);
+	await page.getByRole('searchbox', { name: 'Search wordbook names and descriptions', exact: true }).fill('Missing notebook');
+	await expectOrder([]);
+	await expect(page.getByText('No matches found.', { exact: true })).toBeVisible();
+	await page.getByRole('searchbox', { name: 'Search wordbook names and descriptions', exact: true }).fill('');
+	await links.first().click();
+	await expect(sort.locator('option')).toHaveText(['Newest first', 'Alphabetical']);
+	await expect(status).toHaveCount(0);
+	await page.getByRole('link', { name: 'Back to wordbooks' }).click();
+	await expect(sort).toHaveValue('name-desc');
+	await expect(status).toHaveValue('archived');
+});
+
+for (const operation of ['edit', 'delete', 'import'] as const) {
+	test(`Most Recent refreshes authoritative notebook modification time after entry ${operation}`, async ({ page }) => {
+		await mockAPI(page, [
+			{ ...makeBook(1, 'Default', true), updated_at: '2026-11-01T00:00:00Z' },
+			{ ...makeBook(2, 'Study'), updated_at: '2099-01-01T00:00:00Z' }
+		]);
+		await page.goto('/wordbooks');
+		const links = page.locator('[data-wordbooks] a');
+		await expect(links.first()).toHaveAttribute('href', '/wordbooks?id=2');
+		await page.locator('[data-wordbooks] a[href="/wordbooks?id=1"]').click();
+		const apple = page.locator('[data-entry-id="1"]');
+		if (operation === 'edit') {
+			await apple.getByRole('button', { name: 'Edit', exact: true }).click();
+			await apple.getByLabel('Definition (editable)', { exact: true }).fill('Updated definition');
+			await apple.getByRole('button', { name: 'Save', exact: true }).click();
+			await expect(apple).toContainText('Updated definition');
+		} else if (operation === 'delete') {
+			page.once('dialog', (dialog) => dialog.accept());
+			await apple.getByRole('button', { name: 'Delete', exact: true }).click();
+			await expect(apple).toHaveCount(0);
+		} else {
+			await page.getByLabel('Import JSON', { exact: true }).setInputFiles({
+				name: 'wordbook.json', mimeType: 'application/json',
+				buffer: Buffer.from(JSON.stringify({ version: 1, entries: [makeEntry(4, 'Imported')] }))
+			});
+			await expect(page.getByRole('main').getByRole('status')).toHaveText('Imported 1 entries');
+		}
+		await expect(page.getByRole('link', { name: 'Back to wordbooks' })).toBeVisible();
+		await expect(page.locator('section[aria-busy]')).toHaveAttribute('aria-busy', 'false');
+		await page.getByRole('link', { name: 'Back to wordbooks' }).click();
+		await expect(links.first()).toHaveAttribute('href', '/wordbooks?id=1');
+		await page.reload();
+		await expect(links.first()).toHaveAttribute('href', '/wordbooks?id=1');
+	});
 }
 
 test('wordbooks default to lists; cards, sorting, edit, archive, import/export and preferences work', async ({ page }) => {
@@ -133,7 +225,7 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await page.locator('[data-wordbooks] a[href="/wordbooks?id=2"]').click();
 	await page.getByRole('button', { name: 'Archive', exact: true }).click();
 	await expect(page.locator('[data-wordbooks] a[href="/wordbooks?id=2"]')).toHaveCount(0);
-	await page.getByLabel('Show archived wordbooks').check();
+	await page.getByRole('combobox', { name: 'Status', exact: true }).selectOption('all');
 	await page.locator('[data-wordbooks] a[href="/wordbooks?id=2"]').click();
 	await expect(page.getByLabel('Import JSON', { exact: true })).toBeDisabled();
 	await page.getByRole('button', { name: 'Restore from archive', exact: true }).click();
@@ -219,7 +311,7 @@ test('wordbook covers use book proportions, numeric badges and persistent displa
 	await expect(collection).toHaveClass(/book-grid-configurable/);
 	await expect(defaultBook.locator('[data-entry-count]')).toHaveText('3');
 	await expect(defaultBook.locator('[data-book-count]')).toHaveText('1');
-	await expect(defaultBook.locator('[data-book-count] svg')).toBeVisible();
+	await expect(defaultBook.locator('[data-book-count] svg[data-icon="books"]')).toBeVisible();
 	await expect(collection.getByRole('heading')).toHaveCount(0);
 	const defaultCover = await defaultBook.locator('.book-cover').boundingBox();
 	const title = await defaultBook.locator('.cover-plate').boundingBox();

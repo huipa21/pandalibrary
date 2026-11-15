@@ -290,9 +290,13 @@ the number of distinct source books beside a book icon. Display settings let you
 adjust cover size and spacing, just as when browsing books.
 Use the header category selector to search **Wordbook** names and descriptions,
 or find wordbooks containing matching **Word & phrase** or **Sentence & passage**
-entries. The same search, newest-first/alphabetical sort, list/grid toggle and
-display settings remain available when you open a notebook. Inside, the notebook
-also shows how many distinct source books its entries involve.
+entries. Sort wordbooks by **Most Recent** (last changed first), **Old - New**
+(creation time, oldest first), **New - Old** (creation time, newest first),
+**A - Z** or **Z - A**. The status dropdown to its right selects **All**,
+**Active** (the default) or **Archived** wordbooks.
+Search, entry sorting, the list/grid toggle and display settings remain
+available when you open a notebook. Inside, the notebook also shows how many
+distinct source books its entries involve.
 
 Use the **+** button to open the creation dialog and enter a name and optional
 description. Choose a preset cover color, keep the automatic generated cover,
@@ -301,7 +305,7 @@ image to choose the visible area. Custom covers are cropped to the same 2:3
 proportions as book covers and compressed to a 600-by-900 JPEG in your browser
 before saving.
 Wordbooks are private: only you can see them. Archive wordbooks to hide them from the normal
-list, then enable **Show archived wordbooks** in display settings to restore them.
+list, then select **Archived** or **All** in the status dropdown to find and restore them.
 The default wordbook cannot be archived.
 
 Each book's **Words** tab shows a compact list of its saved words, phrases,

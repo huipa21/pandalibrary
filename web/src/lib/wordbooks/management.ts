@@ -2,8 +2,11 @@ import type { EntrySource, Wordbook, WordbookEntry } from './api.js';
 
 export type EntryView = 'list' | 'cards';
 export type EntrySort = 'chronological' | 'alphabetical';
+export type WordbookSort = 'recent' | 'created-asc' | 'created-desc' | 'name-asc' | 'name-desc';
+export type WordbookStatus = 'all' | 'active' | 'archived';
 export type Category = 'wordbooks' | 'lexical' | 'passages';
 export interface Preferences { view: EntryView; sort: EntrySort }
+export interface WordbookPreferences { view: EntryView; sort: WordbookSort; status: WordbookStatus }
 
 const defaults = (view: EntryView = 'list'): Preferences => ({ view, sort: 'chronological' });
 const preferenceKey = (id: number) => `pandalibrary.wordbooks.${id}.view`;
@@ -30,6 +33,32 @@ export function writePreferences(id: number, preferences: Preferences): void {
 	}
 }
 
+export function readWordbookPreferences(): WordbookPreferences {
+	const fallback: WordbookPreferences = { view: 'cards', sort: 'recent', status: 'active' };
+	try {
+		const stored: unknown = JSON.parse(localStorage.getItem(preferenceKey(0)) ?? 'null');
+		if (typeof stored !== 'object' || stored === null) return fallback;
+		const value = stored as Record<string, unknown>;
+		return {
+			view: value.view === 'cards' || value.view === 'list' ? value.view : fallback.view,
+			sort: value.sort === 'alphabetical' ? 'name-asc'
+				: ['recent', 'created-asc', 'created-desc', 'name-asc', 'name-desc'].includes(value.sort as string)
+					? value.sort as WordbookSort : fallback.sort,
+			status: value.status === 'all' || value.status === 'archived' ? value.status : 'active'
+		};
+	} catch {
+		return fallback;
+	}
+}
+
+export function writeWordbookPreferences(preferences: WordbookPreferences): void {
+	try {
+		localStorage.setItem(preferenceKey(0), JSON.stringify(preferences));
+	} catch {
+		// Restricted storage must not prevent managing wordbooks.
+	}
+}
+
 export function sortEntries(entries: readonly WordbookEntry[], sort: EntrySort): WordbookEntry[] {
 	const newest = (a: WordbookEntry, b: WordbookEntry) =>
 		(Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0) || b.id - a.id;
@@ -50,17 +79,26 @@ export function filterEntries(entries: readonly WordbookEntry[], category: Categ
 
 export function filterWordbooks(
 	books: readonly Wordbook[], accessibleEntries: Readonly<Record<number, WordbookEntry[]>>,
-	category: Category, keyword: string, showArchived: boolean, sort: EntrySort
+	category: Category, keyword: string, status: WordbookStatus, sort: WordbookSort
 ): Wordbook[] {
 	const query = keyword.trim().toLocaleLowerCase();
 	const newest = (a: Wordbook, b: Wordbook) =>
 		(Date.parse(b.updated_at) || 0) - (Date.parse(a.updated_at) || 0) || b.id - a.id;
-	return books.filter((book) => (showArchived || !book.archived) && (category === 'wordbooks'
+	const created = (a: Wordbook, b: Wordbook) =>
+		(Date.parse(a.created_at) || 0) - (Date.parse(b.created_at) || 0) || a.id - b.id;
+	const name = (a: Wordbook, b: Wordbook) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+	return books.filter((book) => (status === 'all' || book.archived === (status === 'archived')) && (category === 'wordbooks'
 		? !query || [book.name, book.description ?? ''].some((text) => text.toLocaleLowerCase().includes(query))
 		: filterEntries(accessibleEntries[book.id] ?? [], category, query).length > 0))
-		.sort(sort === 'alphabetical'
-			? (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || newest(a, b)
-			: newest);
+		.sort((a, b) => {
+			switch (sort) {
+				case 'created-asc': return created(a, b);
+				case 'created-desc': return created(b, a);
+				case 'name-asc': return name(a, b) || newest(a, b);
+				case 'name-desc': return name(b, a) || newest(a, b);
+				default: return newest(a, b);
+			}
+		});
 }
 
 export function involvedBookCount(entries: readonly WordbookEntry[]): number {

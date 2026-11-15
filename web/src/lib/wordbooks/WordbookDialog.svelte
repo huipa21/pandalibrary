@@ -64,8 +64,8 @@
 <dialog bind:this={dialog} class="fixed inset-0 m-auto max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 text-slate-950 shadow-lg" aria-label={label} aria-busy={busy} oncancel={cancel} {onkeydown}>
 	<h2 class="mb-4 text-lg font-semibold">{label}</h2>
 	<form class="space-y-4" aria-label={label} onsubmit={save}>
-		<label class="block space-y-1"><span class="text-sm font-medium">{m['wordbooks.name']()}</span><input class="field" name="name" required maxlength="200" bind:value={name} disabled={submitting} /></label>
-		<label class="block space-y-1"><span class="text-sm font-medium">{m['wordbooks.description']()}</span><textarea class="field" rows="2" maxlength="2000" bind:value={description} disabled={submitting}></textarea></label>
+		<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.name']()}</span><input class="field" name="name" required maxlength="200" bind:value={name} disabled={submitting} /></label>
+		<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.description']()}</span><textarea class="field" rows="2" maxlength="2000" bind:value={description} disabled={submitting}></textarea></label>
 		<CoverEditor title={name} seed={mode === 'rename' ? book?.id ?? 0 : 0} bind:color bind:image disabled={submitting} onbusy={(value) => coverBusy = value} />
 		{#if error}<p role="alert" class="whitespace-pre-wrap break-words text-sm text-red-800">{error}</p>{/if}
 		<div class="flex gap-3">

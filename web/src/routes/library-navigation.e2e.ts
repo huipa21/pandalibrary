@@ -150,16 +150,17 @@ test('library actions point to new, current settings, and all-library management
 	expect(unexpected).toEqual([]);
 });
 
-test('navigation and popup items lead with icons, preserving selected and stable fallback icons', async ({ page }) => {
+test('navigation and popup items lead with icons, preserving selected and semantic automatic icons', async ({ page }) => {
 	const { unexpected } = await mockLibraries(page);
 	await page.goto('/library/1');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	await expect(sidebar.locator('a[href="/library/1"] > svg').first()).toHaveAttribute('data-icon', 'star');
 	await expect(sidebar.locator('a[href="/shelves/11"] > svg').first()).toHaveAttribute('data-icon', 'pen');
+	await expect(sidebar.locator('a[href="/wordbooks"] > svg').first()).toHaveAttribute('data-icon', 'notebook');
+	await expect(sidebar.locator('a[href="/shelves/12"] > svg').first()).toHaveAttribute('data-icon', 'folder');
 	const fallback = sidebar.locator('a[href="/library/2"] > svg').first();
 	await expect(fallback).toBeVisible();
-	const fallbackName = await fallback.getAttribute('data-icon');
-	expect(fallbackName).toBeTruthy();
+	await expect(fallback).toHaveAttribute('data-icon', 'library');
 	for (const link of await sidebar.locator('.shell-link').all()) {
 		await expect(link.locator(':scope > svg:first-child')).toBeVisible();
 	}
@@ -178,7 +179,7 @@ test('navigation and popup items lead with icons, preserving selected and stable
 	await page.keyboard.press('Escape');
 	await page.reload();
 	await expect(sidebar.locator('a[href="/library/1"] > svg').first()).toHaveAttribute('data-icon', 'star');
-	await expect(fallback).toHaveAttribute('data-icon', fallbackName!);
+	await expect(fallback).toHaveAttribute('data-icon', 'library');
 	expect(unexpected).toEqual([]);
 });
 
