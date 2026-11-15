@@ -7,11 +7,12 @@
 
 	let { category = $bindable<Category>('wordbooks'), keyword = $bindable(''), sort, view,
 		inside = false, wordbookSort = $bindable<WordbookSort>('recent'), status = $bindable<WordbookStatus>('active'),
-		disabled = false, onchange, onoverviewchange, oncreate }: {
+		disabled = false, onchange, onoverviewchange, oncreate, onsettings }: {
 		category?: Category; keyword?: string; sort: EntrySort; view: EntryView;
 		wordbookSort?: WordbookSort; status?: WordbookStatus; onoverviewchange: () => void;
 		inside?: boolean; disabled?: boolean;
 		onchange: (view: EntryView, sort: EntrySort) => void; oncreate: () => void;
+		onsettings: () => void;
 	} = $props();
 </script>
 
@@ -44,6 +45,11 @@
 		</select>
 	{/if}
 	<ViewToggle view={view === 'cards' ? 'grid' : 'list'} onchange={(next) => onchange(next === 'grid' ? 'cards' : 'list', sort)} />
+	{#if inside}
+		<button type="button" class={filterControlClass} aria-label={m['wordbooks.settings']()} title={m['wordbooks.settings']()} {disabled} onclick={onsettings}>
+			<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 3-.6 2.4-2 .9-2.2-.7-2 3.4 1.7 1.7-.1 2.4L2 14.8l2 3.5 2.4-.7 2 .9L9 21h4l.6-2.5 2-.9 2.4.7 2-3.5-1.8-1.7-.1-2.4L20 9l-2-3.4-2.2.7-2-.9L13 3Z" /><circle cx="11" cy="12" r="3" /></svg>
+		</button>
+	{/if}
 	{#if !inside}
 	<button type="button" class="{primaryIconControlClass} ml-auto" aria-label={m['wordbooks.new']()} title={m['wordbooks.new']()} {disabled} onclick={oncreate}>
 		<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16M4 12h16" /></svg>

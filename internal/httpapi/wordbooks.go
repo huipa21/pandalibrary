@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -46,7 +47,20 @@ func (h *wordbookHTTP) deleteBook(w http.ResponseWriter, r *http.Request, viewer
 	if !ok {
 		return
 	}
-	if err := h.wordbooks.Delete(r.Context(), viewer.UserID, id); err != nil {
+	var input struct {
+		MergeIntoID *int64 `json:"merge_into_id"`
+	}
+	body := bufio.NewReader(r.Body)
+	if _, err := body.Peek(1); err != nil && !errors.Is(err, io.EOF) {
+		h.writeDecodeError(w, err)
+		return
+	} else if err == nil {
+		r.Body = io.NopCloser(body)
+		if !h.decode(w, r, &input, 1<<20) {
+			return
+		}
+	}
+	if err := h.wordbooks.DeleteWithMerge(r.Context(), viewer.UserID, id, input.MergeIntoID); err != nil {
 		h.writeError(w, r, err)
 		return
 	}

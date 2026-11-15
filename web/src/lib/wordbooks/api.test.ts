@@ -34,6 +34,22 @@ describe('wordbook sidebar count', () => {
 });
 
 describe('wordbook API contract', () => {
+	it('preserves meaning language options on creation and editing, including unspecified', async () => {
+		request.mockResolvedValue({ id: 1 });
+		await wordbooks.create('Study', { language: 'en', meaning_language: 'zh' });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks', { method: 'POST', body: { name: 'Study', language: 'en', meaning_language: 'zh' } });
+		await wordbooks.update(1, { language: 'ja', meaning_language: '' });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks/1', { method: 'PATCH', body: { language: 'ja', meaning_language: '' } });
+	});
+
+	it('deletes a wordbook with no body or explicitly merges into the chosen target', async () => {
+		request.mockResolvedValue(undefined);
+		await wordbooks.deleteBook(1);
+		expect(request).toHaveBeenLastCalledWith('/wordbooks/1', { method: 'DELETE' });
+		await wordbooks.deleteBook(1, 2);
+		expect(request).toHaveBeenLastCalledWith('/wordbooks/1', { method: 'DELETE', body: { merge_into_id: 2 } });
+	});
+
 	it('sends a selected language when creating or updating a wordbook', async () => {
 		request.mockResolvedValue({ id: 1 });
 		await wordbooks.create('Study', { language: 'ja' });

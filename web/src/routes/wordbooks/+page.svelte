@@ -7,6 +7,7 @@
 	import Entry from '#lib/wordbooks/Entry.svelte';
 	import Header from '#lib/wordbooks/Header.svelte';
 	import WordbookDialog from '#lib/wordbooks/WordbookDialog.svelte';
+	import DeleteWordbookDialog from '#lib/wordbooks/DeleteWordbookDialog.svelte';
 	import BookCover from '#lib/bookview/BookCover.svelte';
 	import Icon from '#lib/bookview/Icon.svelte';
 	import { bookDisplay } from '#lib/catalog/book-display.svelte.js';
@@ -31,6 +32,7 @@
 	const showDescriptions = true;
 	const showSources = true;
 	let nameMode = $state<'new' | 'rename' | null>(null);
+	let deletingBook = $state<Wordbook | null>(null);
 	let disposed = false;
 	const selectedId = $derived(Number(page.url.searchParams.get('id')) || null);
 	const selected = $derived(books.find((book) => book.id === selectedId));
@@ -54,6 +56,7 @@
 			keyword = '';
 			category = 'wordbooks';
 			nameMode = null;
+			deletingBook = null;
 			notice = '';
 		});
 	});
@@ -140,6 +143,29 @@
 			if (updated.archived && status === 'active') await navigate(null);
 		});
 	}
+	function beginDelete() {
+		if (!selected || books.length < 2 || busy) return;
+		deletingBook = selected;
+	}
+	async function deleteBook(mergeIntoId?: number) {
+		const book = deletingBook;
+		if (!book || busy) return;
+		busy = true;
+		try {
+			await wordbooks.deleteBook(book.id, mergeIntoId);
+			books = books.filter((item) => item.id !== book.id);
+			delete cached[book.id];
+			if (mergeIntoId !== undefined) delete cached[mergeIntoId];
+			notifyWordbooksChanged();
+			deletingBook = null;
+			nameMode = null;
+			await navigate(mergeIntoId ?? null);
+			try {
+				await refreshBooks();
+				if (mergeIntoId !== undefined) replaceEntries(mergeIntoId, await wordbooks.entries(mergeIntoId));
+			} catch (cause) { showError(cause); }
+		} finally { busy = false; }
+	}
 	function replaceEntries(id: number, next: WordbookEntry[]) {
 		cached[id] = next;
 		books = books.map((book) => book.id === id ? { ...book, entry_count: next.length, book_count: involvedBookCount(next) } : book);
@@ -188,7 +214,7 @@
 <svelte:head><title>{m['wordbooks.title']()} · {m['common.app_name']()}</title></svelte:head>
 
 <section class="min-w-0 space-y-5" aria-label={m['wordbooks.title']()} aria-busy={busy || loading}>
-	<Header bind:category bind:keyword bind:wordbookSort bind:status {sort} {view} inside={selectedId !== null} disabled={busy || loading} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} oncreate={() => beginName('new')} />
+	<Header bind:category bind:keyword bind:wordbookSort bind:status {sort} {view} inside={!!selected} disabled={busy || loading} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} oncreate={() => beginName('new')} onsettings={() => beginName('rename')} />
 	{#if selected}
 		<div data-wordbook-summary class="flex flex-wrap items-center gap-3">
 			<span class="flex items-center gap-1 text-sm text-slate-500" aria-label={m['wordbooks.language']()}>
@@ -203,13 +229,15 @@
 	{#if error}<p role="alert" class="whitespace-pre-wrap break-words rounded-md border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>{/if}
 	{#if notice}<p role="status" class="text-sm text-green-800">{notice}</p>{/if}
 	{#if nameMode}
-		<WordbookDialog mode={nameMode} book={selected} onsave={saveName} onclose={() => nameMode = null} />
+		<WordbookDialog mode={nameMode} book={selected} onsave={saveName} onclose={() => nameMode = null} ondelete={beginDelete} canDelete={books.length > 1} />
+	{/if}
+	{#if deletingBook}
+		<DeleteWordbookDialog book={deletingBook} {books} ondelete={deleteBook} onclose={() => deletingBook = null} />
 	{/if}
 	{#if selected}
 		{#if showDescriptions && selected.description}<p class="whitespace-pre-wrap break-words text-slate-600">{selected.description}</p>{/if}
 		<div class="flex flex-wrap items-center gap-3">
 			{#if selected.archived}<span class="text-sm text-slate-600">{m['wordbooks.archived']()}</span>{/if}
-				<button class="button" disabled={busy} onclick={() => beginName('rename')}>{m['wordbooks.rename']()}</button>
 				{#if !selected.is_default}<button class="button" disabled={busy} onclick={archive}>{selected.archived ? m['wordbooks.unarchive']() : m['wordbooks.archive']()}</button>{/if}
 				<button class="button" disabled={busy} onclick={exportBook}>{m['wordbooks.export']()}</button>
 				<label class="button relative cursor-pointer" class:opacity-50={busy || selected.archived}>{m['wordbooks.import']()}<input class="absolute inset-0 w-full cursor-pointer opacity-0" type="file" accept=".json,application/json" aria-label={m['wordbooks.import']()} disabled={busy || selected.archived} onchange={importBook} /></label>
@@ -218,7 +246,7 @@
 		{:else if !sorted.length && !error}<p class="text-slate-600">{keyword || category !== 'wordbooks' ? m['wordbooks.no_matches']() : m['wordbooks.empty']()}</p>
 		{:else}
 			<ol data-view={view} aria-label={selected.name} class={view === 'cards' ? 'grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3' : 'divide-y divide-slate-200'}>
-				{#each sorted as entry (entry.id)}<li data-entry-id={entry.id} class={view === 'cards' ? 'min-w-0 rounded-lg border border-slate-200 p-4' : 'min-w-0 py-5'}><Entry {entry} showSources={showSources} disabled={busy || selected.archived} onsave={saveEntry} ondelete={deleteEntry} /></li>{/each}
+				{#each sorted as entry (entry.id)}<li data-entry-id={entry.id} class={view === 'cards' ? 'min-w-0 rounded-lg border border-slate-200 bg-white p-4' : 'min-w-0 bg-white p-4'}><Entry {entry} language={selected.language ?? ''} meaningLanguage={selected.meaning_language ?? ''} showSources={showSources} disabled={busy || selected.archived} onsave={saveEntry} ondelete={deleteEntry} /></li>{/each}
 			</ol>
 		{/if}
 	{:else if selectedId === null}

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -384,10 +385,21 @@ func TestWordbookCaptureKindsSourceDictionary(t *testing.T) {
 		}
 		want := 0
 		if kind == "word" || kind == "phrase" {
-			want = 1
+			want = 2
 		}
 		if len(got.DictionaryEntries) != want || got.DictionaryEntries == nil {
 			t.Fatalf("snapshots: %+v", got)
+		}
+		if want == 2 && (got.DictionaryEntries[0].From != dictionary.English || got.DictionaryEntries[0].To != dictionary.Chinese || got.DictionaryEntries[1].From != dictionary.English || got.DictionaryEntries[1].To != dictionary.Japanese) {
+			t.Fatalf("snapshot directions: %+v", got.DictionaryEntries)
+		}
+		if want == 2 {
+			loaded := wordbookDecode[struct {
+				Entries []wordbooks.Entry `json:"entries"`
+			}](t, f.request(http.MethodGet, fmt.Sprintf("/api/v1/wordbooks/%d/entries", id), nil, f.reader, nil), http.StatusOK)
+			if len(loaded.Entries) == 0 || !reflect.DeepEqual(loaded.Entries[len(loaded.Entries)-1].DictionaryEntries, got.DictionaryEntries) {
+				t.Fatalf("persisted snapshots: %+v", loaded.Entries)
+			}
 		}
 	}
 	if len(f.dictionaries.queries) != 4 {
@@ -531,6 +543,28 @@ func TestWordbookImportExportInvalidRollback(t *testing.T) {
 	after := wordbookDecode[wordbooks.Export](t, f.request(http.MethodGet, base+"/export", nil, f.reader, nil), http.StatusOK)
 	if len(after.Entries) != 1 {
 		t.Fatal("invalid import partially committed")
+	}
+	for _, invalidDirection := range []dictionary.Lang{"en_US", dictionary.Lang(strings.Repeat("a", 36)), "en\x00x"} {
+		for _, from := range []bool{true, false} {
+			invalidSnapshot := snapshot
+			if from {
+				invalidSnapshot.From = invalidDirection
+			} else {
+				invalidSnapshot.To = invalidDirection
+			}
+			invalidCapture := input
+			invalidCapture.DictionaryEntries = &[]dictionary.Entry{invalidSnapshot}
+			expectShelfStatus(t, f.send(http.MethodPost, "/api/v1/wordbooks/entries", invalidCapture, f.reader), http.StatusBadRequest)
+			invalidEntry := export.Entries[0]
+			invalidEntry.DictionaryEntries = []dictionary.Entry{invalidSnapshot}
+			invalidImport := export
+			invalidImport.Entries = []wordbooks.Entry{export.Entries[0], invalidEntry}
+			expectShelfStatus(t, f.send(http.MethodPost, base+"/import", invalidImport, f.reader), http.StatusBadRequest)
+		}
+	}
+	after = wordbookDecode[wordbooks.Export](t, f.request(http.MethodGet, base+"/export", nil, f.reader, nil), http.StatusOK)
+	if len(after.Entries) != 1 {
+		t.Fatal("invalid direction import partially committed")
 	}
 	t.Run("chronological round trip and timestamp validation", func(t *testing.T) {
 		book := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]string{"name": "Chronology"}, f.reader), http.StatusCreated)

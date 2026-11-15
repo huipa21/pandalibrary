@@ -67,6 +67,8 @@ type Query struct {
 
 // Entry is one dictionary entry in a lookup result.
 type Entry struct {
+	From         Lang      `json:"from,omitempty"`
+	To           Lang      `json:"to,omitempty"`
 	Source       string    `json:"source"`
 	SourceName   string    `json:"sourceName"`
 	Headword     string    `json:"headword"`

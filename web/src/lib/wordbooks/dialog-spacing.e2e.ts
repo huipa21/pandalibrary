@@ -65,9 +65,9 @@ for (const width of [1280, 360]) {
 			await page.setViewportSize({ width, height: 900 });
 			await mockAPI(page);
 			await page.goto(mode === 'new' ? '/wordbooks' : '/wordbooks?id=1');
-			const trigger = page.getByRole('button', { name: mode === 'new' ? 'New wordbook' : 'Rename', exact: true });
+			const trigger = page.getByRole('button', { name: mode === 'new' ? 'New wordbook' : 'Settings', exact: true });
 			await trigger.click();
-			const dialog = page.getByRole('dialog', { name: mode === 'new' ? 'New wordbook' : 'Rename', exact: true });
+			const dialog = page.getByRole('dialog', { name: mode === 'new' ? 'New wordbook' : 'Settings', exact: true });
 			await expect(dialog.getByLabel('Wordbook name', { exact: true })).toBeFocused();
 			await page.keyboard.press('Tab');
 			for (const name of ['Wordbook name', 'Description (optional)']) {
@@ -82,7 +82,7 @@ for (const width of [1280, 360]) {
 			const swatches = dialog.getByRole('group', { name: 'Cover color', exact: true });
 			await expect(swatches.getByRole('radio')).toHaveCount(8);
 			await expect(swatches.getByRole('radio', { checked: true })).toHaveCount(1);
-			await expect(dialog.getByRole('combobox')).toHaveCount(0);
+			await expect(dialog.getByRole('combobox')).toHaveCount(2);
 			const preview = await dialog.locator('.preview').boundingBox();
 			const palette = await swatches.boundingBox();
 			expect(preview!.x + preview!.width).toBeLessThanOrEqual(palette!.x);

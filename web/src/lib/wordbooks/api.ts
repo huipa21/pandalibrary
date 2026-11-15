@@ -8,6 +8,7 @@ export interface Wordbook {
 	name: string;
 	description: string;
 	language?: string;
+	meaning_language?: string;
 	cover_color?: string;
 	cover_image?: string;
 	entry_count: number;
@@ -18,7 +19,7 @@ export interface Wordbook {
 	updated_at: string;
 }
 
-export interface WordbookOptions { description?: string; language?: string; cover_color?: string; cover_image?: string }
+export interface WordbookOptions { description?: string; language?: string; meaning_language?: string; cover_color?: string; cover_image?: string }
 
 export interface EntrySource {
 	book_id: number | null;
@@ -59,7 +60,7 @@ export interface WordbookExport {
 	entries: WordbookEntry[];
 }
 
-/** Window event (no payload) dispatched after wordbooks are created, archived, or restored. */
+/** Window event (no payload) dispatched after wordbooks are created, archived, restored, or deleted. */
 export const WORDBOOKS_CHANGED_EVENT = 'pandalibrary-wordbooks-changed';
 
 export function notifyWordbooksChanged(target: EventTarget | undefined = globalThis.window): void {
@@ -80,6 +81,12 @@ export const wordbooks = {
 	},
 	update(id: number, changes: WordbookOptions & { name?: string; archived?: boolean }): Promise<Wordbook> {
 		return api.request(`/wordbooks/${id}`, { method: 'PATCH', body: { ...changes } });
+	},
+	deleteBook(id: number, mergeIntoId?: number): Promise<void> {
+		return api.request(`/wordbooks/${id}`, {
+			method: 'DELETE',
+			...(mergeIntoId === undefined ? {} : { body: { merge_into_id: mergeIntoId } })
+		});
 	},
 	async bookEntries(bookId: number): Promise<WordbookEntry[]> {
 		const result = await api.request<{ entries: WordbookEntry[] }>(`/books/${bookId}/words`);

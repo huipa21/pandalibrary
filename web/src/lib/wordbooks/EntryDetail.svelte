@@ -4,11 +4,14 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import type { WordbookEntry } from './api.js';
 	import { lexicalEntry, sourceHref } from './management.js';
+	import { appropriateSnapshots } from './preview.js';
 
-	let { entry, disabled = false, readonly = false, onsave, ondelete, onclose }: {
+	let { entry, disabled = false, readonly = false, language = '', meaningLanguage = '', onsave, ondelete, onclose }: {
 		entry: WordbookEntry;
 		disabled?: boolean;
 		readonly?: boolean;
+		language?: string;
+		meaningLanguage?: string;
 		onsave: (id: number, changes: { text: string; definition?: string; note?: string }) => Promise<boolean>;
 		ondelete: (id: number) => Promise<void>;
 		onclose: () => void;
@@ -19,6 +22,7 @@
 	let definition = $state('');
 	let note = $state('');
 	const lexical = $derived(lexicalEntry(entry));
+	const snapshots = $derived(appropriateSnapshots(entry.dictionary_entries, language, meaningLanguage));
 	const href = $derived(sourceHref(entry.source));
 	const page = $derived(
 		entry.source.locator && typeof entry.source.locator === 'object' && !Array.isArray(entry.source.locator)
@@ -102,10 +106,10 @@
 			<div><h3 class="text-sm font-medium text-slate-600">{m['wordbooks.note']()}</h3><p class="whitespace-pre-wrap break-words">{entry.note}</p></div>
 		{/if}
 	{/if}
-	{#if lexical && entry.dictionary_entries.length}
+	{#if lexical && snapshots.length}
 		<section aria-label={m['wordbooks.dictionary']()} class="space-y-2 rounded-md bg-slate-50 p-3 text-sm">
 			<h3 class="font-medium">{m['wordbooks.dictionary']()}</h3>
-			{#each entry.dictionary_entries as snapshot}
+			{#each snapshots as snapshot}
 				<div class="space-y-1">
 					<p><strong>{snapshot.headword}</strong> {snapshot.reading ?? ''} <span class="text-slate-600">{snapshot.partOfSpeech ?? ''} · {snapshot.sourceName}</span></p>
 					<ul class="list-disc space-y-1 pl-5">

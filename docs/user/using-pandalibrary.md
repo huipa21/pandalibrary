@@ -328,6 +328,30 @@ Wordbooks are private: only you can see them. Archive wordbooks to hide them fro
 list, then select **Archived** or **All** in the status dropdown to find and restore them.
 The default wordbook cannot be archived.
 
+Open a wordbook and select the **Settings** gear after the list/grid toggle to
+edit its name, description, language, meaning language, and cover. For example,
+an English wordbook can show English–English or English–Chinese meanings.
+An unspecified meaning language uses the wordbook's language; leaving both
+unspecified shows the available dictionary meanings.
+
+Entry cards and list items are white, four-row previews: one row of truncated
+text, one row of part of speech and pronunciation, and at most two meaning
+rows. Select an entry to view its full text, related meanings, notes, and source.
+When no pronunciation text is available, the speaker uses browser speech
+support and reports when playback is unavailable.
+
+The **Delete wordbook** icon in Settings opens a confirmation with two choices:
+put the wordbook and its entries in Trash, or move every entry into another
+active wordbook before putting the empty wordbook in Trash. The last wordbook
+cannot be deleted. Deleting the default transfers that role
+to another wordbook (the merge target, if supplied); a restored former default
+does not reclaim the role. If only archived wordbooks remain, the replacement
+default is unarchived. Restoring a deleted wordbook does not undo a merge.
+
+API clients can set `meaning_language` on creation or editing and send
+`{"merge_into_id": id}` to the delete endpoint. Dictionary snapshots created by
+lookup include their `from` and `to` languages; older snapshots may not have them.
+
 Each book's **Words** tab shows a compact list of its saved words, phrases,
 sentences and passages from your wordbooks, with links back to their
 wordbooks and original reading positions.

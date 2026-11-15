@@ -23,6 +23,8 @@ export interface DictionaryStatus {
 }
 
 export interface DictionaryEntry {
+	from?: string;
+	to?: string;
 	source: string;
 	sourceName: string;
 	headword: string;

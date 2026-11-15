@@ -6,23 +6,33 @@
 	import { focusableWithin, nextTrappedFocus } from '#lib/shell/focus.js';
 	import type { Wordbook, WordbookOptions } from './api.js';
 
-	let { mode, book, onclose, onsave }: {
+	let { mode, book, onclose, onsave, ondelete, canDelete = true }: {
 		mode: 'new' | 'rename';
 		book?: Wordbook;
 		onclose: () => void;
 		onsave: (name: string, options: WordbookOptions) => Promise<void>;
+		ondelete?: () => void;
+		canDelete?: boolean;
 	} = $props();
 	let dialog = $state<HTMLDialogElement | null>(null);
 	let name = $state(untrack(() => mode === 'rename' ? book?.name ?? '' : ''));
 	let description = $state(untrack(() => mode === 'rename' ? book?.description ?? '' : ''));
-	let language = $state('');
+	let language = $state(untrack(() => mode === 'rename' ? book?.language ?? '' : ''));
+	let meaningLanguage = $state(untrack(() => mode === 'rename' ? book?.meaning_language ?? '' : ''));
 	let color = $state(untrack(() => mode === 'rename' ? book?.cover_color || coverCloth(book?.id ?? 0).name : randomCoverColor()));
 	let image = $state(untrack(() => mode === 'rename' ? book?.cover_image ?? '' : ''));
 	let submitting = $state(false);
 	let coverBusy = $state(false);
 	let error = $state('');
 	const busy = $derived(submitting || coverBusy);
-	const label = $derived(mode === 'new' ? m['wordbooks.new']() : m['wordbooks.rename']());
+	const label = $derived(mode === 'new' ? m['wordbooks.new']() : m['wordbooks.settings']());
+	function languageName(value: string): string {
+		const base = value.toLowerCase().split('-')[0];
+		return base === 'en' ? m['dict.lang.en']() : base === 'zh' ? m['dict.lang.zh']() : base === 'ja' ? m['dict.lang.ja']() : value;
+	}
+	function meaningLabel(target: string): string {
+		return language ? m['wordbooks.languagePair']({ source: languageName(language), target: languageName(target) }) : languageName(target);
+	}
 
 	$effect(() => {
 		if (!dialog) return;
@@ -42,7 +52,7 @@
 		submitting = true;
 		error = '';
 		try {
-			await onsave(name.trim(), { description: description.trim(), cover_color: color, cover_image: image, ...(mode === 'new' ? { language } : {}) });
+			await onsave(name.trim(), { description: description.trim(), cover_color: color, cover_image: image, language, meaning_language: meaningLanguage });
 			onclose();
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
@@ -67,21 +77,31 @@
 	<h2 class="mb-4 text-lg font-semibold">{label}</h2>
 	<form class="space-y-4" aria-label={label} onsubmit={save}>
 		<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.name']()}</span><input class="field" name="name" required maxlength="200" bind:value={name} disabled={submitting} /></label>
-		{#if mode === 'new'}
-			<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.language']()}</span><select class="field" name="language" bind:value={language} disabled={submitting}>
+			<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.language']()}</span><select class="field" name="language" aria-label={m['wordbooks.language']()} bind:value={language} disabled={submitting}>
 				<option value="">{m['wordbooks.languageUnspecified']()}</option>
 				<option value="en">{m['dict.lang.en']()}</option>
 				<option value="zh">{m['dict.lang.zh']()}</option>
 				<option value="ja">{m['dict.lang.ja']()}</option>
+				{#if language && !['en', 'zh', 'ja'].includes(language)}<option value={language}>{language}</option>{/if}
 			</select></label>
-		{/if}
+		<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.meaningLanguage']()}</span><select class="field" name="meaning_language" aria-label={m['wordbooks.meaningLanguage']()} bind:value={meaningLanguage} disabled={submitting}>
+			<option value="">{m['wordbooks.languageUnspecified']()}</option>
+			{#each ['en', 'zh', 'ja'] as target}<option value={target}>{meaningLabel(target)}</option>{/each}
+			{#if meaningLanguage && !['en', 'zh', 'ja'].includes(meaningLanguage)}<option value={meaningLanguage}>{meaningLabel(meaningLanguage)}</option>{/if}
+		</select></label>
 		<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.description']()}</span><textarea class="field" rows="2" maxlength="2000" bind:value={description} disabled={submitting}></textarea></label>
 		<CoverEditor title={name} seed={mode === 'rename' ? book?.id ?? 0 : 0} bind:color bind:image disabled={submitting} onbusy={(value) => coverBusy = value} />
 		{#if error}<p role="alert" class="whitespace-pre-wrap break-words text-sm text-red-800">{error}</p>{/if}
 		<div class="flex gap-3">
 			<button class="button" type="submit" disabled={busy || !name.trim()}>{mode === 'new' ? m['wordbooks.create']() : m['wordbooks.save']()}</button>
 			<button class="button" type="button" disabled={submitting} onclick={() => cancel()}>{m['wordbooks.cancel']()}</button>
+			{#if mode === 'rename' && ondelete}
+				<button class="button ml-auto" type="button" aria-label={m['wordbooks.deleteBook']()} title={m['wordbooks.deleteBook']()} aria-describedby={!canDelete ? 'wordbook-delete-unavailable' : undefined} disabled={busy || !canDelete} onclick={ondelete}>
+					<svg aria-hidden="true" class="size-5 text-red-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
+				</button>
+			{/if}
 		</div>
+		{#if mode === 'rename' && !canDelete}<p id="wordbook-delete-unavailable" class="text-sm text-slate-600">{m['wordbooks.lastBookDelete']()}</p>{/if}
 	</form>
 </dialog>
 
