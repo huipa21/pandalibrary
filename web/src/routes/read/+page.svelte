@@ -98,7 +98,7 @@
 						{#if book.files.some((file) => readerFormat(file.format))}
 							<div class="flex flex-wrap gap-2">
 								{#each book.files.filter((file) => readerFormat(file.format)) as file (file.id)}
-									<a class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={`/read/${book.id}/${file.id}`}>
+									<a class="button-primary rounded-md px-3 py-2 text-sm font-medium" href={`/read/${book.id}/${file.id}`}>
 										{m['reader.launch.open']()} {file.format.toUpperCase()}
 									</a>
 								{/each}

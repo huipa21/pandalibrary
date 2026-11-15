@@ -389,7 +389,7 @@
 				{/if}
 				{#if books.hasMore}
 					<button
-						class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+						class="button-primary rounded-md px-4 py-2 font-medium disabled:opacity-60"
 						disabled={books.loadingMore}
 						onclick={() => books.loadMore()}
 					>{books.loadingMore ? m['shelves.books.loading_more']() : m['shelves.books.load_more']()}</button>

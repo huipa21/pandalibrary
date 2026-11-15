@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DictionaryEntry } from '#lib/dictionary/types.js';
-import { wordbooks, type EntrySource } from './api.js';
+import { activeWordbookCount, notifyWordbooksChanged, WORDBOOKS_CHANGED_EVENT, wordbooks, type EntrySource } from './api.js';
 
 const { request } = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock('#lib/api/client.js', () => ({ api: { request } }));
@@ -16,6 +16,21 @@ const source: EntrySource = {
 
 beforeEach(() => {
 	request.mockReset();
+});
+
+describe('wordbook sidebar count', () => {
+	it('counts only active wordbooks', () => {
+		expect(activeWordbookCount([])).toBe(0);
+		expect(activeWordbookCount([{ archived: false }, { archived: true }, { archived: false }])).toBe(2);
+	});
+
+	it('announces wordbook changes on the target', () => {
+		const target = new EventTarget();
+		const listener = vi.fn();
+		target.addEventListener(WORDBOOKS_CHANGED_EVENT, listener);
+		notifyWordbooksChanged(target);
+		expect(listener).toHaveBeenCalledOnce();
+	});
 });
 
 describe('wordbook API contract', () => {

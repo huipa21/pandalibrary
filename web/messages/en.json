@@ -39,6 +39,7 @@
 	"wordbooks.description": "Description (optional)",
 	"wordbooks.entry_count": "{count} entries",
 	"wordbooks.book_count": "{count} source books",
+	"wordbooks.nav_count": "Active wordbooks: {count}",
 	"wordbooks.back": "Back to wordbooks",
 	"wordbooks.no_matches": "No matches found.",
 	"wordbooks.default": "Default wordbook",

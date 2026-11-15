@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
-	import { wordbooks, type Wordbook, type WordbookEntry, type WordbookOptions } from '#lib/wordbooks/api.js';
+	import { notifyWordbooksChanged, wordbooks, type Wordbook, type WordbookEntry, type WordbookOptions } from '#lib/wordbooks/api.js';
 	import Entry from '#lib/wordbooks/Entry.svelte';
 	import Header from '#lib/wordbooks/Header.svelte';
 	import WordbookDialog from '#lib/wordbooks/WordbookDialog.svelte';
@@ -124,6 +124,7 @@
 				const book = await wordbooks.create(name, options);
 				books = [...books, book];
 				cached[book.id] = [];
+				notifyWordbooksChanged();
 				await navigate(book.id);
 			} else if (selected) {
 				const book = await wordbooks.update(selected.id, { name, ...options });
@@ -137,6 +138,7 @@
 		await operate(async () => {
 			const updated = await wordbooks.update(book.id, { archived: !book.archived });
 			books = books.map((item) => item.id === book.id ? updated : item);
+			notifyWordbooksChanged();
 			if (updated.archived && status === 'active') await navigate(null);
 		});
 	}

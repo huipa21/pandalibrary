@@ -58,7 +58,7 @@
 			<p class="text-sm text-red-700" role="alert">{error}</p>
 		{/if}
 		<button
-			class="w-full rounded-md bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-60"
+			class="button-primary w-full rounded-md px-4 py-2 font-medium disabled:opacity-60"
 			type="submit"
 			disabled={submitting}
 		>

@@ -39,6 +39,7 @@
 	"wordbooks.description": "描述（可选）",
 	"wordbooks.entry_count": "{count} 条记录",
 	"wordbooks.book_count": "{count} 本来源图书",
+	"wordbooks.nav_count": "活跃单词本：{count}",
 	"wordbooks.back": "返回单词本",
 	"wordbooks.no_matches": "没有找到匹配项。",
 	"wordbooks.default": "默认单词本",

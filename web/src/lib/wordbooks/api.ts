@@ -58,6 +58,17 @@ export interface WordbookExport {
 	entries: WordbookEntry[];
 }
 
+/** Window event (no payload) dispatched after wordbooks are created, archived, or restored. */
+export const WORDBOOKS_CHANGED_EVENT = 'pandalibrary-wordbooks-changed';
+
+export function notifyWordbooksChanged(target: EventTarget | undefined = globalThis.window): void {
+	target?.dispatchEvent(new Event(WORDBOOKS_CHANGED_EVENT));
+}
+
+export function activeWordbookCount(books: readonly Pick<Wordbook, 'archived'>[]): number {
+	return books.filter((book) => !book.archived).length;
+}
+
 export const wordbooks = {
 	async list(): Promise<Wordbook[]> {
 		const result = await api.request<{ wordbooks: Wordbook[] }>('/wordbooks');

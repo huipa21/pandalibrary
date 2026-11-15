@@ -6,6 +6,7 @@
 	import BookheapCount from '#lib/bookheap/BookheapCount.svelte';
 	import AnnotationsCount from '#lib/notes/AnnotationsCount.svelte';
 	import FavoritesCount from '#lib/shelves/FavoritesCount.svelte';
+	import WordbooksCount from '#lib/wordbooks/WordbooksCount.svelte';
 	import { requestDashboardConfigure } from '#lib/dashboard/configure.svelte.js';
 	import SidebarShelves from './SidebarShelves.svelte';
 	import Icon from '#lib/bookview/Icon.svelte';
@@ -44,6 +45,9 @@
 					{:else if item.id === 'favorites'}
 						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
 						<FavoritesCount />
+					{:else if item.id === 'wordbooks'}
+						<span class="min-w-0 flex-1 truncate">{item.label()}</span>
+						<WordbooksCount />
 					{:else}
 						{item.label()}
 					{/if}

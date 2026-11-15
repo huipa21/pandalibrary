@@ -1,7 +1,7 @@
 /** Shared Tailwind class strings so admin controls match the existing app styling. */
-export const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900';
+export const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 app-focus-ring';
 export const inputClass = `rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-normal ${focusRing}`;
-export const primaryButton = `rounded-md bg-slate-900 px-4 py-2 font-medium text-white ${focusRing} disabled:opacity-60`;
+export const primaryButton = `rounded-md button-primary px-4 py-2 font-medium ${focusRing} disabled:opacity-60`;
 export const secondaryButton = `rounded-md border border-slate-300 bg-white px-4 py-2 ${focusRing} disabled:opacity-60`;
 export const dangerButton = `rounded-md border border-red-300 bg-white px-4 py-2 text-red-800 ${focusRing} disabled:opacity-60`;
 export const smallSecondaryButton = `rounded-md border border-slate-300 bg-white px-3 py-1 text-sm ${focusRing} disabled:opacity-60`;

@@ -80,7 +80,7 @@
 				{/if}
 				{#if pager.hasMore}
 					<button
-						class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-60"
+						class="button-primary rounded-md px-4 py-2 font-medium disabled:opacity-60"
 						disabled={pager.loadingMore}
 						onclick={() => pager.loadMore()}
 					>{pager.loadingMore ? m['search.loading_more']() : m['search.load_more']()}</button>

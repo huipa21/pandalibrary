@@ -138,7 +138,7 @@
 					<option value="zh">{m['common.language_chinese']()}</option>
 				</select>
 			</label>
-			<button class="rounded-md bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-60" disabled={busy}>
+			<button class="button-primary rounded-md px-4 py-2 font-medium disabled:opacity-60" disabled={busy}>
 				{m['auth.profile.save']()}
 			</button>
 		</form>
@@ -169,7 +169,7 @@
 					bind:value={label}
 				/>
 			</label>
-			<button class="self-end rounded-md bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-60" disabled={busy}>
+			<button class="button-primary self-end rounded-md px-4 py-2 font-medium disabled:opacity-60" disabled={busy}>
 				{m['auth.app_password.create']()}
 			</button>
 		</form>

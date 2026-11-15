@@ -15,6 +15,9 @@
 :root {
 	--shell-gap: 0.5rem;
 	--shell-content-top: calc(var(--spacing-shell-header) + 2 * var(--shell-gap));
+	--shell-primary: #047857;
+	--shell-primary-hover: #065f46;
+	accent-color: var(--shell-active);
 	/* Shared size tokens for search boxes, filters and toolbar buttons (see `.control-*`). */
 	--control-height: 2.25rem;
 	--control-radius: 0.375rem;
@@ -185,7 +188,7 @@ body {
 	.shell-text-button:focus-visible,
 	.shell-brand:focus-visible,
 	.shell-menu-row:focus-visible {
-		outline: 2px solid var(--color-shell-accent);
+		outline: 2px solid var(--shell-active);
 		outline-offset: 2px;
 	}
 
@@ -440,7 +443,7 @@ body {
 
 .header-menu-item:focus-visible,
 .language-option:focus-visible {
-	outline: 2px solid var(--color-shell-accent);
+	outline: 2px solid var(--shell-active);
 	outline-offset: 1px;
 }
 
@@ -560,8 +563,24 @@ body {
 
 	.control-button-primary {
 		border-color: transparent;
-		background-color: #047857;
+		background-color: var(--shell-primary);
 		color: #ffffff;
+	}
+
+	.button-primary {
+		border-color: transparent;
+		background-color: var(--shell-primary);
+		color: #ffffff;
+		transition: background-color 120ms;
+	}
+
+	.button-primary:not(:disabled, [aria-disabled='true']):hover {
+		background-color: var(--shell-primary-hover);
+	}
+
+	.button-primary:focus-visible {
+		outline: 2px solid var(--shell-active);
+		outline-offset: 2px;
 	}
 
 	.control-button[aria-pressed='true'],
@@ -573,7 +592,7 @@ body {
 
 	.control-button-primary:not(:disabled, [aria-disabled='true']):hover {
 		border-color: transparent;
-		background-color: #065f46;
+		background-color: var(--shell-primary-hover);
 		color: #ffffff;
 	}
 
@@ -591,12 +610,59 @@ body {
 	/* Inset ring: controls often sit flush with the sticky header band or inside scrolling panels. */
 	.control-field:focus,
 	.control-button:focus-visible {
-		outline: 2px solid var(--color-shell-accent);
+		outline: 2px solid var(--shell-active);
 		outline-offset: -2px;
+	}
+
+	.app-focus-ring:focus-visible {
+		outline-color: var(--shell-active);
 	}
 
 	.control-button-primary:focus-visible {
 		box-shadow: inset 0 0 0 3px var(--shell-surface);
+	}
+}
+
+.app-shell select:focus-visible {
+	outline: 2px solid var(--shell-active);
+	outline-offset: -2px;
+}
+
+@supports (appearance: base-select) {
+	.app-shell select,
+	.app-shell select::picker(select) {
+		appearance: base-select;
+	}
+
+	/* base-select renders as inline-flex with align-items: normal, which pins text to the top of fixed-height fields. */
+	.app-shell select {
+		align-items: center;
+	}
+
+	.app-shell select::picker(select) {
+		max-height: min(24rem, 60vh);
+		overflow-y: auto;
+		border: 1px solid var(--shell-border);
+		border-radius: var(--control-radius);
+		background-color: var(--shell-surface);
+		color: var(--shell-text);
+		box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+	}
+
+	.app-shell select option {
+		background-color: var(--shell-surface);
+		color: var(--shell-text);
+	}
+
+	.app-shell select option:checked {
+		background-color: color-mix(in oklab, var(--color-shell-accent) 16%, var(--shell-surface));
+		color: var(--shell-active);
+		font-weight: 600;
+	}
+
+	.app-shell select option:hover,
+	.app-shell select option:focus-visible {
+		background-color: var(--shell-hover);
 	}
 }
 

@@ -397,7 +397,7 @@
 						/>
 					</label>
 					<div class="flex flex-wrap gap-3">
-						<button type="submit" class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" disabled={controller.busy}>{m['ux6.save']()}</button>
+						<button type="submit" class="button-primary rounded-md px-3 py-2 text-sm font-medium" disabled={controller.busy}>{m['ux6.save']()}</button>
 						<button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-2" disabled={controller.busy} onclick={() => { bookmarkDraft = null; }}>{m['ux6.cancel']()}</button>
 					</div>
 				</form>
