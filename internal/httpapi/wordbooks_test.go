@@ -3,9 +3,12 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -132,6 +135,97 @@ func TestWordbookDescription(t *testing.T) {
 	}
 	if strings.Contains(f.request(http.MethodGet, "/api/v1/wordbooks", nil, f.reader, nil).Body.String(), "shared_with") {
 		t.Fatal("sharing fields leaked")
+	}
+}
+
+func TestWordbookCovers(t *testing.T) {
+	f := newWordbookFixture(t)
+	var jpegData bytes.Buffer
+	if err := jpeg.Encode(&jpegData, image.NewRGBA(image.Rect(0, 0, 600, 900)), nil); err != nil {
+		t.Fatal(err)
+	}
+	// Valid JPEG comment segments bring the upload to the decoded size limit.
+	data := append([]byte{}, jpegData.Bytes()[:2]...)
+	remaining := wordbooks.MaxCoverImageBytes - jpegData.Len()
+	for remaining > 0 {
+		size := min(remaining, 65537)
+		if remaining-size > 0 && remaining-size < 4 {
+			size -= 4
+		}
+		data = append(data, 0xff, 0xfe, byte((size-2)>>8), byte(size-2))
+		data = append(data, make([]byte, size-4)...)
+		remaining -= size
+	}
+	data = append(data, jpegData.Bytes()[2:]...)
+	cover := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data)
+	book := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{
+		"name": "Covers", "cover_color": "navy", "cover_image": cover,
+	}, f.reader), http.StatusCreated)
+	if book.CoverColor != "navy" || book.CoverImage != cover {
+		t.Fatal("create did not return cover")
+	}
+	base := fmt.Sprintf("/api/v1/wordbooks/%d", book.ID)
+	for _, body := range []map[string]any{
+		{"cover_color": "blue"},
+		{"cover_color": " navy "},
+		{"cover_color": nil},
+		{"cover_image": nil},
+		{"cover_image": 123},
+		{"cover_image": "data:image/jpeg;base64,bm90IGpwZWc="},
+		{"cover_image": "data:image/png;base64,AAAA"},
+		{"cover_image": "https://example.com/image.jpg"},
+		{"cover_image": "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(append(data, 0))},
+	} {
+		input := map[string]any{"name": "Invalid"}
+		for key, value := range body {
+			input[key] = value
+		}
+		expectShelfStatus(t, f.send(http.MethodPost, "/api/v1/wordbooks", input, f.reader), http.StatusBadRequest)
+		expectShelfStatus(t, f.send(http.MethodPatch, base, body, f.reader), http.StatusBadRequest)
+	}
+	for _, cookie := range []*http.Cookie{f.other, f.admin} {
+		expectShelfStatus(t, f.send(http.MethodPatch, base, map[string]any{"cover_color": "rust", "cover_image": ""}, cookie), http.StatusNotFound)
+		list := wordbookDecode[struct {
+			Wordbooks []wordbooks.Wordbook `json:"wordbooks"`
+		}](t, f.request(http.MethodGet, "/api/v1/wordbooks", nil, cookie, nil), http.StatusOK)
+		for _, other := range list.Wordbooks {
+			if other.ID == book.ID || other.CoverImage != "" {
+				t.Fatal("foreign cover leaked")
+			}
+		}
+	}
+	for _, patch := range []map[string]any{
+		{"name": "Renamed", "description": "Notes", "archived": true},
+		{"cover_color": "forest"},
+	} {
+		book = wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, patch, f.reader), http.StatusOK)
+		if book.CoverImage != cover {
+			t.Fatal("patch lost image")
+		}
+	}
+	list := wordbookDecode[struct {
+		Wordbooks []wordbooks.Wordbook `json:"wordbooks"`
+	}](t, f.request(http.MethodGet, "/api/v1/wordbooks", nil, f.reader, nil), http.StatusOK)
+	if len(list.Wordbooks) != 2 || list.Wordbooks[0].CoverColor != "" || list.Wordbooks[0].CoverImage != "" ||
+		list.Wordbooks[1].CoverColor != "forest" || list.Wordbooks[1].CoverImage != cover || !list.Wordbooks[1].Archived {
+		t.Fatal("list did not preserve cover and existing fields")
+	}
+	book = wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"cover_image": ""}, f.reader), http.StatusOK)
+	if book.CoverImage != "" || book.CoverColor != "forest" {
+		t.Fatal("image reset lost palette")
+	}
+	book = wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"cover_color": ""}, f.reader), http.StatusOK)
+	if book.CoverColor != "" || book.CoverImage != "" {
+		t.Fatal("cover reset failed")
+	}
+	for _, method := range []string{http.MethodPost, http.MethodPatch} {
+		target := base
+		if method == http.MethodPost {
+			target = "/api/v1/wordbooks"
+		}
+		expectShelfStatus(t, f.send(method, target, map[string]any{
+			"name": "Too large", "cover_image": strings.Repeat("x", 1<<20),
+		}, f.reader), http.StatusRequestEntityTooLarge)
 	}
 }
 

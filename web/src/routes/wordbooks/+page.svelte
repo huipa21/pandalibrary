@@ -3,9 +3,11 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
-	import { wordbooks, type Wordbook, type WordbookEntry } from '#lib/wordbooks/api.js';
+	import { wordbooks, type Wordbook, type WordbookEntry, type WordbookOptions } from '#lib/wordbooks/api.js';
 	import Entry from '#lib/wordbooks/Entry.svelte';
 	import Header from '#lib/wordbooks/Header.svelte';
+	import WordbookDialog from '#lib/wordbooks/WordbookDialog.svelte';
+	import BookCover from '#lib/bookview/BookCover.svelte';
 	import {
 		downloadWordbook, filterEntries, filterWordbooks, involvedBookCount, readPreferences,
 		sortEntries, writePreferences, type Category, type EntrySort, type EntryView
@@ -22,12 +24,12 @@
 	let category = $state<Category>('wordbooks');
 	let keyword = $state('');
 	let settingsOpen = $state(false);
+	let coverSize = $state(208);
+	let spacing = $state(20);
 	let showArchived = $state(false);
 	let showDescriptions = $state(true);
 	let showSources = $state(true);
 	let nameMode = $state<'new' | 'rename' | null>(null);
-	let name = $state('');
-	let description = $state('');
 	let disposed = false;
 	const selectedId = $derived(Number(page.url.searchParams.get('id')) || null);
 	const selected = $derived(books.find((book) => book.id === selectedId));
@@ -94,26 +96,23 @@
 	}
 	function beginName(mode: 'new' | 'rename') {
 		nameMode = mode;
-		name = mode === 'rename' ? selected?.name ?? '' : '';
-		description = mode === 'rename' ? selected?.description ?? '' : '';
 	}
-	async function saveName(event: SubmitEvent) {
-		event.preventDefault();
-		if (!name.trim()) return;
+	async function saveName(name: string, options: WordbookOptions) {
 		const mode = nameMode;
-		const options = { description: description.trim() };
-		await operate(async () => {
+		busy = true;
+		error = '';
+		notice = '';
+		try {
 			if (mode === 'new') {
-				const book = await wordbooks.create(name.trim(), options);
+				const book = await wordbooks.create(name, options);
 				books = [...books, book];
 				cached[book.id] = [];
 				await navigate(book.id);
 			} else if (selected) {
-				const book = await wordbooks.update(selected.id, { name: name.trim(), ...options });
+				const book = await wordbooks.update(selected.id, { name, ...options });
 				books = books.map((item) => item.id === book.id ? book : item);
 			}
-			nameMode = null;
-		});
+		} finally { busy = false; }
 	}
 	async function archive() {
 		const book = selected;
@@ -174,8 +173,10 @@
 			{/if}
 		</div>
 	{/if}
-	<Header bind:category bind:keyword {sort} {view} inside={selectedId !== null} {settingsOpen} disabled={busy || loading} onchange={changePreferences} onsettings={() => settingsOpen = !settingsOpen} oncreate={() => beginName('new')} />
-	{#if settingsOpen}
+	<Header bind:category bind:keyword bind:size={coverSize} bind:spacing {sort} {view} inside={selectedId !== null} {settingsOpen} disabled={busy || loading} onchange={changePreferences} onsettings={() => settingsOpen = !settingsOpen} oncreate={() => beginName('new')} />
+	{#if selectedId === null}
+		<label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={showArchived} />{m['wordbooks.show_archived']()}</label>
+	{:else if settingsOpen}
 		<div class="flex flex-wrap gap-4 rounded-md border border-slate-200 p-3 text-sm" aria-label={m['wordbooks.display_settings']()}>
 			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showDescriptions} />{m['wordbooks.show_descriptions']()}</label>
 			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showSources} />{m['wordbooks.show_sources']()}</label>
@@ -185,11 +186,7 @@
 	{#if error}<p role="alert" class="whitespace-pre-wrap break-words rounded-md border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>{/if}
 	{#if notice}<p role="status" class="text-sm text-green-800">{notice}</p>{/if}
 	{#if nameMode}
-		<form class="space-y-4 rounded-lg border border-slate-200 p-4" onsubmit={saveName} aria-label={nameMode === 'new' ? m['wordbooks.new']() : m['wordbooks.rename']()}>
-			<label class="block space-y-1"><span class="text-sm font-medium">{m['wordbooks.name']()}</span><input class="field" required maxlength="200" bind:value={name} disabled={busy} /></label>
-			<label class="block space-y-1"><span class="text-sm font-medium">{m['wordbooks.description']()}</span><textarea class="field" rows="2" maxlength="2000" bind:value={description} disabled={busy}></textarea></label>
-			<div class="flex gap-3"><button class="button" type="submit" disabled={busy || !name.trim()}>{nameMode === 'new' ? m['wordbooks.create']() : m['wordbooks.save']()}</button><button class="button" type="button" disabled={busy} onclick={() => nameMode = null}>{m['wordbooks.cancel']()}</button></div>
-		</form>
+		<WordbookDialog mode={nameMode} book={selected} onsave={saveName} onclose={() => nameMode = null} />
 	{/if}
 	{#if selected}
 		{#if showDescriptions && selected.description}<p class="whitespace-pre-wrap break-words text-slate-600">{selected.description}</p>{/if}
@@ -209,17 +206,24 @@
 		{/if}
 	{:else if selectedId === null}
 		{#if loading}<p role="status">{m['wordbooks.loading']()}</p>{/if}
-		<ul data-wordbooks data-view={view} class={view === 'cards' ? 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'space-y-3'}>
+		<ul data-wordbooks data-view={view} class={view === 'cards' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${coverSize}px; --book-cover-spacing: ${spacing}px`}>
 			{#each visibleBooks as book (book.id)}
 				<li class="min-w-0">
-					<a href="/wordbooks?id={book.id}" class="notebook group relative flex min-w-0 gap-4 rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-400 focus-visible:outline-2" class:flex-col={view === 'cards'}>
-						<span class="absolute right-3 top-3 rounded-full bg-white/90 px-2 py-1 text-xs text-slate-600">{m['wordbooks.entry_count']({ count: book.entry_count ?? cached[book.id]?.length ?? 0 })}</span>
-						<div aria-hidden="true" class="cover flex shrink-0 items-end rounded-md p-3 shadow-sm" style:background-color={`hsl(${(book.id * 67) % 360} 35% 82%)`} class:w-20={view === 'list'} class:h-24={view === 'list'} class:h-44={view === 'cards'}><span class="line-clamp-3 break-words text-sm font-semibold text-slate-800">{book.name}</span></div>
+					<a href="/wordbooks?id={book.id}" aria-label={book.name} class={view === 'cards' ? 'notebook book-tile-lift group block min-w-0 focus-visible:outline-2' : 'notebook group flex min-w-0 gap-4 rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-400 focus-visible:outline-2'}>
+						<div class="relative shrink-0" class:w-20={view === 'list'}>
+							<BookCover id={book.id} title={book.name} coverColor={book.cover_color} coverUrl={book.cover_image} centeredTitle size={view === 'cards' ? 'md' : 'sm'} />
+							<span data-entry-count class="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs text-slate-700" aria-label={m['wordbooks.entry_count']({ count: book.entry_count ?? cached[book.id]?.length ?? 0 })}>{book.entry_count ?? cached[book.id]?.length ?? 0}</span>
+							<span data-book-count class="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-xs text-slate-700" aria-label={m['wordbooks.book_count']({ count: book.book_count ?? involvedBookCount(cached[book.id] ?? []) })}>
+								{book.book_count ?? involvedBookCount(cached[book.id] ?? [])}
+								<svg aria-hidden="true" viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1m0-15c3-2 6-2 10-1v15c-4-1-7-1-10 1V5Z" /></svg>
+							</span>
+						</div>
+						{#if view === 'list'}
 						<div class="min-w-0 flex-1"><h2 class="break-words font-semibold">{book.name}</h2>
 							{#if showDescriptions && book.description}<p class="mt-1 line-clamp-2 break-words text-sm text-slate-500">{book.description}</p>{/if}
-							{#if showSources}<p class="mt-2 text-xs text-slate-500">{m['wordbooks.book_count']({ count: book.book_count ?? involvedBookCount(cached[book.id] ?? []) })}</p>{/if}
 							{#if book.archived}<span class="text-xs text-slate-500">{m['wordbooks.archived']()}</span>{/if}
 						</div>
+						{:else if book.archived}<span class="mt-1 block text-xs text-slate-500">{m['wordbooks.archived']()}</span>{/if}
 					</a>
 				</li>
 			{/each}
@@ -229,10 +233,8 @@
 </section>
 
 <style>
-	.cover { border-left: .4rem solid rgb(30 41 59 / .2); background-image: repeating-linear-gradient(0deg, transparent, transparent 19px, rgb(255 255 255 / .3) 20px); }
 	.button { display: inline-block; min-height: 2.5rem; border: 1px solid #cbd5e1; border-radius: .375rem; padding: .5rem .75rem; background: white; font-size: .875rem; }
 	.button:disabled { opacity: .5; cursor: not-allowed; }
-	.button:focus-visible, .button:focus-within, .field:focus-visible, input:focus-visible { outline: 2px solid #0f172a; outline-offset: 2px; }
-	.field { display: block; width: 100%; min-width: 0; border: 1px solid #94a3b8; border-radius: .375rem; padding: .5rem; background: white; }
+	.button:focus-visible, .button:focus-within, input:focus-visible { outline: 2px solid #0f172a; outline-offset: 2px; }
 	.action { text-decoration: underline; text-underline-offset: .2em; }
 </style>

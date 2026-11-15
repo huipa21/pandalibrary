@@ -129,11 +129,10 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await expect(list).toHaveAttribute('data-view', 'cards');
 	await expect(page.getByRole('combobox', { name: 'Sort', exact: true })).toHaveValue('alphabetical');
 	await page.getByRole('link', { name: 'Back to wordbooks' }).click();
-	await expect(page.locator('[data-wordbooks] a[href="/wordbooks?id=1"]')).toContainText('6 entries');
+	await expect(page.locator('[data-wordbooks] a[href="/wordbooks?id=1"] [data-entry-count]')).toHaveText('6');
 	await page.locator('[data-wordbooks] a[href="/wordbooks?id=2"]').click();
 	await page.getByRole('button', { name: 'Archive', exact: true }).click();
 	await expect(page.locator('[data-wordbooks] a[href="/wordbooks?id=2"]')).toHaveCount(0);
-	await page.getByRole('button', { name: 'Display settings', exact: true }).click();
 	await page.getByLabel('Show archived wordbooks').check();
 	await page.locator('[data-wordbooks] a[href="/wordbooks?id=2"]').click();
 	await expect(page.getByLabel('Import JSON', { exact: true })).toBeDisabled();
@@ -185,24 +184,185 @@ test('collection searches notebook descriptions and entry categories, preserving
 	await expect(page.locator('[data-entry-id]')).toHaveCount(1);
 });
 
-test('new notebooks submit only the title and optional description, and descriptions remain editable', async ({ page }) => {
+test('new notebooks use a modal and persist their name, description and cover preset', async ({ page }) => {
 	await mockAPI(page);
 	await page.goto('/wordbooks');
 	await page.getByRole('button', { name: 'New wordbook', exact: true }).click();
 	const form = page.getByRole('form', { name: 'New wordbook', exact: true });
+	const dialog = page.getByRole('dialog', { name: 'New wordbook', exact: true });
+	await expect(dialog).toBeVisible();
+	await expect(form.getByLabel('Wordbook name', { exact: true })).toBeFocused();
 	await expect(form.getByRole('checkbox')).toHaveCount(0);
 	await form.getByLabel('Wordbook name', { exact: true }).fill('New study');
 	await form.getByLabel('Description (optional)', { exact: true }).fill('Optional description');
+	await form.getByRole('combobox', { name: 'Cover color', exact: true }).selectOption('forest');
 	const created = page.waitForRequest((request) => request.url().endsWith('/api/v1/wordbooks') && request.method() === 'POST');
 	await form.getByRole('button', { name: 'Create', exact: true }).click();
-	expect((await created).postDataJSON()).toEqual({ name: 'New study', description: 'Optional description' });
+	expect((await created).postDataJSON()).toEqual({ name: 'New study', description: 'Optional description', cover_color: 'forest', cover_image: '' });
 	await expect(page.getByRole('heading', { name: 'New study', exact: true })).toBeVisible();
 	await expect(page.getByText('Optional description', { exact: true })).toBeVisible();
+	await page.reload();
 	await page.getByRole('button', { name: 'Rename', exact: true }).click();
 	const rename = page.getByRole('form', { name: 'Rename', exact: true });
+	await expect(rename.getByRole('combobox', { name: 'Cover color', exact: true })).toHaveValue('forest');
 	await rename.getByLabel('Description (optional)', { exact: true }).fill('Edited description');
 	await rename.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByText('Edited description', { exact: true })).toBeVisible();
+});
+
+test('wordbook covers use book proportions, numeric badges and persistent display sizing', async ({ page }) => {
+	await mockAPI(page);
+	await page.goto('/wordbooks');
+	const collection = page.locator('[data-wordbooks]');
+	const defaultBook = collection.locator('a[href="/wordbooks?id=1"]');
+	const cover = collection.locator('.book-cover').first();
+	await expect(collection).toHaveClass(/book-grid-configurable/);
+	await expect(defaultBook.locator('[data-entry-count]')).toHaveText('3');
+	await expect(defaultBook.locator('[data-book-count]')).toHaveText('1');
+	await expect(defaultBook.locator('[data-book-count] svg')).toBeVisible();
+	await expect(collection.getByRole('heading')).toHaveCount(0);
+	const defaultCover = await defaultBook.locator('.book-cover').boundingBox();
+	const title = await defaultBook.locator('.cover-plate').boundingBox();
+	expect(defaultCover).not.toBeNull();
+	expect(title).not.toBeNull();
+	expect(Math.abs(title!.y + title!.height / 2 - defaultCover!.y - defaultCover!.height / 2)).toBeLessThan(1);
+	let bounds = await cover.boundingBox();
+	expect(bounds?.width).toBeCloseTo(208, 0);
+	expect(bounds!.height / bounds!.width).toBeCloseTo(1.5, 2);
+	await page.getByRole('button', { name: 'Display settings', exact: true }).click();
+	await expect(page.getByLabel('Show descriptions')).toHaveCount(0);
+	const size = page.getByRole('slider', { name: /Cover size/ });
+	await expect(size).toHaveValue('208');
+	await expect(page.getByRole('slider', { name: /Spacing/ })).toHaveValue('20');
+	await size.fill('180');
+	await page.getByRole('slider', { name: /Spacing/ }).fill('32');
+	await page.keyboard.press('Escape');
+	await page.reload();
+	await expect(collection).toHaveCSS('gap', '32px');
+	bounds = await cover.boundingBox();
+	expect(bounds?.width).toBeCloseTo(180, 0);
+	await page.getByRole('button', { name: 'Display settings', exact: true }).click();
+	await expect(page.getByRole('slider', { name: /Cover size/ })).toHaveValue('180');
+	await expect(page.getByRole('slider', { name: /Spacing/ })).toHaveValue('32');
+});
+
+test('wordbook modal traps focus, cancels without saving, restores focus and shows save failures in place', async ({ page }) => {
+	await mockAPI(page);
+	await page.goto('/wordbooks');
+	const trigger = page.getByRole('button', { name: 'New wordbook', exact: true });
+	const dialog = page.getByRole('dialog', { name: 'New wordbook', exact: true });
+	let creates = 0;
+	await page.route('**/api/v1/wordbooks', async (route) => {
+		if (route.request().method() !== 'POST') return route.fallback();
+		creates++;
+		return route.fulfill({ status: 503, contentType: 'application/problem+json', json: { title: 'Unavailable', detail: 'Please try again later.' } });
+	});
+	await trigger.click();
+	const name = dialog.getByLabel('Wordbook name', { exact: true });
+	await expect(name).toBeFocused();
+	await page.keyboard.press('Shift+Tab');
+	await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+	await page.keyboard.press('Tab');
+	await expect(name).toBeFocused();
+	await name.fill('Discard me');
+	await page.keyboard.press('Escape');
+	await expect(dialog).toHaveCount(0);
+	await expect(trigger).toBeFocused();
+	expect(creates).toBe(0);
+	await trigger.click();
+	await expect(name).toHaveValue('');
+	await name.fill('Keep this draft');
+	await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+	await expect(dialog.getByRole('alert')).toContainText('Please try again later.');
+	await expect(name).toHaveValue('Keep this draft');
+	await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+	await expect(trigger).toBeFocused();
+	expect(creates).toBe(1);
+});
+
+test('wordbook upload crops an image into a persistent 600 by 900 JPEG', async ({ page }) => {
+	await mockAPI(page);
+	await page.goto('/wordbooks');
+	const png = await page.evaluate(() => {
+		const canvas = document.createElement('canvas');
+		canvas.width = 1200;
+		canvas.height = 900;
+		const context = canvas.getContext('2d')!;
+		const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+		gradient.addColorStop(0, '#ff0000');
+		gradient.addColorStop(.5, '#00ff00');
+		gradient.addColorStop(1, '#0000ff');
+		context.fillStyle = gradient;
+		context.fillRect(0, 0, canvas.width, canvas.height);
+		return canvas.toDataURL('image/png').split(',')[1];
+	});
+	await page.getByRole('button', { name: 'New wordbook', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'New wordbook', exact: true });
+	await dialog.getByLabel('Wordbook name', { exact: true }).fill('Cropped cover');
+	await dialog.getByLabel('Upload image', { exact: true }).setInputFiles({
+		name: 'landscape.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64')
+	});
+	const preview = dialog.locator('.preview .book-cover img');
+	await expect(preview).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
+	const originalCrop = await preview.getAttribute('src');
+	await dialog.getByRole('slider', { name: 'Zoom', exact: true }).fill('2');
+	await dialog.getByRole('slider', { name: 'Horizontal position', exact: true }).fill('100');
+	await expect(preview).not.toHaveAttribute('src', originalCrop!);
+	const create = dialog.getByRole('button', { name: 'Create', exact: true });
+	await expect(create).toBeEnabled();
+	const cropped = await preview.getAttribute('src');
+	const created = page.waitForRequest((request) => request.url().endsWith('/api/v1/wordbooks') && request.method() === 'POST');
+	await create.click();
+	const payload = (await created).postDataJSON();
+	expect(payload.cover_image).toBe(cropped);
+	expect(payload.cover_color).toBe('');
+	expect(Buffer.from(payload.cover_image.split(',')[1], 'base64').length).toBeLessThan(600 * 1024);
+	const dimensions = await page.evaluate(async (src: string) => {
+		const image = new Image();
+		image.src = src;
+		await image.decode();
+		return { width: image.naturalWidth, height: image.naturalHeight };
+	}, payload.cover_image);
+	expect(dimensions).toEqual({ width: 600, height: 900 });
+	await expect(page.getByRole('heading', { name: 'Cropped cover', exact: true })).toBeVisible();
+	await page.reload();
+	await page.getByRole('button', { name: 'Rename', exact: true }).click();
+	await expect(page.getByRole('dialog', { name: 'Rename', exact: true }).locator('.preview .book-cover img')).toHaveAttribute('src', payload.cover_image);
+	await page.getByRole('dialog', { name: 'Rename', exact: true }).getByRole('button', { name: 'Cancel', exact: true }).click();
+	await page.getByRole('link', { name: 'Back to wordbooks' }).click();
+	await expect(page.getByRole('link', { name: 'Cropped cover', exact: true }).locator('.book-cover img')).toHaveAttribute('src', payload.cover_image);
+});
+
+test('failed crop encoding blocks saving but permits reverting and cancelling the modal', async ({ page }) => {
+	await mockAPI(page);
+	await page.goto('/wordbooks');
+	const png = await page.evaluate(() => {
+		const canvas = document.createElement('canvas');
+		canvas.width = 20;
+		canvas.height = 30;
+		const image = canvas.toDataURL('image/png').split(',')[1];
+		HTMLCanvasElement.prototype.toBlob = function (callback) { callback(null); };
+		return image;
+	});
+	const trigger = page.getByRole('button', { name: 'New wordbook', exact: true });
+	await trigger.click();
+	const dialog = page.getByRole('dialog', { name: 'New wordbook', exact: true });
+	await dialog.getByLabel('Wordbook name', { exact: true }).fill('Encoding failure');
+	const upload = () => dialog.getByLabel('Upload image', { exact: true }).setInputFiles({
+		name: 'cover.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64')
+	});
+	await upload();
+	await expect(dialog.getByRole('alert')).toBeVisible();
+	await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeDisabled();
+	await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeEnabled();
+	await dialog.getByRole('button', { name: 'Use generated cover', exact: true }).click();
+	await expect(dialog.getByRole('alert')).toHaveCount(0);
+	await expect(dialog.getByRole('button', { name: 'Create', exact: true })).toBeEnabled();
+	await upload();
+	await expect(dialog.getByRole('alert')).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(dialog).toHaveCount(0);
+	await expect(trigger).toBeFocused();
 });
 
 test('failed entry searches report an error rather than silently omitting the notebook', async ({ page }) => {

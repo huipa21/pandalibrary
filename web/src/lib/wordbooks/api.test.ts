@@ -34,6 +34,20 @@ describe('wordbook API contract', () => {
 		await expect(wordbooks.bookEntries(8)).resolves.toEqual([{ id: 3 }]);
 		expect(request).toHaveBeenCalledWith('/books/8/words');
 	});
+	it('persists generated cover palettes and uploaded covers, including clearing them', async () => {
+		request.mockResolvedValue({ id: 1 });
+		const cover = { cover_color: 'forest', cover_image: 'data:image/jpeg;base64,fixture' };
+		await wordbooks.create('Study', { description: 'Notes', ...cover });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks', {
+			method: 'POST', body: { name: 'Study', description: 'Notes', ...cover }
+		});
+		await wordbooks.update(1, cover);
+		expect(request).toHaveBeenLastCalledWith('/wordbooks/1', { method: 'PATCH', body: cover });
+		await wordbooks.update(1, { cover_color: '', cover_image: '' });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks/1', {
+			method: 'PATCH', body: { cover_color: '', cover_image: '' }
+		});
+	});
 	it('collects arbitrary text in the default book without requiring a dictionary', async () => {
 		request.mockResolvedValue({ id: 8 });
 		const text = 'A paragraph.\n\nAnother paragraph.';

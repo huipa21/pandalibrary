@@ -2,13 +2,15 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import SearchField from '#lib/search/SearchField.svelte';
 	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
+	import BookDisplaySettings from '#lib/catalog/BookDisplaySettings.svelte';
 	import { filterControlClass, iconControlClass, primaryIconControlClass } from '#lib/catalog/filter-styles.js';
 	import type { Category, EntrySort, EntryView } from './management.js';
 
 	let { category = $bindable<Category>('wordbooks'), keyword = $bindable(''), sort, view,
-		inside = false, settingsOpen, disabled = false, onchange, onsettings, oncreate }: {
+		inside = false, settingsOpen, size = $bindable(208), spacing = $bindable(20), disabled = false, onchange, onsettings, oncreate }: {
 		category?: Category; keyword?: string; sort: EntrySort; view: EntryView;
 		inside?: boolean; settingsOpen: boolean; disabled?: boolean;
+		size?: number; spacing?: number;
 		onchange: (view: EntryView, sort: EntrySort) => void; onsettings: () => void; oncreate: () => void;
 	} = $props();
 </script>
@@ -25,9 +27,13 @@
 		<option value="alphabetical">{m['wordbooks.alphabetical']()}</option>
 	</select>
 	<ViewToggle view={view === 'cards' ? 'grid' : 'list'} onchange={(next) => onchange(next === 'grid' ? 'cards' : 'list', sort)} />
+	{#if inside}
 	<button type="button" class={iconControlClass} aria-label={m['wordbooks.display_settings']()} title={m['wordbooks.display_settings']()} aria-expanded={settingsOpen} onclick={onsettings}>
 		<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" fill="white" /><circle cx="16" cy="12" r="2" fill="white" /><circle cx="8" cy="18" r="2" fill="white" /></svg>
 	</button>
+	{:else}
+		<BookDisplaySettings storageKey="wordbooks" bind:size bind:spacing />
+	{/if}
 	<button type="button" class="{primaryIconControlClass} ml-auto" aria-label={m['wordbooks.new']()} title={m['wordbooks.new']()} {disabled} onclick={oncreate}>
 		<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16M4 12h16" /></svg>
 	</button>

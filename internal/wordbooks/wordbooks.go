@@ -27,6 +27,8 @@ type Wordbook struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	CoverColor  string `json:"cover_color"`
+	CoverImage  string `json:"cover_image"`
 	EntryCount  int    `json:"entry_count"`
 	BookCount   int    `json:"book_count"`
 	IsDefault   bool   `json:"is_default"`
@@ -38,6 +40,8 @@ type Wordbook struct {
 type BookCreate struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	CoverColor  string `json:"cover_color"`
+	CoverImage  string `json:"cover_image"`
 }
 
 type Source struct {
@@ -119,6 +123,8 @@ type BookPatch struct {
 	Name        *string `json:"name"`
 	Archived    *bool   `json:"archived"`
 	Description *string `json:"description"`
+	CoverColor  *string `json:"cover_color"`
+	CoverImage  *string `json:"cover_image"`
 }
 
 type EntryPatch struct {
@@ -161,7 +167,7 @@ func now() string                  { return time.Now().UTC().Format(time.RFC3339
 type scanner interface{ Scan(...any) error }
 
 func scanBook(row scanner) (b Wordbook, err error) {
-	err = row.Scan(&b.ID, &b.Name, &b.IsDefault, &b.Archived, &b.CreatedAt, &b.UpdatedAt, &b.Description, &b.EntryCount, &b.BookCount)
+	err = row.Scan(&b.ID, &b.Name, &b.IsDefault, &b.Archived, &b.CreatedAt, &b.UpdatedAt, &b.Description, &b.CoverColor, &b.CoverImage, &b.EntryCount, &b.BookCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = catalog.ErrNotFound
 	}
@@ -169,7 +175,7 @@ func scanBook(row scanner) (b Wordbook, err error) {
 }
 
 // Counts are correlated subqueries so a single list query returns them without per-book round trips.
-const bookColumns = `id, name, is_default, archived, created_at, updated_at, description,
+const bookColumns = `id, name, is_default, archived, created_at, updated_at, description, cover_color, cover_image,
 	(SELECT count(*) FROM wordbook_entries e WHERE e.wordbook_id = wordbooks.id),
 	(SELECT count(DISTINCT json_extract(e.source, '$.book_id')) FROM wordbook_entries e WHERE e.wordbook_id = wordbooks.id)`
 
@@ -236,6 +242,9 @@ func (s *Service) CreateWithDescription(ctx context.Context, userID int64, input
 	if !validDescription(description) {
 		return Wordbook{}, invalid("description must contain at most 2000 characters")
 	}
+	if err := validateCover(input.CoverColor, input.CoverImage); err != nil {
+		return Wordbook{}, err
+	}
 	tx, err := s.writer.BeginTx(ctx, nil)
 	if err != nil {
 		return Wordbook{}, err
@@ -252,7 +261,7 @@ func (s *Service) CreateWithDescription(ctx context.Context, userID int64, input
 		return Wordbook{}, invalid("wordbook limit reached")
 	}
 	stamp := now()
-	result, err := tx.ExecContext(ctx, "INSERT INTO wordbooks(user_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)", userID, name, description, stamp, stamp)
+	result, err := tx.ExecContext(ctx, "INSERT INTO wordbooks(user_id, name, description, cover_color, cover_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)", userID, name, description, input.CoverColor, input.CoverImage, stamp, stamp)
 	if err != nil {
 		return Wordbook{}, err
 	}
@@ -268,7 +277,7 @@ func (s *Service) CreateWithDescription(ctx context.Context, userID int64, input
 }
 
 func (s *Service) PatchBook(ctx context.Context, userID, id int64, patch BookPatch) (Wordbook, error) {
-	if patch.Name == nil && patch.Archived == nil && patch.Description == nil {
+	if patch.Name == nil && patch.Archived == nil && patch.Description == nil && patch.CoverColor == nil && patch.CoverImage == nil {
 		return Wordbook{}, invalid("no changes supplied")
 	}
 	tx, err := s.writer.BeginTx(ctx, nil)
@@ -298,8 +307,17 @@ func (s *Service) PatchBook(ctx context.Context, userID, id int64, patch BookPat
 	if b.IsDefault && b.Archived {
 		return Wordbook{}, invalid("the default wordbook cannot be archived")
 	}
+	if patch.CoverColor != nil {
+		b.CoverColor = *patch.CoverColor
+	}
+	if patch.CoverImage != nil {
+		b.CoverImage = *patch.CoverImage
+	}
+	if err := validateCover(b.CoverColor, b.CoverImage); err != nil {
+		return Wordbook{}, err
+	}
 	b.UpdatedAt = now()
-	if _, err = tx.ExecContext(ctx, "UPDATE wordbooks SET name = ?, description = ?, archived = ?, updated_at = ? WHERE id = ?", b.Name, b.Description, b.Archived, b.UpdatedAt, b.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE wordbooks SET name = ?, description = ?, cover_color = ?, cover_image = ?, archived = ?, updated_at = ? WHERE id = ? AND user_id = ?", b.Name, b.Description, b.CoverColor, b.CoverImage, b.Archived, b.UpdatedAt, b.ID, userID); err != nil {
 		return Wordbook{}, err
 	}
 	return b, tx.Commit()

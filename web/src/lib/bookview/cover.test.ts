@@ -1,7 +1,39 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'svelte/server';
+import BookCover from './BookCover.svelte';
 import { coverCloth, formatTone, preferredFormat, sortedFormats, titleScale, truncateTitle } from './cover.js';
 
 afterEach(() => vi.restoreAllMocks());
+
+describe('cover appearance overrides', () => {
+	it('keeps deterministic colors and the existing title position by default', () => {
+		const { body } = render(BookCover, { props: { id: 42, title: 'Wordbook' } });
+		expect(body).toContain(coverCloth(42).board);
+		expect(body).not.toContain('centered-plate');
+	});
+
+	it('uses a named palette and falls back safely for unknown names', () => {
+		const named = render(BookCover, { props: { id: 42, title: 'Wordbook', coverColor: 'rust' } });
+		const invalid = render(BookCover, { props: { id: 42, title: 'Wordbook', coverColor: 'unknown' } });
+		expect(named.body).toContain('#8b3a17');
+		expect(invalid.body).toContain(coverCloth(42).board);
+	});
+
+	it('centers generated and uploaded-image titles at every size only when requested', () => {
+		for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
+			for (const coverUrl of [null, '/cover.jpg']) {
+				const props = { id: 42, title: 'Wordbook', size, coverUrl };
+				const centered = render(BookCover, { props: { ...props, centeredTitle: true } });
+				expect(centered.body).toContain('centered-plate');
+				expect(centered.body).toContain('cover-title');
+				if (coverUrl) {
+					const normal = render(BookCover, { props });
+					expect(normal.body).not.toContain('cover-title');
+				}
+			}
+		}
+	});
+});
 
 describe('cover helpers', () => {
 	it('chooses deterministic cloth palettes across book IDs 1-1000', () => {

@@ -8,6 +8,45 @@ import type { Wordbook, WordbookEntry, WordbookExport } from '../lib/wordbooks/a
 
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
 
+test('wordbook cover choices persist through API updates and page reloads', async ({ page }) => {
+	await signInRealAdmin(page);
+	const image = await page.evaluate(() => {
+		const canvas = document.createElement('canvas');
+		canvas.width = 600;
+		canvas.height = 900;
+		const context = canvas.getContext('2d');
+		if (!context) throw new Error('Canvas is unavailable');
+		context.fillStyle = '#24462a';
+		context.fillRect(0, 0, canvas.width, canvas.height);
+		return canvas.toDataURL('image/jpeg', 0.8);
+	});
+	const response = await page.request.post('/api/v1/wordbooks', {
+		data: { name: 'Persistent cover', description: 'Custom notebook', cover_color: 'forest', cover_image: image }
+	});
+	expect(response.status()).toBe(201);
+	const created = await response.json() as Wordbook & { cover_color: string; cover_image: string };
+	expect(created).toMatchObject({ cover_color: 'forest', cover_image: image });
+	const updated = await page.request.patch(`/api/v1/wordbooks/${created.id}`, {
+		data: { description: 'Updated without replacing cover' }
+	});
+	expect(updated.ok()).toBe(true);
+	expect(await updated.json()).toMatchObject({ cover_color: 'forest', cover_image: image });
+
+	await page.goto('/wordbooks');
+	const cover = page.locator(`[data-wordbooks] a[href="/wordbooks?id=${created.id}"]`);
+	await expect(cover).toBeVisible();
+	await expect(cover.locator('img')).toHaveAttribute('src', image);
+	await expect(cover).toContainText('Persistent cover');
+	await page.reload();
+	await expect(cover.locator('img')).toHaveAttribute('src', image);
+	const listed = await page.request.get('/api/v1/wordbooks');
+	expect(listed.ok()).toBe(true);
+	const result = await listed.json() as { wordbooks: Wordbook[] };
+	expect(result.wordbooks.find((book) => book.id === created.id)).toMatchObject({
+		description: 'Updated without replacing cover', cover_color: 'forest', cover_image: image
+	});
+});
+
 test('reader collection persists without dictionaries and wordbook context reopens the source page', async ({ page }) => {
 	test.setTimeout(120_000);
 	await signInRealAdmin(page);

@@ -7,6 +7,8 @@ export interface Wordbook {
 	id: number;
 	name: string;
 	description: string;
+	cover_color?: string;
+	cover_image?: string;
 	entry_count: number;
 	book_count: number;
 	is_default: boolean;
@@ -15,7 +17,7 @@ export interface Wordbook {
 	updated_at: string;
 }
 
-export interface WordbookOptions { description?: string }
+export interface WordbookOptions { description?: string; cover_color?: string; cover_image?: string }
 
 export interface EntrySource {
 	book_id: number | null;

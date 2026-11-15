@@ -2,7 +2,7 @@ import type { BookFile } from '#lib/catalog/types.js';
 
 export const FORMAT_ORDER = ['epub', 'pdf', 'cbz', 'azw3', 'mobi', 'fb2', 'fbz'] as const;
 
-const CLOTH = [
+export const coverColors = [
 	{ name: 'navy', board: '#1f2f5c', spine: '#142044', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#18223d', author: '#d9b768' },
 	{ name: 'forest', board: '#24462a', spine: '#18321d', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#18351e', author: '#d9b768' },
 	{ name: 'ochre', board: '#cbb153', spine: '#6e540f', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3e2f09', author: '#120c06' },
@@ -13,12 +13,12 @@ const CLOTH = [
 	{ name: 'slate-teal', board: '#24494d', spine: '#193335', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#163035', author: '#d9b768' }
 ] as const;
 
-export function coverCloth(seed: number): (typeof CLOTH)[number] {
+export function coverCloth(seed: number): (typeof coverColors)[number] {
 	let hash = seed | 0;
 	hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
 	hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
 	hash ^= hash >>> 16;
-	return CLOTH[(hash >>> 0) % CLOTH.length];
+	return coverColors[(hash >>> 0) % coverColors.length];
 }
 
 function splitGraphemes(value: string): string[] {

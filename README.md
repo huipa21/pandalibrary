@@ -20,9 +20,12 @@ an edit mode. Its edit icon becomes a save action when values change.
 Reading-status badges on covers in Dashboard, Favorites, Library, and Collections
 are display-only; change reading status from the book's **Details** tab.
 
-**Wordbooks** use notebook covers with entry counts, category search, sorting and
-list/grid display controls. Create private wordbooks with a title and optional
-description. Each book's **Words**
+**Wordbooks** use book-sized covers with entry and source-book count badges,
+category search, sorting and list/grid display controls. Adjust cover size and
+spacing in display settings. The **+** dialog creates a private wordbook with a
+name, optional description, and a generated cover color or a custom image.
+Position and zoom the crop before saving; custom covers are cropped to 2:3 and
+compressed in the browser. Each book's **Words**
 tab lists its saved words, phrases, sentences and passages.
 
 ## Run with a container

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { BookFile } from '#lib/catalog/types.js';
-	import { coverCloth, titleScale, truncateTitle } from './cover.js';
+	import { coverCloth, coverColors, titleScale, truncateTitle } from './cover.js';
 	import FormatBadge from './FormatBadge.svelte';
 
 	interface Props {
@@ -10,6 +10,8 @@
 		series?: string | null;
 		authors?: readonly string[];
 		coverUrl?: string | null;
+		coverColor?: string;
+		centeredTitle?: boolean;
 		files?: readonly BookFile[];
 		size?: 'xs' | 'sm' | 'md' | 'lg';
 		badge?: boolean;
@@ -19,10 +21,10 @@
 
 	let {
 		id, title, subtitle = null, series = null, authors = [], coverUrl = null, files = [], size = 'md',
-		badge = false, class: className = '', loading = 'lazy'
+		badge = false, class: className = '', loading = 'lazy', coverColor = '', centeredTitle = false
 	}: Props = $props();
 	let failed = $state(false);
-	const cloth = $derived(coverCloth(id));
+	const cloth = $derived(coverColors.find((color) => color.name === coverColor) ?? coverCloth(id));
 	const shortTitle = $derived(truncateTitle(title));
 	const scale = $derived(titleScale(title));
 
@@ -44,6 +46,11 @@
 >
 	{#if coverUrl && !failed}
 		<img class="h-full w-full bg-slate-100 object-cover" src={coverUrl} alt={title} {loading} onerror={() => (failed = true)} />
+		{#if centeredTitle}
+			<div class="cover-plate centered-plate">
+				<span class:cover-title-small={size === 'xs' || size === 'sm'} class="cover-title text-center font-serif font-bold" data-title-scale={scale}>{shortTitle}</span>
+			</div>
+		{/if}
 	{:else}
 		<div
 			class="generated-cover absolute inset-0 text-center"
@@ -55,7 +62,7 @@
 			<span class="cover-spine absolute inset-y-0 left-0 w-[5%]" aria-hidden="true"></span>
 			<span class="cloth-frame" aria-hidden="true"></span>
 			<span class="cloth-frame cloth-frame-inner" aria-hidden="true"></span>
-			<div class="cover-plate">
+			<div class="cover-plate" class:centered-plate={centeredTitle}>
 				{#if series && size !== 'xs'}
 					<span class="cover-series">{series}</span>
 					<span class="cover-rule" aria-hidden="true"></span>
@@ -143,6 +150,11 @@
 		border: 1px solid var(--cover-plate-rule);
 		content: '';
 		pointer-events: none;
+	}
+
+	.centered-plate {
+		top: 50%;
+		transform: translateY(-50%);
 	}
 
 	.cover-series,
