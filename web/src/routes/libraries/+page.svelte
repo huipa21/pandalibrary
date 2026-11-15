@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import { catalogErrorMessage } from '#lib/catalog/errors.js';
 	import { listLibraries } from '#lib/catalog/api.js';
@@ -10,6 +12,9 @@
 	import { translate } from '#lib/paging/translate.js';
 	import { getSessionViewer } from '#lib/shelves/api.js';
 	import { isAdministrator } from '#lib/shelves/form.js';
+	import EntityManagementCover from '#lib/EntityManagementCover.svelte';
+	import { entityIcon } from '#lib/navigation-icons.js';
+	import LibraryCreateDialog from '#lib/libraries/LibraryCreateDialog.svelte';
 
 	let libraries = $state<Library[]>([]);
 	let nextCursor = $state<string | null>(null);
@@ -21,49 +26,77 @@
 	let deleting = $state<number | null>(null);
 	let rowErrors = $state<Record<number, string>>({});
 	let notice = $state('');
+	let dialogOpen = $state(false);
+	let loadVersion = 0;
+
+	$effect(() => {
+		if (isAdmin && page.url.searchParams.get('create') === '1') dialogOpen = true;
+	});
+
+	function closeCreate() {
+		dialogOpen = false;
+		if (page.url.searchParams.get('create') === '1') {
+			const url = new URL(page.url.href);
+			url.searchParams.delete('create');
+			void goto(`${url.pathname}${url.search}`, { replace: true, reset: false });
+		}
+	}
 
 	onMount(() => {
 		void loadLibraries();
+		const changed = () => { void loadLibraries(); };
+		window.addEventListener('pandalibrary-libraries-changed', changed);
+		return () => {
+			loadVersion++;
+			window.removeEventListener('pandalibrary-libraries-changed', changed);
+		};
 	});
 
 	async function loadLibraries() {
+		const version = ++loadVersion;
 		loading = true;
+		loadingMore = false;
 		error = '';
 		moreError = '';
 		libraries = [];
 		nextCursor = null;
 		try {
 			const [result, viewer] = await Promise.all([listLibraries(), getSessionViewer()]);
+			if (version !== loadVersion) return;
 			libraries = result.items;
 			nextCursor = result.next_cursor;
 			isAdmin = isAdministrator(viewer);
 		} catch (cause) {
+			if (version !== loadVersion) return;
 			error = catalogErrorMessage(cause, {
 				api: m['catalog.error.api'](),
 				connection: m['catalog.error.connection'](),
 				notFound: m['catalog.error.not_found']()
 			});
 		} finally {
-			loading = false;
+			if (version === loadVersion) loading = false;
 		}
 	}
 
 	async function loadMore() {
 		if (!nextCursor || loadingMore) return;
+		const version = loadVersion;
 		loadingMore = true;
 		moreError = '';
 		try {
 			const result = await listLibraries({ cursor: nextCursor });
+			if (version !== loadVersion) return;
 			libraries = [...libraries, ...result.items];
 			nextCursor = result.next_cursor;
 		} catch (cause) {
+			if (version !== loadVersion) return;
 			moreError = catalogErrorMessage(cause, {
 				api: m['catalog.error.api'](),
 				connection: m['catalog.error.connection'](),
 				notFound: m['catalog.error.not_found']()
 			});
 		} finally {
-			loadingMore = false;
+			if (version === loadVersion) loadingMore = false;
 		}
 	}
 
@@ -77,7 +110,6 @@
 			await deleteLibrary(library.id);
 			notice = m['admin.libraries.deleted']({ name: library.name });
 			window.dispatchEvent(new CustomEvent('pandalibrary-libraries-changed'));
-			await loadLibraries();
 		} catch (cause) {
 			rowErrors = { ...rowErrors, [library.id]: translate(adminErrorKey(cause, 'delete_library')) };
 		} finally {
@@ -87,13 +119,12 @@
 </script>
 
 <section class="space-y-8">
-	<h1 class="sr-only">{m['catalog.home.title']()}</h1>
-	{#if isAdmin}
-		<nav class="flex flex-wrap justify-end gap-4" aria-label={m['admin.libraries.title']()}>
-			<a class="rounded-sm underline underline-offset-4 focus-visible:outline-2" href="/admin/libraries?create=1">{m['admin.libraries.create_heading']()}</a>
-			<a class="rounded-sm underline underline-offset-4 focus-visible:outline-2" href="/admin/libraries">{m['admin.libraries.title']()}</a>
-		</nav>
-	{/if}
+	<header class="flex flex-wrap items-center justify-between gap-4">
+		<h1 class="text-3xl font-semibold tracking-tight">{m['ux1.library.manage']()}</h1>
+			{#if isAdmin}
+			<button type="button" class="button-primary rounded-md px-4 py-2 font-medium" onclick={() => { dialogOpen = true; }}>{m['ux1.library.new']()}</button>
+			{/if}
+	</header>
 	{#if notice}<p class="text-sm text-green-700" role="status">{notice}</p>{/if}
 
 	{#if error}
@@ -106,25 +137,23 @@
 	{:else if libraries.length === 0}
 		<p class="card p-6 text-slate-600">{m['catalog.home.empty']()}</p>
 	{:else}
-		<ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+		<ul class="book-grid book-grid-configurable" style="--book-cover-size: 208px; --book-cover-spacing: 20px">
 			{#each libraries as library (library.id)}
-				<li class="card flex flex-col overflow-hidden">
-					<a class="block flex-1 p-5 hover:bg-slate-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-slate-900" href={`/library/${library.id}`}>
-						<h2 class="text-lg font-semibold break-words">{library.name}</h2>
-						<p class="mt-2 text-sm text-slate-600">{m['catalog.library.book_count']({ count: library.visible_book_count })}</p>
-						<p class="mt-1 break-words text-sm text-slate-500">{library.slug}</p>
-					</a>
+				<li class="min-w-0 space-y-3">
+					<EntityManagementCover href={`/libraries/${library.id}`} name={library.name} icon={entityIcon(library.icon, `library:${library.id}`)} />
+					<div class="flex items-start justify-between gap-2">
+						<div class="min-w-0">
+							<h2 class="font-semibold break-words">{library.name}</h2>
+							<p class="text-sm text-slate-600">{m['catalog.library.book_count']({ count: library.visible_book_count })}</p>
+							<p class="break-words text-sm text-slate-500">{library.slug}</p>
+						</div>
 					{#if isAdmin}
-						<div class="flex justify-end gap-1 px-3 pb-3">
-							<a class="shell-icon-button" href={`/admin/libraries?edit=${library.id}`} aria-label={m['catalog.library.edit']({ name: library.name })} title={m['catalog.library.edit']({ name: library.name })}>
-								<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 5 5M3 21l5-1L21 7a2.1 2.1 0 0 0-5-5L3 15v6Z" /></svg>
-							</a>
 							<button type="button" class="shell-icon-button text-red-700 disabled:opacity-50" disabled={deleting !== null} onclick={() => remove(library)} aria-label={m['catalog.library.delete']({ name: library.name })} title={m['catalog.library.delete']({ name: library.name })}>
 								<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7" /></svg>
 							</button>
-						</div>
-						{#if rowErrors[library.id]}<p class="px-5 pb-4 text-sm text-red-800" role="alert">{rowErrors[library.id]}</p>{/if}
 					{/if}
+					</div>
+					{#if rowErrors[library.id]}<p class="text-sm text-red-800" role="alert">{rowErrors[library.id]}</p>{/if}
 				</li>
 			{/each}
 		</ul>
@@ -145,3 +174,7 @@
 		{/if}
 	{/if}
 </section>
+
+{#if isAdmin}
+	<LibraryCreateDialog open={dialogOpen} onclose={closeCreate} />
+{/if}

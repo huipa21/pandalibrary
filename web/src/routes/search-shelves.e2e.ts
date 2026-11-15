@@ -316,7 +316,7 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await creator.getByLabel('Collection name').fill('  To read  ');
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(page.getByRole('status').filter({ hasText: 'Collection created.' })).toBeVisible();
-	expect(created.at(-1)).toEqual({ kind: 'private', name: 'To read', description: null, rule_groups: [] });
+	expect(created.at(-1)).toEqual({ kind: 'private', name: 'To read', description: null, icon: '', rule_groups: [] });
 	await expect(creator).toHaveCount(0);
 	await expect(page.getByRole('main').getByRole('link', { name: 'To read', exact: true })).toHaveCount(2);
 
@@ -329,10 +329,9 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await page.goto('/shelves/7');
 	await expect(page.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
 	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
-	await page.getByText('Collection details', { exact: true }).click();
-	await expect(page.getByText('Old notes')).toBeVisible();
-	await page.getByRole('button', { name: 'Edit details' }).click();
+	await sidebar.getByRole('menuitem', { name: 'All Collections', exact: true }).click();
+	await page.getByRole('main').getByRole('link', { name: 'Favorites', exact: true }).click();
+	await expect(page.getByLabel('Description (optional)')).toHaveValue('Old notes');
 	await expect(page.getByLabel('Name')).toHaveValue('Favorites');
 	await page.getByLabel('Name').fill('Best books');
 	await page.getByLabel('Description (optional)').fill('');
@@ -342,7 +341,8 @@ test('creates, browses, edits membership, and deletes a private shelf', async ({
 	await expect(page.getByText('Old notes')).toHaveCount(0);
 	expect(patches).toEqual([{ name: 'Best books', description: null, rule_groups: [] }]);
 
-	await expect(page.getByTitle('A Book', { exact: true })).toHaveAttribute('href', '/books/21');
+	await page.getByText('Manage book membership', { exact: true }).click();
+	await expect(page.getByRole('link', { name: 'Open book details', exact: true })).toHaveAttribute('href', '/books/21');
 	await page.getByRole('button', { name: 'Load more books' }).click();
 	await expect(page.getByRole('alert')).toContainText('This collection changed while you were browsing.');
 	expect(bookQueries.at(-1)?.get('cursor')).toBe('shelf-cursor');
@@ -392,7 +392,7 @@ test('offers shared shelves to administrators and reports shelf permission failu
 	await creator.getByLabel('共享', { exact: true }).check();
 	await creator.getByRole('button', { name: '创建合集' }).click();
 	await expect(page.getByText('合集已创建。')).toBeVisible();
-	expect(created).toEqual([{ kind: 'shared', name: 'Staff favourites', description: null, rule_groups: [] }]);
+	expect(created).toEqual([{ kind: 'shared', name: 'Staff favourites', description: null, icon: '', rule_groups: [] }]);
 
 	await page.goto('/books/21');
 	const picker = page.getByRole('dialog', { name: '添加到合集' });
@@ -443,16 +443,13 @@ test('manual and system shelves use the standard tile grid', async ({ page }) =>
 	await expect(page.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' })).toHaveCount(0);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
-	const tile = page.locator('ul.book-grid > li').first();
-	const remove = tile.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' });
+	await sidebar.getByRole('menuitem', { name: 'All Collections', exact: true }).click();
+	await page.getByRole('main').getByRole('link', { name: 'Favorites', exact: true }).click();
+	await expect(page.getByRole('main').getByRole('button', { name: 'Display settings' })).toHaveCount(0);
+	await page.getByText('Manage book membership', { exact: true }).click();
+	const remove = page.getByRole('button', { name: 'Remove manual membership of “Shelf Book 1” in this collection' });
 	await expect(remove).toHaveText('Remove manual membership');
-	await expect(remove).toHaveCSS('font-size', '12px');
-	const [tileBox, removeBox] = await Promise.all([tile.boundingBox(), remove.boundingBox()]);
-	if (!tileBox || !removeBox) throw new Error('Missing shelf tile layout.');
-	expect(removeBox.width).toBe(tileBox.width);
-	expect(removeBox.y).toBeGreaterThan(tileBox.y + tileBox.width * 1.5);
-	await expectFluidTwoColumns(page);
+	await expect(remove).toBeVisible();
 
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await page.goto('/shelves/system/favorites');

@@ -30,7 +30,6 @@
 	const currentShelfID = $derived(
 		Number(/^\/shelves\/([1-9]\d*)\/?$/.exec(deLocalizeHref(pathname))?.[1]) || undefined
 	);
-	const currentShelf = $derived(shelves.find((shelf) => shelf.id === currentShelfID));
 
 	$effect(() => {
 		refreshVersion;
@@ -78,7 +77,7 @@
 		<h2 id="sidebar-libraries-heading" class="shell-heading min-w-0 flex-1">
 			{m['organize.libraries']()}
 		</h2>
-		<LibraryActionsMenu {role} libraryID={currentLibraryID} />
+		<LibraryActionsMenu {role} />
 	</div>
 	<div id="sidebar-library-list">
 		{#if libraryError}
@@ -118,7 +117,7 @@
 		<h2 id="sidebar-shelves-heading" class="shell-heading min-w-0">
 			<a href="/shelves" aria-current={deLocalizeHref(pathname).replace(/\/+$/, '') === '/shelves' ? 'page' : undefined} class="block truncate hover:underline focus-visible:outline-2">{m['organize.collections']()}</a>
 		</h2>
-		<ShelfActionsMenu {pathname} {role} {currentShelf} />
+		<ShelfActionsMenu {pathname} {role} />
 	</div>
 	{#if collectionError}
 		<div class="mt-1 px-3 text-sm text-red-300" role="alert">
@@ -131,7 +130,7 @@
 		<ul class="mt-1 space-y-0.5">
 			{#each shelves as shelf (shelf.id)}
 				<li>
-					<a class="shell-link" href={`/shelves/${shelf.id}`} aria-current={pathname === `/shelves/${shelf.id}` ? 'page' : undefined}>
+					<a class="shell-link" href={`/shelves/${shelf.id}`} aria-current={currentShelfID === shelf.id ? 'page' : undefined}>
 						<Icon name={entityIcon(shelf.icon, `collection:${shelf.id}`)} class="size-4 shrink-0" />
 						<span class="min-w-0 flex-1 truncate">{shelf.name}</span>
 						<span class="shell-count" title={m['ux1.shelves.count']({ count: shelf.visible_book_count })}>{shelf.visible_book_count}</span>

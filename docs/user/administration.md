@@ -61,9 +61,12 @@ cannot change another owner's visibility.
 ## Library ownership
 
 Use the sidebar's **Libraries → ⋮** menu for **New Library** and
-**Manage Libraries**, rather than looking for a Libraries tab in Admin.
-When browsing a library, the same menu includes **Edit Library**. Library
-creation, editing, access management and deletion remain administrator-only.
+**All Libraries**, rather than looking for a Libraries tab in Admin.
+**New Library** opens a dialog with the library name, slug and icon. **All Libraries**
+shows cover cards; open a cover to edit that library's settings and manage access.
+The access picker lists eligible readers in a scrollable dropdown and narrows
+the list as you type. Library creation, editing, access management and deletion
+remain administrator-only.
 
 Each book belongs to exactly one library. Changing its library moves the book
 and all its formats; it does not add a second library membership. Collections

@@ -32,6 +32,7 @@ async function mockApi(page: Page, state: MockState) {
 		if (path === '/me/profile') return route.fulfill({ json: { user: viewer } });
 		if (path === '/me/app-passwords') return route.fulfill({ json: { app_passwords: [] } });
 		if (path === '/me/notes') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
+		if (path === '/wordbooks') return route.fulfill({ json: { wordbooks: [] } });
 		if (path === '/admin/bookheap/items') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		if (path === '/admin/bookheap/scan') return route.fulfill({ json: { scan: null } });
 		if (path === '/admin/users') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
@@ -78,7 +79,7 @@ test('menu destinations keep accessible titles without repeated visible introduc
 		{ path: '/shelves/11', heading: 'Weekend reads' },
 		{ path: '/shelves/system/unshelved', heading: 'Uncollected' },
 		{ path: '/shelves/system/favorites', heading: 'Favorites' },
-		{ path: '/libraries', heading: 'Your libraries', description: 'Choose a library to browse its books.' },
+		{ path: '/libraries', heading: 'All Libraries', description: 'Choose a library to browse its books.' },
 		{ path: '/authors', heading: 'Authors' },
 		{ path: '/series', heading: 'Series' },
 		{ path: '/tags', heading: 'Tags' },
@@ -92,7 +93,7 @@ test('menu destinations keep accessible titles without repeated visible introduc
 		await page.goto(destination.path);
 		const main = page.getByRole('main');
 		const heading = main.getByRole('heading', { name: destination.heading, level: 1, exact: true });
-		if (destination.path === '/admin') await expect(heading).toBeVisible();
+		if (['/admin', '/libraries'].includes(destination.path)) await expect(heading).toBeVisible();
 		else await expect(heading).toHaveClass('sr-only');
 		if (destination.description) await expect(main.getByText(destination.description, { exact: true })).toHaveCount(0);
 		if (destination.path === '/settings') {
@@ -121,14 +122,12 @@ test('shelf descriptions remain available without showing introductory text by d
 	await expect(page.getByText('Picked for weekends.')).toBeHidden();
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
-	await page.getByText('Collection details', { exact: true }).click();
-	await expect(page.getByText('Picked for weekends.')).toBeVisible();
+	await sidebar.getByRole('menuitem', { name: 'All Collections', exact: true }).click();
+	await page.getByRole('main').getByRole('link', { name: 'Weekend reads', exact: true }).click();
+	await expect(page.getByLabel('Description (optional)')).toHaveValue('Picked for weekends.');
 	await page.goto('/shelves/system/favorites');
 	await expect(page.getByText('Books marked as favorites.')).toBeHidden();
-	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'Collection details', exact: true }).click();
-	await page.getByText('Collection details', { exact: true }).click();
+	await page.getByRole('main').getByText('Collection details', { exact: true }).click();
 	await expect(page.getByText('Books marked as favorites.')).toBeVisible();
 	expect(unexpected).toEqual([]);
 });

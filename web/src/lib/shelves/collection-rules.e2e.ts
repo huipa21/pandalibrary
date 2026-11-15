@@ -4,9 +4,9 @@ import type { Shelf, ShelfInput, ShelfPatch } from './types.js';
 test.use({ serviceWorkers: 'block' });
 const timestamp = '2026-11-04T00:00:00Z';
 
-async function mockCollection(page: Page, locale = 'en') {
+async function mockCollection(page: Page, locale = 'en', kind: Shelf['kind'] = 'private') {
 	let collection: Shelf = {
-		id: 7, name: 'Across libraries', icon: 'bookmark', kind: 'private', owner_id: 1, description: null, created_by: 1,
+		id: 7, name: 'Across libraries', icon: 'bookmark', kind, owner_id: kind === 'private' ? 1 : null, description: null, created_by: 1,
 		created_at: timestamp, updated_at: timestamp, visible_book_count: 0, mode: 'automatic',
 		rule_groups: [{ id: 'legacy', name: 'Novels', rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: 'Novel' }] } }]
 	};
@@ -15,6 +15,7 @@ async function mockCollection(page: Page, locale = 'en') {
 	const added: number[] = [];
 	const searchURLs: string[] = [];
 	const detailURLs: string[] = [];
+	const bookURLs: string[] = [];
 	await page.route((url) => url.pathname.startsWith('/api/v1/'), async (route) => {
 		const request = route.request();
 		const url = new URL(request.url());
@@ -53,33 +54,78 @@ async function mockCollection(page: Page, locale = 'en') {
 			if (path.endsWith('/books')) return route.fulfill({ json: { items: [], next_cursor: null } });
 			return route.fulfill({ json: { shelf: { key: path.endsWith('favorites') ? 'favorites' : 'unshelved', name: 'System collection', mode: 'automatic', visible_book_count: 0, shelf_id: null } } });
 		}
-		if (path === '/shelves/7/books' || ['/books', '/libraries', '/authors', '/series', '/tags', '/me/book-states'].includes(path)) {
+		if (path === '/shelves/7/books') {
+			bookURLs.push(request.url());
+			return route.fulfill({ json: { items: [], next_cursor: null } });
+		}
+		if (['/books', '/libraries', '/authors', '/series', '/tags', '/me/book-states'].includes(path)) {
 			return route.fulfill({ json: { items: [], next_cursor: null } });
 		}
 		return route.fulfill({ status: 404, json: { status: 404, title: 'Not found' } });
 	});
-	return { patches, creates, added, searchURLs, detailURLs };
+	return { patches, creates, added, searchURLs, detailURLs, bookURLs };
 }
+
+test('All Collections covers open settings while sidebar links still browse books', async ({ page }) => {
+	const server = await mockCollection(page);
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await page.goto('/shelves');
+	const main = page.getByRole('main');
+	const cover = main.getByRole('link', { name: 'Across libraries', exact: true });
+	await expect(cover).toHaveAttribute('href', '/shelves/7?manage=1');
+	const box = await cover.boundingBox();
+	if (!box) throw new Error('Collection cover is missing');
+	expect(box.height / box.width).toBeCloseTo(1.5, 1);
+	await cover.click();
+	await expect(page).toHaveURL('/shelves/7?manage=1');
+	await expect(main.getByLabel('Name', { exact: true })).toHaveValue('Across libraries');
+	await expect(main.getByRole('radio', { name: 'Bookmark', exact: true })).toBeChecked();
+	await expect(main.getByLabel('Description (optional)')).toBeVisible();
+	await expect(main.getByLabel('Visibility', { exact: true })).toHaveValue('Private');
+	await expect(main.getByRole('heading', { name: 'Automatic rules', exact: true })).toBeVisible();
+	await expect(main.getByRole('button', { name: 'Display settings', exact: true })).toHaveCount(0);
+	await expect(main.getByRole('combobox', { name: 'Sort', exact: true })).toHaveCount(0);
+	await expect(main.getByLabel('Find a book to add')).toHaveCount(0);
+	expect(server.bookURLs).toHaveLength(0);
+
+	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Across libraries 0' }).click();
+	await expect(page).toHaveURL('/shelves/7');
+	await expect(main.getByLabel('Name', { exact: true })).toHaveCount(0);
+	await expect(main.getByRole('button', { name: 'Display settings', exact: true })).toBeVisible();
+	await expect.poll(() => server.bookURLs.length).toBeGreaterThan(0);
+});
+
+test('shared collection settings are read-only for a non-administrator', async ({ page }) => {
+	const server = await mockCollection(page, 'en', 'shared');
+	await page.goto('/shelves');
+	const main = page.getByRole('main');
+	await main.getByRole('link', { name: 'Across libraries', exact: true }).click();
+	await expect(main.getByLabel('Name', { exact: true })).toBeDisabled();
+	await expect(main.getByRole('radio', { name: 'Bookmark', exact: true })).toBeDisabled();
+	await expect(main.getByLabel('Visibility', { exact: true })).toHaveValue('Shared');
+	await expect(main.getByRole('button', { name: 'Save changes', exact: true })).toHaveCount(0);
+	await expect(main.getByRole('button', { name: 'Delete collection', exact: true })).toHaveCount(0);
+	await expect(main.getByText('Manage book membership', { exact: true })).toHaveCount(0);
+	expect(server.patches).toHaveLength(0);
+	expect(server.bookURLs).toHaveLength(0);
+});
 
 test('collection icon edits preserve existing selections, save changes, and clear to automatic', async ({ page }) => {
 	const server = await mockCollection(page);
 	await page.goto('/shelves/7?manage=1');
 	const main = page.getByRole('main');
-	await main.getByRole('button', { name: 'Edit details' }).click();
 	await expect(main.getByRole('radio', { name: 'Bookmark', exact: true })).toBeChecked();
 	await main.getByLabel('Name', { exact: true }).fill('Renamed collection');
 	await main.getByRole('button', { name: 'Save changes', exact: true }).click();
 	await expect.poll(() => server.patches.length).toBe(1);
 	expect(server.patches[0]).not.toHaveProperty('icon');
 
-	await main.getByRole('button', { name: 'Edit details' }).click();
 	await expect(main.getByRole('radio', { name: 'Bookmark', exact: true })).toBeChecked();
 	await main.getByRole('radio', { name: 'Star', exact: true }).check();
 	await main.getByRole('button', { name: 'Save changes', exact: true }).click();
 	await expect.poll(() => server.patches.length).toBe(2);
 	expect(server.patches[1].icon).toBe('star');
 
-	await main.getByRole('button', { name: 'Edit details' }).click();
 	await expect(main.getByRole('radio', { name: 'Star', exact: true })).toBeChecked();
 	await main.getByRole('radio', { name: 'Automatic', exact: true }).check();
 	await main.getByRole('button', { name: 'Save changes', exact: true }).click();
@@ -94,8 +140,8 @@ test('edits several independent all/any rules while allowing manual additions to
 	await expect(main.getByRole('button', { name: 'Edit details' })).toHaveCount(0);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
-	await main.getByRole('button', { name: 'Edit details' }).click();
+	await sidebar.getByRole('menuitem', { name: 'All Collections', exact: true }).click();
+	await main.getByRole('link', { name: 'Across libraries', exact: true }).click();
 	await main.getByRole('button', { name: 'Add automatic rule' }).click();
 	await page.getByLabel('Rule name', { exact: true }).nth(1).fill('Authors');
 	await page.locator('#edit-shelf-rules-1-match').selectOption('any');
@@ -107,6 +153,7 @@ test('edits several independent all/any rules while allowing manual additions to
 		{ id: 'legacy', name: 'Novels', rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: 'Novel' }] } },
 		expect.objectContaining({ name: 'Authors', rules: { match: 'any', conditions: [{ field: 'author_id', op: 'eq', value: 12 }] } })
 	]);
+	await main.getByText('Manage book membership', { exact: true }).click();
 	await page.getByLabel('Find a book to add').fill('another library');
 	await page.getByRole('button', { name: 'Find', exact: true }).click();
 	await page.getByRole('button', { name: 'Add “From another library” to this collection', exact: true }).click();
@@ -120,7 +167,6 @@ for (const remove of [false, true]) {
 	test(`deleting a rule explicitly ${remove ? 'removes' : 'retains'} mapped books`, async ({ page }) => {
 		const server = await mockCollection(page);
 		await page.goto('/shelves/7?manage=1');
-		await page.getByRole('button', { name: 'Edit details' }).click();
 		await page.getByRole('button', { name: 'Delete rule', exact: true }).click();
 		await expect(page.getByText('What happens to books mapped by deleted rules?')).toBeVisible();
 		await page.getByRole('button', { name: 'Save changes', exact: true }).click();
@@ -138,9 +184,9 @@ test('Chinese collection rule controls and deletion choices are localized', asyn
 	await page.goto('/shelves/7');
 	const sidebar = page.getByRole('navigation', { name: '主导航' });
 	await sidebar.getByRole('button', { name: '合集操作' }).click();
-	await sidebar.getByRole('menuitem', { name: '管理当前合集', exact: true }).click();
-	await page.getByRole('button', { name: '编辑详情' }).click();
-	await expect(page.getByRole('heading', { name: '编辑合集' })).toBeVisible();
+	await sidebar.getByRole('menuitem', { name: '所有合集', exact: true }).click();
+	await page.getByRole('main').getByRole('link', { name: 'Across libraries', exact: true }).click();
+	await expect(page.getByRole('heading', { name: '合集设置' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: '自动规则' })).toBeVisible();
 	await page.getByRole('button', { name: '删除规则', exact: true }).click();
 	await expect(page.getByLabel('将匹配的图书保留为手动成员')).toBeVisible();
@@ -150,6 +196,7 @@ test('Chinese collection rule controls and deletion choices are localized', asyn
 test('explicit legacy library filters affect detail only, not manual candidate search', async ({ page }) => {
 	const server = await mockCollection(page);
 	await page.goto('/shelves/7?library_id=3&manage=1');
+	await page.getByText('Manage book membership', { exact: true }).click();
 	await page.getByLabel('Find a book to add').fill('another library');
 	await page.getByRole('button', { name: 'Find', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Add “From another library” to this collection', exact: true })).toBeVisible();

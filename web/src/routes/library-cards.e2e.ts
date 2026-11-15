@@ -1,11 +1,24 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test.use({ serviceWorkers: 'block' });
+
 const stamp = '2026-11-03T08:00:00Z';
 const library = (id: number, name: string, count = 0) => ({
 	id, name, slug: name.toLowerCase(), visible_book_count: count, created_at: stamp, updated_at: stamp
 });
 
 async function authenticate(page: Page, role = 'admin') {
+	await page.route((url) => url.pathname.startsWith('/api/v1/'), (route) => {
+		const path = new URL(route.request().url()).pathname.slice('/api/v1'.length);
+		if (path === '/shelves') return route.fulfill({ json: { items: [], next_cursor: null } });
+		if (path === '/shelves/system/favorites') return route.fulfill({ json: { shelf: { key: 'favorites', name: 'Favorites', mode: 'manual', shelf_id: null, visible_book_count: 0 } } });
+		if (path === '/me/notes' || path === '/admin/bookheap/items') return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
+		if (path === '/wordbooks') return route.fulfill({ json: { wordbooks: [] } });
+		if (path === '/books/count') return route.fulfill({ json: { count: 12 } });
+		if (path === '/me/settings') return route.fulfill({ json: { settings: [] } });
+		if (path === '/version') return route.fulfill({ json: { version: 'test', commit: 'test', commit_date: stamp, dirty: false, release: null } });
+		return route.fallback();
+	});
 	await page.route('**/api/v1/setup', (route) => route.fulfill({ json: { required: false } }));
 	await page.route('**/api/v1/auth/me', (route) =>
 		route.fulfill({ json: { user: { id: 1, username: 'viewer', display_name: 'Viewer', role, locale: 'en' } } })
@@ -19,15 +32,17 @@ async function authenticate(page: Page, role = 'admin') {
 	await page.route('**/api/v1/admin/libraries?*', (route) =>
 		route.fulfill({ json: { items: [library(1, 'Main', 12)], next_cursor: 'next-page' } })
 	);
+	await page.route('**/api/v1/admin/libraries/*/access?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/admin/users?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 }
 
-test('reader cards link the whole content and hide management controls', async ({ page }) => {
+test('reader covers open read-only settings and hide management controls', async ({ page }) => {
 	await authenticate(page, 'user');
 	await page.goto('/libraries');
 	const card = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: 'Main', exact: true }) });
-	await expect(card.getByRole('link')).toHaveAttribute('href', '/library/1');
-	await expect(card.getByRole('link')).toContainText('12 books');
-	await expect(card.getByRole('link')).toContainText('main');
+	await expect(card.getByRole('link')).toHaveAttribute('href', '/libraries/1');
+	await expect(card).toContainText('12 books');
+	await expect(card).toContainText('main');
 	await expect(card.getByRole('button')).toHaveCount(0);
 	await expect(page.getByRole('link', { name: 'Edit Main', exact: true })).toHaveCount(0);
 	await expect(page.locator('a[href="/admin/libraries?create=1"]')).toHaveCount(0);
@@ -41,32 +56,34 @@ test('admin cards open settings and deep links load targets beyond the first pag
 		lookups.push(id);
 		return route.fulfill({ json: { library: library(id, id === 99 ? 'Archive' : 'Main', 12) } });
 	});
+	await page.route('**/api/v1/admin/libraries/*/access?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.route('**/api/v1/admin/users?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.goto('/libraries');
-	await page.getByRole('link', { name: 'Edit Main', exact: true }).click();
-	await expect(page.locator('#linked-library-1-name')).toHaveValue('Main');
+	await page.getByRole('main').getByRole('link', { name: 'Main', exact: true }).click();
+	await expect(page.locator('#library-settings-1-name')).toHaveValue('Main');
 	await page.evaluate(() => {
 		const link = document.createElement('a');
-		link.href = '/admin/libraries?edit=99';
+		link.href = '/libraries/99';
 		link.textContent = 'Open Archive settings';
 		document.body.append(link);
 	});
 	await page.getByRole('link', { name: 'Open Archive settings' }).click();
-	await expect(page.locator('#linked-library-99-name')).toHaveValue('Archive');
-	await expect(page.locator('#linked-library-99-slug')).toHaveValue('archive');
-	await expect(page.locator('#linked-library-99-name')).toBeFocused();
+	await expect(page.locator('#library-settings-99-name')).toHaveValue('Archive');
+	await expect(page.locator('#library-settings-99-slug')).toHaveValue('archive');
+	await expect(page.getByRole('heading', { name: 'Manage access', exact: true })).toBeVisible();
 	expect(lookups).toContain(99);
 
-	await page.goto('/admin/libraries?edit=99');
-	await expect(page.locator('#linked-library-99-name')).toHaveValue('Archive');
+	await page.goto('/libraries/99');
+	await expect(page.locator('#library-settings-99-name')).toHaveValue('Archive');
 	await page.evaluate(() => {
 		const link = document.createElement('a');
-		link.href = '/admin/libraries?create=1';
-		link.textContent = 'Open new library';
+		link.href = '/libraries';
+		link.textContent = 'Open all libraries';
 		document.body.append(link);
 	});
-	await page.getByRole('link', { name: 'Open new library' }).click();
-	await expect(page.locator('#create-library-name')).toBeFocused();
-	await expect(page.locator('#linked-library-99-name')).toHaveCount(0);
+	await page.getByRole('link', { name: 'Open all libraries' }).click();
+	await expect(page.getByRole('heading', { name: 'All Libraries', exact: true })).toBeVisible();
+	await expect(page.locator('#library-settings-99-name')).toHaveCount(0);
 });
 
 test('failed deep-link lookup is visible and retryable', async ({ page }) => {
@@ -75,13 +92,13 @@ test('failed deep-link lookup is visible and retryable', async ({ page }) => {
 	await page.route('**/api/v1/libraries/99', (route) => failed
 		? route.fulfill({ status: 500, json: { error: 'private server detail' } })
 		: route.fulfill({ json: { library: library(99, 'Archive') } }));
-	await page.goto('/admin/libraries?edit=99');
+	await page.goto('/libraries/99');
 	const alert = page.getByRole('alert');
 	await expect(alert).toBeVisible();
 	await expect(page.getByText('private server detail')).toHaveCount(0);
 	failed = false;
 	await alert.getByRole('button', { name: 'Try again' }).click();
-	await expect(page.locator('#linked-library-99-name')).toHaveValue('Archive');
+	await expect(page.locator('#library-settings-99-name')).toHaveValue('Archive');
 });
 
 test('card deletion keeps conflict localization and refreshes after success', async ({ page }) => {

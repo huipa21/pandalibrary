@@ -271,7 +271,7 @@ test('desktop sidebar lists HOME links, Library, and All Books across every libr
 	await expect(shelfActions).toBeVisible();
 	await shelfActions.click();
 	await expect(shelves.getByRole('menuitem', { name: 'New Library' })).toHaveCount(0);
-	await expect(shelves.getByRole('menuitem', { name: 'Manage Libraries' })).toBeVisible();
+	await expect(shelves.getByRole('menuitem', { name: 'All Libraries' })).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(shelfActions).toBeFocused();
 	await expect(shelves.getByRole('link', { name: /Favorites/ })).toHaveCount(0);

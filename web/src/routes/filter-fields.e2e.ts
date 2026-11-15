@@ -119,6 +119,7 @@ for (const theme of ['light', 'dark']) {
 			{ path: '/books/21/highlights', label: 'Search annotations', button: 'Search' }
 		]) {
 			await page.goto(destination.path);
+			if (destination.path.includes('manage=1')) await page.getByText('Manage book membership', { exact: true }).click();
 			const main = page.getByRole('main');
 			const field = main.getByRole('searchbox');
 			await expect(field).toHaveAccessibleName(destination.label);
@@ -212,6 +213,7 @@ for (const theme of ['light', 'dark']) {
 		await checkNarrowLayout(page, notes);
 
 		await page.goto('/shelves/7?manage=1');
+		await page.getByText('Manage book membership', { exact: true }).click();
 		const shelfSearch = page.locator('#add-book-query');
 		expect.soft(await fieldStyle(shelfSearch), 'Shelf search').toEqual(standardSearch);
 		await checkNarrowLayout(page, shelfSearch);

@@ -89,9 +89,11 @@
 		<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 	{:else}
 		<h1 class="sr-only">{systemShelfTitle(key)}</h1>
-		{#if showingDetails}
+		{#if showingDetails || shelf.description}
 			<div class="mb-6 space-y-3">
+				{#if showingDetails}
 				<a class="inline-block text-sm underline underline-offset-4 focus-visible:outline-2" href={browseHref}>{m['collections.back_to_books']()}</a>
+				{/if}
 				{#if shelf.description}<ShelfDescription description={shelf.description} />{/if}
 			</div>
 		{/if}

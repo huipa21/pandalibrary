@@ -288,7 +288,7 @@
 					{:else if targetsReady && libraries.length === 0}
 						<p class="text-sm text-slate-600">
 							{m['bh4.assign.no_libraries']()}
-							<a class="underline" href="/admin/libraries">{m['bh4.assign.manage_libraries']()}</a>
+							<a class="underline" href="/libraries?create=1">{m['bh4.assign.manage_libraries']()}</a>
 						</p>
 					{:else if targetsReady && !validLibrary}
 						<p class="text-sm text-red-800">{m['bh4.assign.library_required']()}</p>

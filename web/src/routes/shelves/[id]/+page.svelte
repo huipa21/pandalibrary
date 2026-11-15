@@ -5,7 +5,6 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
 	import BookBrowser from '#lib/catalog/BookBrowser.svelte';
-	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import Icon from '#lib/bookview/Icon.svelte';
 	import type { PageOptions } from '#lib/catalog/api.js';
@@ -28,10 +27,8 @@
 		updateShelf
 	} from '#lib/shelves/api.js';
 	import { offersShelfManagement, shelfErrorKey, type ShelfFormValue } from '#lib/shelves/form.js';
-	import ShelfDescription from '#lib/shelves/ShelfDescription.svelte';
 	import ShelfForm from '#lib/shelves/ShelfForm.svelte';
 	import { shelfRuleGroups } from '#lib/shelves/rules.js';
-	import BookDisplaySettings from '#lib/catalog/BookDisplaySettings.svelte';
 	import type { SessionViewer, Shelf } from '#lib/shelves/types.js';
 	import { libraryHref } from '#lib/libraries/context.js';
 
@@ -41,14 +38,11 @@
 	let viewer = $state<SessionViewer | null>(null);
 	let loading = $state(true);
 	let loadError = $state('');
-	let editing = $state(false);
+	let membershipOpen = $state(false);
 	let deleting = $state(false);
 	let notice = $state('');
 	let actionError = $state('');
 	let removing = $state<number | null>(null);
-	let mode = $state<'grid' | 'list'>('grid');
-	let coverSize = $state(208);
-	let spacing = $state(20);
 	let addDraft = $state('');
 	let addQuery = $state('');
 	let addValidation = $state('');
@@ -84,13 +78,13 @@
 	$effect(() => {
 		const id = loadedShelfID;
 		const scope = libraryID;
-		const active = managing;
+		const active = managing && membershipOpen && membershipEditable;
 		untrack(() => {
 			void books.reset(active && id ? (cursor, signal) => listShelfBooks(id, { cursor, signal, library_id: scope }) : null);
 		});
 	});
 
-	$effect(() => { if (managing && shelf && books.status === 'ready') rememberBrowseContext({ ids: books.items.map((book) => book.id), label: shelf.name, href: libraryHref(`/shelves/${shelf.id}`, libraryID) }); });
+	$effect(() => { if (managing && membershipOpen && shelf && books.status === 'ready') rememberBrowseContext({ ids: books.items.map((book) => book.id), label: shelf.name, href: libraryHref(`/shelves/${shelf.id}`, libraryID) }); });
 
 	onDestroy(() => {
 		requestVersion += 1;
@@ -114,7 +108,7 @@
 		shelf = null;
 		loading = true;
 		loadError = '';
-		editing = false;
+		membershipOpen = false;
 		notice = '';
 		actionError = '';
 		addNotice = '';
@@ -172,7 +166,7 @@
 	}
 
 	async function save(value: ShelfFormValue): Promise<string | null> {
-		if (!shelf) return null;
+		if (!shelf || !editable) return null;
 		notice = '';
 		try {
 			const id = shelf.id;
@@ -188,7 +182,6 @@
 			if (request !== requestVersion) return null;
 			shelf = updated;
 			void books.reload();
-			editing = false;
 			notice = m['shelves.edit.success']();
 			return null;
 		} catch (cause) {
@@ -287,6 +280,7 @@
 		<header class="space-y-3">
 			<h1 id="shelf-heading" class="sr-only">{shelf.name}</h1>
 			{#if managing}
+				<a class="mr-4 inline-block text-sm underline underline-offset-4 focus-visible:outline-2" href="/shelves">{m['ux1.shelves.more']()}</a>
 				<a class="inline-block text-sm underline underline-offset-4 focus-visible:outline-2" href={browseHref}>{m['collections.back_to_books']()}</a>
 				<div class="flex flex-wrap items-center gap-3">
 					<span class="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">
@@ -294,7 +288,6 @@
 					</span>
 					<p class="text-sm text-slate-500">{m['shelves.book_count']({ count: shelf.visible_book_count })}</p>
 				</div>
-				{#if shelf.description}<ShelfDescription description={shelf.description} />{/if}
 			{/if}
 		</header>
 
@@ -304,10 +297,9 @@
 		{#if notice}<p class="rounded-md bg-green-50 p-3 text-green-800" role="status">{notice}</p>{/if}
 		{#if actionError}<p class="rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">{actionError}</p>{/if}
 
-		{#if editable}
 			<section class="space-y-4 card p-4 sm:p-6" aria-labelledby="edit-shelf-heading">
-				<h2 id="edit-shelf-heading" class="text-xl font-semibold">{m['shelves.edit.heading']()}</h2>
-				{#if editing}
+				<h2 id="edit-shelf-heading" class="text-xl font-semibold">{m['collections.settings.heading']()}</h2>
+				{#if !editable}<p class="text-sm text-slate-600">{m['collections.settings.readonly']()}</p>{/if}
 					<ShelfForm
 						idPrefix="edit-shelf"
 						submitLabel={m['shelves.edit.save']()}
@@ -315,16 +307,14 @@
 						initialName={shelf.name}
 						initialIcon={shelf.icon ?? ''}
 						initialDescription={shelf.description ?? ''}
+						initialKind={shelf.kind}
+						showVisibility
+						readOnly={!editable}
 						{initialRuleGroups}
 						onsave={save}
-						oncancel={() => (editing = false)}
 					/>
-				{:else}
+				{#if editable}
 					<div class="flex flex-wrap items-center gap-3">
-						<button
-							class="rounded-md border border-slate-300 px-4 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-							onclick={() => (editing = true)}
-						>{m['shelves.edit.open']()}</button>
 						<button
 							class="rounded-md border border-red-300 px-4 py-2 text-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-800 disabled:opacity-60"
 							aria-describedby="delete-shelf-note"
@@ -335,14 +325,13 @@
 					<p id="delete-shelf-note" class="text-sm text-slate-600">{m['shelves.delete.note']()}</p>
 				{/if}
 			</section>
-		{/if}
 
+		{#if membershipEditable}
+		<details class="space-y-5" bind:open={membershipOpen}>
+			<summary class="cursor-pointer font-medium">{m['collections.settings.membership']()}</summary>
+		{#if membershipOpen}
 		<section class="space-y-5" aria-labelledby="shelf-books-heading" aria-busy={books.status === 'loading'}>
-			<div class="flex flex-wrap items-end gap-3">
-				<h2 id="shelf-books-heading" class="sr-only">{m['shelves.books.heading']()}</h2>
-				<ViewToggle view={mode} onchange={(next) => (mode = next)} />
-				<BookDisplaySettings storageKey={`collection:${shelf.id}`} bind:size={coverSize} bind:spacing />
-			</div>
+			<h2 id="shelf-books-heading" class="text-xl font-semibold">{m['shelves.books.heading']()}</h2>
 			{#if membershipEditable && (initialRuleGroups.length || shelf.mode === 'automatic')}
 				<p class="text-sm text-slate-600">{m['collections.membership.remove_help']()}</p>
 			{/if}
@@ -356,20 +345,18 @@
 			{:else if books.empty}
 				<p class="card p-6 text-slate-600">{m['shelves.books.empty']()}</p>
 			{:else}
-				<ul class={mode === 'grid' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${coverSize}px; --book-cover-spacing: ${spacing}px`}>
+				<ul class="space-y-3">
 					{#each books.items as book (book.id)}
-						<BookCard {book} {mode}>
+						<BookCard {book} mode="list">
 							{#snippet actions()}
 								{#if membershipEditable}
 									<button
-										class={mode === 'grid'
-											? 'inline-flex w-full items-center justify-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60'
-											: 'text-sm text-red-800 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60'}
+										class="text-sm text-red-800 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
 										aria-label={m['shelves.books.remove_label']({ title: book.title })}
 										disabled={removing !== null}
 										onclick={() => removeBook(book)}
 									>
-										{#if mode === 'grid'}<Icon name="trash" class="size-3.5 shrink-0" />{/if}
+										<Icon name="trash" class="size-3.5 shrink-0" />
 										<span class="min-w-0 truncate">{removing === book.id ? m['shelves.books.removing']() : m['shelves.books.remove']()}</span>
 									</button>
 								{/if}
@@ -463,6 +450,9 @@
 					{/if}
 				{/if}
 			</section>
+		{/if}
+		{/if}
+		</details>
 		{/if}
 		{/if}
 	</article>

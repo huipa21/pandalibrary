@@ -82,24 +82,24 @@ status.
 The **Libraries** section initially shows up to five libraries. If more are
 available, use the arrow after the fifth library to show the rest; the arrow
 at the end then collapses the list back to five. Select a library to browse
-only its books. **Manage Libraries** opens the library cards, each showing
+only its books. **All Libraries** opens the library cards, each showing
 its visible book count.
 
 Every catalog book belongs to exactly one library. A library is its physical
 ownership boundary, while a collection is a logical grouping that can span
 libraries. Adding a book to a collection never copies or moves it.
 
-Use the **⋮** beside the library heading for **New Library**, **Edit Library**
-(the selected library's settings), or **Manage Libraries**. Creating, editing,
-and deleting libraries requires an administrator account. Administrators also
-have edit and delete icons at the bottom right of each library card. Deletion
-requires confirmation; only empty, non-default libraries can be deleted.
-Readers can use **Manage Libraries** to return to the library cards.
+Use the **⋮** beside the library heading for **New Library** or **All Libraries**.
+Creation opens a dialog with name, slug and icon selection. Open a library cover in
+**All Libraries** to see its settings, including access management for
+administrators. Creating, editing, and deleting libraries requires an administrator
+account. Deletion requires confirmation; only empty, non-default libraries can
+be deleted. Readers can use **All Libraries** to return to the library cards.
 Library actions live in this **⋮** menu, not in the Admin tabs.
 
 The **Collections** heading opens all collections. Use its **⋮** menu to
-create a collection, manage the current collection (or view its details when
-read-only), or browse more collections.
+create a collection or open **All Collections**. Collection covers open settings
+(or read-only details); sidebar collection links open the books instead.
 
 ## Book pages
 
@@ -537,9 +537,9 @@ not embedded). Oversized exports fail rather than silently dropping items.
 Use the **Collections** section in the sidebar to browse collections across
 all libraries. Its **⋮** menu creates or manages collections. Existing shelves
 are preserved as collections; older `/shelves` links and API routes still work.
-To edit a collection, manage its rules, or add and remove books, open that
-collection and choose **Manage collection** from the **⋮** menu beside
-**Collections**. Choose **Back to books** to return to browsing.
+To edit a collection, manage its rules, or add and remove books, choose
+**All Collections** from the **⋮** menu beside **Collections**, then open the
+collection's cover. Choose **Back to books** to return to browsing.
 
 - **Favorites** is a special collection under **Home** in the sidebar, not in the
   collection list. It is created for you and cannot be renamed or deleted.

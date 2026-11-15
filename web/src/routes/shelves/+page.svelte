@@ -8,6 +8,7 @@
 	import { shelfErrorKey } from '#lib/shelves/form.js';
 	import type { Shelf } from '#lib/shelves/types.js';
 	import Icon from '#lib/bookview/Icon.svelte';
+	import EntityManagementCover from '#lib/EntityManagementCover.svelte';
 	import { entityIcon } from '#lib/navigation-icons.js';
 
 	const pager = new CursorPager<Shelf>();
@@ -42,12 +43,13 @@
 	{#if created}
 		<p class="text-sm text-green-700" role="status">
 			{m['shelves.create.success']()}
-			<a class="ml-1 inline-flex items-center gap-2 font-medium underline underline-offset-4 focus-visible:outline-2" href={`/shelves/${created.id}`}><Icon name={entityIcon(created.icon, `collection:${created.id}`)} class="size-4 shrink-0" />{created.name}</a>
+			<a class="ml-1 inline-flex items-center gap-2 font-medium underline underline-offset-4 focus-visible:outline-2" href={`/shelves/${created.id}?manage=1`}><Icon name={entityIcon(created.icon, `collection:${created.id}`)} class="size-4 shrink-0" />{created.name}</a>
 		</p>
 	{/if}
 
 	<section class="space-y-4" aria-labelledby="shelf-list-heading" aria-busy={pager.status === 'loading'}>
 		<h2 id="shelf-list-heading" class="text-xl font-semibold">{m['shelves.list_heading']()}</h2>
+		<p class="text-sm text-slate-600">{m['collections.settings.list_help']()}</p>
 		{#if pager.status === 'error'}
 			<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">
 				<p>{translate(shelfErrorKey(pager.error, 'load'))}</p>
@@ -61,12 +63,17 @@
 				<p>{m['ux1.shelves.create_help']()}</p>
 			</div>
 		{:else}
-			<ul class="grid gap-3 sm:grid-cols-2">
+			<ul class="book-grid book-grid-configurable" style="--book-cover-size: 208px; --book-cover-spacing: 20px">
 				{#each pager.items as shelf (shelf.id)}
-					<li class="space-y-2 card p-4">
+					<li class="min-w-0 space-y-3">
+						<EntityManagementCover
+							href={`/shelves/${shelf.id}?manage=1`}
+							name={shelf.name}
+							icon={entityIcon(shelf.icon, `collection:${shelf.id}`)}
+						/>
 						<div class="flex flex-wrap items-start justify-between gap-2">
 							<h3 class="min-w-0 font-semibold break-words">
-								<a class="inline-flex items-center gap-2 rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900" href={`/shelves/${shelf.id}`}><Icon name={entityIcon(shelf.icon, `collection:${shelf.id}`)} class="size-4 shrink-0" />{shelf.name}</a>
+								{shelf.name}
 							</h3>
 							<span class="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">{kindLabel(shelf)}</span>
 						</div>

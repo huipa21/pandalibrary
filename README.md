@@ -31,9 +31,11 @@ compressed in the browser. Each book's **Words**
 tab lists its saved words, phrases, sentences and passages.
 
 The **Libraries** sidebar shows five libraries initially; use its expand control
-to see the rest. Administrators can find **New Library** and **Manage Libraries**
-in the Libraries three-dot menu rather than the Admin Panel. Click the
-**Collections** heading to browse collections, or use its three-dot menu for actions.
+to see the rest. The Libraries three-dot menu offers **All Libraries** and, for
+administrators, **New Library** in a creation dialog. The Collections menu offers
+**New collection** and **All Collections**. Both all-items pages use cover cards
+that open the item's settings; sidebar library and collection links still browse
+their books. Library settings include a searchable, scrollable access picker.
 
 ## Run with a container
 

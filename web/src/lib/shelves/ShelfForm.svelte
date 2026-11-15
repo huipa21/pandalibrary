@@ -15,6 +15,9 @@
 		initialName = '',
 		initialIcon = '',
 		initialDescription = '',
+		initialKind = 'private',
+		showVisibility = false,
+		readOnly = false,
 		initialRuleGroups = [],
 		nameLabel,
 		compactKindLabels = false,
@@ -29,6 +32,9 @@
 		initialName?: string;
 		initialIcon?: string;
 		initialDescription?: string;
+		initialKind?: ShelfKind;
+		showVisibility?: boolean;
+		readOnly?: boolean;
 		initialRuleGroups?: RuleGroup[];
 		nameLabel?: string;
 		compactKindLabels?: boolean;
@@ -54,13 +60,14 @@
 		name = initialName;
 		icon = initialIcon;
 		description = initialDescription;
+		kind = initialKind;
 		groups = initialRuleGroups.map((group) => ({ ...group, rules: { ...group.rules, conditions: group.rules.conditions.map((condition) => ({ ...condition })) } }));
 		removeRuleBooks = undefined;
 	});
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		if (busy) return;
+		if (busy || readOnly) return;
 		error = '';
 		nameError = '';
 		const result = validateShelfDraft({ name, description });
@@ -102,6 +109,7 @@
 </script>
 
 <form class="grid gap-4" onsubmit={submit} novalidate>
+	<fieldset class="contents" disabled={readOnly}>
 	<label class="grid gap-1 text-sm font-medium" for={`${idPrefix}-name`}>
 		<span>{nameLabel ?? m['shelves.form.name']()}</span>
 		<input
@@ -138,6 +146,19 @@
 			</label>
 		</fieldset>
 	{/if}
+	{#if showVisibility && !allowShared}
+		<label class="grid gap-1 text-sm font-medium" for={`${idPrefix}-visibility`}>
+			<span>{m['shelves.form.kind']()}</span>
+			<input
+				id={`${idPrefix}-visibility`}
+				class="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 font-normal"
+				value={initialKind === 'shared' ? m['shelves.kind.shared']() : m['shelves.kind.private']()}
+				readonly
+				aria-describedby={`${idPrefix}-visibility-help`}
+			/>
+		</label>
+		<p id={`${idPrefix}-visibility-help`} class="-mt-2 text-sm text-slate-500">{m['collections.settings.visibility_help']()}</p>
+	{/if}
 	<RuleGroupsEditor idPrefix={`${idPrefix}-rules`} bind:groups disabled={busy} />
 	{#if hasRemovedRules}
 		<fieldset class="grid gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm" disabled={busy}>
@@ -154,6 +175,7 @@
 		</fieldset>
 	{/if}
 	{#if error}<p class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p>{/if}
+	{#if !readOnly}
 	<div class="flex flex-wrap gap-3">
 		<button
 			type="submit"
@@ -168,4 +190,6 @@
 			>{m['shelves.edit.cancel']()}</button>
 		{/if}
 	</div>
+	{/if}
+	</fieldset>
 </form>

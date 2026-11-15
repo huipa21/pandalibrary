@@ -1,21 +1,12 @@
 <script lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
-	import { page } from '$app/state';
 	import { deLocalizeHref } from '#lib/paraglide/runtime.js';
 	import HeaderMenu from '#lib/shell/HeaderMenu.svelte';
 	import ShelfCreateDialog from './ShelfCreateDialog.svelte';
-	import type { Shelf } from './types.js';
 	import Icon from '#lib/bookview/Icon.svelte';
 
-	let { pathname, role, currentShelf }: { pathname: string; role: string; currentShelf?: Shelf } = $props();
+	let { pathname, role }: { pathname: string; role: string } = $props();
 	let dialogOpen = $state(false);
-	const isCollection = $derived(/^\/shelves\/[1-9]\d*\/?$/.test(deLocalizeHref(pathname)));
-	const isSystemCollection = $derived(/^\/shelves\/system\/(?:favorites|unshelved)\/?$/.test(deLocalizeHref(pathname)));
-	const manageHref = $derived.by(() => {
-		const params = new URLSearchParams(page.url.searchParams.toString());
-		params.set('manage', '1');
-		return `${page.url.pathname}?${params}`;
-	});
 
 	async function openCreate(close: () => Promise<void>) {
 		await close();
@@ -48,12 +39,6 @@
 			<Icon name="plus" class="size-4 shrink-0" />
 			{m['ux1.shelves.create']()}
 		</button>
-		{#if isCollection || isSystemCollection}
-			<a role="menuitem" tabindex="-1" class="header-menu-item" href={manageHref} data-menu-activate>
-				<Icon name={currentShelf && (role === 'admin' || currentShelf.kind === 'private') ? 'pencil' : 'info'} class="size-4 shrink-0" />
-				{currentShelf && (role === 'admin' || currentShelf.kind === 'private') ? m['collections.manage']() : m['shelves.details']()}
-			</a>
-		{/if}
 		<a
 			role="menuitem"
 			tabindex="-1"

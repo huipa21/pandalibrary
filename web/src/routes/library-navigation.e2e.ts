@@ -56,6 +56,9 @@ async function mockLibraries(page: Page, role = 'admin', locale = 'en') {
 		} });
 		if (path === '/me/settings') return route.fulfill({ json: { settings: [] } });
 		if (path === '/wordbooks') return route.fulfill({ json: { wordbooks: [] } });
+		if (path === '/admin/users' || /^\/admin\/libraries\/\d+\/access$/.test(path)) {
+			return route.fulfill({ json: { items: [], next_cursor: null } });
+		}
 		if (path === '/libraries') return route.fulfill({ json: { items: libraries, next_cursor: null } });
 		const libraryMatch = /^\/libraries\/(\d+)$/.exec(path);
 		if (libraryMatch) return route.fulfill({ json: {
@@ -112,6 +115,9 @@ test('Libraries and Collections use section headings while collection navigation
 	const fiction = page.getByRole('main').getByRole('listitem').filter({ hasText: 'Fiction' });
 	await expect(fiction).toContainText('7 books');
 	await fiction.getByRole('link', { name: /Fiction/ }).first().click();
+	await expect(page).toHaveURL('/libraries/1');
+	await expect(page.getByRole('heading', { name: 'Manage access', exact: true })).toBeVisible();
+	await sidebar.getByRole('link', { name: /^Fiction/ }).click();
 	await expect(page).toHaveURL('/library/1');
 	await expect(sidebar.getByRole('link', { name: /^Fiction/ })).toHaveAttribute('aria-current', 'page');
 	const secondPage = sidebar.getByRole('link', { name: /Second-page shelf/ });
@@ -124,7 +130,8 @@ test('Libraries and Collections use section headings while collection navigation
 	)).toBe(true);
 	await sidebar.getByRole('button', { name: 'Collection actions', exact: true }).click();
 	await expect(sidebar.getByRole('menuitem', { name: 'New collection', exact: true })).toBeVisible();
-	await expect(sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true })).toHaveAttribute('href', '/shelves/12?manage=1');
+	await expect(sidebar.getByRole('menuitem', { name: 'All Collections', exact: true })).toHaveAttribute('href', '/shelves');
+	await expect(sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true })).toHaveCount(0);
 	await page.keyboard.press('Escape');
 	await collections.getByRole('link').click();
 	await expect(page).toHaveURL('/shelves');
@@ -188,23 +195,22 @@ test('Admin navigation omits libraries while the sidebar retains library actions
 	await expect(tabs.locator('a[href^="/admin/libraries"]')).toHaveCount(0);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	await sidebar.getByRole('button', { name: 'Library actions', exact: true }).click();
-	await expect(sidebar.getByRole('menuitem', { name: 'New Library', exact: true })).toHaveAttribute('href', '/admin/libraries?create=1');
-	await expect(sidebar.getByRole('menuitem', { name: 'Manage Libraries', exact: true })).toHaveAttribute('href', '/admin/libraries');
+	await expect(sidebar.getByRole('menuitem', { name: 'New Library', exact: true })).toHaveAttribute('type', 'button');
+	await expect(sidebar.getByRole('menuitem', { name: 'All Libraries', exact: true })).toHaveAttribute('href', '/libraries');
 	expect(unexpected).toEqual([]);
 });
 
-test('library actions point to new, current settings, and all-library management', async ({ page }) => {
+test('library actions offer a creation dialog and all-library management without legacy destinations', async ({ page }) => {
 	const { unexpected } = await mockLibraries(page);
 	await page.goto('/library/2');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	const actions = sidebar.getByRole('button', { name: 'Library actions' });
 	await actions.click();
 	await expect(sidebar.getByRole('menuitem', { name: 'New Library', exact: true }))
-		.toHaveAttribute('href', '/admin/libraries?create=1');
-	await expect(sidebar.getByRole('menuitem', { name: 'Edit Library', exact: true }))
-		.toHaveAttribute('href', '/admin/libraries?edit=2');
-	await expect(sidebar.getByRole('menuitem', { name: 'Manage Libraries', exact: true }))
-		.toHaveAttribute('href', '/admin/libraries');
+		.toHaveAttribute('type', 'button');
+	await expect(sidebar.getByRole('menuitem', { name: 'Edit Library', exact: true })).toHaveCount(0);
+	await expect(sidebar.getByRole('menuitem', { name: 'All Libraries', exact: true }))
+		.toHaveAttribute('href', '/libraries');
 	await page.keyboard.press('Escape');
 	await expect(actions).toBeFocused();
 	await page.goto('/libraries');
@@ -260,7 +266,7 @@ test('direct scoped shelf links restore the library on mobile and readers cannot
 	await sidebar.getByRole('button', { name: '书库操作' }).click();
 	await expect(sidebar.getByRole('menuitem', { name: '新建书库', exact: true })).toHaveCount(0);
 	await expect(sidebar.getByRole('menuitem', { name: '编辑书库', exact: true })).toHaveCount(0);
-	await expect(sidebar.getByRole('menuitem', { name: '管理书库', exact: true })).toHaveAttribute('href', '/libraries');
+	await expect(sidebar.getByRole('menuitem', { name: '全部书库', exact: true })).toHaveAttribute('href', '/libraries');
 	expect(requests.some((url) =>
 		url.pathname.endsWith('/shelves/11/books') && url.searchParams.get('library_id') === '2'
 	)).toBe(true);
@@ -289,14 +295,15 @@ test('editing the current library refreshes its sidebar name and New Library foc
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	await expect(sidebar.getByRole('link', { name: /^Fiction/ })).toBeVisible();
 	await sidebar.getByRole('button', { name: 'Library actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'Edit Library', exact: true }).click();
-	const editor = page.getByRole('region', { name: 'Edit “Fiction”', exact: true });
+	await sidebar.getByRole('menuitem', { name: 'All Libraries', exact: true }).click();
+	await page.getByRole('main').getByRole('link', { name: 'Fiction', exact: true }).click();
+	const editor = page.getByRole('region', { name: 'Library settings', exact: true });
 	await editor.getByLabel('Name', { exact: true }).fill('Renamed Fiction');
 	await editor.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(sidebar.getByRole('link', { name: /^Renamed Fiction/ })).toBeVisible();
 	await sidebar.getByRole('button', { name: 'Library actions' }).click();
 	await sidebar.getByRole('menuitem', { name: 'New Library', exact: true }).click();
-	await expect(page.locator('#create-library-name')).toBeFocused();
+	await expect(page.getByRole('dialog', { name: 'New Library', exact: true }).getByLabel('Name', { exact: true })).toBeFocused();
 	expect(unexpected).toEqual([]);
 });
 
@@ -579,13 +586,10 @@ test('changing collection filters while another page loads starts a fresh pageab
 	}
 });
 
-test('collection management can be opened and closed without losing the library scope', async ({ page }) => {
+test('legacy collection settings links preserve explicit browse scope', async ({ page }) => {
 	await mockLibraries(page);
-	await page.goto('/shelves/11?library_id=2&author_id=4');
-	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
-	await sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true }).click();
-	await expect(page.getByRole('main').getByRole('button', { name: 'Edit details' })).toBeVisible();
+	await page.goto('/shelves/11?library_id=2&author_id=4&manage=1');
+	await expect(page.getByRole('main').getByLabel('Name', { exact: true })).toHaveValue('Weekend reads');
 	expect(new URL(page.url()).searchParams.get('library_id')).toBe('2');
 	expect(new URL(page.url()).searchParams.get('author_id')).toBe('4');
 	await page.getByRole('main').getByRole('link', { name: 'Back to books' }).click();

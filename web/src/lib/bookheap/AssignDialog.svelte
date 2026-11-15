@@ -164,7 +164,7 @@
 				{#if targetsStatus === 'ready' && libraries.length === 0}
 					<p class="text-sm text-slate-600">
 						{m['bh4.assign.no_libraries']()}
-						<a class={`underline ${focusRing}`} href="/admin/libraries">{m['bh4.assign.manage_libraries']()}</a>
+						<a class={`underline ${focusRing}`} href="/libraries?create=1">{m['bh4.assign.manage_libraries']()}</a>
 					</p>
 				{/if}
 			</div>

@@ -1,9 +1,32 @@
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import type { Shelf, ShelfInput } from './types.js';
 
 test.use({ serviceWorkers: 'block' });
 
 const timestamp = '2026-11-04T00:00:00Z';
+
+async function expectSelectedIconBorder(radio: Locator) {
+	await expect(radio).toBeChecked();
+	const colors = await radio.evaluate((input) => {
+		const swatch = input.nextElementSibling;
+		if (!swatch) throw new Error('Icon swatch is missing');
+		const actual = getComputedStyle(swatch).borderTopColor;
+		const reference = document.createElement('span');
+		reference.style.borderColor = 'var(--color-emerald-800)';
+		swatch.append(reference);
+		const expected = getComputedStyle(reference).borderTopColor;
+		reference.remove();
+		const context = document.createElement('canvas').getContext('2d')!;
+		context.fillStyle = actual;
+		context.fillRect(0, 0, 1, 1);
+		return { actual, expected, rgb: Array.from(context.getImageData(0, 0, 1, 1).data) };
+	});
+	expect(colors.actual).toBe(colors.expected);
+	expect(colors.rgb[0]).toBeLessThan(35);
+	expect(colors.rgb[1]).toBeGreaterThan(50);
+	expect(colors.rgb[1]).toBeLessThan(110);
+	expect(colors.rgb[2]).toBeLessThan(colors.rgb[1]);
+}
 
 type ShelfDraft = ShelfInput;
 
@@ -87,15 +110,15 @@ test('shelf actions are a keyboard-accessible three-dot menu in both themes', as
 		circles.map((circle) => [circle.getAttribute('cx'), circle.getAttribute('cy')])
 	)).toEqual([['10', '4'], ['10', '10'], ['10', '16']]);
 	await expect(section.getByRole('menuitem')).toHaveCount(0);
-	await expect(section.getByRole('link', { name: 'Manage collections' })).toHaveCount(0);
+	await expect(section.getByRole('link', { name: 'All Collections' })).toHaveCount(0);
 	await expect(page.getByRole('main').getByRole('button', { name: 'Create collection' })).toHaveCount(0);
 
 	await trigger.focus();
 	await page.keyboard.press('ArrowDown');
 	const menu = section.getByRole('menu', { name: 'Collection actions' });
 	const newShelf = menu.getByRole('menuitem', { name: 'New collection' });
-	const manage = menu.getByRole('menuitem', { name: 'Manage collections' });
-	await expect(menu.getByRole('menuitem')).toHaveText(['New collection', 'Manage collections']);
+	const manage = menu.getByRole('menuitem', { name: 'All Collections' });
+	await expect(menu.getByRole('menuitem')).toHaveText(['New collection', 'All Collections']);
 	await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 	await expect(newShelf).toBeFocused();
 	await expect(manage).toHaveAttribute('aria-current', 'page');
@@ -141,7 +164,7 @@ test('one creation dialog refreshes the management page and sidebar', async ({ p
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	const trigger = sidebar.getByRole('button', { name: 'Collection actions' });
 	await trigger.click();
-	await sidebar.getByRole('menuitem', { name: 'Manage collections' }).click();
+	await sidebar.getByRole('menuitem', { name: 'All Collections' }).click();
 	await expect(page).toHaveURL('/shelves');
 	const main = page.getByRole('main');
 	await expect(main.getByRole('heading', { name: 'Available collections' })).toBeVisible();
@@ -153,6 +176,7 @@ test('one creation dialog refreshes the management page and sidebar', async ({ p
 	const creator = page.getByRole('dialog', { name: 'Create collection' });
 	const name = creator.getByLabel('Collection name');
 	await expect(name).toBeFocused();
+	await expectSelectedIconBorder(creator.getByRole('radio', { name: 'Automatic', exact: true }));
 	await expect(creator.getByLabel('Shared', { exact: true })).toHaveCount(0);
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(name).toHaveAttribute('aria-invalid', 'true');
@@ -164,6 +188,7 @@ test('one creation dialog refreshes the management page and sidebar', async ({ p
 	await expect(creator.getByRole('alert')).toContainText('A collection with this name already exists.');
 	await name.fill('  New reading  ');
 	await creator.getByRole('radio', { name: 'Star', exact: true }).check();
+	await expectSelectedIconBorder(creator.getByRole('radio', { name: 'Star', exact: true }));
 	await creator.getByLabel('Description (optional)').fill('  Notes  ');
 	await creator.getByRole('button', { name: 'Create collection' }).click();
 	await expect(creator).toHaveCount(0);
@@ -251,7 +276,7 @@ test('shelf actions stay available when sidebar shelf loading fails', async ({ p
 	await expect(sidebar.getByRole('alert')).toContainText('The collection request failed.');
 	await sidebar.getByRole('button', { name: 'Collection actions' }).click();
 	await expect(sidebar.getByRole('menuitem', { name: 'New collection' })).toBeVisible();
-	await sidebar.getByRole('menuitem', { name: 'Manage collections' }).click();
+	await sidebar.getByRole('menuitem', { name: 'All Collections' }).click();
 	await expect(page).toHaveURL('/shelves');
 	await expect(page.getByRole('main').getByRole('heading', { name: 'Available collections' })).toBeVisible();
 });
@@ -269,7 +294,7 @@ test('the full shelf menu remains visible in a short mobile drawer', async ({ pa
 	if (!menuBox || !scrollBox) throw new Error('Shelf menu or drawer navigation is not visible');
 	expect(menuBox.y).toBeGreaterThanOrEqual(scrollBox.y);
 	expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(scrollBox.y + scrollBox.height);
-	await menu.getByRole('menuitem', { name: 'Manage collections' }).click();
+	await menu.getByRole('menuitem', { name: 'All Collections' }).click();
 	await expect(page).toHaveURL('/shelves');
 	await expect(drawer).toBeHidden();
 });
@@ -281,5 +306,5 @@ test('the Chinese shelf menu identifies the active management page', async ({ pa
 	const sidebar = page.getByRole('navigation', { name: '主导航' });
 	await sidebar.getByRole('button', { name: '合集操作' }).click();
 	await expect(sidebar.getByRole('menuitem', { name: '新建合集' })).toBeVisible();
-	await expect(sidebar.getByRole('menuitem', { name: '管理合集' })).toHaveAttribute('aria-current', 'page');
+	await expect(sidebar.getByRole('menuitem', { name: '所有合集' })).toHaveAttribute('aria-current', 'page');
 });

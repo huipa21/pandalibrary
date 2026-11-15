@@ -295,6 +295,10 @@ test('uploads require a loaded library, omit optional shelves and default to pub
 
 test('failed target reloads clear stale selections and provide retry and no-library guidance', async ({ page }) => {
 	await authenticate(page);
+	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: {
+		items: [{ id: 7, name: 'Weekend reads', kind: 'private', mode: 'manual', system_key: null, owner_id: 1 }],
+		next_cursor: null
+	} }));
 	let state: 'ready' | 'error' | 'empty' = 'ready';
 	await page.route('**/api/v1/admin/libraries?*', (route) => {
 		if (state === 'error') return problem(route, 503);
@@ -307,7 +311,7 @@ test('failed target reloads clear stale selections and provide retry and no-libr
 	const dialog = page.getByRole('dialog', { name: 'Upload books' });
 	const library = dialog.getByLabel('Library (required)', { exact: true });
 	await library.selectOption('2');
-	await dialog.locator('#bh3-shelf').selectOption({ label: 'Favorites' });
+	await dialog.locator('#bh3-shelf').selectOption({ label: 'Weekend reads' });
 	await dialog.getByTestId('bh3-file-input').setInputFiles(book('Dune.epub'));
 	await page.keyboard.press('Escape');
 	state = 'error';
@@ -321,7 +325,7 @@ test('failed target reloads clear stale selections and provide retry and no-libr
 	state = 'empty';
 	await dialog.getByRole('button', { name: 'Try again', exact: true }).click();
 	await expect(dialog.getByText('There are no libraries yet.')).toBeVisible();
-	await expect(dialog.getByRole('link', { name: 'Create a library' })).toHaveAttribute('href', '/admin/libraries');
+	await expect(dialog.getByRole('link', { name: 'Create a library' })).toHaveAttribute('href', '/libraries?create=1');
 	await expect(library).toHaveValue('');
 	await expect(dialog.locator('#bh3-shelf')).toHaveValue('');
 	await expect(upload).toBeDisabled();
