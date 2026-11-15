@@ -7,7 +7,7 @@
 	import { translate } from '#lib/paging/translate.js';
 	import { formatSize } from '#lib/bookview/format.js';
 	import { browserTimeZone, statsErrorKey } from './api.js';
-	import { addedLabel, bucketData, fetchBookStats, formatBookShare, formatCount, languageLabel, publicationTimeline, topTwenty } from './book-api.js';
+	import { addedLabel, addedTimeline, bucketData, fetchBookStats, formatBookShare, formatCount, languageLabel, publicationTimeline, topTwenty } from './book-api.js';
 	import type { BookStatsResponse, RankedBook } from './book-types.js';
 	import StatsCard from './StatsCard.svelte';
 	import DistributionChart from './DistributionChart.svelte';
@@ -22,7 +22,7 @@
 	const serverDetail = $derived(
 		error instanceof ApiError && errorKind === 'invalid' && typeof error.problem?.detail === 'string' ? error.problem.detail : ''
 	);
-	const added = $derived(bucketData(data?.added_over_time ?? [], (key) => key === 'unknown' ? m['stats.catalog.unknown']() : addedLabel(key, locale), locale));
+	const added = $derived(bucketData(addedTimeline(data?.added_over_time ?? []), (key) => key === 'unknown' ? m['stats.catalog.unknown']() : addedLabel(key, locale), locale));
 	const years = $derived(bucketData(publicationTimeline(data?.publication_years ?? []), (key) => key, locale));
 	const unknownYears = $derived(data?.publication_years.find(({ key }) => key === 'unknown')?.count ?? 0);
 	const genres = $derived(bucketData(data?.genres ?? [], metadataLabel, locale, data?.total_books ?? 0));
@@ -106,13 +106,13 @@
 		{#if data.total_books === 0}<p class="text-slate-600">{m['stats.catalog.empty']()}</p>{/if}
 		<div class="grid min-w-0 gap-6 md:grid-cols-3">
 			<StatsCard title={m['stats.catalog.added.title']()} class="md:col-span-2">
-				<DistributionChart data={added} kind="bar" label={m['stats.catalog.added.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} showValues />
+				<DistributionChart data={added} kind="bar" label={m['stats.catalog.added.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="hover" alignEnd />
 			</StatsCard>
 			<StatsCard title={m['stats.catalog.languages.title']()}>
 				<DistributionChart data={languages} kind="pie" label={m['stats.catalog.languages.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="hover" />
 			</StatsCard>
 			<StatsCard title={m['stats.catalog.years.title']()} class="md:col-span-2">
-				<DistributionChart data={years} kind="area" label={m['stats.catalog.years.title']()} empty={m['stats.catalog.years.empty']()} tableLabel={m['stats.catalog.details']()} />
+				<DistributionChart data={years} kind="bar" label={m['stats.catalog.years.title']()} empty={m['stats.catalog.years.empty']()} tableLabel={m['stats.catalog.details']()} interaction="hover" />
 				<p class="mt-3 text-sm text-slate-600">{m['stats.catalog.years.unknown']({ value: formatBookShare(unknownYears, data.total_books, locale) })}</p>
 			</StatsCard>
 			<StatsCard title={m['stats.catalog.formats.title']()}>

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '#lib/api/client.js';
-import { addedLabel, bucketData, fetchBookStats, formatBookShare, languageLabel, publicationTimeline, topTwenty } from './book-api.js';
+import { addedLabel, addedTimeline, bucketData, fetchBookStats, formatBookShare, languageLabel, publicationTimeline, topTwenty } from './book-api.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -22,6 +22,26 @@ describe('catalog stats', () => {
 		expect(formatBookShare(0, 0, 'en')).toBe('0 (0%)');
 		expect(formatBookShare(1000, 3000, 'zh')).toBe('1,000 (33.3%)');
 		expect(bucketData([{ key: 'month', count: 1200 }], (key) => key, 'en')[0].display).toBe('1,200');
+	});
+
+	it('pads recent added months across years without losing older counts or mutating the response', () => {
+		const buckets = [{ key: '2024-01', count: 2 }, { key: '2026-01', count: 3 }, { key: '2026-03', count: 1 }];
+		const timeline = addedTimeline(buckets);
+		expect(timeline.map(({ key }) => key)).toEqual([
+			'2024-01', '2025-04', '2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10',
+			'2025-11', '2025-12', '2026-01', '2026-02', '2026-03'
+		]);
+		expect(timeline.filter(({ count }) => count > 0)).toEqual(buckets);
+		expect(timeline.find(({ key }) => key === '2026-02')?.count).toBe(0);
+		expect(buckets).toEqual([{ key: '2024-01', count: 2 }, { key: '2026-01', count: 3 }, { key: '2026-03', count: 1 }]);
+	});
+
+	it('keeps empty and unrecognized added buckets and respects the start of the supported calendar', () => {
+		expect(addedTimeline([])).toEqual([]);
+		expect(addedTimeline([{ key: 'unknown', count: 1 }])).toEqual([{ key: 'unknown', count: 1 }]);
+		expect(addedTimeline([{ key: '0001-02', count: 1 }])).toEqual([
+			{ key: '0001-01', count: 0 }, { key: '0001-02', count: 1 }
+		]);
 	});
 
 	it('keeps unknown years out of the numeric timeline and sorts intervals numerically', () => {

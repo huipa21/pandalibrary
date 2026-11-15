@@ -63,12 +63,22 @@ test('catalog shows nine all-time cards with counts, percentage interactions and
 	await expect(dashboard.locator('header p')).toHaveCount(0);
 
 	const added = page.getByRole('region', { name: titles[0], exact: true });
-	await expect(added.getByRole('button', { name: 'Jan 2026: 3', exact: true })).toBeVisible();
+	const january = added.getByRole('button', { name: 'Jan 2026: 3', exact: true });
+	await expect(january.locator('.bar')).toBeVisible();
 	await expect(added.getByRole('button', { name: 'Feb 2026: 1', exact: true })).toBeVisible();
-	await expect(added.locator('.value').filter({ hasText: /^3$/ })).toBeVisible();
+	await expect(added.locator('.value')).toHaveCount(0);
+	await january.hover();
+	await expect(added.getByRole('status')).toContainText('Jan 2026');
+	await expect(added.getByRole('status')).toContainText('3');
 	const years = page.getByRole('region', { name: titles[1], exact: true });
 	await expect(years.getByText('Unknown publication year: 1 (25%)')).toBeVisible();
 	await expect(years.getByRole('button', { name: /^Unknown:/ })).toHaveCount(0);
+	const year = years.getByRole('button', { name: '1990: 1', exact: true });
+	await expect(year.locator('.bar')).toBeVisible();
+	await expect(years.locator('.value')).toHaveCount(0);
+	await year.hover();
+	await expect(years.getByRole('status')).toContainText('1990');
+	await expect(years.getByRole('status')).toContainText('1');
 
 	const language = page.getByRole('region', { name: titles[4], exact: true });
 	await language.locator('.legend').getByRole('button', { name: 'English: 3 (75%)', exact: true }).hover();
@@ -112,6 +122,60 @@ test('catalog shows nine all-time cards with counts, percentage interactions and
 	const mostPages = page.getByRole('region', { name: titles[8], exact: true });
 	await expect(mostPages.getByRole('listitem').first()).toContainText('2,500 pages');
 	await expect(mostPages.getByRole('link').last()).toHaveAttribute('href', '/books/20');
+});
+
+test('a single added month uses month placeholders and bars comparable to page counts at responsive widths', async ({ page }) => {
+	await authenticate(page);
+	await page.setViewportSize({ width: 1920, height: 1000 });
+	await page.route('**/api/v1/stats/books?*', (route) => route.fulfill({ json: {
+		...stats(),
+		total_books: 7,
+		added_over_time: [{ key: '2026-11', count: 7 }],
+		page_counts: [
+			{ key: '1-100', count: 7 }, { key: '101-200', count: 0 }, { key: '201-300', count: 0 },
+			{ key: '301-500', count: 0 }, { key: '501-1000', count: 0 }, { key: '1001+', count: 0 },
+			{ key: 'unknown', count: 0 }
+		]
+	} }));
+	await page.goto('/stats/books');
+	const added = page.getByRole('region', { name: titles[0], exact: true });
+	const november = added.getByRole('button', { name: 'Nov 2026: 7', exact: true });
+	const bar = november.locator('.bar');
+	const pages = page.getByRole('region', { name: titles[3], exact: true });
+	const pageBar = pages.getByRole('button', { name: '1-100: 7 (100%)', exact: true }).locator('.bar');
+	await expect(added.locator('.bar-control')).toHaveCount(12);
+	await expect(added.getByRole('button', { name: 'Dec 2025: 0', exact: true })).toHaveCount(1);
+	await expect(added.getByRole('button', { name: 'Oct 2026: 0', exact: true })).toHaveCount(1);
+	for (const width of [1920, 1440, 900, 390, 1440]) {
+		await page.setViewportSize({ width, height: 1000 });
+		const geometry = await bar.evaluate((element) => {
+			const bar = element.getBoundingClientRect();
+			const scroll = element.closest('.scroll')!.getBoundingClientRect();
+			return { width: bar.width, left: bar.left, right: bar.right, scrollLeft: scroll.left, scrollRight: scroll.right };
+		});
+		const pageWidth = (await pageBar.boundingBox())!.width;
+		expect(geometry.width / pageWidth).toBeGreaterThan(0.7);
+		expect(geometry.width / pageWidth).toBeLessThan(1.3);
+		expect(geometry.left).toBeGreaterThanOrEqual(geometry.scrollLeft);
+		expect(geometry.right).toBeLessThanOrEqual(geometry.scrollRight);
+	}
+	await page.setViewportSize({ width: 390, height: 1000 });
+	const december = added.getByRole('button', { name: 'Dec 2025: 0', exact: true });
+	await december.focus();
+	await expect(added.getByRole('status')).toContainText('Dec 2025');
+	const firstMonthVisible = await december.evaluate((element) => {
+		const button = element.getBoundingClientRect();
+		const scroll = element.closest('.scroll')!.getBoundingClientRect();
+		return button.left >= scroll.left && button.right <= scroll.right;
+	});
+	expect(firstMonthVisible).toBe(true);
+	await added.getByRole('button', { name: 'Oct 2026: 0', exact: true }).hover();
+	await expect(added.getByRole('status')).toContainText('Oct 2026');
+	await expect(added.getByRole('status')).toContainText('0');
+	await added.locator('summary').click();
+	const table = added.getByRole('table', { name: titles[0], exact: true });
+	await expect(table.getByRole('row')).toHaveCount(1);
+	await expect(table.getByRole('row', { name: 'Nov 2026 7', exact: true })).toBeVisible();
 });
 
 test('sparse publication years retain regular decade intervals and empty gaps', async ({ page }) => {
@@ -165,6 +229,9 @@ test('empty catalog keeps all nine cards and never renders invalid percentages',
 	await page.goto('/stats/books');
 	await expect(page.getByText('There are no books in your catalog yet.')).toBeVisible();
 	for (const title of titles) await expect(page.getByRole('region', { name: title, exact: true })).toBeVisible();
+	const added = page.getByRole('region', { name: titles[0], exact: true });
+	await expect(added.getByText('No books to show.')).toBeVisible();
+	await expect(added.locator('.bar-control')).toHaveCount(0);
 	await expect(page.getByText('Unknown publication year: 0 (0%)')).toBeVisible();
 	await expect(page.getByText('No books with this metadata to rank.')).toHaveCount(3);
 	await expect(page.getByText(/NaN|Infinity/)).toHaveCount(0);

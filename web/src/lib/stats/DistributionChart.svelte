@@ -10,9 +10,10 @@
 		interaction?: 'hover' | 'click';
 		showValues?: boolean;
 		tableLabel?: string;
+		alignEnd?: boolean;
 	}
 
-	let { data, kind, label, empty, interaction = 'hover', showValues = false, tableLabel = label }: Props = $props();
+	let { data, kind, label, empty, interaction = 'hover', showValues = false, tableLabel = label, alignEnd = false }: Props = $props();
 	let hovered = $state<string | null>(null);
 	let focused = $state<string | null>(null);
 	let selected = $state<string | null>(null);
@@ -52,7 +53,7 @@
 		<p class="empty">{empty}</p>
 	{:else}
 		{#if kind === 'bar' || kind === 'area'}
-			<div class="scroll">
+			<div class="scroll" class:align-end={alignEnd}>
 				<div class="plot-group" style:min-width={`${Math.max(data.length * 64, 0)}px`}>
 					<div class="plot">
 						{#if kind === 'area'}
@@ -189,6 +190,8 @@
 <style>
 	.distribution { margin: 0; min-width: 0; font-size: 0.8125rem; color: #475569; }
 	.scroll { overflow-x: auto; max-width: 100%; }
+	.scroll.align-end { display: flex; flex-direction: row-reverse; }
+	.align-end .plot-group { flex: 1 0 auto; }
 	.plot { position: relative; height: 220px; border-bottom: 1px solid #cbd5e1; }
 	.plot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 	.columns { position: absolute; inset: 0; display: grid; }
