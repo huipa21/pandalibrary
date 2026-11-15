@@ -46,7 +46,8 @@ the collection's details and rules, without membership or visibility controls.
 
 ## Run with a container
 
-Build the image from a Git source checkout (Node.js and Docker are required):
+Build the image from a Git source checkout (Node.js and a working Docker or
+Podman installation are required). This example uses Docker to run the image:
 
 ```sh
 node scripts/build-container.mjs --tag pandalibrary:local
@@ -57,11 +58,14 @@ docker run -d --name pandalibrary --restart unless-stopped \
   pandalibrary:local
 ```
 
-The wrapper automatically passes the checked-out commit, its committer date, and
-the tracked/non-ignored untracked dirty state to the image build. Set `CONTAINER_ENGINE=podman`
-to use Podman. For a tagged release, add `--release v1.0.0`; that local Git tag
+The wrapper automatically selects a working container engine, preferring Docker
+when both Docker and Podman are available. Set `CONTAINER_ENGINE` to override
+the selection. It also passes the checked-out commit, its committer date, and
+the tracked/non-ignored untracked dirty state to the image build.
+For a tagged release, add `--release v1.0.0`; that local Git tag
 must point to `HEAD`. The optional release label must begin with an ASCII letter
 or digit and contain at most 128 ASCII letters, digits, `.`, `_`, `+`, `/`, or `-`.
+For a bind-mounted Compose deployment behind Caddy, see [deploy](deploy/README.md).
 
 For a source archive without Git, supply trustworthy provenance explicitly.
 The commit must be a full 40- or 64-character hexadecimal object ID, the date
@@ -141,6 +145,14 @@ consistent SQLite snapshot and all managed media, Bookheap, drop and import-stag
 files, including configured external folders. Download an off-site copy: archives
 contain private data and credentials and are not encrypted or automatically pruned.
 The separate automatic maintenance job retains seven database-only backups.
+
+A bind mount such as `./data:/data` can be used instead of a named volume.
+An existing library database belongs at `./data/pandalibrary.db`; copy it only
+when the source is stopped or use a consistent SQLite snapshot. The database
+alone does not contain book files, covers or other managed files, which must also
+be restored. The mounted directory and its files must be writable by the configured
+container UID/GID (default `65532:65532`). Do not replace a database while the
+server is running.
 
 Full-data restore validates and stages an uploaded or server-saved archive; **restart
 is required**, and the next startup applies it before opening SQLite or starting workers.

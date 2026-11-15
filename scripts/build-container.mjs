@@ -1,5 +1,15 @@
+import { spawnSync } from 'node:child_process';
 import { basename } from 'node:path';
 import { isMain, parseOptions, projectRoot, resolveProvenance, runChecked } from './provenance.mjs';
+
+export function selectContainerEngine(override, probe = (engine) =>
+	spawnSync(engine, ['info'], { stdio: 'ignore' }).status === 0) {
+	if (override) return override;
+	for (const engine of ['docker', 'podman']) {
+		if (probe(engine)) return engine;
+	}
+	throw new Error('No usable container engine found. Start Docker or Podman, or set CONTAINER_ENGINE explicitly.');
+}
 
 export function containerBuildArgs(engine, image, stamp, root = projectRoot) {
 	const format = /^podman(?:\.exe)?$/i.test(basename(engine)) ? ['--format', 'docker'] : [];
@@ -16,7 +26,8 @@ export function containerBuildArgs(engine, image, stamp, root = projectRoot) {
 function main() {
 	const { output, release } = parseOptions(process.argv.slice(2), 'container');
 	const stamp = resolveProvenance(projectRoot, release);
-	const engine = process.env.CONTAINER_ENGINE || 'docker';
+	const engine = selectContainerEngine(process.env.CONTAINER_ENGINE);
+	console.error(`Using container engine: ${engine}`);
 	runChecked(engine, containerBuildArgs(engine, output, stamp));
 }
 

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { after, test } from 'node:test';
-import { containerBuildArgs } from './build-container.mjs';
+import { containerBuildArgs, selectContainerEngine } from './build-container.mjs';
 import { linkerFlags, parseOptions, resolveProvenance, stampArgs } from './provenance.mjs';
 
 const temporary = mkdtempSync(join(tmpdir(), 'pandalibrary build test '));
@@ -75,6 +75,19 @@ test('passes the same raw stamp to Go and Docker without formatting a version', 
 		'--tag', 'pandalibrary:test', 'a path'
 	]);
 	assert.equal(containerBuildArgs('docker', 'test', stamp).includes('--format'), false);
+});
+
+test('selects a usable container engine or honors the explicit override', () => {
+	const attempted = [];
+	const probe = (engine) => {
+		attempted.push(engine);
+		return engine === 'podman';
+	};
+	assert.equal(selectContainerEngine(undefined, probe), 'podman');
+	assert.deepEqual(attempted, ['docker', 'podman']);
+	assert.equal(selectContainerEngine(undefined, () => true), 'docker');
+	assert.equal(selectContainerEngine('custom-engine', () => assert.fail('override must not probe')), 'custom-engine');
+	assert.throws(() => selectContainerEngine(undefined, () => false), /No usable container engine/);
 });
 
 test('requires unambiguous wrapper options', () => {
