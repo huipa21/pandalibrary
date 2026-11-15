@@ -37,7 +37,13 @@
 		navy: m['covers.editor.navy'](), forest: m['covers.editor.forest'](),
 		ochre: m['covers.editor.ochre'](), khaki: m['covers.editor.khaki'](),
 		rust: m['covers.editor.rust'](), taupe: m['covers.editor.taupe'](),
-		burgundy: m['covers.editor.burgundy'](), 'slate-teal': m['covers.editor.slate_teal']()
+		burgundy: m['covers.editor.burgundy'](), 'slate-teal': m['covers.editor.slate_teal'](),
+		crimson: m['covers.editor.crimson'](), coral: m['covers.editor.coral'](),
+		orange: m['covers.editor.orange'](), amber: m['covers.editor.amber'](),
+		olive: m['covers.editor.olive'](), emerald: m['covers.editor.emerald'](),
+		turquoise: m['covers.editor.turquoise'](), sky: m['covers.editor.sky'](),
+		cobalt: m['covers.editor.cobalt'](), violet: m['covers.editor.violet'](),
+		plum: m['covers.editor.plum'](), charcoal: m['covers.editor.charcoal']()
 	});
 
 	function errorMessage(cause: unknown): string {
@@ -248,14 +254,14 @@
 </fieldset>
 
 <style>
-	.cover-editor { display: grid; grid-template-columns: minmax(0, 6rem) minmax(0, 1fr); align-items: start; min-width: 0; gap: 0.75rem; }
+	.cover-editor { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; min-width: 0; gap: 0.75rem; }
 	legend { margin-bottom: 0.5rem; font-weight: 600; }
 	.preview { width: 100%; max-width: 8rem; }
-	.settings, .crop-controls { display: grid; min-width: 0; gap: 0.65rem; }
-	.crop-controls { grid-column: 1 / -1; }
-	.palette { min-width: 0; }
+	.settings, .crop-controls { display: grid; grid-column: 1 / -1; min-width: 0; gap: 0.65rem; }
+	.palette { width: 100%; min-width: 0; }
 	.palette legend { font-size: 0.875rem; font-weight: 400; }
 	.swatches { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+	:global(.upload-dropzone) { width: 100%; min-width: 0; }
 	.swatch { position: relative; width: 2rem; height: 2rem; cursor: pointer; }
 	.swatch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: inherit; }
 	.swatch-color { width: 100%; height: 100%; border-radius: 0.375rem; background: var(--swatch); border: 1px solid rgb(0 0 0 / 25%); pointer-events: none; }
@@ -272,5 +278,4 @@
 	.selection:active { cursor: grabbing; }
 	.error { color: #b91c1c; font-size: 0.875rem; }
 	:disabled { opacity: 0.65; }
-	@media (min-width: 480px) { .cover-editor { grid-template-columns: 8rem minmax(0, 1fr); gap: 1rem; } }
 </style>

@@ -22,6 +22,19 @@ const makeEntry = (id: number, text: string, kind: WordbookEntry['kind'] = 'word
 	}
 });
 
+const transferName = 'Import JSON / Export JSON';
+
+async function openTransfer(page: Page) {
+	await page.getByRole('button', { name: transferName, exact: true }).click();
+}
+
+async function importFile(page: Page, file: { name: string; mimeType: string; buffer: Buffer }) {
+	await openTransfer(page);
+	const chooser = page.waitForEvent('filechooser');
+	await page.getByRole('menuitem', { name: 'Import JSON', exact: true }).click();
+	await (await chooser).setFiles(file);
+}
+
 async function mockAPI(page: Page, initialBooks?: Wordbook[]) {
 	let books = initialBooks ?? [makeBook(1, 'Default', true), makeBook(2, 'Study'), { ...makeBook(3, 'Travel'), description: 'Journey notebook', entry_count: 1 }];
 	const entries = new Map<number, WordbookEntry[]>([[1, [makeEntry(1, 'apple'), makeEntry(2, 'Zebra'), makeEntry(3, 'A sentence.', 'sentence')]], [2, []], [3, [{ ...makeEntry(4, 'Travel phrase', 'phrase'), wordbook_id: 3 }]]]);
@@ -161,7 +174,7 @@ for (const operation of ['edit', 'delete', 'import'] as const) {
 			await confirmInApp(page, () => apple.getByRole('button', { name: 'Delete', exact: true }).click());
 			await expect(apple).toHaveCount(0);
 		} else {
-			await page.getByLabel('Import JSON', { exact: true }).setInputFiles({
+			await importFile(page, {
 				name: 'wordbook.json', mimeType: 'application/json',
 				buffer: Buffer.from(JSON.stringify({ version: 1, entries: [makeEntry(4, 'Imported')] }))
 			});
@@ -210,7 +223,8 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await expect(sentence).toContainText('Manual note');
 	await page.keyboard.press('Escape');
 	const downloadPromise = page.waitForEvent('download');
-	await page.getByRole('button', { name: 'Export JSON', exact: true }).click();
+	await openTransfer(page);
+	await page.getByRole('menuitem', { name: 'Export JSON', exact: true }).click();
 	const download = await downloadPromise;
 	expect(download.suggestedFilename()).toBe('Default.json');
 	const stream = await download.createReadStream();
@@ -219,7 +233,7 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	for await (const chunk of stream) chunks.push(Buffer.from(chunk));
 	const exported = Buffer.concat(chunks);
 	expect(JSON.parse(exported.toString()).entries[0].definition).toBe('My definition');
-	await page.getByLabel('Import JSON', { exact: true }).setInputFiles({ name: 'wordbook.json', mimeType: 'application/json', buffer: exported });
+	await importFile(page, { name: 'wordbook.json', mimeType: 'application/json', buffer: exported });
 	await expect(list.locator(':scope > li')).toHaveCount(6);
 	await expect(page.getByRole('main').getByRole('status')).toHaveText('Imported 3 entries');
 	await page.reload();
@@ -232,9 +246,13 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await expect(page.locator('[data-wordbooks] a[href="/wordbooks?id=2"]')).toHaveCount(0);
 	await page.getByRole('combobox', { name: 'Status', exact: true }).selectOption('all');
 	await page.locator('[data-wordbooks] a[href="/wordbooks?id=2"]').click();
-	await expect(page.getByLabel('Import JSON', { exact: true })).toBeDisabled();
+	await openTransfer(page);
+	await expect(page.getByRole('menuitem', { name: 'Import JSON', exact: true })).toHaveAttribute('aria-disabled', 'true');
+	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Restore from archive', exact: true }).click();
-	await expect(page.getByLabel('Import JSON', { exact: true })).toBeEnabled();
+	await openTransfer(page);
+	await expect(page.getByRole('menuitem', { name: 'Import JSON', exact: true })).toHaveAttribute('aria-disabled', 'false');
+	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
 	const rename = page.getByRole('form', { name: 'Settings', exact: true });
 	await rename.getByLabel('Wordbook name', { exact: true }).fill('Renamed study');
@@ -267,8 +285,10 @@ test('collection searches notebook descriptions and entry categories, preserving
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Archive', exact: true })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Export JSON', exact: true })).toBeVisible();
-	await expect(page.getByLabel('Import JSON', { exact: true })).toBeEnabled();
+	await openTransfer(page);
+	await expect(page.getByRole('menuitem', { name: 'Export JSON', exact: true })).toBeVisible();
+	await expect(page.getByRole('menuitem', { name: 'Import JSON', exact: true })).toHaveAttribute('aria-disabled', 'false');
+	await page.keyboard.press('Escape');
 	await page.reload();
 	await expect(page.getByText('Travel phrase', { exact: true })).toBeVisible();
 	await expect(page.getByRole('main').getByRole('button', { name: 'Display settings', exact: true })).toHaveCount(0);
@@ -296,7 +316,7 @@ test('new notebooks use a modal and persist their name, description and cover pr
 	const dialog = page.getByRole('dialog', { name: 'New wordbook', exact: true });
 	await expect(dialog).toBeVisible();
 	await expect(form.getByLabel('Wordbook name', { exact: true })).toBeFocused();
-	await expect(form.getByRole('checkbox')).toHaveCount(0);
+	await expect(form.getByRole('group', { name: 'Meaning language', exact: true }).getByRole('checkbox')).toHaveCount(3);
 	await form.getByLabel('Wordbook name', { exact: true }).fill('New study');
 	await form.getByLabel('Description (optional)', { exact: true }).fill('Optional description');
 	await form.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ja');
@@ -304,7 +324,7 @@ test('new notebooks use a modal and persist their name, description and cover pr
 	await form.getByRole('radio', { name: 'Forest', exact: true }).check();
 	const created = page.waitForRequest((request) => request.url().endsWith('/api/v1/wordbooks') && request.method() === 'POST');
 	await form.getByRole('button', { name: 'Create', exact: true }).click();
-	expect((await created).postDataJSON()).toEqual({ name: 'New study', description: 'Optional description', cover_color: 'forest', cover_image: '', language: 'ja', meaning_language: '' });
+	expect((await created).postDataJSON()).toEqual({ name: 'New study', description: 'Optional description', cover_color: 'forest', cover_image: '', language: 'ja', meaning_languages: [] });
 	await expect(page.getByRole('heading', { name: 'New study', exact: true })).toBeVisible();
 	await expect(page.locator('[data-wordbook-summary]').getByLabel('Language', { exact: true })).toHaveText('Japanese');
 	await expect(page.getByText('Optional description', { exact: true })).toBeVisible();
@@ -417,12 +437,13 @@ test('wordbook upload crops an image into a persistent 600 by 900 JPEG', async (
 	await expect(preview).not.toHaveAttribute('src', originalCrop!);
 	const create = dialog.getByRole('button', { name: 'Create', exact: true });
 	await expect(create).toBeEnabled();
+	const selectedColor = await dialog.getByRole('radio', { checked: true }).inputValue();
 	const cropped = await preview.getAttribute('src');
 	const created = page.waitForRequest((request) => request.url().endsWith('/api/v1/wordbooks') && request.method() === 'POST');
 	await create.click();
 	const payload = (await created).postDataJSON();
 	expect(payload.cover_image).toBe(cropped);
-	expect(['navy', 'forest', 'ochre', 'khaki', 'rust', 'taupe', 'burgundy', 'slate-teal']).toContain(payload.cover_color);
+	expect(payload.cover_color).toBe(selectedColor);
 	expect(Buffer.from(payload.cover_image.split(',')[1], 'base64').length).toBeLessThan(600 * 1024);
 	const dimensions = await page.evaluate(async (src: string) => {
 		const image = new Image();
@@ -498,7 +519,7 @@ test('failed edits/imports are visible, unsaved input survives, deletion require
 	await apple.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(apple).toContainText('Unsaved draft');
 	await page.keyboard.press('Escape');
-	await page.getByLabel('Import JSON', { exact: true }).setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{') });
+	await importFile(page, { name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{') });
 	await expect(page.getByRole('alert')).toContainText('Choose a valid version 1 wordbook JSON export.');
 	await apple.getByRole('button', { name: 'apple', exact: true }).click();
 	await confirmInApp(page, () => apple.getByRole('button', { name: 'Delete', exact: true }).click(), false);
@@ -508,12 +529,47 @@ test('failed edits/imports are visible, unsaved input survives, deletion require
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test('wordbook toolbar keeps compact actions in order and supports keyboard menus and deletion cancel', async ({ page }) => {
+	await mockAPI(page);
+	await page.goto('/wordbooks?id=1');
+	const settings = page.getByRole('button', { name: 'Settings', exact: true });
+	const transfer = page.getByRole('button', { name: transferName, exact: true });
+	const remove = page.getByRole('button', { name: 'Delete wordbook', exact: true });
+	await expect(remove).toBeEnabled();
+	const boxes = await Promise.all([settings, transfer, remove].map((button) => button.boundingBox()));
+	for (const box of boxes) {
+		expect(box!.width).toBeCloseTo(box!.height, 0);
+		expect(box!.width).toBeCloseTo(boxes[0]!.width, 0);
+	}
+	expect(boxes[1]!.x - (boxes[0]!.x + boxes[0]!.width)).toBeCloseTo(8, 0);
+	expect(boxes[2]!.x - (boxes[1]!.x + boxes[1]!.width)).toBeCloseTo(8, 0);
+	await expect(page.getByRole('button', { name: 'Export JSON', exact: true })).toHaveCount(0);
+	await transfer.focus();
+	await page.keyboard.press('ArrowDown');
+	await expect(transfer).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByRole('menuitem', { name: 'Import JSON', exact: true })).toBeFocused();
+	await page.keyboard.press('ArrowDown');
+	await expect(page.getByRole('menuitem', { name: 'Export JSON', exact: true })).toBeFocused();
+	await page.keyboard.press('Escape');
+	await expect(transfer).toBeFocused();
+	await remove.click();
+	const dialog = page.getByRole('dialog', { name: 'Delete wordbook', exact: true });
+	await expect(dialog).toBeVisible();
+	await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+	await expect(dialog).toHaveCount(0);
+	await expect(remove).toBeFocused();
+});
+
 test('specific wordbook has compact controls, metadata and four persistent entry sort orders', async ({ page }) => {
 	await mockAPI(page, [{ ...makeBook(1, 'English notebook', true), language: 'en' }]);
 	await page.goto('/wordbooks?id=1');
 	const main = page.getByRole('main');
 	const sort = main.getByRole('combobox', { name: 'Sort', exact: true });
 	const summary = page.locator('[data-wordbook-summary]');
+	const remove = main.getByRole('button', { name: 'Delete wordbook', exact: true });
+	await expect(remove).toBeDisabled();
+	await expect(main.getByText('Your last wordbook cannot be deleted. Create another wordbook first.', { exact: true })).toBeVisible();
+	await expect(remove).toHaveAttribute('aria-describedby', 'wordbook-last-delete');
 	await expect(main.getByRole('link', { name: 'Back to wordbooks' })).toHaveCount(0);
 	await expect(main.getByRole('button', { name: 'New wordbook', exact: true })).toHaveCount(0);
 	await expect(main.getByRole('button', { name: 'Display settings', exact: true })).toHaveCount(0);

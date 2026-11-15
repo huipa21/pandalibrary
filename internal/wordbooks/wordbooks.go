@@ -25,28 +25,30 @@ const (
 )
 
 type Wordbook struct {
-	ID              int64  `json:"id"`
-	Name            string `json:"name"`
-	Description     string `json:"description"`
-	Language        string `json:"language"`
-	MeaningLanguage string `json:"meaning_language"`
-	CoverColor      string `json:"cover_color"`
-	CoverImage      string `json:"cover_image"`
-	EntryCount      int    `json:"entry_count"`
-	BookCount       int    `json:"book_count"`
-	IsDefault       bool   `json:"is_default"`
-	Archived        bool   `json:"archived"`
-	CreatedAt       string `json:"created_at"`
-	UpdatedAt       string `json:"updated_at"`
+	ID               int64    `json:"id"`
+	Name             string   `json:"name"`
+	Description      string   `json:"description"`
+	Language         string   `json:"language"`
+	MeaningLanguage  string   `json:"meaning_language"`
+	MeaningLanguages []string `json:"meaning_languages"`
+	CoverColor       string   `json:"cover_color"`
+	CoverImage       string   `json:"cover_image"`
+	EntryCount       int      `json:"entry_count"`
+	BookCount        int      `json:"book_count"`
+	IsDefault        bool     `json:"is_default"`
+	Archived         bool     `json:"archived"`
+	CreatedAt        string   `json:"created_at"`
+	UpdatedAt        string   `json:"updated_at"`
 }
 
 type BookCreate struct {
-	Name            string `json:"name"`
-	Description     string `json:"description"`
-	Language        string `json:"language"`
-	MeaningLanguage string `json:"meaning_language"`
-	CoverColor      string `json:"cover_color"`
-	CoverImage      string `json:"cover_image"`
+	Name             string   `json:"name"`
+	Description      string   `json:"description"`
+	Language         string   `json:"language"`
+	MeaningLanguage  string   `json:"meaning_language"`
+	MeaningLanguages []string `json:"meaning_languages"`
+	CoverColor       string   `json:"cover_color"`
+	CoverImage       string   `json:"cover_image"`
 }
 
 type Source struct {
@@ -125,13 +127,14 @@ type Capture struct {
 }
 
 type BookPatch struct {
-	Name            *string `json:"name"`
-	Archived        *bool   `json:"archived"`
-	Description     *string `json:"description"`
-	Language        *string `json:"language"`
-	MeaningLanguage *string `json:"meaning_language"`
-	CoverColor      *string `json:"cover_color"`
-	CoverImage      *string `json:"cover_image"`
+	Name             *string   `json:"name"`
+	Archived         *bool     `json:"archived"`
+	Description      *string   `json:"description"`
+	Language         *string   `json:"language"`
+	MeaningLanguage  *string   `json:"meaning_language"`
+	MeaningLanguages *[]string `json:"meaning_languages"`
+	CoverColor       *string   `json:"cover_color"`
+	CoverImage       *string   `json:"cover_image"`
 }
 
 type EntryPatch struct {
@@ -174,15 +177,19 @@ func now() string                  { return time.Now().UTC().Format(time.RFC3339
 type scanner interface{ Scan(...any) error }
 
 func scanBook(row scanner) (b Wordbook, err error) {
-	err = row.Scan(&b.ID, &b.Name, &b.IsDefault, &b.Archived, &b.CreatedAt, &b.UpdatedAt, &b.Description, &b.Language, &b.MeaningLanguage, &b.CoverColor, &b.CoverImage, &b.EntryCount, &b.BookCount)
+	var languages string
+	err = row.Scan(&b.ID, &b.Name, &b.IsDefault, &b.Archived, &b.CreatedAt, &b.UpdatedAt, &b.Description, &b.Language, &b.MeaningLanguage, &languages, &b.CoverColor, &b.CoverImage, &b.EntryCount, &b.BookCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = catalog.ErrNotFound
+	}
+	if err == nil {
+		err = json.Unmarshal([]byte(languages), &b.MeaningLanguages)
 	}
 	return
 }
 
 // Counts are correlated subqueries so a single list query returns them without per-book round trips.
-const bookColumns = `id, name, is_default, archived, created_at, updated_at, description, language, meaning_language, cover_color, cover_image,
+const bookColumns = `id, name, is_default, archived, created_at, updated_at, description, language, meaning_language, meaning_languages, cover_color, cover_image,
 	(SELECT count(*) FROM wordbook_entries e WHERE e.wordbook_id = wordbooks.id),
 	(SELECT count(DISTINCT json_extract(e.source, '$.book_id')) FROM wordbook_entries e WHERE e.wordbook_id = wordbooks.id)`
 
@@ -242,6 +249,40 @@ func validLanguage(language string) bool {
 	return language == "" || len(language) <= 35 && languagePattern.MatchString(language)
 }
 
+func normalizeMeaningLanguages(legacy string, languages []string) (string, []string, error) {
+	legacy = strings.TrimSpace(legacy)
+	if !validLanguage(legacy) {
+		return "", nil, invalid("meaning_language must be a BCP 47 language tag")
+	}
+	if languages == nil {
+		languages = []string{}
+		if legacy != "" {
+			languages = append(languages, legacy)
+		}
+	}
+	if len(languages) > 20 {
+		return "", nil, invalid("meaning_languages must contain at most 20 language tags")
+	}
+	result := []string{}
+	seen := map[string]bool{}
+	for _, language := range languages {
+		language = strings.TrimSpace(language)
+		if language == "" || !validLanguage(language) {
+			return "", nil, invalid("meaning_languages must contain BCP 47 language tags")
+		}
+		key := strings.ToLower(language)
+		if !seen[key] {
+			result = append(result, language)
+			seen[key] = true
+		}
+	}
+	legacy = ""
+	if len(result) > 0 {
+		legacy = result[0]
+	}
+	return legacy, result, nil
+}
+
 func (s *Service) Create(ctx context.Context, userID int64, name string) (Wordbook, error) {
 	return s.CreateWithDescription(ctx, userID, BookCreate{Name: name})
 }
@@ -259,9 +300,9 @@ func (s *Service) CreateWithDescription(ctx context.Context, userID int64, input
 	if !validLanguage(language) {
 		return Wordbook{}, invalid("language must be a BCP 47 language tag")
 	}
-	meaningLanguage := strings.TrimSpace(input.MeaningLanguage)
-	if !validLanguage(meaningLanguage) {
-		return Wordbook{}, invalid("meaning_language must be a BCP 47 language tag")
+	meaningLanguage, meaningLanguages, err := normalizeMeaningLanguages(input.MeaningLanguage, input.MeaningLanguages)
+	if err != nil {
+		return Wordbook{}, err
 	}
 	if err := validateCover(input.CoverColor, input.CoverImage); err != nil {
 		return Wordbook{}, err
@@ -282,7 +323,8 @@ func (s *Service) CreateWithDescription(ctx context.Context, userID int64, input
 		return Wordbook{}, invalid("wordbook limit reached")
 	}
 	stamp := now()
-	result, err := tx.ExecContext(ctx, "INSERT INTO wordbooks(user_id, name, description, language, meaning_language, cover_color, cover_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", userID, name, description, language, meaningLanguage, input.CoverColor, input.CoverImage, stamp, stamp)
+	languagesJSON, _ := json.Marshal(meaningLanguages)
+	result, err := tx.ExecContext(ctx, "INSERT INTO wordbooks(user_id, name, description, language, meaning_language, meaning_languages, cover_color, cover_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", userID, name, description, language, meaningLanguage, string(languagesJSON), input.CoverColor, input.CoverImage, stamp, stamp)
 	if err != nil {
 		return Wordbook{}, err
 	}
@@ -298,7 +340,7 @@ func (s *Service) CreateWithDescription(ctx context.Context, userID int64, input
 }
 
 func (s *Service) PatchBook(ctx context.Context, userID, id int64, patch BookPatch) (Wordbook, error) {
-	if patch.Name == nil && patch.Archived == nil && patch.Description == nil && patch.Language == nil && patch.MeaningLanguage == nil && patch.CoverColor == nil && patch.CoverImage == nil {
+	if patch.Name == nil && patch.Archived == nil && patch.Description == nil && patch.Language == nil && patch.MeaningLanguage == nil && patch.MeaningLanguages == nil && patch.CoverColor == nil && patch.CoverImage == nil {
 		return Wordbook{}, invalid("no changes supplied")
 	}
 	tx, err := s.writer.BeginTx(ctx, nil)
@@ -331,10 +373,18 @@ func (s *Service) PatchBook(ctx context.Context, userID, id int64, patch BookPat
 			return Wordbook{}, invalid("language must be a BCP 47 language tag")
 		}
 	}
-	if patch.MeaningLanguage != nil {
-		b.MeaningLanguage = strings.TrimSpace(*patch.MeaningLanguage)
-		if !validLanguage(b.MeaningLanguage) {
-			return Wordbook{}, invalid("meaning_language must be a BCP 47 language tag")
+	if patch.MeaningLanguage != nil || patch.MeaningLanguages != nil {
+		legacy := ""
+		if patch.MeaningLanguage != nil {
+			legacy = *patch.MeaningLanguage
+		}
+		var languages []string
+		if patch.MeaningLanguages != nil {
+			languages = *patch.MeaningLanguages
+		}
+		b.MeaningLanguage, b.MeaningLanguages, err = normalizeMeaningLanguages(legacy, languages)
+		if err != nil {
+			return Wordbook{}, err
 		}
 	}
 	if b.IsDefault && b.Archived {
@@ -350,7 +400,8 @@ func (s *Service) PatchBook(ctx context.Context, userID, id int64, patch BookPat
 		return Wordbook{}, err
 	}
 	b.UpdatedAt = now()
-	if _, err = tx.ExecContext(ctx, "UPDATE wordbooks SET name = ?, description = ?, language = ?, meaning_language = ?, cover_color = ?, cover_image = ?, archived = ?, updated_at = ? WHERE id = ? AND user_id = ?", b.Name, b.Description, b.Language, b.MeaningLanguage, b.CoverColor, b.CoverImage, b.Archived, b.UpdatedAt, b.ID, userID); err != nil {
+	languagesJSON, _ := json.Marshal(b.MeaningLanguages)
+	if _, err = tx.ExecContext(ctx, "UPDATE wordbooks SET name = ?, description = ?, language = ?, meaning_language = ?, meaning_languages = ?, cover_color = ?, cover_image = ?, archived = ?, updated_at = ? WHERE id = ? AND user_id = ?", b.Name, b.Description, b.Language, b.MeaningLanguage, string(languagesJSON), b.CoverColor, b.CoverImage, b.Archived, b.UpdatedAt, b.ID, userID); err != nil {
 		return Wordbook{}, err
 	}
 	return b, tx.Commit()

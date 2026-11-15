@@ -140,6 +140,70 @@ func TestWordbookLanguage(t *testing.T) {
 	}
 }
 
+func TestWordbookMeaningLanguages(t *testing.T) {
+	f := newWordbookFixture(t)
+	book := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{
+		"name": "Study", "meaning_language": "en", "meaning_languages": []string{" zh-Hant ", "ja", "ZH-hant"},
+	}, f.reader), http.StatusCreated)
+	check := func(book wordbooks.Wordbook, legacy string, languages []string) {
+		t.Helper()
+		if book.MeaningLanguage != legacy || !reflect.DeepEqual(book.MeaningLanguages, languages) {
+			t.Fatalf("meaning preferences = %q %#v", book.MeaningLanguage, book.MeaningLanguages)
+		}
+	}
+	check(book, "zh-Hant", []string{"zh-Hant", "ja"})
+	base := fmt.Sprintf("/api/v1/wordbooks/%d", book.ID)
+	wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"name": "Renamed"}, f.reader), http.StatusOK)
+	list := wordbookDecode[struct {
+		Wordbooks []wordbooks.Wordbook `json:"wordbooks"`
+	}](t, f.request(http.MethodGet, "/api/v1/wordbooks", nil, f.reader, nil), http.StatusOK)
+	check(list.Wordbooks[1], "zh-Hant", []string{"zh-Hant", "ja"})
+	book = wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"meaning_language": "en-GB"}, f.reader), http.StatusOK)
+	check(book, "en-GB", []string{"en-GB"})
+	book = wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"meaning_language": "ja", "meaning_languages": []string{}}, f.reader), http.StatusOK)
+	check(book, "", []string{})
+	book = wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{"name": "Legacy", "meaning_language": "ja"}, f.reader), http.StatusCreated)
+	check(book, "ja", []string{"ja"})
+	for _, invalid := range []any{nil, "en", 3, []any{nil}, []string{""}, []string{"en_US"}, []string{strings.Repeat("a", 36)}, make([]string, 21)} {
+		expectShelfStatus(t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{"name": "Bad", "meaning_languages": invalid}, f.reader), http.StatusBadRequest)
+		expectShelfStatus(t, f.send(http.MethodPatch, base, map[string]any{"meaning_languages": invalid}, f.reader), http.StatusBadRequest)
+	}
+	expectShelfStatus(t, f.send(http.MethodPatch, base, map[string]any{"meaning_languages": []string{"en"}}, f.other), http.StatusNotFound)
+}
+
+func TestWordbookSettingsRealisticCover(t *testing.T) {
+	f := newWordbookFixture(t)
+	imageData := image.NewRGBA(image.Rect(0, 0, 600, 900))
+	var state uint32 = 1
+	for i := 0; i < len(imageData.Pix); i += 4 {
+		state = state*1664525 + 1013904223
+		imageData.Pix[i], imageData.Pix[i+1], imageData.Pix[i+2], imageData.Pix[i+3] = byte(state), byte(state>>8), byte(state>>16), 255
+	}
+	var jpegData bytes.Buffer
+	if err := jpeg.Encode(&jpegData, imageData, &jpeg.Options{Quality: 85}); err != nil {
+		t.Fatal(err)
+	}
+	cover := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(jpegData.Bytes())
+	settings := map[string]any{
+		"name": "Photo vocabulary", "description": strings.Repeat("语", 2000), "language": "en",
+		"meaning_language": "zh", "cover_color": "forest", "cover_image": cover,
+	}
+	body, _ := json.Marshal(settings)
+	if len(body) >= 1<<20 || jpegData.Len() > wordbooks.MaxCoverImageBytes {
+		t.Fatalf("fixture exceeds existing bounds: body=%d jpeg=%d", len(body), jpegData.Len())
+	}
+	book := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", settings, f.reader), http.StatusCreated)
+	settings["meaning_languages"] = []string{"zh", "ja"}
+	for _, color := range []string{"crimson", "coral", "orange", "amber", "olive", "emerald", "turquoise", "sky", "cobalt", "violet", "plum", "charcoal"} {
+		settings["cover_color"] = color
+		saved := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, fmt.Sprintf("/api/v1/wordbooks/%d", book.ID), settings, f.reader), http.StatusOK)
+		if saved.CoverColor != color || saved.CoverImage != cover || !reflect.DeepEqual(saved.MeaningLanguages, []string{"zh", "ja"}) {
+			t.Fatal("settings were not persisted")
+		}
+	}
+	t.Logf("realistic 600x900 JPEG: %d bytes; legacy settings JSON: %d bytes (limit %d)", jpegData.Len(), len(body), 1<<20)
+}
+
 func TestWordbookDescription(t *testing.T) {
 	f := newWordbookFixture(t)
 	book := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{

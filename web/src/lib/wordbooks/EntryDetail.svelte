@@ -6,12 +6,13 @@
 	import { lexicalEntry, sourceHref } from './management.js';
 	import { appropriateSnapshots } from './preview.js';
 
-	let { entry, disabled = false, readonly = false, language = '', meaningLanguage = '', onsave, ondelete, onclose }: {
+	let { entry, disabled = false, readonly = false, language = '', meaningLanguage = '', meaningLanguages, onsave, ondelete, onclose }: {
 		entry: WordbookEntry;
 		disabled?: boolean;
 		readonly?: boolean;
 		language?: string;
 		meaningLanguage?: string;
+		meaningLanguages?: string[];
 		onsave: (id: number, changes: { text: string; definition?: string; note?: string }) => Promise<boolean>;
 		ondelete: (id: number) => Promise<void>;
 		onclose: () => void;
@@ -22,7 +23,7 @@
 	let definition = $state('');
 	let note = $state('');
 	const lexical = $derived(lexicalEntry(entry));
-	const snapshots = $derived(appropriateSnapshots(entry.dictionary_entries, language, meaningLanguage));
+	const snapshots = $derived(appropriateSnapshots(entry.dictionary_entries, language, meaningLanguages ?? meaningLanguage));
 	const href = $derived(sourceHref(entry.source));
 	const page = $derived(
 		entry.source.locator && typeof entry.source.locator === 'object' && !Array.isArray(entry.source.locator)

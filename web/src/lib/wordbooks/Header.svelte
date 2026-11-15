@@ -2,18 +2,24 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import SearchField from '#lib/search/SearchField.svelte';
 	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
-	import { filterControlClass, primaryIconControlClass } from '#lib/catalog/filter-styles.js';
+	import HeaderMenu from '#lib/shell/HeaderMenu.svelte';
+	import { Settings, ArrowDownUp, Trash2 } from '@lucide/svelte';
+	import { filterControlClass, iconControlClass, primaryIconControlClass } from '#lib/catalog/filter-styles.js';
 	import type { Category, EntrySort, EntryView, WordbookSort, WordbookStatus } from './management.js';
 
 	let { category = $bindable<Category>('wordbooks'), keyword = $bindable(''), sort, view,
 		inside = false, wordbookSort = $bindable<WordbookSort>('recent'), status = $bindable<WordbookStatus>('active'),
-		disabled = false, onchange, onoverviewchange, oncreate, onsettings }: {
+		disabled = false, canDelete = false, importDisabled = false, onchange, onoverviewchange, oncreate, onsettings, ondelete, onimport, onexport }: {
 		category?: Category; keyword?: string; sort: EntrySort; view: EntryView;
 		wordbookSort?: WordbookSort; status?: WordbookStatus; onoverviewchange: () => void;
 		inside?: boolean; disabled?: boolean;
 		onchange: (view: EntryView, sort: EntrySort) => void; oncreate: () => void;
-		onsettings: () => void;
+		onsettings: () => void; ondelete: () => void;
+		onimport: (event: Event) => void; onexport: () => void;
+		canDelete?: boolean; importDisabled?: boolean;
 	} = $props();
+	let importInput = $state<HTMLInputElement | null>(null);
+	const transferLabel = $derived(`${m['wordbooks.import']()} / ${m['wordbooks.export']()}`);
 </script>
 
 <div class="flex flex-wrap items-center gap-2">
@@ -46,9 +52,26 @@
 	{/if}
 	<ViewToggle view={view === 'cards' ? 'grid' : 'list'} onchange={(next) => onchange(next === 'grid' ? 'cards' : 'list', sort)} />
 	{#if inside}
-		<button type="button" class={filterControlClass} aria-label={m['wordbooks.settings']()} title={m['wordbooks.settings']()} {disabled} onclick={onsettings}>
-			<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 3-.6 2.4-2 .9-2.2-.7-2 3.4 1.7 1.7-.1 2.4L2 14.8l2 3.5 2.4-.7 2 .9L9 21h4l.6-2.5 2-.9 2.4.7 2-3.5-1.8-1.7-.1-2.4L20 9l-2-3.4-2.2.7-2-.9L13 3Z" /><circle cx="11" cy="12" r="3" /></svg>
-		</button>
+		<div class="flex items-center gap-2">
+			<button type="button" class={iconControlClass} aria-label={m['wordbooks.settings']()} title={m['wordbooks.settings']()} {disabled} onclick={onsettings}>
+				<Settings aria-hidden="true" class="size-5" />
+			</button>
+			<HeaderMenu menuId="wordbook-transfer" popup="menu" label={transferLabel} panelClass="shelf-actions-menu">
+				{#snippet trigger({ expanded, controls, popup, toggle, onkeydown })}
+					<button type="button" class={iconControlClass} aria-label={transferLabel} title={transferLabel} aria-haspopup={popup} aria-expanded={expanded} aria-controls={controls} {disabled} onclick={toggle} {onkeydown}>
+						<ArrowDownUp aria-hidden="true" class="size-5" />
+					</button>
+				{/snippet}
+				{#snippet children(close)}
+					<button type="button" role="menuitem" tabindex="-1" class="header-menu-item" class:opacity-50={importDisabled} aria-disabled={importDisabled} onclick={() => { if (!importDisabled) { importInput?.click(); void close(); } }}>{m['wordbooks.import']()}</button>
+					<button type="button" role="menuitem" tabindex="-1" class="header-menu-item" onclick={() => { void close(); onexport(); }}>{m['wordbooks.export']()}</button>
+				{/snippet}
+			</HeaderMenu>
+			<input bind:this={importInput} type="file" accept=".json,application/json" aria-label={m['wordbooks.import']()} disabled={disabled || importDisabled} onchange={onimport} hidden />
+			<button type="button" class={iconControlClass} aria-label={m['wordbooks.deleteBook']()} aria-describedby={!canDelete ? 'wordbook-last-delete' : undefined} title={!canDelete ? m['wordbooks.lastBookDelete']() : m['wordbooks.deleteBook']()} disabled={disabled || !canDelete} onclick={ondelete}>
+				<Trash2 aria-hidden="true" class="size-5" />
+			</button>
+		</div>
 	{/if}
 	{#if !inside}
 	<button type="button" class="{primaryIconControlClass} ml-auto" aria-label={m['wordbooks.new']()} title={m['wordbooks.new']()} {disabled} onclick={oncreate}>

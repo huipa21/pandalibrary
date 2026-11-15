@@ -37,6 +37,54 @@ test('meaning preferences persist and merge deletion preserves entries on the re
 	await expect(preview).toContainText('苹果');
 	await expect(preview).not.toContainText('A round fruit');
 	await expect(preview).not.toContainText('りんご');
+	await page.getByRole('button', { name: 'Settings', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+	const meanings = dialog.getByRole('group', { name: 'Meaning language', exact: true });
+	await expect(meanings.getByRole('checkbox', { name: 'English–Chinese (Simplified)' })).toBeChecked();
+	await meanings.getByRole('checkbox', { name: 'English–Japanese' }).check();
+	await dialog.getByRole('radio', { name: 'Charcoal', exact: true }).check();
+	const image = await page.evaluate(() => {
+		const canvas = document.createElement('canvas');
+		canvas.width = 600;
+		canvas.height = 900;
+		const context = canvas.getContext('2d')!;
+		const pixels = context.createImageData(600, 900);
+		let state = 1;
+		for (let i = 0; i < pixels.data.length; i += 4) {
+			state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+			pixels.data[i] = state & 255;
+			pixels.data[i + 1] = (state >>> 8) & 255;
+			pixels.data[i + 2] = (state >>> 16) & 255;
+			pixels.data[i + 3] = 255;
+		}
+		context.putImageData(pixels, 0, 0);
+		return canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+	});
+	await dialog.locator('input[type="file"]').setInputFiles({
+		name: 'realistic-cover.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(image, 'base64')
+	});
+	await expect(dialog.locator('img[src^="data:image/jpeg;base64,"]')).toBeVisible();
+	await dialog.getByLabel('Description (optional)', { exact: true }).fill('Saved from the actual settings dialog');
+	const saveResponse = page.waitForResponse((response) =>
+		response.request().method() === 'PATCH' && response.url().endsWith(`/api/v1/wordbooks/${source.id}`));
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+	const saved = await saveResponse;
+	expect(saved.status(), await saved.text()).toBe(200);
+	expect(await saved.json()).toMatchObject({
+		meaning_language: 'zh', meaning_languages: ['zh', 'ja'], cover_color: 'charcoal',
+		description: 'Saved from the actual settings dialog',
+		cover_image: expect.stringMatching(/^data:image\/jpeg;base64,/)
+	});
+	await expect(dialog).not.toBeVisible();
+	await expect(preview).toContainText('苹果');
+	await expect(preview).toContainText('りんご');
+	await page.reload();
+	await page.getByRole('button', { name: 'Settings', exact: true }).click();
+	await expect(meanings.getByRole('checkbox', { name: 'English–Chinese (Simplified)' })).toBeChecked();
+	await expect(meanings.getByRole('checkbox', { name: 'English–Japanese' })).toBeChecked();
+	await expect(dialog.getByRole('radio', { name: 'Charcoal', exact: true })).toBeChecked();
+	await expect(dialog.locator('img[src^="data:image/jpeg;base64,"]')).toBeVisible();
+	await page.keyboard.press('Escape');
 	const changed = await page.request.patch(`/api/v1/wordbooks/${source.id}`, {
 		data: { name: 'English preview', meaning_language: 'en' }
 	});
@@ -48,7 +96,7 @@ test('meaning preferences persist and merge deletion preserves entries on the re
 	expect(listed.ok()).toBe(true);
 	const { wordbooks } = await listed.json() as { wordbooks: Wordbook[] };
 	expect(wordbooks.find((book) => book.id === source.id)).toMatchObject({
-		name: 'English preview', language: 'en', meaning_language: 'en'
+		name: 'English preview', language: 'en', meaning_language: 'en', meaning_languages: ['en'], cover_color: 'charcoal'
 	});
 
 	const merged = await page.request.delete(`/api/v1/wordbooks/${source.id}`, {

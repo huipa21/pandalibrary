@@ -16,7 +16,8 @@ const (
 // Empty color and image select the automatic palette and generated cover.
 func validateCover(color, image string) error {
 	switch color {
-	case "", "navy", "forest", "ochre", "khaki", "rust", "taupe", "burgundy", "slate-teal":
+	case "", "navy", "forest", "ochre", "khaki", "rust", "taupe", "burgundy", "slate-teal",
+		"crimson", "coral", "orange", "amber", "olive", "emerald", "turquoise", "sky", "cobalt", "violet", "plum", "charcoal":
 	default:
 		return invalid("cover_color must be empty or a supported palette color")
 	}

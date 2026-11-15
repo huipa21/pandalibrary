@@ -34,6 +34,14 @@ describe('wordbook sidebar count', () => {
 });
 
 describe('wordbook API contract', () => {
+	it('passes multi-language preferences and explicit empty selections without dropping legacy writes', async () => {
+		request.mockResolvedValue({ id: 1, meaning_language: 'zh', meaning_languages: ['zh', 'ja'] });
+		await expect(wordbooks.create('Study', { meaning_languages: ['zh', 'ja'] })).resolves.toMatchObject({ meaning_languages: ['zh', 'ja'] });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks', { method: 'POST', body: { name: 'Study', meaning_languages: ['zh', 'ja'] } });
+		await wordbooks.update(1, { meaning_languages: [] });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks/1', { method: 'PATCH', body: { meaning_languages: [] } });
+	});
+
 	it('preserves meaning language options on creation and editing, including unspecified', async () => {
 		request.mockResolvedValue({ id: 1 });
 		await wordbooks.create('Study', { language: 'en', meaning_language: 'zh' });

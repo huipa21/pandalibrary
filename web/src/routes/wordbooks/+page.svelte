@@ -214,7 +214,10 @@
 <svelte:head><title>{m['wordbooks.title']()} · {m['common.app_name']()}</title></svelte:head>
 
 <section class="min-w-0 space-y-5" aria-label={m['wordbooks.title']()} aria-busy={busy || loading}>
-	<Header bind:category bind:keyword bind:wordbookSort bind:status {sort} {view} inside={!!selected} disabled={busy || loading} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} oncreate={() => beginName('new')} onsettings={() => beginName('rename')} />
+	<Header bind:category bind:keyword bind:wordbookSort bind:status {sort} {view} inside={!!selected} disabled={busy || loading} canDelete={books.length > 1} importDisabled={!!selected?.archived} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} oncreate={() => beginName('new')} onsettings={() => beginName('rename')} ondelete={beginDelete} onimport={importBook} onexport={exportBook} />
+	{#if selected && books.length === 1 && !loading}
+		<p id="wordbook-last-delete" class="text-sm text-slate-600">{m['wordbooks.lastBookDelete']()}</p>
+	{/if}
 	{#if selected}
 		<div data-wordbook-summary class="flex flex-wrap items-center gap-3">
 			<span class="flex items-center gap-1 text-sm text-slate-500" aria-label={m['wordbooks.language']()}>
@@ -229,7 +232,7 @@
 	{#if error}<p role="alert" class="whitespace-pre-wrap break-words rounded-md border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>{/if}
 	{#if notice}<p role="status" class="text-sm text-green-800">{notice}</p>{/if}
 	{#if nameMode}
-		<WordbookDialog mode={nameMode} book={selected} onsave={saveName} onclose={() => nameMode = null} ondelete={beginDelete} canDelete={books.length > 1} />
+		<WordbookDialog mode={nameMode} book={selected} onsave={saveName} onclose={() => nameMode = null} />
 	{/if}
 	{#if deletingBook}
 		<DeleteWordbookDialog book={deletingBook} {books} ondelete={deleteBook} onclose={() => deletingBook = null} />
@@ -239,14 +242,12 @@
 		<div class="flex flex-wrap items-center gap-3">
 			{#if selected.archived}<span class="text-sm text-slate-600">{m['wordbooks.archived']()}</span>{/if}
 				{#if !selected.is_default}<button class="button" disabled={busy} onclick={archive}>{selected.archived ? m['wordbooks.unarchive']() : m['wordbooks.archive']()}</button>{/if}
-				<button class="button" disabled={busy} onclick={exportBook}>{m['wordbooks.export']()}</button>
-				<label class="button relative cursor-pointer" class:opacity-50={busy || selected.archived}>{m['wordbooks.import']()}<input class="absolute inset-0 w-full cursor-pointer opacity-0" type="file" accept=".json,application/json" aria-label={m['wordbooks.import']()} disabled={busy || selected.archived} onchange={importBook} /></label>
 		</div>
 		{#if loading}<p role="status">{m['wordbooks.loading']()}</p>
 		{:else if !sorted.length && !error}<p class="text-slate-600">{keyword || category !== 'wordbooks' ? m['wordbooks.no_matches']() : m['wordbooks.empty']()}</p>
 		{:else}
 			<ol data-view={view} aria-label={selected.name} class={view === 'cards' ? 'grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3' : 'divide-y divide-slate-200'}>
-				{#each sorted as entry (entry.id)}<li data-entry-id={entry.id} class={view === 'cards' ? 'min-w-0 rounded-lg border border-slate-200 bg-white p-4' : 'min-w-0 bg-white p-4'}><Entry {entry} language={selected.language ?? ''} meaningLanguage={selected.meaning_language ?? ''} showSources={showSources} disabled={busy || selected.archived} onsave={saveEntry} ondelete={deleteEntry} /></li>{/each}
+				{#each sorted as entry (entry.id)}<li data-entry-id={entry.id} class={view === 'cards' ? 'min-w-0 rounded-lg border border-slate-200 bg-white p-4' : 'min-w-0 bg-white p-4'}><Entry {entry} language={selected.language ?? ''} meaningLanguage={selected.meaning_language ?? ''} meaningLanguages={selected.meaning_languages} showSources={showSources} disabled={busy || selected.archived} onsave={saveEntry} ondelete={deleteEntry} /></li>{/each}
 			</ol>
 		{/if}
 	{:else if selectedId === null}
@@ -280,5 +281,5 @@
 <style>
 	.button { display: inline-block; min-height: 2.5rem; border: 1px solid #cbd5e1; border-radius: .375rem; padding: .5rem .75rem; background: white; font-size: .875rem; }
 	.button:disabled { opacity: .5; cursor: not-allowed; }
-	.button:focus-visible, .button:focus-within, input:focus-visible { outline: 2px solid #0f172a; outline-offset: 2px; }
+	.button:focus-visible, .button:focus-within { outline: 2px solid #0f172a; outline-offset: 2px; }
 </style>

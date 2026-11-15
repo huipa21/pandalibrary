@@ -13,6 +13,20 @@ const entry = (extra: Partial<WordbookEntry> = {}): WordbookEntry => ({
 });
 
 describe('compact entry preview', () => {
+	it('includes all selected meaning languages without changing source filtering or manual meanings', () => {
+		const snapshots = [
+			snapshot('custom', 'apple', { from: 'en', to: 'en', definitions: ['A fruit'] }),
+			snapshot('ecdict', 'apple', { definitions: ['苹果'] }),
+			snapshot('custom', 'apple', { from: 'en', to: 'ja', definitions: ['りんご'] }),
+			snapshot('jmdict', 'りんご', { definitions: ['wrong source'] })
+		];
+		expect(appropriateSnapshots(snapshots, 'en', ['ZH-hant', 'ja'])).toEqual([snapshots[1], snapshots[2]]);
+		expect(appropriateSnapshots(snapshots, 'en', [])).toEqual([snapshots[0]]);
+		const input = entry({ dictionary_entries: snapshots });
+		expect(entryPreview(input, 'en', ['zh', 'ja']).meaning).toBe('苹果 · りんご');
+		expect(entryPreview({ ...input, definition: 'Custom' }, 'en', ['zh', 'ja']).meaning).toBe('Custom');
+	});
+
 	it('limits Unicode code points including the ellipsis without splitting surrogate pairs', () => {
 		const full = '🍎'.repeat(101);
 		const preview = truncatePreview(full);

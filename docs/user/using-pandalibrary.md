@@ -329,9 +329,9 @@ list, then select **Archived** or **All** in the status dropdown to find and res
 The default wordbook cannot be archived.
 
 Open a wordbook and select the **Settings** gear after the list/grid toggle to
-edit its name, description, language, meaning language, and cover. For example,
-an English wordbook can show English–English or English–Chinese meanings.
-An unspecified meaning language uses the wordbook's language; leaving both
+edit its name, description, language, meaning languages, and cover. For example,
+an English wordbook can show English–English and English–Chinese meanings together.
+Selecting no meaning languages uses the wordbook's language; leaving both
 unspecified shows the available dictionary meanings.
 
 Entry cards and list items are white, four-row previews: one row of truncated
@@ -340,7 +340,7 @@ rows. Select an entry to view its full text, related meanings, notes, and source
 When no pronunciation text is available, the speaker uses browser speech
 support and reports when playback is unavailable.
 
-The **Delete wordbook** icon in Settings opens a confirmation with two choices:
+The **Delete wordbook** toolbar icon opens a confirmation with two choices:
 put the wordbook and its entries in Trash, or move every entry into another
 active wordbook before putting the empty wordbook in Trash. The last wordbook
 cannot be deleted. Deleting the default transfers that role
@@ -348,15 +348,35 @@ to another wordbook (the merge target, if supplied); a restored former default
 does not reclaim the role. If only archived wordbooks remain, the replacement
 default is unarchived. Restoring a deleted wordbook does not undo a merge.
 
-API clients can set `meaning_language` on creation or editing and send
-`{"merge_into_id": id}` to the delete endpoint. Dictionary snapshots created by
+API clients can set `meaning_languages: ["zh", "ja"]` on creation or editing
+(`POST /api/v1/wordbooks`, `PATCH /api/v1/wordbooks/{id}`). The array accepts
+up to 20 BCP 47 tags, trims whitespace, and removes case-insensitive duplicates.
+An empty array clears the preference; omitting it preserves the saved selection
+on editing. Responses include this array and the legacy `meaning_language`
+string (the first selected language, or `""`). Legacy string-only writes remain
+supported and replace the selection with one language, or clear it with `""`.
+When both fields are supplied, the array takes precedence. Existing saved
+single-language preferences are migrated without losing data.
+
+Wordbook cover colors accept the original navy, forest, ochre, khaki, rust,
+taupe, burgundy, and slate-teal palettes plus crimson, coral, orange, amber,
+olive, emerald, turquoise, sky, cobalt, violet, plum, and charcoal; `""` selects
+the automatic palette. `cover_image` accepts `""` or a standard-base64 JPEG
+data URL containing a complete 600×900 image of at most 600 KiB decoded.
+The settings JSON request remains limited to 1 MiB, which fits a maximum-sized
+image plus the bounded metadata fields.
+After upgrading, rebuild and restart the backend together with the frontend:
+an older backend rejects newer settings fields as an invalid JSON request body.
+
+Send `{"merge_into_id": id}` to the delete endpoint to merge entries. Dictionary snapshots created by
 lookup include their `from` and `to` languages; older snapshots may not have them.
 
 Each book's **Words** tab shows a compact list of its saved words, phrases,
 sentences and passages from your wordbooks, with links back to their
 wordbooks and original reading positions.
 
-Use **Export JSON** to download one wordbook, including dictionary snapshots,
+Open the **Import JSON / Export JSON** toolbar icon between Settings and Delete
+to choose an action. Use **Export JSON** to download one wordbook, including dictionary snapshots,
 manual definitions, notes and source positions. **Import JSON** imports a
 PandaLibrary wordbook export into the selected wordbook. Imported entries get new
 IDs; their dates and source information are retained, but opening the original

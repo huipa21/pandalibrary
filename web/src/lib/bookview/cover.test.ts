@@ -13,11 +13,13 @@ describe('cover appearance overrides', () => {
 		random.mockReturnValue(0);
 		const navy = render(WordbookDialog, { props }).body;
 		random.mockReturnValue(1 - Number.EPSILON);
-		const teal = render(WordbookDialog, { props }).body;
+		const charcoal = render(WordbookDialog, { props }).body;
+		const inputs = navy.match(/<input\b[^>]*type="radio"[^>]*>/g) ?? [];
+		expect(inputs).toHaveLength(20);
+		expect(inputs.find((input) => input.includes('value="crimson"'))).toContain('aria-label="Crimson"');
 		expect(navy.match(/<input[^>]*>/g)?.find((input) => input.includes('value="navy"'))).toContain('checked');
-		expect(teal.match(/<input[^>]*>/g)?.find((input) => input.includes('value="slate-teal"'))).toContain('checked');
+		expect(charcoal.match(/<input[^>]*>/g)?.find((input) => input.includes('value="charcoal"'))).toContain('checked');
 		expect(navy).toContain('upload-dropzone');
-		expect(navy).not.toContain('<select');
 	});
 
 	it('preserves saved palettes and legacy generated colors when editing', () => {
@@ -75,7 +77,7 @@ describe('cover helpers', () => {
 		random.mockReturnValue(0);
 		expect(randomCoverColor()).toBe('navy');
 		random.mockReturnValue(1 - Number.EPSILON);
-		expect(randomCoverColor()).toBe('slate-teal');
+		expect(randomCoverColor()).toBe('charcoal');
 	});
 
 	it('chooses deterministic cloth palettes across book IDs 1-1000', () => {
@@ -88,13 +90,18 @@ describe('cover helpers', () => {
 		for (const palette of palettes) {
 			expect(palette.plate).toBe('#f3eedf');
 			expect(palette.author).toBe(
-				['ochre', 'khaki', 'taupe'].includes(palette.name) ? '#120c06' : '#d9b768'
+				['ochre', 'khaki', 'taupe', 'coral', 'orange', 'amber', 'turquoise', 'sky'].includes(palette.name)
+					? '#120c06'
+					: '#d9b768'
 			);
 			expect(palette).toHaveProperty('spine');
 			expect(palette).toHaveProperty('frame');
 			expect(palette).toHaveProperty('plateRule');
 			expect(palette).toHaveProperty('ink');
 		}
+		expect([1, 2, 3, 42, 1000].map((id) => coverCloth(id).name)).toEqual([
+			'slate-teal', 'navy', 'taupe', 'taupe', 'khaki'
+		]);
 		expect(coverCloth(42)).toEqual(coverCloth(42));
 		expect(coverCloth(-42)).toEqual(coverCloth(-42));
 	});

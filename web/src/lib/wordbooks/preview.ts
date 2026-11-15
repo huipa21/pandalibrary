@@ -32,18 +32,20 @@ export function snapshotDirection(snapshot: DictionaryEntry): { from?: string; t
 }
 
 export function appropriateSnapshots(
-	snapshots: readonly DictionaryEntry[], language = '', meaningLanguage = ''
+	snapshots: readonly DictionaryEntry[], language = '', meaningLanguage: string | readonly string[] = ''
 ): DictionaryEntry[] {
 	const source = primaryLanguage(language);
-	const target = primaryLanguage(meaningLanguage) || source;
+	const targets = (typeof meaningLanguage === 'string' ? [meaningLanguage] : meaningLanguage)
+		.map(primaryLanguage).filter(Boolean);
+	if (!targets.length && source) targets.push(source);
 	return snapshots.filter((snapshot) => {
 		const direction = snapshotDirection(snapshot);
 		return (!source || primaryLanguage(direction.from) === source)
-			&& (!target || primaryLanguage(direction.to) === target);
+			&& (!targets.length || targets.includes(primaryLanguage(direction.to)));
 	});
 }
 
-export function entryPreview(entry: WordbookEntry, language = '', meaningLanguage = '') {
+export function entryPreview(entry: WordbookEntry, language = '', meaningLanguage: string | readonly string[] = '') {
 	const snapshots = appropriateSnapshots(entry.dictionary_entries, language, meaningLanguage);
 	const source = primaryLanguage(language);
 	// Readings/POS belong to the headword, even when its translation target differs.
@@ -53,12 +55,13 @@ export function entryPreview(entry: WordbookEntry, language = '', meaningLanguag
 	const reading = metadata.find((snapshot) => snapshot.reading?.trim())?.reading?.trim() ?? '';
 	const partOfSpeech = metadata.find((snapshot) => snapshot.partOfSpeech?.trim())?.partOfSpeech?.trim() ?? '';
 	const lexical = entry.kind === 'word' || entry.kind === 'phrase';
+	const meanings = [...new Set(snapshots.map((snapshot) => snapshot.definitions.find((meaning) => meaning.trim()) ?? '').filter(Boolean))];
 	return {
 		text: truncatePreview(entry.text),
 		reading,
 		metadata: [partOfSpeech, reading].filter(Boolean).join(' · '),
 		meaning: lexical
-			? entry.definition.trim() || snapshots.flatMap((snapshot) => snapshot.definitions).find((meaning) => meaning.trim()) || ''
+			? entry.definition.trim() || (Array.isArray(meaningLanguage) && meaningLanguage.length > 1 ? meanings.join(' · ') : meanings[0]) || ''
 			: entry.note,
 		speechLanguage: language || (metadata[0] ? snapshotDirection(metadata[0]).from : '') || ''
 	};

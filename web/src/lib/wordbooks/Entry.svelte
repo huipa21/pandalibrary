@@ -5,19 +5,20 @@
 	import { entryPreview } from './preview.js';
 	import EntryDetail from './EntryDetail.svelte';
 
-	let { entry, disabled = false, readonly = false, language = '', meaningLanguage = '', onsave, ondelete }: {
+	let { entry, disabled = false, readonly = false, language = '', meaningLanguage = '', meaningLanguages, onsave, ondelete }: {
 		entry: WordbookEntry;
 		disabled?: boolean;
 		readonly?: boolean;
 		showSources?: boolean;
 		language?: string;
 		meaningLanguage?: string;
+		meaningLanguages?: string[];
 		onsave: (id: number, changes: { text: string; definition?: string; note?: string }) => Promise<boolean>;
 		ondelete: (id: number) => Promise<void>;
 	} = $props();
 	let open = $state(false);
 	let speechError = $state('');
-	const preview = $derived(entryPreview(entry, language, meaningLanguage));
+	const preview = $derived(entryPreview(entry, language, meaningLanguages ?? meaningLanguage));
 
 	function pronounce() {
 		speechError = '';
@@ -52,7 +53,7 @@
 		<p role="status" class="fixed bottom-4 left-1/2 z-50 max-w-sm -translate-x-1/2 rounded bg-white p-3 text-sm text-red-700 shadow-lg">{speechError}</p>
 	{/if}
 	{#if open}
-		<EntryDetail {entry} {language} {meaningLanguage} {disabled} {readonly} {onsave} {ondelete} onclose={() => open = false} />
+		<EntryDetail {entry} {language} {meaningLanguage} {meaningLanguages} {disabled} {readonly} {onsave} {ondelete} onclose={() => open = false} />
 	{/if}
 </article>
 

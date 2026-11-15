@@ -10,8 +10,22 @@ export const coverColors = [
 	{ name: 'rust', board: '#8b3a17', spine: '#612810', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#4c1d0a', author: '#d9b768' },
 	{ name: 'taupe', board: '#c7b495', spine: '#5c4c36', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3d3021', author: '#120c06' },
 	{ name: 'burgundy', board: '#5e1f2a', spine: '#40151d', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3d131a', author: '#d9b768' },
-	{ name: 'slate-teal', board: '#24494d', spine: '#193335', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#163035', author: '#d9b768' }
+	{ name: 'slate-teal', board: '#24494d', spine: '#193335', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#163035', author: '#d9b768' },
+	{ name: 'crimson', board: '#a51c30', spine: '#741321', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#4b101b', author: '#d9b768' },
+	{ name: 'coral', board: '#e8796f', spine: '#ad4b46', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#51221f', author: '#120c06' },
+	{ name: 'orange', board: '#e77b24', spine: '#a84910', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#4c1d0a', author: '#120c06' },
+	{ name: 'amber', board: '#e1a91a', spine: '#8a640c', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#3e2f09', author: '#120c06' },
+	{ name: 'olive', board: '#65712c', spine: '#42491e', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#313a17', author: '#d9b768' },
+	{ name: 'emerald', board: '#1f7a4d', spine: '#145133', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#123b27', author: '#d9b768' },
+	{ name: 'turquoise', board: '#21a6a0', spine: '#157773', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#103d3b', author: '#120c06' },
+	{ name: 'sky', board: '#6ca9d8', spine: '#3976a7', frame: '#3b2a17', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#163b5a', author: '#120c06' },
+	{ name: 'cobalt', board: '#2859b8', spine: '#1c3e80', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#122a55', author: '#d9b768' },
+	{ name: 'violet', board: '#7046a8', spine: '#492d70', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#33204e', author: '#d9b768' },
+	{ name: 'plum', board: '#762f5a', spine: '#4d1f3b', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#36152a', author: '#d9b768' },
+	{ name: 'charcoal', board: '#3c4148', spine: '#25292e', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#1b1e22', author: '#d9b768' }
 ] as const;
+
+const legacyCoverColorCount = 8;
 
 export function randomCoverColor(): (typeof coverColors)[number]['name'] {
 	return coverColors[Math.floor(Math.random() * coverColors.length)].name;
@@ -22,7 +36,7 @@ export function coverCloth(seed: number): (typeof coverColors)[number] {
 	hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
 	hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
 	hash ^= hash >>> 16;
-	return coverColors[(hash >>> 0) % coverColors.length];
+	return coverColors[(hash >>> 0) % legacyCoverColorCount];
 }
 
 function splitGraphemes(value: string): string[] {

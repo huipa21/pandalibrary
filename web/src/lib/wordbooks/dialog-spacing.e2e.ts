@@ -80,12 +80,48 @@ for (const width of [1280, 360]) {
 				}
 			}
 			const swatches = dialog.getByRole('group', { name: 'Cover color', exact: true });
-			await expect(swatches.getByRole('radio')).toHaveCount(8);
+			await expect(swatches.getByRole('radio')).toHaveCount(20);
 			await expect(swatches.getByRole('radio', { checked: true })).toHaveCount(1);
-			await expect(dialog.getByRole('combobox')).toHaveCount(2);
+			const language = dialog.getByRole('combobox', { name: 'Language', exact: true });
+			await expect(dialog.getByRole('combobox')).toHaveCount(1);
+			await language.selectOption('zh');
+			const selectLayout = await language.evaluate((element) => {
+				const style = getComputedStyle(element);
+				return {
+					height: element.getBoundingClientRect().height,
+					lineHeight: parseFloat(style.lineHeight),
+					padding: parseFloat(style.paddingTop) + parseFloat(style.paddingBottom),
+					border: parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth),
+					display: style.display,
+					wrap: style.flexWrap,
+					baseSelect: CSS.supports('appearance', 'base-select')
+				};
+			});
+			expect(selectLayout.height).toBeLessThanOrEqual(selectLayout.lineHeight + selectLayout.padding + selectLayout.border + 1);
+			if (selectLayout.baseSelect) {
+				expect(selectLayout.display).toBe('flex');
+				expect(selectLayout.wrap).toBe('nowrap');
+			}
 			const preview = await dialog.locator('.preview').boundingBox();
 			const palette = await swatches.boundingBox();
-			expect(preview!.x + preview!.width).toBeLessThanOrEqual(palette!.x);
+			const dropzone = await dialog.getByTestId('cover-drop-zone').boundingBox();
+			expect(preview).not.toBeNull();
+			expect(palette).not.toBeNull();
+			expect(dropzone).not.toBeNull();
+			expect(palette!.x).toBeCloseTo(preview!.x, 0);
+			expect(dropzone!.x).toBeCloseTo(palette!.x, 0);
+			expect(preview!.y + preview!.height).toBeLessThanOrEqual(palette!.y);
+			expect(palette!.y + palette!.height).toBeLessThanOrEqual(dropzone!.y);
+			expect(palette!.width).toBeGreaterThan(preview!.width);
+			if (width === 360) {
+				expect(await dialog.locator('.cover-editor').evaluate((element) =>
+					element.scrollWidth <= element.clientWidth &&
+					document.documentElement.scrollWidth <= window.innerWidth
+				)).toBe(true);
+			}
+			const crimson = swatches.getByRole('radio', { name: 'Crimson', exact: true });
+			await crimson.check();
+			await expect(crimson).toBeChecked();
 			const navy = swatches.getByRole('radio', { name: 'Navy', exact: true });
 			await navy.check();
 			await expect(navy).toBeChecked();

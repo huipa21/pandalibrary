@@ -72,29 +72,39 @@ test('settings gear follows view toggle only inside a book; edits persist and un
 	const gear = page.getByRole('button', { name: 'Settings', exact: true });
 	await expect(gear).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Rename', exact: true })).toHaveCount(0);
-	expect(await gear.evaluate((element) => element.previousElementSibling?.matches('button[data-view]'))).toBe(true);
+	expect(await gear.evaluate((element) => (
+		element === element.parentElement?.firstElementChild
+		&& element.parentElement.previousElementSibling?.matches('button[data-view]')
+	))).toBe(true);
 	await gear.click();
 	const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
 	await expect(dialog.getByLabel('Wordbook name', { exact: true })).toBeFocused();
 	await expect(dialog.getByLabel('Language', { exact: true })).toHaveValue('en');
-	await expect(dialog.getByLabel('Meaning language', { exact: true })).toHaveValue('');
-	await expect(dialog.getByLabel('Meaning language', { exact: true }).locator('option')).toHaveText([
-		'Not specified', 'English–English', 'English–Chinese (Simplified)', 'English–Japanese'
-	]);
+	const meanings = dialog.getByRole('group', { name: 'Meaning language', exact: true });
+	await expect(meanings.getByRole('checkbox')).toHaveCount(3);
+	await expect(meanings.getByRole('checkbox', { checked: true })).toHaveCount(0);
+	await expect(meanings).toContainText('Not specified');
+	await expect(dialog.getByRole('button', { name: 'Delete wordbook', exact: true })).toHaveCount(0);
 	await dialog.getByLabel('Wordbook name', { exact: true }).fill('My words');
 	await dialog.getByLabel('Description (optional)', { exact: true }).fill('Personal notes');
 	await dialog.getByRole('radio', { name: 'Forest', exact: true }).check();
 	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(dialog).not.toBeVisible();
-	expect(api.patches.at(-1)).toMatchObject({ name: 'My words', description: 'Personal notes', language: 'en', meaning_language: '', cover_color: 'forest' });
+	expect(api.patches.at(-1)).toMatchObject({ name: 'My words', description: 'Personal notes', language: 'en', meaning_languages: [], cover_color: 'forest' });
+	expect(api.patches.at(-1)).not.toHaveProperty('meaning_language');
 	await gear.click();
 	await dialog.getByLabel('Language', { exact: true }).selectOption('ja');
-	await dialog.getByLabel('Meaning language', { exact: true }).selectOption('zh');
+	await meanings.getByRole('checkbox', { name: 'Japanese–Chinese (Simplified)' }).check();
+	await meanings.getByRole('checkbox', { name: 'Japanese–English' }).check();
 	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+	expect(api.patches.at(-1)?.meaning_languages).toEqual(expect.arrayContaining(['en', 'zh']));
+	expect(api.patches.at(-1)?.meaning_languages).toHaveLength(2);
 	await page.reload();
 	await gear.click();
 	await expect(dialog.getByLabel('Language', { exact: true })).toHaveValue('ja');
-	await expect(dialog.getByLabel('Meaning language', { exact: true })).toHaveValue('zh');
+	await expect(meanings.getByRole('checkbox', { name: 'Japanese–Chinese (Simplified)' })).toBeChecked();
+	await expect(meanings.getByRole('checkbox', { name: 'Japanese–English' })).toBeChecked();
+	await expect(meanings.getByRole('checkbox', { name: 'Japanese–Japanese' })).not.toBeChecked();
 	await expect(dialog.getByRole('radio', { name: 'Forest', exact: true })).toBeChecked();
 	await page.keyboard.press('Escape');
 	await expect(dialog).not.toBeVisible();
@@ -107,14 +117,47 @@ test('settings preserves regional language tags and reports failed saves without
 	await page.getByRole('button', { name: 'Settings', exact: true }).click();
 	const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
 	await expect(dialog.getByLabel('Language', { exact: true })).toHaveValue('en-GB');
-	await expect(dialog.getByLabel('Meaning language', { exact: true })).toHaveValue('zh-Hant');
+	const regional = dialog.getByRole('checkbox', { name: 'English–zh-Hant' });
+	await expect(regional).toBeChecked();
+	await regional.uncheck();
+	await regional.check();
 	api.failSave(true);
 	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(dialog.getByRole('alert')).toContainText('Settings could not be saved.');
 	api.failSave(false);
 	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(dialog).not.toBeVisible();
-	expect(api.patches.at(-1)).toMatchObject({ language: 'en-GB', meaning_language: 'zh-Hant' });
+	expect(api.patches.at(-1)).toMatchObject({ language: 'en-GB', meaning_languages: ['zh-Hant'] });
+});
+
+test('new meaning language array takes precedence over legacy preference and preserves custom languages', async ({ page }) => {
+	const api = await mockAPI(page, [makeBook(1, 'Custom', { meaning_language: 'ja', meaning_languages: ['fr', 'zh-Hant'] })]);
+	await page.goto('/wordbooks?id=1');
+	await page.getByRole('button', { name: 'Settings', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
+	const meanings = dialog.getByRole('group', { name: 'Meaning language', exact: true });
+	await expect(meanings.getByRole('checkbox', { name: 'English–fr' })).toBeChecked();
+	await expect(meanings.getByRole('checkbox', { name: 'English–zh-Hant' })).toBeChecked();
+	await expect(meanings.getByRole('checkbox', { name: 'English–Japanese' })).not.toBeChecked();
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+	expect(api.patches.at(-1)?.meaning_languages).toEqual(expect.arrayContaining(['fr', 'zh-Hant']));
+	expect(api.patches.at(-1)?.meaning_languages).toHaveLength(2);
+	await page.getByRole('button', { name: 'Settings', exact: true }).click();
+	await meanings.getByRole('checkbox', { name: 'English–fr' }).uncheck();
+	await meanings.getByRole('checkbox', { name: 'English–zh-Hant' }).uncheck();
+	await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+	expect(api.patches.at(-1)?.meaning_languages).toEqual([]);
+	await page.getByRole('button', { name: 'Settings', exact: true }).click();
+	await expect(meanings.getByRole('checkbox', { checked: true })).toHaveCount(0);
+});
+
+test('empty meaning language array overrides a legacy value', async ({ page }) => {
+	await mockAPI(page, [makeBook(1, 'Unspecified', { meaning_language: 'ja', meaning_languages: [] })]);
+	await page.goto('/wordbooks?id=1');
+	await page.getByRole('button', { name: 'Settings', exact: true }).click();
+	const meanings = page.getByRole('group', { name: 'Meaning language', exact: true });
+	await expect(meanings.getByRole('checkbox', { checked: true })).toHaveCount(0);
+	await expect(meanings).toContainText('Not specified');
 });
 
 for (const choice of ['trash', 'merge'] as const) {
@@ -128,8 +171,7 @@ for (const choice of ['trash', 'merge'] as const) {
 				document.documentElement.dataset.wordbookChanges = String(count + 1);
 			});
 		});
-		await page.getByRole('button', { name: 'Settings', exact: true }).click();
-		await page.getByRole('dialog', { name: 'Settings', exact: true }).getByRole('button', { name: 'Delete wordbook', exact: true }).click();
+		await page.getByRole('button', { name: 'Delete wordbook', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: 'Delete wordbook', exact: true });
 		await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
 		await expect(dialog).toContainText('Trash');
@@ -162,26 +204,21 @@ for (const choice of ['trash', 'merge'] as const) {
 	});
 }
 
-test('last book deletion is disabled and deletion cancellation returns to settings', async ({ page }) => {
+test('last book deletion is disabled and deletion cancellation returns focus to the toolbar', async ({ page }) => {
 	await mockAPI(page, [makeBook(1, 'Only book')]);
 	await page.goto('/wordbooks?id=1');
-	await page.getByRole('button', { name: 'Settings', exact: true }).click();
-	const settings = page.getByRole('dialog', { name: 'Settings', exact: true });
-	await expect(settings.getByRole('button', { name: 'Delete wordbook', exact: true })).toBeDisabled();
-	await expect(settings).toContainText('Your last wordbook cannot be deleted.');
-	await page.keyboard.press('Escape');
+	const remove = page.getByRole('button', { name: 'Delete wordbook', exact: true });
+	await expect(remove).toBeDisabled();
+	await expect(page.getByText('Your last wordbook cannot be deleted.')).toBeVisible();
 	await page.unroute('**/api/v1/**');
 	const api = await mockAPI(page, [makeBook(1, 'Only active'), makeBook(2, 'Archived', { archived: true })]);
 	await page.reload();
-	await page.getByRole('button', { name: 'Settings', exact: true }).click();
-	await settings.getByLabel('Wordbook name', { exact: true }).fill('Unsaved name');
-	await settings.getByRole('button', { name: 'Delete wordbook', exact: true }).click();
+	await remove.click();
 	const deletion = page.getByRole('dialog', { name: 'Delete wordbook', exact: true });
 	await expect(deletion.getByRole('radio', { name: 'Merge entries into another wordbook', exact: true })).toBeDisabled();
 	await expect(deletion).toContainText('No other active wordbook is available.');
 	await page.keyboard.press('Escape');
-	await expect(settings).toBeVisible();
-	await expect(settings.getByLabel('Wordbook name', { exact: true })).toHaveValue('Unsaved name');
-	await expect(settings.getByRole('button', { name: 'Delete wordbook', exact: true })).toBeFocused();
+	await expect(deletion).not.toBeVisible();
+	await expect(remove).toBeFocused();
 	expect(api.deletes).toEqual([]);
 });

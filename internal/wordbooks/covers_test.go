@@ -28,7 +28,7 @@ func coverURL(data []byte) string { return coverImagePrefix + base64.StdEncoding
 
 func TestCoverValidation(t *testing.T) {
 	jpegData := testCover(t, 600, 900)
-	for _, color := range []string{"", "navy", "forest", "ochre", "khaki", "rust", "taupe", "burgundy", "slate-teal"} {
+	for _, color := range []string{"", "navy", "forest", "ochre", "khaki", "rust", "taupe", "burgundy", "slate-teal", "crimson", "coral", "orange", "amber", "olive", "emerald", "turquoise", "sky", "cobalt", "violet", "plum", "charcoal"} {
 		if err := validateCover(color, coverURL(jpegData)); err != nil {
 			t.Fatalf("palette %q: %v", color, err)
 		}
