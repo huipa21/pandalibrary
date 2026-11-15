@@ -31,10 +31,14 @@
 		return m['stats.reading.hours']({ hours: numberFormatter.format(hours) });
 	}
 
+	function hourLabel(hour: number): string {
+		return String(hour === 0 ? 24 : hour);
+	}
+
 	function hourRange(hour: number): string {
 		return m['stats.reading.hour_range']({
-			from: `${String(hour).padStart(2, '0')}:00`,
-			to: `${String(hour + 1).padStart(2, '0')}:00`
+			from: `${hourLabel(hour)}:00`,
+			to: `${hourLabel(hour + 1)}:00`
 		});
 	}
 
@@ -107,7 +111,7 @@
 							{:else}
 								<title>{hourRange(hour)}: {hoursLabel(hours)}</title>
 							{/if}
-							<text x={160 + 141 * Math.sin(hour * Math.PI / 12)} y={160 - 141 * Math.cos(hour * Math.PI / 12)} class="hour-label">{hour === 0 ? '00 / 24' : String(hour).padStart(2, '0')}</text>
+							<text x={160 + 141 * Math.sin(hour * Math.PI / 12)} y={160 - 141 * Math.cos(hour * Math.PI / 12)} class="hour-label">{hourLabel(hour)}</text>
 						</g>
 					{/each}
 				</svg>

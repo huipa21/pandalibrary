@@ -114,22 +114,45 @@ test('catalog shows nine all-time cards with counts, percentage interactions and
 	await expect(mostPages.getByRole('link').last()).toHaveAttribute('href', '/books/20');
 });
 
+test('sparse publication years retain regular decade intervals and empty gaps', async ({ page }) => {
+	await authenticate(page);
+	await page.route('**/api/v1/stats/books?*', (route) => route.fulfill({ json: {
+		...stats(),
+		total_books: 7,
+		publication_years: [{ key: '1865', count: 1 }, { key: '1946', count: 1 }, { key: 'unknown', count: 5 }]
+	} }));
+	await page.goto('/stats/books');
+	const years = page.getByRole('region', { name: titles[1], exact: true });
+	await expect(years.getByRole('button')).toHaveCount(9);
+	for (let year = 1860; year <= 1940; year += 10) {
+		const count = year === 1860 || year === 1940 ? 1 : 0;
+		await expect(years.getByRole('button', { name: `${year}: ${count}`, exact: true })).toBeVisible();
+	}
+	await expect(years.getByText('Unknown publication year: 5 (71.4%)')).toBeVisible();
+});
+
 for (const width of [900, 1440]) {
-	test(`catalog pairs charts in two columns at ${width}px`, async ({ page }) => {
+	test(`catalog pairs timelines with compact distributions at ${width}px`, async ({ page }) => {
 		await authenticate(page);
 		await page.setViewportSize({ width, height: 1000 });
 		await page.route('**/api/v1/stats/books?*', (route) => route.fulfill({ json: stats() }));
 		await page.goto('/stats/books');
 		let previousBottom = 0;
-		for (let index = 0; index < 6; index += 2) {
-			const left = page.getByRole('region', { name: titles[index], exact: true });
-			const right = page.getByRole('region', { name: titles[index + 1], exact: true });
+		for (const [leftIndex, rightIndex] of [[0, 4], [1, 5], [2, 3]]) {
+			const left = page.getByRole('region', { name: titles[leftIndex], exact: true });
+			const right = page.getByRole('region', { name: titles[rightIndex], exact: true });
 			await expect(left).toBeVisible();
 			await expect(right).toBeVisible();
 			const leftBox = (await left.boundingBox())!;
 			const rightBox = (await right.boundingBox())!;
 			expect(leftBox.y).toBeCloseTo(rightBox.y, 0);
 			expect(rightBox.x).toBeGreaterThanOrEqual(leftBox.x + leftBox.width);
+			if (leftIndex < 2) {
+				const gap = rightBox.x - leftBox.x - leftBox.width;
+				expect(leftBox.width).toBeCloseTo(rightBox.width * 2 + gap, 0);
+			} else {
+				expect(leftBox.width).toBeCloseTo(rightBox.width, 0);
+			}
 			expect(leftBox.y).toBeGreaterThanOrEqual(previousBottom);
 			previousBottom = Math.max(leftBox.y + leftBox.height, rightBox.y + rightBox.height);
 		}

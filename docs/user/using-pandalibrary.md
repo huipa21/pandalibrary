@@ -534,8 +534,12 @@ publication-year and page-count metadata is shown as unknown. Genres use catalog
 tags; untagged books do not appear in the treemap. Books with multiple tags or
 formats can appear in more than one category. Distribution percentages use the
 total number of accessible books. Addition months follow your browser's time zone.
-On wider screens, the charts are paired by row: additions and publication years,
-genres and page counts, then languages and formats.
+On wider screens, additions and languages share the first row, and publication
+years and formats share the next. Each timeline occupies two-thirds of its row
+and its pie chart one-third; genres and page counts share an equal-width row.
+Publication counts are grouped into regular, adaptive calendar intervals
+(such as 10, 20 or 50 years), labeled by their starting year and including empty
+intervals, so even sparse publication dates retain their chronological gaps.
 
 **Reading** has independent scrollable **Year** selectors for its chart cards:
 
@@ -548,7 +552,8 @@ genres and page counts, then languages and formats.
 - **Weekdays** and **Hours** are separate cards, side by side on wider screens,
   each with a **Month** selector (or **All months**). Vertical bars
   show Monday through Sunday, and circular bars show the 24 hourly time ranges
-  around a small hollow center, with 24-hour labels on the outside.
+  around a small hollow center, with labels 1 through 24 on the outside (midnight is 24,
+  and single-digit hours have no leading zero).
   Reading time is assigned to the session's local start day and hour, matching
   the heatmap and history.
 - **Reading Completion Race** shows a colored progress line for each book,

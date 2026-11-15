@@ -104,25 +104,27 @@
 		</div>
 	{:else if data}
 		{#if data.total_books === 0}<p class="text-slate-600">{m['stats.catalog.empty']()}</p>{/if}
-		<div class="grid min-w-0 gap-6 md:grid-cols-2">
-			<StatsCard title={m['stats.catalog.added.title']()}>
+		<div class="grid min-w-0 gap-6 md:grid-cols-3">
+			<StatsCard title={m['stats.catalog.added.title']()} class="md:col-span-2">
 				<DistributionChart data={added} kind="bar" label={m['stats.catalog.added.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} showValues />
 			</StatsCard>
-			<StatsCard title={m['stats.catalog.years.title']()}>
+			<StatsCard title={m['stats.catalog.languages.title']()}>
+				<DistributionChart data={languages} kind="pie" label={m['stats.catalog.languages.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="hover" />
+			</StatsCard>
+			<StatsCard title={m['stats.catalog.years.title']()} class="md:col-span-2">
 				<DistributionChart data={years} kind="area" label={m['stats.catalog.years.title']()} empty={m['stats.catalog.years.empty']()} tableLabel={m['stats.catalog.details']()} />
 				<p class="mt-3 text-sm text-slate-600">{m['stats.catalog.years.unknown']({ value: formatBookShare(unknownYears, data.total_books, locale) })}</p>
 			</StatsCard>
+			<StatsCard title={m['stats.catalog.formats.title']()}>
+				<DistributionChart data={formats} kind="pie" label={m['stats.catalog.formats.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="click" />
+			</StatsCard>
+		</div>
+		<div class="grid min-w-0 gap-6 md:grid-cols-2">
 			<StatsCard title={m['stats.catalog.genres.title']()}>
 				<DistributionChart data={genres} kind="treemap" label={m['stats.catalog.genres.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} />
 			</StatsCard>
 			<StatsCard title={m['stats.catalog.page_counts.title']()}>
 				<DistributionChart data={pages} kind="bar" label={m['stats.catalog.page_counts.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="hover" />
-			</StatsCard>
-			<StatsCard title={m['stats.catalog.languages.title']()}>
-				<DistributionChart data={languages} kind="pie" label={m['stats.catalog.languages.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="hover" />
-			</StatsCard>
-			<StatsCard title={m['stats.catalog.formats.title']()}>
-				<DistributionChart data={formats} kind="pie" label={m['stats.catalog.formats.title']()} empty={m['stats.catalog.distribution_empty']()} tableLabel={m['stats.catalog.details']()} interaction="click" />
 			</StatsCard>
 		</div>
 		<div class="grid min-w-0 gap-6 md:grid-cols-2 xl:grid-cols-3">

@@ -29,8 +29,27 @@ export function bucketData(
 	}));
 }
 
+/** Calendar-aligned interval starts, with summed counts and zero-filled gaps. */
 export function publicationTimeline(buckets: readonly BookBucket[]): BookBucket[] {
-	return buckets.filter(({ key }) => /^\d+$/.test(key)).toSorted((a, b) => Number(a.key) - Number(b.key));
+	const years = buckets
+		.filter(({ key }) => /^\d+$/.test(key) && Number.isSafeInteger(Number(key)))
+		.map(({ key, count }) => ({ year: Number(key), count }));
+	if (!years.length) return [];
+	const first = years.reduce((min, { year }) => Math.min(min, year), Infinity);
+	const last = years.reduce((max, { year }) => Math.max(max, year), -Infinity);
+	const target = Math.max(1, (last - first) / 10);
+	const magnitude = 10 ** Math.floor(Math.log10(target));
+	const step = [1, 2, 5, 10].find((multiple) => multiple * magnitude >= target)! * magnitude;
+	const start = Math.floor(first / step);
+	const end = Math.floor(last / step);
+	const timeline = Array.from({ length: end - start + 1 }, (_, index) => ({
+		key: String((start + index) * step),
+		count: 0
+	}));
+	for (const { year, count } of years) {
+		timeline[Math.floor(year / step) - start].count += count;
+	}
+	return timeline;
 }
 
 export function addedLabel(key: string, locale: string): string {

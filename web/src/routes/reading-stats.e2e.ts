@@ -91,8 +91,12 @@ test('reading cards share yearly data, filter independently and expose exact cha
 	expect(requests).toHaveLength(2);
 	await expect(weekdaysCard.getByRole('img', { name: 'Weekdays', exact: true })).toBeVisible();
 	await expect(hoursCard.getByRole('img', { name: 'Hours', exact: true })).toBeVisible();
-	await expect(hoursCard.locator('.hour-label')).toHaveCount(24);
-	await expect(hoursCard.locator('.hour-label').first()).toHaveText('00 / 24');
+	await expect(hoursCard.locator('.hour-label')).toHaveText([
+		'24', ...Array.from({ length: 23 }, (_, index) => String(index + 1))
+	]);
+	await expect(hoursCard.locator('.hour-chart path title')).toHaveText([
+		'24:00–1:00: 6 h', '6:00–7:00: 2 h', '23:00–24:00: 1 h'
+	]);
 	const weekdayBox = await weekdaysCard.boundingBox();
 	const hoursBox = await hoursCard.boundingBox();
 	expect(weekdayBox && hoursBox && Math.abs(weekdayBox.y - hoursBox.y) < 2 && hoursBox.x > weekdayBox.x).toBe(true);
@@ -118,10 +122,13 @@ test('reading cards share yearly data, filter independently and expose exact cha
 	await hoursCard.getByText('Reading hours by time range', { exact: true }).click();
 	const hours = hoursCard.getByRole('table', { name: 'Hours', exact: true });
 	await expect(hours.getByRole('row')).toHaveCount(4);
-	await expect(hours.getByRole('row').nth(1)).toHaveText('00:00–01:006 h');
+	await expect(hours.getByRole('row').nth(1)).toHaveText('24:00–1:006 h');
+	await expect(hours.getByRole('row').nth(2)).toHaveText('6:00–7:002 h');
 	await expect(hours.getByRole('row').nth(3)).toHaveText('23:00–24:001 h');
 	await hoursCard.getByLabel('Month', { exact: true }).selectOption('2');
 	await expect(hoursCard.getByText('2 h', { exact: true }).first()).toBeAttached();
+	await expect(hours.locator('tbody tr')).toHaveText(['6:00–7:002 h']);
+	await expect(hoursCard.locator('.hour-chart path title')).toHaveText(['6:00–7:00: 2 h']);
 	await expect(weekdaysCard.getByLabel('Month', { exact: true })).toHaveValue('0');
 	await hoursCard.getByLabel('Month', { exact: true }).selectOption('3');
 	await expect(hoursCard.getByText('No reading recorded in this period.')).toBeVisible();
