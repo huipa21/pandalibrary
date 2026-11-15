@@ -81,7 +81,7 @@
 	}
 
 	.reader-note-editor :global(.cm-editor.cm-focused) {
-		outline: 2px solid #0f172a;
+		outline: 2px solid var(--shell-active, #047857);
 		outline-offset: 2px;
 	}
 
