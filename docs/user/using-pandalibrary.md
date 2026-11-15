@@ -628,7 +628,8 @@ intervals, so even sparse publication dates retain their chronological gaps.
   count also includes books with reading activity in that year whose status is
   Read or Reading. Skimmed and Abandoned books do not count as Read.
 - **Weekdays** and **Hours** are separate cards, side by side on wider screens,
-  each with a **Month** selector (or **All months**). Vertical bars
+  each with year and month selectors together in the top row; month options use
+  abbreviated names, with **All** selecting the full year. Vertical bars
   show Monday through Sunday, and circular bars show the 24 hourly time ranges
   around a small hollow center, with labels 1 through 24 on the outside (midnight is 24,
   and single-digit hours have no leading zero).

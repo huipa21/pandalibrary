@@ -2,28 +2,23 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import type { ReadingStats } from './reading-types.js';
-	import { aggregateReadingHabits, defaultReadingMonth } from './reading-habits.js';
+	import { aggregateReadingHabits } from './reading-habits.js';
 
 	interface Props {
 		data: ReadingStats;
 		mode: 'weekdays' | 'hours';
+		month: number;
 	}
 
-	let { data, mode }: Props = $props();
-	const id = $props.id();
-	const now = new Date();
-	let selection = $state<{ year: number; month: number } | null>(null);
-	const month = $derived(selection?.year === data.year ? selection.month : defaultReadingMonth(data.year, data.timezone, now));
-	const locale = $derived(getLocale());
+	let { data, mode, month }: Props = $props();
 	const totals = $derived(aggregateReadingHabits(data, month));
 	const weekdayPeak = $derived(Math.max(1 / 3600, ...totals.weekdays));
 	const hourPeak = $derived(Math.max(1 / 3600, ...totals.hours));
+	const locale = $derived(getLocale());
 	const weekdayNames = $derived(Array.from({ length: 7 }, (_, index) =>
 		new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 1 + index)))));
 	const weekdayLabels = $derived(Array.from({ length: 7 }, (_, index) =>
 		new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 1 + index)))));
-	const months = $derived(Array.from({ length: 12 }, (_, index) =>
-		new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, index, 1)))));
 	const numberFormatter = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }));
 	const empty = $derived(!totals[mode].some((hours) => hours > 0));
 
@@ -54,16 +49,6 @@
 </script>
 
 <div class="habits">
-	<div class="filter">
-		<label for={`${id}-month`}>{m['stats.reading.month']()}</label>
-		<select id={`${id}-month`} value={month} onchange={(event) => selection = { year: data.year, month: Number(event.currentTarget.value) }}>
-			<option value={0}>{m['stats.reading.all_months']()}</option>
-			{#each months as name, index}
-				<option value={index + 1}>{name}</option>
-			{/each}
-		</select>
-	</div>
-
 	{#if empty}
 		<p class="empty" role="status">{m['stats.reading.habits_empty']()}</p>
 	{:else}
@@ -136,9 +121,7 @@
 
 <style>
 	.habits { display: grid; gap: 1rem; min-width: 0; }
-	.filter { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; font-size: 0.8125rem; }
-	select { max-width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0.375rem 0.5rem; background: white; color: #334155; font: inherit; }
-	select:focus-visible, summary:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
+	summary:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
 	figure { margin: 0; min-width: 0; }
 	svg { display: block; width: 100%; max-width: 22rem; margin: 0 auto; }
 	.axis { stroke: #cbd5e1; }

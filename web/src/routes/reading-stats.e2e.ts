@@ -58,6 +58,14 @@ test('reading cards share yearly data, filter independently and expose exact cha
 	const weekdaysCard = page.getByRole('region', { name: 'Weekdays', exact: true });
 	const hoursCard = page.getByRole('region', { name: 'Hours', exact: true });
 	const race = page.getByRole('region', { name: 'Reading Completion Race', exact: true });
+	await expect(weekdaysCard.getByLabel('Month', { exact: true }).locator('option').first()).toHaveText('All');
+	await expect(hoursCard.getByLabel('Month', { exact: true }).locator('option').nth(1)).toHaveText('Jan');
+	const titleBox = await hoursCard.locator('h2').boundingBox();
+	const yearSelectBox = await hoursCard.getByLabel('Year', { exact: true }).boundingBox();
+	const monthSelectBox = await hoursCard.getByLabel('Month', { exact: true }).boundingBox();
+	expect(titleBox && yearSelectBox && monthSelectBox &&
+		Math.abs(titleBox.y + titleBox.height / 2 - yearSelectBox.y - yearSelectBox.height / 2) < 2 &&
+		Math.abs(yearSelectBox.y + yearSelectBox.height / 2 - monthSelectBox.y - monthSelectBox.height / 2) < 2).toBe(true);
 	await expect(heatmap.getByText('Days of reading', { exact: true })).toBeVisible();
 	expect(requests).toHaveLength(1);
 	expect([...requests[0].searchParams.keys()]).toEqual(['year', 'timezone']);

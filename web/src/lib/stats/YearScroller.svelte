@@ -2,7 +2,7 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { filterControlClass } from '#lib/catalog/filter-styles.js';
 
-	let { year, onchange }: { year: number; onchange: (year: number) => void } = $props();
+	let { year, compact = false, onchange }: { year: number; compact?: boolean; onchange: (year: number) => void } = $props();
 	const id = $props.id();
 	const currentYear = new Date().getFullYear();
 	const years = Array.from({ length: currentYear }, (_, index) => currentYear - index);
@@ -14,7 +14,7 @@
 		aria-label={m['stats.reading.previous_year']()} disabled={year <= 1} onclick={() => onchange(year - 1)}>
 		<span aria-hidden="true">&lsaquo;</span>
 	</button>
-	<label for={`${id}-year`} class="text-sm">{m['stats.reading.year']()}</label>
+	<label for={`${id}-year`} class={compact ? 'sr-only' : 'text-sm'}>{m['stats.reading.year']()}</label>
 	<select id={`${id}-year`} class={filterControlClass} value={year} onchange={(event) => onchange(Number(event.currentTarget.value))}>
 		{#each years as option (option)}<option value={option}>{option}</option>{/each}
 	</select>

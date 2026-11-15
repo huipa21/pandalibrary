@@ -225,7 +225,7 @@
 	"stats.reading.more": "More",
 	"stats.reading.daily_table": "Daily reading details",
 	"stats.reading.month": "Month",
-	"stats.reading.all_months": "All months",
+	"stats.reading.all_months": "All",
 	"stats.reading.weekdays": "Weekdays",
 	"stats.reading.time_range": "Hours",
 	"stats.reading.habits_empty": "No reading recorded in this period.",
