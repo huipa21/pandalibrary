@@ -1,23 +1,24 @@
-import type { EntrySource, WordbookEntry } from './api.js';
+import type { EntrySource, Wordbook, WordbookEntry } from './api.js';
 
 export type EntryView = 'list' | 'cards';
 export type EntrySort = 'chronological' | 'alphabetical';
+export type Category = 'wordbooks' | 'lexical' | 'passages';
 export interface Preferences { view: EntryView; sort: EntrySort }
 
-const defaults = (): Preferences => ({ view: 'list', sort: 'chronological' });
+const defaults = (view: EntryView = 'list'): Preferences => ({ view, sort: 'chronological' });
 const preferenceKey = (id: number) => `pandalibrary.wordbooks.${id}.view`;
 
-export function readPreferences(id: number): Preferences {
+export function readPreferences(id: number, fallbackView: EntryView = 'list'): Preferences {
 	try {
 		const stored: unknown = JSON.parse(localStorage.getItem(preferenceKey(id)) ?? 'null');
-		if (typeof stored !== 'object' || stored === null) return defaults();
+		if (typeof stored !== 'object' || stored === null) return defaults(fallbackView);
 		const value = stored as Record<string, unknown>;
 		return {
-			view: value.view === 'cards' ? 'cards' : 'list',
+			view: value.view === 'cards' || value.view === 'list' ? value.view : fallbackView,
 			sort: value.sort === 'alphabetical' ? 'alphabetical' : 'chronological'
 		};
 	} catch {
-		return defaults();
+		return defaults(fallbackView);
 	}
 }
 
@@ -39,6 +40,31 @@ export function sortEntries(entries: readonly WordbookEntry[], sort: EntrySort):
 
 export function lexicalEntry(entry: Pick<WordbookEntry, 'kind'>): boolean {
 	return entry.kind === 'word' || entry.kind === 'phrase';
+}
+
+export function filterEntries(entries: readonly WordbookEntry[], category: Category, keyword: string): WordbookEntry[] {
+	const query = keyword.trim().toLocaleLowerCase();
+	return entries.filter((entry) => (category === 'wordbooks' || lexicalEntry(entry) === (category === 'lexical'))
+		&& (!query || [entry.text, entry.definition, entry.note].some((text) => text.toLocaleLowerCase().includes(query))));
+}
+
+export function filterWordbooks(
+	books: readonly Wordbook[], accessibleEntries: Readonly<Record<number, WordbookEntry[]>>,
+	category: Category, keyword: string, showArchived: boolean, sort: EntrySort
+): Wordbook[] {
+	const query = keyword.trim().toLocaleLowerCase();
+	const newest = (a: Wordbook, b: Wordbook) =>
+		(Date.parse(b.updated_at) || 0) - (Date.parse(a.updated_at) || 0) || b.id - a.id;
+	return books.filter((book) => (showArchived || !book.archived) && (category === 'wordbooks'
+		? !query || [book.name, book.description ?? ''].some((text) => text.toLocaleLowerCase().includes(query))
+		: filterEntries(accessibleEntries[book.id] ?? [], category, query).length > 0))
+		.sort(sort === 'alphabetical'
+			? (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || newest(a, b)
+			: newest);
+}
+
+export function involvedBookCount(entries: readonly WordbookEntry[]): number {
+	return new Set(entries.map((entry) => entry.source.book_id).filter((id) => id !== null)).size;
 }
 
 export function sourceHref(source: EntrySource): string | null {

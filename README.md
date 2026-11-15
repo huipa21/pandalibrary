@@ -20,6 +20,11 @@ an edit mode. Its edit icon becomes a save action when values change.
 Reading-status badges on covers in Dashboard, Favorites, Library, and Collections
 are display-only; change reading status from the book's **Details** tab.
 
+**Wordbooks** use notebook covers with entry counts, category search, sorting and
+list/grid display controls. Create private wordbooks with a title and optional
+description. Each book's **Words**
+tab lists its saved words, phrases, sentences and passages.
+
 ## Run with a container
 
 Build the image from a Git source checkout (Node.js and Docker are required):

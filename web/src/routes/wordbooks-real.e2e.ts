@@ -105,8 +105,9 @@ test('reader collection persists without dictionaries and wordbook context reope
 
 	await jumpToPdfPage(page, 1);
 	await page.goto('/wordbooks');
+	await page.locator(`[data-wordbooks] a[href="/wordbooks?id=${defaultBook!.id}"]`).click();
 	await expect(page.getByText('My own interpretation', { exact: true })).toBeVisible();
-	await expect(page.getByRole('button', { name: 'Imported vocabulary', exact: true })).toHaveCount(0);
+	await expect(page.locator(`[data-wordbooks] a[href="/wordbooks?id=${target.id}"]`)).toHaveCount(0);
 	await page.reload();
 	await expect(page.getByText('My own interpretation', { exact: true })).toBeVisible();
 	await page.getByRole('link', { name: 'Read in context', exact: true }).click();

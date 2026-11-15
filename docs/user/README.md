@@ -24,10 +24,10 @@ Installation, configuration, backups and upgrades are in the
 | Dashboard | Sidebar → **Home → Dashboard** | Your home page: reading feeds and the collections you choose to show |
 | All Books | `/books` (not a sidebar item) | Computed list of every book you can see, with filters and sorting |
 | Favorites | Sidebar → **Home → Favorites** | Your special collection of favorite books |
-| Wordbooks | Sidebar, below **Favorites** | Collect selected text with dictionary entries, personal notes and source context; import, export and archive wordbooks |
+| Wordbooks | Sidebar, below **Favorites** | Browse and search private notebook covers; collect text with dictionary snapshots and source context; import, export and archive |
 | Libraries | Sidebar → **Libraries** | Expand or collapse all available libraries; each book belongs to one library |
 | Authors, Series, Tags | Book metadata links or catalog filters | Browse by author, series or tag |
-| Book page | Open any book | Details, reading status, rating, reviews, collections, files, activity and book-scoped annotations |
+| Book page | Open any book | Details, reading status, rating, reviews, collections, files, activity, book-scoped annotations and saved Words |
 | Reader | **Read** on a book | Read in the browser and add highlights, passage comments and bookmarks |
 | Bookmarks | Open a book in the reader | Saved reading positions for that book |
 | Annotations | Sidebar → **Annotations** | Reviews, comments, highlights, inserted text and drawings in date order; consistent search results and direct navigation |

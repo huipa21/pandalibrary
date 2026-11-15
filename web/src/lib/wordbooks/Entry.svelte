@@ -3,9 +3,10 @@
 	import type { WordbookEntry } from './api.js';
 	import { lexicalEntry, sourceHref } from './management.js';
 
-	let { entry, disabled = false, onsave, ondelete }: {
+	let { entry, disabled = false, showSources = true, onsave, ondelete }: {
 		entry: WordbookEntry;
 		disabled?: boolean;
+		showSources?: boolean;
 		onsave: (id: number, changes: { text: string; definition?: string; note?: string }) => Promise<boolean>;
 		ondelete: (id: number) => Promise<void>;
 	} = $props();
@@ -91,11 +92,11 @@
 	{#if entry.dictionary_warning}
 		<p class="text-sm text-amber-800" role="status">{m['wordbooks.dictionary_warning']()}</p>
 	{/if}
-	<div class="space-y-1 text-sm text-slate-600">
+	{#if showSources}<div class="space-y-1 text-sm text-slate-600">
 		<p class="break-words"><span class="font-medium">{m['wordbooks.source']()}:</span> {entry.source.book_title}{entry.source.chapter ? ` · ${entry.source.chapter}` : ''}</p>
 		{#if href}<a class="action inline-block" {href}>{m['wordbooks.context']()}</a>
 		{:else}<p>{m['wordbooks.source_unavailable']()}</p>{/if}
-	</div>
+	</div>{/if}
 </article>
 
 <style>

@@ -1,37 +1,58 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import { wordbooks, type Wordbook, type WordbookEntry } from '#lib/wordbooks/api.js';
 	import Entry from '#lib/wordbooks/Entry.svelte';
-	import { downloadWordbook, readPreferences, sortEntries, writePreferences, type EntrySort, type EntryView } from '#lib/wordbooks/management.js';
+	import Header from '#lib/wordbooks/Header.svelte';
+	import {
+		downloadWordbook, filterEntries, filterWordbooks, involvedBookCount, readPreferences,
+		sortEntries, writePreferences, type Category, type EntrySort, type EntryView
+	} from '#lib/wordbooks/management.js';
 
 	let books = $state<Wordbook[]>([]);
-	let selectedId = $state<number | null>(null);
-	let entries = $state<WordbookEntry[]>([]);
-	let showArchived = $state(false);
+	let cached = $state<Record<number, WordbookEntry[]>>({});
 	let loading = $state(true);
-	let entriesLoading = $state(false);
 	let busy = $state(false);
 	let error = $state('');
 	let notice = $state('');
-	let view = $state<EntryView>('list');
+	let view = $state<EntryView>('cards');
 	let sort = $state<EntrySort>('chronological');
+	let category = $state<Category>('wordbooks');
+	let keyword = $state('');
+	let settingsOpen = $state(false);
+	let showArchived = $state(false);
+	let showDescriptions = $state(true);
+	let showSources = $state(true);
 	let nameMode = $state<'new' | 'rename' | null>(null);
 	let name = $state('');
-	let request = 0;
+	let description = $state('');
 	let disposed = false;
-	const visibleBooks = $derived(books.filter((book) => showArchived || !book.archived));
+	const selectedId = $derived(Number(page.url.searchParams.get('id')) || null);
 	const selected = $derived(books.find((book) => book.id === selectedId));
-	const sorted = $derived(sortEntries(entries, sort));
+	const entries = $derived(selectedId === null ? [] : cached[selectedId] ?? []);
+	const sorted = $derived(sortEntries(filterEntries(entries, category, keyword), sort));
+	const visibleBooks = $derived(filterWordbooks(books, cached, category, keyword, showArchived, sort));
+
+	$effect(() => {
+		const id = selectedId;
+		untrack(() => {
+			const saved = readPreferences(id ?? 0, id === null ? 'cards' : 'list');
+			view = saved.view;
+			sort = saved.sort;
+			keyword = '';
+			category = 'wordbooks';
+			nameMode = null;
+			notice = '';
+		});
+	});
 
 	onMount(() => {
 		void initialize();
-		return () => { disposed = true; request++; };
+		return () => { disposed = true; };
 	});
-
-	function showError(cause: unknown) {
-		error = cause instanceof Error ? cause.message : String(cause);
-	}
+	function showError(cause: unknown) { error = cause instanceof Error ? cause.message : String(cause); }
 	async function initialize() {
 		loading = true;
 		error = '';
@@ -39,30 +60,23 @@
 			const result = await wordbooks.list();
 			if (disposed) return;
 			books = result;
-			const first = result.find((book) => book.is_default && !book.archived) ?? result.find((book) => !book.archived);
-			if (first) await selectBook(first.id);
+			// Entry categories search all of the user's notebooks.
+			const loaded = await Promise.allSettled(result.map(async (book) => [book.id, await wordbooks.entries(book.id)] as const));
+			if (disposed) return;
+			const failed: string[] = [];
+			loaded.forEach((item, index) => {
+				if (item.status === 'fulfilled') cached[item.value[0]] = item.value[1];
+				else failed.push(`${result[index].name}: ${item.reason instanceof Error ? item.reason.message : String(item.reason)}`);
+			});
+			if (failed.length) error = failed.join('\n');
 		} catch (cause) { if (!disposed) showError(cause); }
 		finally { if (!disposed) loading = false; }
 	}
-	async function loadEntries(id: number) {
-		const token = ++request;
-		entriesLoading = true;
-		try {
-			const result = await wordbooks.entries(id);
-			if (token === request && !disposed) entries = result;
-		} finally {
-			if (token === request && !disposed) entriesLoading = false;
-		}
-	}
-	async function selectBook(id: number) {
-		selectedId = id;
-		entries = [];
-		error = '';
-		notice = '';
-		nameMode = null;
-		({ view, sort } = readPreferences(id));
-		try { await loadEntries(id); }
-		catch (cause) { if (selectedId === id && !disposed) showError(cause); }
+	async function navigate(id: number | null) {
+		const params = new URLSearchParams(page.url.searchParams.toString());
+		if (id === null) params.delete('id'); else params.set('id', String(id));
+		try { await goto(`/wordbooks${params.size ? `?${params}` : ''}`, { reset: false }); }
+		catch (cause) { showError(cause); }
 	}
 	async function operate(action: () => Promise<void>): Promise<boolean> {
 		if (busy) return false;
@@ -76,25 +90,27 @@
 	function changePreferences(nextView: EntryView, nextSort: EntrySort) {
 		view = nextView;
 		sort = nextSort;
-		if (selectedId !== null) writePreferences(selectedId, { view, sort });
+		writePreferences(selectedId ?? 0, { view, sort });
 	}
 	function beginName(mode: 'new' | 'rename') {
 		nameMode = mode;
 		name = mode === 'rename' ? selected?.name ?? '' : '';
+		description = mode === 'rename' ? selected?.description ?? '' : '';
 	}
 	async function saveName(event: SubmitEvent) {
 		event.preventDefault();
 		if (!name.trim()) return;
 		const mode = nameMode;
-		const id = selectedId;
+		const options = { description: description.trim() };
 		await operate(async () => {
 			if (mode === 'new') {
-				const book = await wordbooks.create(name.trim());
+				const book = await wordbooks.create(name.trim(), options);
 				books = [...books, book];
-				await selectBook(book.id);
-			} else if (mode === 'rename' && id !== null) {
-				const book = await wordbooks.update(id, { name: name.trim() });
-				books = books.map((item) => item.id === id ? book : item);
+				cached[book.id] = [];
+				await navigate(book.id);
+			} else if (selected) {
+				const book = await wordbooks.update(selected.id, { name: name.trim(), ...options });
+				books = books.map((item) => item.id === book.id ? book : item);
 			}
 			nameMode = null;
 		});
@@ -105,35 +121,27 @@
 		await operate(async () => {
 			const updated = await wordbooks.update(book.id, { archived: !book.archived });
 			books = books.map((item) => item.id === book.id ? updated : item);
-			if (updated.archived && !showArchived) {
-				const next = books.find((item) => !item.archived);
-				if (next) await selectBook(next.id);
-				else { selectedId = null; entries = []; request++; }
-			}
+			if (updated.archived && !showArchived) await navigate(null);
 		});
 	}
-	function toggleArchived() {
-		showArchived = !showArchived;
-		if (!showArchived && selected?.archived) {
-			const next = books.find((item) => !item.archived);
-			if (next) void selectBook(next.id);
-			else { selectedId = null; entries = []; request++; }
-		}
+	function replaceEntries(id: number, next: WordbookEntry[]) {
+		cached[id] = next;
+		books = books.map((book) => book.id === id ? { ...book, entry_count: next.length, book_count: involvedBookCount(next) } : book);
 	}
 	async function saveEntry(id: number, changes: { text: string; definition?: string; note?: string }) {
 		const bookId = selectedId;
-		if (bookId === null) return false;
+		if (bookId === null || selected?.archived) return false;
 		return operate(async () => {
 			const updated = await wordbooks.edit(bookId, id, changes);
-			entries = entries.map((item) => item.id === id ? updated : item);
+			replaceEntries(bookId, cached[bookId].map((item) => item.id === id ? updated : item));
 		});
 	}
 	async function deleteEntry(id: number) {
 		const bookId = selectedId;
-		if (bookId === null) return;
+		if (bookId === null || selected?.archived) return;
 		await operate(async () => {
 			await wordbooks.remove(bookId, id);
-			entries = entries.filter((item) => item.id !== id);
+			replaceEntries(bookId, cached[bookId].filter((item) => item.id !== id));
 		});
 	}
 	async function exportBook() {
@@ -146,84 +154,85 @@
 		const file = input.files?.[0];
 		const id = selectedId;
 		input.value = '';
-		if (!file || id === null) return;
+		if (!file || id === null || selected?.archived) return;
 		await operate(async () => {
-			// The server validates the JSON schema and reports precise import failures.
 			const result = await wordbooks.import(id, file);
+			replaceEntries(id, await wordbooks.entries(id));
 			notice = m['wordbooks.imported']({ count: result.imported });
-			await loadEntries(id);
 		});
 	}
 </script>
 
 <svelte:head><title>{m['wordbooks.title']()} · {m['common.app_name']()}</title></svelte:head>
 
-<section class="space-y-6" aria-labelledby="wordbooks-heading" aria-busy={busy || loading}>
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 id="wordbooks-heading" class="text-2xl font-semibold">{m['wordbooks.title']()}</h1>
-		<button class="button" disabled={busy || loading} onclick={() => beginName('new')}>{m['wordbooks.new']()}</button>
-	</div>
-	{#if error}<p role="alert" class="break-words rounded-md border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>{/if}
+<section class="min-w-0 space-y-5" aria-label={m['wordbooks.title']()} aria-busy={busy || loading}>
+	{#if selectedId !== null}
+		<div class="flex flex-wrap items-center gap-3">
+			<a href="/wordbooks" class="action">{m['wordbooks.back']()}</a>
+			{#if selected}<h2 class="text-xl font-semibold">{selected.name}</h2>
+				<span class="text-sm text-slate-500">{m['wordbooks.book_count']({ count: selected.book_count ?? involvedBookCount(entries) })}</span>
+			{/if}
+		</div>
+	{/if}
+	<Header bind:category bind:keyword {sort} {view} inside={selectedId !== null} {settingsOpen} disabled={busy || loading} onchange={changePreferences} onsettings={() => settingsOpen = !settingsOpen} oncreate={() => beginName('new')} />
+	{#if settingsOpen}
+		<div class="flex flex-wrap gap-4 rounded-md border border-slate-200 p-3 text-sm" aria-label={m['wordbooks.display_settings']()}>
+			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showDescriptions} />{m['wordbooks.show_descriptions']()}</label>
+			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showSources} />{m['wordbooks.show_sources']()}</label>
+			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showArchived} />{m['wordbooks.show_archived']()}</label>
+		</div>
+	{/if}
+	{#if error}<p role="alert" class="whitespace-pre-wrap break-words rounded-md border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>{/if}
 	{#if notice}<p role="status" class="text-sm text-green-800">{notice}</p>{/if}
-	{#if loading}<p role="status">{m['wordbooks.loading']()}</p>{/if}
-	<div class="flex flex-wrap items-end gap-4">
-		<label class="min-w-0 flex-1 space-y-1 sm:max-w-sm">
-			<span class="block text-sm font-medium">{m['wordbooks.name']()}</span>
-			<select class="field" value={selectedId ?? ''} disabled={busy || loading} onchange={(event) => void selectBook(Number(event.currentTarget.value))}>
-				{#each visibleBooks as book}
-					<option value={book.id}>{book.name}{book.is_default ? ` · ${m['wordbooks.default']()}` : ''}{book.archived ? ` · ${m['wordbooks.archived']()}` : ''}</option>
-				{/each}
-			</select>
-		</label>
-		<label class="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" checked={showArchived} disabled={busy || loading} onchange={toggleArchived} />{m['wordbooks.show_archived']()}</label>
-	</div>
 	{#if nameMode}
-		<form class="flex flex-wrap items-end gap-3 rounded-md border border-slate-200 p-4" onsubmit={saveName} aria-label={nameMode === 'new' ? m['wordbooks.new']() : m['wordbooks.rename']()}>
-			<label class="min-w-0 flex-1 space-y-1"><span class="block text-sm font-medium">{m['wordbooks.name']()}</span><input class="field" required maxlength="200" bind:value={name} disabled={busy} /></label>
-			<button class="button" type="submit" disabled={busy || !name.trim()}>{nameMode === 'new' ? m['wordbooks.create']() : m['wordbooks.save']()}</button>
-			<button class="button" type="button" disabled={busy} onclick={() => nameMode = null}>{m['wordbooks.cancel']()}</button>
+		<form class="space-y-4 rounded-lg border border-slate-200 p-4" onsubmit={saveName} aria-label={nameMode === 'new' ? m['wordbooks.new']() : m['wordbooks.rename']()}>
+			<label class="block space-y-1"><span class="text-sm font-medium">{m['wordbooks.name']()}</span><input class="field" required maxlength="200" bind:value={name} disabled={busy} /></label>
+			<label class="block space-y-1"><span class="text-sm font-medium">{m['wordbooks.description']()}</span><textarea class="field" rows="2" maxlength="2000" bind:value={description} disabled={busy}></textarea></label>
+			<div class="flex gap-3"><button class="button" type="submit" disabled={busy || !name.trim()}>{nameMode === 'new' ? m['wordbooks.create']() : m['wordbooks.save']()}</button><button class="button" type="button" disabled={busy} onclick={() => nameMode = null}>{m['wordbooks.cancel']()}</button></div>
 		</form>
 	{/if}
 	{#if selected}
+		{#if showDescriptions && selected.description}<p class="whitespace-pre-wrap break-words text-slate-600">{selected.description}</p>{/if}
 		<div class="flex flex-wrap items-center gap-3">
-			<h2 class="mr-auto text-xl font-semibold">{selected.name}</h2>
 			{#if selected.archived}<span class="text-sm text-slate-600">{m['wordbooks.archived']()}</span>{/if}
-			<button class="button" disabled={busy} onclick={() => beginName('rename')}>{m['wordbooks.rename']()}</button>
-			{#if !selected.is_default}<button class="button" disabled={busy} onclick={archive}>{selected.archived ? m['wordbooks.unarchive']() : m['wordbooks.archive']()}</button>{/if}
-			<button class="button" disabled={busy} onclick={exportBook}>{m['wordbooks.export']()}</button>
-			<label class="button relative cursor-pointer" class:opacity-50={busy || selected.archived}>
-				{m['wordbooks.import']()}
-				<input class="absolute inset-0 w-full cursor-pointer opacity-0" type="file" accept=".json,application/json" aria-label={m['wordbooks.import']()} disabled={busy || selected.archived} onchange={importBook} />
-			</label>
+				<button class="button" disabled={busy} onclick={() => beginName('rename')}>{m['wordbooks.rename']()}</button>
+				{#if !selected.is_default}<button class="button" disabled={busy} onclick={archive}>{selected.archived ? m['wordbooks.unarchive']() : m['wordbooks.archive']()}</button>{/if}
+				<button class="button" disabled={busy} onclick={exportBook}>{m['wordbooks.export']()}</button>
+				<label class="button relative cursor-pointer" class:opacity-50={busy || selected.archived}>{m['wordbooks.import']()}<input class="absolute inset-0 w-full cursor-pointer opacity-0" type="file" accept=".json,application/json" aria-label={m['wordbooks.import']()} disabled={busy || selected.archived} onchange={importBook} /></label>
 		</div>
-		<div class="flex flex-wrap items-center gap-3">
-			<div class="flex gap-1">
-				<button class="button" aria-pressed={view === 'list'} onclick={() => changePreferences('list', sort)}>{m['wordbooks.list']()}</button>
-				<button class="button" aria-pressed={view === 'cards'} onclick={() => changePreferences('cards', sort)}>{m['wordbooks.cards']()}</button>
-			</div>
-			<label class="flex items-center gap-2 text-sm"><span>{m['wordbooks.sort']()}</span><select class="field" value={sort} onchange={(event) => changePreferences(view, event.currentTarget.value as EntrySort)}>
-				<option value="chronological">{m['wordbooks.chronological']()}</option>
-				<option value="alphabetical">{m['wordbooks.alphabetical']()}</option>
-			</select></label>
-		</div>
-		{#if entriesLoading}<p role="status">{m['wordbooks.loading']()}</p>
-		{:else if !entries.length && !error}<p class="text-slate-600">{m['wordbooks.empty']()}</p>
+		{#if loading}<p role="status">{m['wordbooks.loading']()}</p>
+		{:else if !sorted.length && !error}<p class="text-slate-600">{keyword || category !== 'wordbooks' ? m['wordbooks.no_matches']() : m['wordbooks.empty']()}</p>
 		{:else}
 			<ol data-view={view} aria-label={selected.name} class={view === 'cards' ? 'grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3' : 'divide-y divide-slate-200'}>
-				{#each sorted as entry (entry.id)}
-					<li data-entry-id={entry.id} class={view === 'cards' ? 'min-w-0 rounded-lg border border-slate-200 p-4' : 'min-w-0 py-5'}>
-						<Entry {entry} disabled={busy} onsave={saveEntry} ondelete={deleteEntry} />
-					</li>
-				{/each}
+				{#each sorted as entry (entry.id)}<li data-entry-id={entry.id} class={view === 'cards' ? 'min-w-0 rounded-lg border border-slate-200 p-4' : 'min-w-0 py-5'}><Entry {entry} showSources={showSources} disabled={busy || selected.archived} onsave={saveEntry} ondelete={deleteEntry} /></li>{/each}
 			</ol>
 		{/if}
-	{/if}
+	{:else if selectedId === null}
+		{#if loading}<p role="status">{m['wordbooks.loading']()}</p>{/if}
+		<ul data-wordbooks data-view={view} class={view === 'cards' ? 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'space-y-3'}>
+			{#each visibleBooks as book (book.id)}
+				<li class="min-w-0">
+					<a href="/wordbooks?id={book.id}" class="notebook group relative flex min-w-0 gap-4 rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-400 focus-visible:outline-2" class:flex-col={view === 'cards'}>
+						<span class="absolute right-3 top-3 rounded-full bg-white/90 px-2 py-1 text-xs text-slate-600">{m['wordbooks.entry_count']({ count: book.entry_count ?? cached[book.id]?.length ?? 0 })}</span>
+						<div aria-hidden="true" class="cover flex shrink-0 items-end rounded-md p-3 shadow-sm" style:background-color={`hsl(${(book.id * 67) % 360} 35% 82%)`} class:w-20={view === 'list'} class:h-24={view === 'list'} class:h-44={view === 'cards'}><span class="line-clamp-3 break-words text-sm font-semibold text-slate-800">{book.name}</span></div>
+						<div class="min-w-0 flex-1"><h2 class="break-words font-semibold">{book.name}</h2>
+							{#if showDescriptions && book.description}<p class="mt-1 line-clamp-2 break-words text-sm text-slate-500">{book.description}</p>{/if}
+							{#if showSources}<p class="mt-2 text-xs text-slate-500">{m['wordbooks.book_count']({ count: book.book_count ?? involvedBookCount(cached[book.id] ?? []) })}</p>{/if}
+							{#if book.archived}<span class="text-xs text-slate-500">{m['wordbooks.archived']()}</span>{/if}
+						</div>
+					</a>
+				</li>
+			{/each}
+		</ul>
+		{#if !loading && !visibleBooks.length && !error}<p class="text-slate-600">{m['wordbooks.no_matches']()}</p>{/if}
+	{:else if !loading && !error}<p role="alert">{m['wordbooks.no_matches']()}</p>{/if}
 </section>
 
 <style>
+	.cover { border-left: .4rem solid rgb(30 41 59 / .2); background-image: repeating-linear-gradient(0deg, transparent, transparent 19px, rgb(255 255 255 / .3) 20px); }
 	.button { display: inline-block; min-height: 2.5rem; border: 1px solid #cbd5e1; border-radius: .375rem; padding: .5rem .75rem; background: white; font-size: .875rem; }
-	.button[aria-pressed='true'] { background: #e2e8f0; border-color: #475569; }
 	.button:disabled { opacity: .5; cursor: not-allowed; }
 	.button:focus-visible, .button:focus-within, .field:focus-visible, input:focus-visible { outline: 2px solid #0f172a; outline-offset: 2px; }
 	.field { display: block; width: 100%; min-width: 0; border: 1px solid #94a3b8; border-radius: .375rem; padding: .5rem; background: white; }
+	.action { text-decoration: underline; text-underline-offset: .2em; }
 </style>

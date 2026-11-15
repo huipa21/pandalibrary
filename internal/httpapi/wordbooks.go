@@ -27,6 +27,7 @@ func WordbookMount(service *wordbooks.Service, authentication *auth.Service, log
 		router.Group(func(secured chi.Router) {
 			secured.Use(SessionMiddleware(authentication, logger))
 			secured.Get("/api/v1/wordbooks", h.withViewer(h.list))
+			secured.Get("/api/v1/books/{id}/words", h.withViewer(h.bookWords))
 			secured.Get("/api/v1/wordbooks/{id}/entries", h.withViewer(h.entries))
 			secured.Get("/api/v1/wordbooks/{id}/export", h.withViewer(h.export))
 			secured.With(cookieProtection).Post("/api/v1/wordbooks", h.withViewer(h.create))
@@ -93,14 +94,24 @@ func (h *wordbookHTTP) list(w http.ResponseWriter, r *http.Request, viewer catal
 }
 
 func (h *wordbookHTTP) create(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	var input struct {
-		Name string `json:"name"`
-	}
+	var input wordbooks.BookCreate
 	if !h.decode(w, r, &input, 1<<20) {
 		return
 	}
-	result, err := h.wordbooks.Create(r.Context(), viewer.UserID, input.Name)
+	result, err := h.wordbooks.CreateWithDescription(r.Context(), viewer.UserID, input)
 	h.respond(w, r, http.StatusCreated, result, err)
+}
+
+func (h *wordbookHTTP) bookWords(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	id, ok := h.pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	if _, ok := h.query(w, r); !ok {
+		return
+	}
+	result, err := h.wordbooks.BookWords(r.Context(), viewer, id)
+	h.respond(w, r, http.StatusOK, map[string]any{"entries": result}, err)
 }
 
 func (h *wordbookHTTP) patchBook(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {

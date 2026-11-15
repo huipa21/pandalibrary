@@ -1,9 +1,9 @@
 <script module lang="ts">
 	import * as m from '#lib/paraglide/messages.js';
 
-	export type BookTab = 'details' | 'metadata' | 'files' | 'activities' | 'highlights';
+	export type BookTab = 'details' | 'metadata' | 'files' | 'activities' | 'highlights' | 'words';
 
-	export const BOOK_TABS: readonly BookTab[] = ['details', 'metadata', 'files', 'activities', 'highlights'];
+	export const BOOK_TABS: readonly BookTab[] = ['details', 'metadata', 'files', 'activities', 'highlights', 'words'];
 
 	/** Tabs that only metadata editors (administrators) see. */
 	const EDITOR_TABS: readonly BookTab[] = ['metadata'];
@@ -29,6 +29,7 @@
 			case 'files': return m['bv4.tabs.files']();
 			case 'activities': return m['bd1.tabs.activities']();
 			case 'highlights': return m['bv4.tabs.highlights']();
+			case 'words': return m['bv4.tabs.words']();
 			default: return m['bv4.tabs.details']();
 		}
 	}

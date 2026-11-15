@@ -284,10 +284,21 @@ edit the selected word or phrase and its definition without changing the diction
 Sentences and passages have a personal-note textarea, initially empty, for your
 own notes.
 
-Create additional wordbooks with **New wordbook**. Entries use **List** view by
-default; choose **Cards** or sort by newest first or alphabetically. Archive
-wordbooks to hide them from the normal list, then enable **Show archived wordbooks**
-to restore them. The default wordbook cannot be archived.
+Wordbooks appear as notebook covers or a list, with entry counts on each cover.
+Use the header category selector to search **Wordbook** names and descriptions,
+or find wordbooks containing matching **Word & phrase** or **Sentence & passage**
+entries. The same search, newest-first/alphabetical sort, list/grid toggle and
+display settings remain available when you open a notebook. Inside, the notebook
+also shows how many distinct source books its entries involve.
+
+Use the **+** button to create a wordbook with a title and optional description.
+Wordbooks are private: only you can see them. Archive wordbooks to hide them from the normal
+list, then enable **Show archived wordbooks** in display settings to restore them.
+The default wordbook cannot be archived.
+
+Each book's **Words** tab shows a compact list of its saved words, phrases,
+sentences and passages from your wordbooks, with links back to their
+wordbooks and original reading positions.
 
 Use **Export JSON** to download one wordbook, including dictionary snapshots,
 manual definitions, notes and source positions. **Import JSON** imports a

@@ -19,6 +19,21 @@ beforeEach(() => {
 });
 
 describe('wordbook API contract', () => {
+	it('creates notebooks with optional descriptions and allows description editing', async () => {
+		request.mockResolvedValue({ id: 1 });
+		await wordbooks.create('Private');
+		expect(request).toHaveBeenLastCalledWith('/wordbooks', { method: 'POST', body: { name: 'Private' } });
+		await wordbooks.create('Study', { description: 'Study notes' });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks', { method: 'POST', body: { name: 'Study', description: 'Study notes' } });
+		await wordbooks.update(1, { description: '' });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks/1', { method: 'PATCH', body: { description: '' } });
+	});
+
+	it('unwraps entries collected from a book', async () => {
+		request.mockResolvedValueOnce({ entries: [{ id: 3 }] });
+		await expect(wordbooks.bookEntries(8)).resolves.toEqual([{ id: 3 }]);
+		expect(request).toHaveBeenCalledWith('/books/8/words');
+	});
 	it('collects arbitrary text in the default book without requiring a dictionary', async () => {
 		request.mockResolvedValue({ id: 8 });
 		const text = 'A paragraph.\n\nAnother paragraph.';

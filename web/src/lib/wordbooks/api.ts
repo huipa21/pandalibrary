@@ -6,11 +6,16 @@ export type EntryKind = 'word' | 'phrase' | 'sentence' | 'passage';
 export interface Wordbook {
 	id: number;
 	name: string;
+	description: string;
+	entry_count: number;
+	book_count: number;
 	is_default: boolean;
 	archived: boolean;
 	created_at: string;
 	updated_at: string;
 }
+
+export interface WordbookOptions { description?: string }
 
 export interface EntrySource {
 	book_id: number | null;
@@ -56,11 +61,15 @@ export const wordbooks = {
 		const result = await api.request<{ wordbooks: Wordbook[] }>('/wordbooks');
 		return result.wordbooks;
 	},
-	create(name: string): Promise<Wordbook> {
-		return api.request('/wordbooks', { method: 'POST', body: { name } });
+	create(name: string, options: WordbookOptions = {}): Promise<Wordbook> {
+		return api.request('/wordbooks', { method: 'POST', body: { name, ...options } });
 	},
-	update(id: number, changes: { name?: string; archived?: boolean }): Promise<Wordbook> {
-		return api.request(`/wordbooks/${id}`, { method: 'PATCH', body: changes });
+	update(id: number, changes: WordbookOptions & { name?: string; archived?: boolean }): Promise<Wordbook> {
+		return api.request(`/wordbooks/${id}`, { method: 'PATCH', body: { ...changes } });
+	},
+	async bookEntries(bookId: number): Promise<WordbookEntry[]> {
+		const result = await api.request<{ entries: WordbookEntry[] }>(`/books/${bookId}/words`);
+		return result.entries;
 	},
 	async entries(id: number): Promise<WordbookEntry[]> {
 		const result = await api.request<{ entries: WordbookEntry[] }>(`/wordbooks/${id}/entries`);

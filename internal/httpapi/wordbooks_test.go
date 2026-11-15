@@ -100,6 +100,94 @@ func wordbookCapture(kind string) wordbooks.Capture {
 	return wordbooks.Capture{Kind: kind, Text: "Cats", Source: wordbookSource()}
 }
 
+func TestWordbookDescription(t *testing.T) {
+	f := newWordbookFixture(t)
+	book := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{
+		"name": "Notes", "description": "  My notebook  ",
+	}, f.reader), http.StatusCreated)
+	if book.Description != "My notebook" || book.EntryCount != 0 || book.BookCount != 0 {
+		t.Fatalf("created: %+v", book)
+	}
+	plain := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{"name": "Plain"}, f.reader), http.StatusCreated)
+	if plain.Description != "" {
+		t.Fatalf("plain: %+v", plain)
+	}
+	base := fmt.Sprintf("/api/v1/wordbooks/%d", book.ID)
+	patched := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"description": " Updated "}, f.reader), http.StatusOK)
+	if patched.Description != "Updated" || patched.Name != "Notes" {
+		t.Fatalf("patched: %+v", patched)
+	}
+	for _, body := range []map[string]any{
+		{"name": "Bad", "description": strings.Repeat("x", 2001)},
+		{"name": "Bad", "description": "a\x00b"},
+		{"name": "Bad", "shared_with": []int64{2}},
+	} {
+		expectShelfStatus(t, f.send(http.MethodPost, "/api/v1/wordbooks", body, f.reader), http.StatusBadRequest)
+	}
+	expectShelfStatus(t, f.send(http.MethodPatch, base, map[string]any{"description": strings.Repeat("x", 2001)}, f.reader), http.StatusBadRequest)
+	expectShelfStatus(t, f.send(http.MethodPatch, base, map[string]any{"description": "stolen"}, f.other), http.StatusNotFound)
+	exact := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"description": strings.Repeat("é", 2000)}, f.reader), http.StatusOK)
+	if len([]rune(exact.Description)) != 2000 {
+		t.Fatalf("max description: %d", len([]rune(exact.Description)))
+	}
+	if strings.Contains(f.request(http.MethodGet, "/api/v1/wordbooks", nil, f.reader, nil).Body.String(), "shared_with") {
+		t.Fatal("sharing fields leaked")
+	}
+}
+
+func TestWordbookBookWordsAndCounts(t *testing.T) {
+	f := newWordbookFixture(t)
+	id := f.defaultID(t)
+	for _, kind := range []string{"word", "phrase", "sentence", "passage"} {
+		wordbookDecode[wordbooks.Entry](t, f.send(http.MethodPost, "/api/v1/wordbooks/entries", wordbookCapture(kind), f.reader), http.StatusCreated)
+	}
+	makeImport := func(bookID int64, sourceID *int64, cookie *http.Cookie) {
+		t.Helper()
+		entry := wordbooks.Entry{Kind: "passage", Text: "Imported", Source: wordbookSource(), DictionaryEntries: []dictionary.Entry{}}
+		entry.Source.BookID, entry.Source.BookFileID = sourceID, nil
+		input := wordbooks.Export{Version: 1, Entries: []wordbooks.Entry{entry}}
+		input.Wordbook.Name = "Import"
+		expectShelfStatus(t, f.send(http.MethodPost, fmt.Sprintf("/api/v1/wordbooks/%d/import", bookID), input, cookie), http.StatusOK)
+	}
+	hidden, visible := int64(102), int64(101)
+	makeImport(id, &hidden, f.reader)
+	makeImport(id, nil, f.reader)
+	archived := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{"name": "Old"}, f.reader), http.StatusCreated)
+	makeImport(archived.ID, &visible, f.reader)
+	expectShelfStatus(t, f.send(http.MethodPatch, fmt.Sprintf("/api/v1/wordbooks/%d", archived.ID), map[string]any{"archived": true}, f.reader), http.StatusOK)
+	foreign := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{"name": "Foreign"}, f.other), http.StatusCreated)
+	makeImport(foreign.ID, &visible, f.other)
+	type entries struct {
+		Entries []wordbooks.Entry `json:"entries"`
+	}
+	result := wordbookDecode[entries](t, f.request(http.MethodGet, "/api/v1/books/101/words", nil, f.reader, nil), http.StatusOK)
+	if len(result.Entries) != 5 {
+		t.Fatalf("book words: %+v", result)
+	}
+	kinds := map[string]bool{}
+	for _, e := range result.Entries {
+		if e.Source.BookID == nil || *e.Source.BookID != visible || e.WordbookID == foreign.ID {
+			t.Fatalf("wrong entry: %+v", e)
+		}
+		kinds[e.Kind] = true
+	}
+	if len(kinds) != 4 || result.Entries[4].WordbookID != archived.ID {
+		t.Fatalf("missing kinds or archived entry: %+v", result.Entries)
+	}
+	for _, target := range []string{"/api/v1/books/102/words", "/api/v1/books/103/words", "/api/v1/books/999/words"} {
+		expectShelfStatus(t, f.request(http.MethodGet, target, nil, f.reader, nil), http.StatusNotFound)
+	}
+	expectShelfStatus(t, f.request(http.MethodGet, "/api/v1/books/101/words?x=1", nil, f.reader, nil), http.StatusBadRequest)
+	expectShelfStatus(t, f.request(http.MethodGet, "/api/v1/books/101/words", nil, nil, nil), http.StatusUnauthorized)
+	listed := wordbookDecode[struct {
+		Wordbooks []wordbooks.Wordbook `json:"wordbooks"`
+	}](t, f.request(http.MethodGet, "/api/v1/wordbooks", nil, f.reader, nil), http.StatusOK)
+	if len(listed.Wordbooks) != 2 || listed.Wordbooks[0].EntryCount != 6 || listed.Wordbooks[0].BookCount != 2 ||
+		listed.Wordbooks[1].EntryCount != 1 || listed.Wordbooks[1].BookCount != 1 {
+		t.Fatalf("counts: %+v", listed)
+	}
+}
+
 func TestWordbookDefaultConcurrencyAndOwnership(t *testing.T) {
 	f := newWordbookFixture(t)
 	var wg sync.WaitGroup
