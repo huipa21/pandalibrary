@@ -4,6 +4,8 @@
 	"covers.editor.color": "Cover color",
 	"covers.editor.automatic": "Automatic",
 	"covers.editor.upload": "Upload image",
+	"covers.editor.drop_zone": "Drag a cover image here",
+	"covers.editor.drop_active": "Drop image to crop",
 	"covers.editor.upload_help": "JPEG, PNG or WebP, up to 20 MiB. The selected region is saved as a 600 × 900 JPEG.",
 	"covers.editor.crop_help": "Drag the outlined crop region or adjust its position and zoom. Changes are applied automatically.",
 	"covers.editor.original": "Original image with selected crop region",

@@ -55,6 +55,7 @@ async function mockLibraries(page: Page, role = 'admin', locale = 'en') {
 			cursor: 0, user_books: [], reading_progress: [], highlights: [], bookmarks: [], notes: [], user_settings: []
 		} });
 		if (path === '/me/settings') return route.fulfill({ json: { settings: [] } });
+		if (path === '/wordbooks') return route.fulfill({ json: { wordbooks: [] } });
 		if (path === '/libraries') return route.fulfill({ json: { items: libraries, next_cursor: null } });
 		const libraryMatch = /^\/libraries\/(\d+)$/.exec(path);
 		if (libraryMatch) return route.fulfill({ json: {
@@ -91,21 +92,22 @@ async function mockLibraries(page: Page, role = 'admin', locale = 'en') {
 	return { requests, unexpected };
 }
 
-test('Libraries expands all physical libraries while Collections remains global', async ({ page }) => {
+test('Libraries and Collections use section headings while collection navigation remains global', async ({ page }) => {
 	const { requests, unexpected } = await mockLibraries(page);
 	await page.goto('/libraries');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	const toggle = sidebar.getByRole('button', { name: 'Libraries', exact: true });
-	await expect(toggle).toHaveCSS('text-transform', 'uppercase');
-	await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+	const heading = sidebar.getByRole('heading', { name: 'Libraries', exact: true });
+	await expect(heading).toHaveCSS('text-transform', 'uppercase');
+	await expect(heading.locator('button, svg')).toHaveCount(0);
+	const collections = sidebar.getByRole('heading', { name: 'Collections', exact: true });
+	await expect(collections).toHaveCSS('text-transform', 'uppercase');
+	await expect(collections.locator('svg')).toHaveCount(0);
+	await expect(collections.getByRole('link')).toHaveAttribute('href', '/shelves');
+	await expect(sidebar.getByRole('button', { name: 'Show more', exact: true })).toHaveCount(0);
 	await expect(sidebar.getByRole('link', { name: /^Fiction/ })).toBeVisible();
 	await expect(sidebar.locator('a[href="/library/2"]')).toBeVisible();
-	await toggle.click();
-	await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-	await expect(sidebar.getByRole('link', { name: /^Fiction/ })).toBeHidden();
 	await expect(sidebar.getByRole('link', { name: /^Weekend reads/ })).toBeVisible();
 	await expect(sidebar.getByRole('button', { name: 'Library actions' })).toBeVisible();
-	await toggle.click();
 	await expect(sidebar.locator('a[href="/books"]')).toHaveCount(0);
 	const fiction = page.getByRole('main').getByRole('listitem').filter({ hasText: 'Fiction' });
 	await expect(fiction).toContainText('7 books');
@@ -120,10 +122,74 @@ test('Libraries expands all physical libraries while Collections remains global'
 	await expect.poll(() => requests.some((url) =>
 		url.pathname.endsWith('/shelves/12/books') && !url.searchParams.has('library_id')
 	)).toBe(true);
+	await sidebar.getByRole('button', { name: 'Collection actions', exact: true }).click();
+	await expect(sidebar.getByRole('menuitem', { name: 'New collection', exact: true })).toBeVisible();
+	await expect(sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true })).toHaveAttribute('href', '/shelves/12?manage=1');
+	await page.keyboard.press('Escape');
+	await collections.getByRole('link').click();
+	await expect(page).toHaveURL('/shelves');
+	await expect(collections.getByRole('link')).toHaveAttribute('aria-current', 'page');
 	await sidebar.getByRole('link', { name: /^Fiction/ }).click();
 	await expect(page).toHaveURL('/library/1');
 	await expect(sidebar.getByRole('link', { name: /Weekend reads/ })).toBeVisible();
 	expect(requests.filter((url) => url.pathname.endsWith('/shelves')).every((url) => !url.searchParams.has('library_id'))).toBe(true);
+	expect(unexpected).toEqual([]);
+});
+
+for (const width of [1280, 390]) {
+	for (const count of [5, 7]) {
+		test(`Libraries shows five then an expand item with ${count} libraries at ${width}px`, async ({ page }) => {
+			const { unexpected } = await mockLibraries(page);
+			const items = Array.from({ length: count }, (_, index) => ({
+				...libraries[0], id: index + 1, name: `Library ${index + 1}`, slug: `library-${index + 1}`
+			}));
+			await page.route('**/api/v1/libraries?*', (route) =>
+				route.fulfill({ json: { items, next_cursor: null } }));
+			await page.route(`**/api/v1/libraries/${count}`, (route) =>
+				route.fulfill({ json: { library: items[count - 1] } }));
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(`/library/${count}`);
+			if (width < 1024) await page.getByRole('button', { name: 'Open navigation menu', exact: true }).click();
+			const section = page.locator('[data-slot="sidebar-libraries"]');
+			await expect(section.getByRole('link')).toHaveCount(5);
+			const expand = section.getByRole('button', { name: 'Show more', exact: true });
+			if (count === 5) {
+				await expect(expand).toHaveCount(0);
+				await expect(section.locator(`a[href="/library/${count}"]`)).toHaveAttribute('aria-current', 'page');
+			} else {
+				await expect(expand).toHaveAttribute('aria-expanded', 'false');
+				await expect(section.locator('li').last().getByRole('button')).toBeVisible();
+				await expand.focus();
+				await page.keyboard.press('Enter');
+				await expect(section.getByRole('link')).toHaveCount(count);
+				const active = section.locator(`a[href="/library/${count}"]`);
+				await expect(active).toHaveAttribute('aria-current', 'page');
+				const collapse = section.getByRole('button', { name: 'Show less', exact: true });
+				await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+				await expect(collapse).toBeFocused();
+				await page.keyboard.press('Space');
+				await expect(section.getByRole('link')).toHaveCount(5);
+				await expect(expand).toBeFocused();
+				await expand.click();
+				await expect(active).toHaveAttribute('aria-current', 'page');
+			}
+			expect(unexpected).toEqual([]);
+		});
+	}
+}
+
+test('Admin navigation omits libraries while the sidebar retains library actions', async ({ page }) => {
+	const { unexpected } = await mockLibraries(page);
+	await page.route('**/api/v1/admin/users?*', (route) =>
+		route.fulfill({ json: { items: [], next_cursor: null } }));
+	await page.goto('/admin/users');
+	const tabs = page.getByRole('navigation', { name: 'Administration sections' });
+	await expect(tabs.getByRole('link', { name: 'Users', exact: true })).toHaveAttribute('aria-current', 'page');
+	await expect(tabs.locator('a[href^="/admin/libraries"]')).toHaveCount(0);
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	await sidebar.getByRole('button', { name: 'Library actions', exact: true }).click();
+	await expect(sidebar.getByRole('menuitem', { name: 'New Library', exact: true })).toHaveAttribute('href', '/admin/libraries?create=1');
+	await expect(sidebar.getByRole('menuitem', { name: 'Manage Libraries', exact: true })).toHaveAttribute('href', '/admin/libraries');
 	expect(unexpected).toEqual([]);
 });
 

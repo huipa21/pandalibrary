@@ -1,11 +1,41 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'svelte/server';
 import BookCover from './BookCover.svelte';
-import { coverCloth, formatTone, preferredFormat, sortedFormats, titleScale, truncateTitle } from './cover.js';
+import WordbookDialog from '#lib/wordbooks/WordbookDialog.svelte';
+import { coverCloth, coverColors, formatTone, preferredFormat, randomCoverColor, sortedFormats, titleScale, truncateTitle } from './cover.js';
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('cover appearance overrides', () => {
+	it('starts each new editor with a random selected preset and the shared upload frame', () => {
+		const random = vi.spyOn(Math, 'random');
+		const props = { mode: 'new' as const, onclose() {}, async onsave() {} };
+		random.mockReturnValue(0);
+		const navy = render(WordbookDialog, { props }).body;
+		random.mockReturnValue(1 - Number.EPSILON);
+		const teal = render(WordbookDialog, { props }).body;
+		expect(navy.match(/<input[^>]*>/g)?.find((input) => input.includes('value="navy"'))).toContain('checked');
+		expect(teal.match(/<input[^>]*>/g)?.find((input) => input.includes('value="slate-teal"'))).toContain('checked');
+		expect(navy).toContain('upload-dropzone');
+		expect(navy).not.toContain('<select');
+	});
+
+	it('preserves saved palettes and legacy generated colors when editing', () => {
+		const random = vi.spyOn(Math, 'random');
+		const book = {
+			id: 42, name: 'Existing', description: '', entry_count: 0, book_count: 0,
+			is_default: false, archived: false, created_at: '', updated_at: ''
+		};
+		for (const cover_color of ['', 'rust']) {
+			const { body } = render(WordbookDialog, { props: {
+				mode: 'rename', book: { ...book, cover_color }, onclose() {}, async onsave() {}
+			} });
+			const color = cover_color || coverCloth(book.id).name;
+			expect(body.match(/<input[^>]*>/g)?.find((input) => input.includes(`value="${color}"`))).toContain('checked');
+		}
+		expect(random).not.toHaveBeenCalled();
+	});
+
 	it('keeps deterministic colors and the existing title position by default', () => {
 		const { body } = render(BookCover, { props: { id: 42, title: 'Wordbook' } });
 		expect(body).toContain(coverCloth(42).board);
@@ -36,6 +66,18 @@ describe('cover appearance overrides', () => {
 });
 
 describe('cover helpers', () => {
+	it('chooses a random named preset across the entire palette for new covers', () => {
+		const random = vi.spyOn(Math, 'random');
+		for (const [index, palette] of coverColors.entries()) {
+			random.mockReturnValue((index + 0.5) / coverColors.length);
+			expect(randomCoverColor()).toBe(palette.name);
+		}
+		random.mockReturnValue(0);
+		expect(randomCoverColor()).toBe('navy');
+		random.mockReturnValue(1 - Number.EPSILON);
+		expect(randomCoverColor()).toBe('slate-teal');
+	});
+
 	it('chooses deterministic cloth palettes across book IDs 1-1000', () => {
 		const palettes = Array.from({ length: 1000 }, (_, index) => coverCloth(index + 1));
 		expect(new Map(palettes.map(({ name, board }) => [name, board]))).toEqual(new Map([

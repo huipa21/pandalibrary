@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import UploadDropzone from '#lib/upload/UploadDropzone.svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { translate } from '#lib/paging/translate.js';
@@ -33,7 +34,6 @@
 	let selectButton = $state<HTMLButtonElement | null>(null);
 	let keepButton = $state<HTMLButtonElement | null>(null);
 	let uploadButton = $state<HTMLButtonElement | null>(null);
-	let dragDepth = $state(0);
 	let confirming = $state(false);
 	let libraries = $state<Library[]>([]);
 	let shelves = $state<Shelf[]>([]);
@@ -70,7 +70,6 @@
 		selectButton?.focus();
 		return () => {
 			confirming = false;
-			dragDepth = 0;
 			if (dialog.open) dialog.close();
 			if (originalFocusElement?.isConnected) originalFocusElement.focus();
 		};
@@ -204,23 +203,8 @@
 		fileInput.value = '';
 	}
 
-	function ondragenter(event: DragEvent) {
-		event.preventDefault();
-		dragDepth += 1;
-	}
-
-	function ondragover(event: DragEvent) {
-		event.preventDefault();
-		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-	}
-
-	function ondragleave() {
-		dragDepth = Math.max(0, dragDepth - 1);
-	}
-
 	function ondrop(event: DragEvent) {
 		event.preventDefault();
-		dragDepth = 0;
 		const { files, ignored } = filesFromDataTransfer(event.dataTransfer);
 		queue.add(files, ignored);
 	}
@@ -351,27 +335,14 @@
 				</select>
 				<p id="bh-upload-visibility-help" class="text-xs text-slate-600">{m['bh.visibility.help']()}</p>
 			</div>
-			<div
-				role="group"
-				aria-labelledby="bh3-drop-label"
-				data-testid="bh3-drop-zone"
-				data-dragging={dragDepth > 0 ? 'true' : undefined}
-				class={[
-					'flex flex-col items-center gap-3 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors',
-					dragDepth > 0 ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 bg-slate-50'
-				]}
-				{ondragenter}
-				{ondragover}
-				{ondragleave}
+			<UploadDropzone
+				label={m['bh3.drop_zone']()}
+				activeLabel={m['bh3.drop_active']()}
+				hint={m['bh3.drop_hint']({ limit })}
+				testId="bh3-drop-zone"
+				disabled={!open}
 				{ondrop}
 			>
-				<svg aria-hidden="true" viewBox="0 0 24 24" class="size-8 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M12 16V4m0 0L7 9m5-5l5 5M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
-				</svg>
-				<p id="bh3-drop-label" class="text-sm font-medium">
-					{dragDepth > 0 ? m['bh3.drop_active']() : m['bh3.drop_zone']()}
-				</p>
-				<p class="text-xs text-slate-600">{m['bh3.drop_hint']({ limit })}</p>
 				<div class="flex flex-wrap justify-center gap-2">
 					<button
 						bind:this={selectButton}
@@ -397,7 +368,7 @@
 					data-testid="bh3-file-input"
 					onchange={onpick}
 				/>
-			</div>
+			</UploadDropzone>
 
 			{#if queue.notice}
 				<div class="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">

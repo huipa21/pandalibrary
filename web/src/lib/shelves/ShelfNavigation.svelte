@@ -18,11 +18,12 @@
 	let { pathname, role }: { pathname: string; role: string } = $props();
 	let libraries = $state<Library[]>([]);
 	let shelves = $state<Shelf[]>([]);
-	let expanded = $state(true);
+	let expanded = $state(false);
 	let loading = $state(true);
 	let libraryError = $state('');
 	let collectionError = $state('');
 	let refreshVersion = $state(0);
+	const visibleLibraries = $derived(expanded ? libraries : libraries.slice(0, 5));
 	const currentLibraryID = $derived(
 		Number(/^\/library\/([1-9]\d*)\/?$/.exec(pathname)?.[1]) || undefined
 	);
@@ -75,16 +76,11 @@
 <section class="shell-section" aria-labelledby="sidebar-libraries-heading" data-slot="sidebar-libraries">
 	<div class="flex items-center justify-between gap-2 pr-1">
 		<h2 id="sidebar-libraries-heading" class="shell-heading min-w-0 flex-1">
-			<button type="button" class="flex w-full items-center justify-between gap-2 text-left uppercase" aria-expanded={expanded} aria-controls="sidebar-library-list" onclick={() => { expanded = !expanded; }}>
-				{m['organize.libraries']()}
-				<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" class="size-4 shrink-0" style:transform={expanded ? 'rotate(180deg)' : undefined}>
-					<path d="m5 7 5 5 5-5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-				</svg>
-			</button>
+			{m['organize.libraries']()}
 		</h2>
 		<LibraryActionsMenu {role} libraryID={currentLibraryID} />
 	</div>
-	<div id="sidebar-library-list" hidden={!expanded}>
+	<div id="sidebar-library-list">
 		{#if libraryError}
 			<div class="mt-1 px-3 text-sm text-red-300" role="alert">
 				<p>{libraryError}</p>
@@ -94,7 +90,7 @@
 			<p class="mt-1 px-3 text-sm text-[color:var(--shell-muted)]" role="status">{m['catalog.loading']()}</p>
 		{:else if libraries.length}
 			<ul class="mt-1 space-y-0.5">
-				{#each libraries as library (library.id)}
+				{#each visibleLibraries as library (library.id)}
 					<li>
 						<a class="shell-link" href={`/library/${library.id}`} aria-current={currentLibraryID === library.id ? 'page' : undefined}>
 							<Icon name={entityIcon(library.icon, `library:${library.id}`)} class="size-4 shrink-0" />
@@ -103,6 +99,13 @@
 						</a>
 					</li>
 				{/each}
+				{#if libraries.length > 5}
+					<li>
+						<button type="button" class="shell-link w-full justify-center" aria-label={expanded ? m['bv3.show_less']() : m['bv3.show_more']()} title={expanded ? m['bv3.show_less']() : m['bv3.show_more']()} aria-expanded={expanded} aria-controls="sidebar-library-list" onclick={() => { expanded = !expanded; }}>
+							<span class="flex" style:transform={expanded ? 'rotate(180deg)' : undefined}><Icon name="chevron-down" class="size-4 shrink-0" /></span>
+						</button>
+					</li>
+				{/if}
 			</ul>
 		{:else}
 			<p class="mt-1 px-3 text-sm text-[color:var(--shell-muted)]">{m['organize.library_empty']()}</p>
@@ -113,7 +116,7 @@
 <section class="shell-section" aria-labelledby="sidebar-shelves-heading" data-slot="sidebar-shelves">
 	<div class="flex items-center justify-between gap-2 pr-1">
 		<h2 id="sidebar-shelves-heading" class="shell-heading min-w-0">
-			<a href="/shelves" aria-current={pathname === '/shelves' ? 'page' : undefined} class="flex items-center gap-2 truncate hover:underline focus-visible:outline-2"><Icon name="folder" class="size-4 shrink-0" />{m['organize.collections']()}</a>
+			<a href="/shelves" aria-current={deLocalizeHref(pathname).replace(/\/+$/, '') === '/shelves' ? 'page' : undefined} class="block truncate hover:underline focus-visible:outline-2">{m['organize.collections']()}</a>
 		</h2>
 		<ShelfActionsMenu {pathname} {role} {currentShelf} />
 	</div>

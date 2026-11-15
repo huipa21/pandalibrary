@@ -79,10 +79,11 @@ status.
 
 ### Libraries
 
-The **Libraries** heading and its arrow expand or collapse the complete list
-of available libraries; the **⋮** actions stay visible when collapsed. Select
-a library to browse only its books. **Manage Libraries** opens the library
-cards, each showing its visible book count.
+The **Libraries** section initially shows up to five libraries. If more are
+available, use the arrow after the fifth library to show the rest; the arrow
+at the end then collapses the list back to five. Select a library to browse
+only its books. **Manage Libraries** opens the library cards, each showing
+its visible book count.
 
 Every catalog book belongs to exactly one library. A library is its physical
 ownership boundary, while a collection is a logical grouping that can span
@@ -94,6 +95,11 @@ and deleting libraries requires an administrator account. Administrators also
 have edit and delete icons at the bottom right of each library card. Deletion
 requires confirmation; only empty, non-default libraries can be deleted.
 Readers can use **Manage Libraries** to return to the library cards.
+Library actions live in this **⋮** menu, not in the Admin tabs.
+
+The **Collections** heading opens all collections. Use its **⋮** menu to
+create a collection, manage the current collection (or view its details when
+read-only), or browse more collections.
 
 ## Book pages
 

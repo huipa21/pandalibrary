@@ -623,6 +623,15 @@ body {
 	}
 }
 
+.app-shell :is(
+	input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'], [type='reset'], [type='hidden']),
+	textarea
+):focus {
+	border-color: var(--shell-active);
+	outline: 2px solid var(--shell-active);
+	outline-offset: -2px;
+}
+
 .app-shell select:focus-visible {
 	outline: 2px solid var(--shell-active);
 	outline-offset: -2px;

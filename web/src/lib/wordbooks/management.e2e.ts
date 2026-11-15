@@ -287,7 +287,8 @@ test('new notebooks use a modal and persist their name, description and cover pr
 	await expect(form.getByRole('checkbox')).toHaveCount(0);
 	await form.getByLabel('Wordbook name', { exact: true }).fill('New study');
 	await form.getByLabel('Description (optional)', { exact: true }).fill('Optional description');
-	await form.getByRole('combobox', { name: 'Cover color', exact: true }).selectOption('forest');
+	await expect(form.getByRole('radio', { checked: true })).toHaveCount(1);
+	await form.getByRole('radio', { name: 'Forest', exact: true }).check();
 	const created = page.waitForRequest((request) => request.url().endsWith('/api/v1/wordbooks') && request.method() === 'POST');
 	await form.getByRole('button', { name: 'Create', exact: true }).click();
 	expect((await created).postDataJSON()).toEqual({ name: 'New study', description: 'Optional description', cover_color: 'forest', cover_image: '' });
@@ -296,7 +297,7 @@ test('new notebooks use a modal and persist their name, description and cover pr
 	await page.reload();
 	await page.getByRole('button', { name: 'Rename', exact: true }).click();
 	const rename = page.getByRole('form', { name: 'Rename', exact: true });
-	await expect(rename.getByRole('combobox', { name: 'Cover color', exact: true })).toHaveValue('forest');
+	await expect(rename.getByRole('radio', { name: 'Forest', exact: true })).toBeChecked();
 	await rename.getByLabel('Description (optional)', { exact: true }).fill('Edited description');
 	await rename.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByText('Edited description', { exact: true })).toBeVisible();
@@ -407,7 +408,7 @@ test('wordbook upload crops an image into a persistent 600 by 900 JPEG', async (
 	await create.click();
 	const payload = (await created).postDataJSON();
 	expect(payload.cover_image).toBe(cropped);
-	expect(payload.cover_color).toBe('');
+	expect(['navy', 'forest', 'ochre', 'khaki', 'rust', 'taupe', 'burgundy', 'slate-teal']).toContain(payload.cover_color);
 	expect(Buffer.from(payload.cover_image.split(',')[1], 'base64').length).toBeLessThan(600 * 1024);
 	const dimensions = await page.evaluate(async (src: string) => {
 		const image = new Image();

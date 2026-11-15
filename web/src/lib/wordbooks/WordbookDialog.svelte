@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import CoverEditor from '#lib/bookview/CoverEditor.svelte';
+	import { coverCloth, randomCoverColor } from '#lib/bookview/cover.js';
 	import { focusableWithin, nextTrappedFocus } from '#lib/shell/focus.js';
 	import type { Wordbook, WordbookOptions } from './api.js';
 
@@ -14,7 +15,7 @@
 	let dialog = $state<HTMLDialogElement | null>(null);
 	let name = $state(untrack(() => mode === 'rename' ? book?.name ?? '' : ''));
 	let description = $state(untrack(() => mode === 'rename' ? book?.description ?? '' : ''));
-	let color = $state(untrack(() => mode === 'rename' ? book?.cover_color ?? '' : ''));
+	let color = $state(untrack(() => mode === 'rename' ? book?.cover_color || coverCloth(book?.id ?? 0).name : randomCoverColor()));
 	let image = $state(untrack(() => mode === 'rename' ? book?.cover_image ?? '' : ''));
 	let submitting = $state(false);
 	let coverBusy = $state(false);
@@ -80,5 +81,5 @@
 	.field { display: block; width: 100%; min-width: 0; border: 1px solid #94a3b8; border-radius: .375rem; padding: .5rem; background: white; }
 	.button { min-height: 2.5rem; border: 1px solid #cbd5e1; border-radius: .375rem; padding: .5rem .75rem; background: white; font-size: .875rem; }
 	.button:disabled { opacity: .5; cursor: not-allowed; }
-	.button:focus-visible, .field:focus-visible { outline: 2px solid #0f172a; outline-offset: 2px; }
+	.button:focus-visible, .field:focus-visible { outline: 2px solid var(--shell-active, #047857); outline-offset: 2px; }
 </style>

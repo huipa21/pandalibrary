@@ -13,6 +13,10 @@ export const coverColors = [
 	{ name: 'slate-teal', board: '#24494d', spine: '#193335', frame: '#d9b768', plate: '#f3eedf', plateRule: '#b7a88a', ink: '#163035', author: '#d9b768' }
 ] as const;
 
+export function randomCoverColor(): (typeof coverColors)[number]['name'] {
+	return coverColors[Math.floor(Math.random() * coverColors.length)].name;
+}
+
 export function coverCloth(seed: number): (typeof coverColors)[number] {
 	let hash = seed | 0;
 	hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);

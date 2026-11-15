@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
+	import UploadDropzone from '#lib/upload/UploadDropzone.svelte';
 	import BookCover from './BookCover.svelte';
 	import { coverColors } from './cover.js';
 	import { CoverImageError, cropRect, exportCoverCrop, validateCoverFile } from './image-crop.js';
@@ -16,6 +17,7 @@
 	}
 
 	let { title, seed = 0, color = $bindable(''), image = $bindable(''), disabled = false, onbusy }: Props = $props();
+	const colorGroupId = $props.id();
 	let source = $state<{ element: HTMLImageElement; url: string; width: number; height: number } | null>(null);
 	let panX = $state(50);
 	let panY = $state(50);
@@ -25,6 +27,7 @@
 	let invalidCrop = $state(false);
 	let invalidUpload = $state(false);
 	let error = $state('');
+	let fileInput = $state<HTMLInputElement | null>(null);
 	let uploadVersion = 0;
 	let destroyed = false;
 	let cancelLoad: (() => void) | undefined;
@@ -50,6 +53,11 @@
 		const input = event.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		input.value = '';
+		await uploadFile(file);
+	}
+
+	async function uploadFile(file?: File) {
+		if (disabled) return;
 		if (!file) return;
 		const version = ++uploadVersion;
 		cancelLoad?.();
@@ -174,20 +182,31 @@
 	<div class="preview">
 		<BookCover id={seed} {title} coverUrl={image} coverColor={color} centeredTitle loading="eager" />
 	</div>
-	<label>
-		<span>{m['covers.editor.color']()}</span>
-		<select bind:value={color} onchange={generated}>
-			<option value="">{m['covers.editor.automatic']()}</option>
+	<div class="settings">
+		<fieldset class="palette">
+			<legend>{m['covers.editor.color']()}</legend>
+			<div class="swatches">
 			{#each coverColors as palette}
-				<option value={palette.name}>{paletteLabels[palette.name]}</option>
+				<label class="swatch" style:--swatch={palette.board} title={paletteLabels[palette.name]}>
+					<input type="radio" name={`${colorGroupId}-color`} value={palette.name} bind:group={color} aria-label={paletteLabels[palette.name]} onchange={generated} />
+					<span class="swatch-color" aria-hidden="true"></span>
+				</label>
 			{/each}
-		</select>
-	</label>
-	<label>
-		<span>{m['covers.editor.upload']()}</span>
-		<input type="file" accept="image/jpeg,image/png,image/webp" onchange={upload} />
-	</label>
-	<p class="hint">{m['covers.editor.upload_help']()}</p>
+			</div>
+		</fieldset>
+		<UploadDropzone
+			label={m['covers.editor.drop_zone']()}
+			activeLabel={m['covers.editor.drop_active']()}
+			hint={m['covers.editor.upload_help']()}
+			testId="cover-drop-zone"
+			{disabled}
+			ondrop={(event) => void uploadFile(event.dataTransfer?.files[0])}
+		>
+			<button class="generated" type="button" {disabled} onclick={() => fileInput?.click()}>{m['covers.editor.upload']()}</button>
+			<input bind:this={fileInput} class="hidden" type="file" accept="image/jpeg,image/png,image/webp" aria-label={m['covers.editor.upload']()} tabindex="-1" onchange={upload} />
+		</UploadDropzone>
+	</div>
+	<div class="crop-controls">
 	{#if source && selection}
 		<p class="hint">{m['covers.editor.crop_help']()}</p>
 		<div class="original" style:aspect-ratio={`${source.width} / ${source.height}`} style:max-width={`${Math.min(24, 24 * source.width / source.height)}rem`}>
@@ -225,15 +244,25 @@
 	{/if}
 	{#if loading || exporting}<p role="status">{m['covers.editor.processing']()}</p>{/if}
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	</div>
 </fieldset>
 
 <style>
-	.cover-editor { display: grid; min-width: 0; gap: 0.65rem; }
+	.cover-editor { display: grid; grid-template-columns: minmax(0, 6rem) minmax(0, 1fr); align-items: start; min-width: 0; gap: 0.75rem; }
 	legend { margin-bottom: 0.5rem; font-weight: 600; }
-	.preview { width: 8rem; margin-inline: auto; }
+	.preview { width: 100%; max-width: 8rem; }
+	.settings, .crop-controls { display: grid; min-width: 0; gap: 0.65rem; }
+	.crop-controls { grid-column: 1 / -1; }
+	.palette { min-width: 0; }
+	.palette legend { font-size: 0.875rem; font-weight: 400; }
+	.swatches { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+	.swatch { position: relative; width: 2rem; height: 2rem; cursor: pointer; }
+	.swatch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: inherit; }
+	.swatch-color { width: 100%; height: 100%; border-radius: 0.375rem; background: var(--swatch); border: 1px solid rgb(0 0 0 / 25%); pointer-events: none; }
+	.swatch input:checked + .swatch-color { box-shadow: inset 0 0 0 2px white; outline: 2px solid var(--shell-active, #047857); outline-offset: 1px; }
+	.swatch input:focus-visible + .swatch-color, .generated:focus-visible { outline: 2px solid var(--shell-active, #047857); outline-offset: 3px; }
 	label { display: grid; gap: 0.5rem; font-size: 0.875rem; }
-	select, .generated { border: 1px solid #94a3b8; border-radius: 0.375rem; padding: 0.4rem; }
-	select { background: white; color: #0f172a; }
+	.generated { border: 1px solid #94a3b8; border-radius: 0.375rem; padding: 0.4rem; }
 	input[type='range'] { width: 100%; }
 	.hint { color: #64748b; font-size: 0.8rem; }
 	.original { position: relative; width: 100%; margin-inline: auto; overflow: hidden; }
@@ -243,4 +272,5 @@
 	.selection:active { cursor: grabbing; }
 	.error { color: #b91c1c; font-size: 0.875rem; }
 	:disabled { opacity: 0.65; }
+	@media (min-width: 480px) { .cover-editor { grid-template-columns: 8rem minmax(0, 1fr); gap: 1rem; } }
 </style>

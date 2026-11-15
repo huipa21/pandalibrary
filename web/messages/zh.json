@@ -4,6 +4,8 @@
 	"covers.editor.color": "封面颜色",
 	"covers.editor.automatic": "自动",
 	"covers.editor.upload": "上传图片",
+	"covers.editor.drop_zone": "将封面图片拖到此处",
+	"covers.editor.drop_active": "放下图片以裁剪",
 	"covers.editor.upload_help": "支持 JPEG、PNG 或 WebP，最大 20 MiB。选区将保存为 600 × 900 的 JPEG 图片。",
 	"covers.editor.crop_help": "拖动边框选区，或调整位置和缩放。更改会自动应用。",
 	"covers.editor.original": "原始图片及裁剪选区",

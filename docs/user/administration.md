@@ -60,6 +60,11 @@ cannot change another owner's visibility.
 
 ## Library ownership
 
+Use the sidebar's **Libraries → ⋮** menu for **New Library** and
+**Manage Libraries**, rather than looking for a Libraries tab in Admin.
+When browsing a library, the same menu includes **Edit Library**. Library
+creation, editing, access management and deletion remain administrator-only.
+
 Each book belongs to exactly one library. Changing its library moves the book
 and all its formats; it does not add a second library membership. Collections
 are logical groups and can include books from different libraries.
@@ -104,7 +109,6 @@ library through the assignment API.
 | Page | What it does |
 |---|---|
 | **Users** | Search accounts by category; select numbered rows for single-account editing or bulk enable, disable, revoke and delete actions. Server CLI help is at the bottom |
-| **Libraries & access** | Create libraries and choose which readers can see each one. Administrators see all libraries |
 | **Hidden books** | Hide specific books from one reader. Hidden books disappear from that reader's lists, search and downloads |
 | **Uploads** | Upload books and view processing history, including failures and their reasons |
 | **Metadata providers** | Turn online sources on or off and set their priority. Open Library and Google Books are on by default; NeoDB and Hardcover need a token |

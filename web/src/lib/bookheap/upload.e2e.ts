@@ -79,6 +79,27 @@ async function dropFiles(zone: Locator, files: string[], text?: string) {
 	await expect(zone).not.toHaveAttribute('data-dragging', 'true');
 }
 
+test('closing and reopening the upload dialog clears an active drag highlight', async ({ page }) => {
+	await authenticate(page);
+	await page.goto('/');
+	const trigger = page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true });
+	await trigger.click();
+	const dialog = page.getByRole('dialog', { name: 'Upload books' });
+	const zone = dialog.getByTestId('bh3-drop-zone');
+	const transfer = await page.evaluateHandle(() => new DataTransfer());
+	await zone.dispatchEvent('dragenter', { dataTransfer: transfer });
+	await expect(zone).toHaveAttribute('data-dragging', 'true');
+	await page.keyboard.press('Escape');
+	await expect(dialog).not.toBeVisible();
+	await trigger.click();
+	await expect(zone).not.toHaveAttribute('data-dragging');
+	await expect(zone).toContainText('Drag and drop book files here');
+	await zone.dispatchEvent('dragenter', { dataTransfer: transfer });
+	await zone.dispatchEvent('dragleave', { dataTransfer: transfer });
+	await expect(zone).not.toHaveAttribute('data-dragging');
+	await transfer.dispose();
+});
+
 test('administrators upload many files from the header dialog with per-file results', async ({ page }) => {
 	await authenticate(page);
 	const uploads = await mockUploads(page);

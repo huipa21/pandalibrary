@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 async function authenticate(page: Page, locale = 'en') {
+	await page.route('**/api/v1/wordbooks', (route) => route.fulfill({ json: { wordbooks: [] } }));
 	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route('**/api/v1/libraries?*', (route) => route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.route('**/api/v1/me/book-states?*', (route) => route.fulfill({ json: { items: [] } }));
@@ -256,7 +257,7 @@ test('computed All Books is absent from the sidebar and does not request a menu 
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await page.goto('/libraries');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await expect(sidebar.getByRole('button', { name: 'Libraries', exact: true })).toBeVisible();
+	await expect(sidebar.getByRole('heading', { name: 'Libraries', exact: true })).toBeVisible();
 	await expect(sidebar.locator('a[href="/books"]')).toHaveCount(0);
 	await page.evaluate(() => window.dispatchEvent(new Event('pandalibrary-books-changed')));
 	await page.evaluate(() => window.dispatchEvent(new Event('pandalibrary-bookheap-changed')));
