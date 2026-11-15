@@ -463,25 +463,20 @@ test('opens the first readable format when the saved file is missing', async ({ 
 	await expect(page).toHaveURL('/read/21/11');
 });
 
-test('renders cover-only tiles at the standard width without clipping the lift', async ({ page }) => {
+test('renders cover-only tiles at the appearance width and spacing without clipping the lift', async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	const server = state();
 	await mockApi(page, server);
+	await page.addInitScript(() => {
+		localStorage.setItem('pandalibrary.book-display', JSON.stringify({ size: 160, spacing: 12 }));
+	});
 	await page.goto('/');
 	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
 	const scroller = continuing.getByRole('region');
 	const tile = continuing.locator('li').filter({ has: page.getByTitle('First Book', { exact: true }) });
 	await expect(tile).toBeVisible();
-	const standard = await page.evaluate(() => {
-		const probe = document.createElement('div');
-		probe.style.width = 'var(--spacing-book)';
-		document.body.append(probe);
-		const width = probe.getBoundingClientRect().width;
-		probe.remove();
-		return width;
-	});
-	expect(standard).toBeGreaterThan(0);
-	expect((await tile.boundingBox())?.width).toBeCloseTo(standard, 0);
+	expect((await tile.boundingBox())?.width).toBeCloseTo(160, 0);
+	await expect(continuing.locator('.book-cover-row')).toHaveCSS('gap', '12px');
 	await expect(tile.getByRole('button', { name: /^Resume/ })).toHaveCount(0);
 	await expect(tile.getByRole('alert')).toHaveCount(0);
 

@@ -97,6 +97,6 @@
 				{#if shelf.description}<ShelfDescription description={shelf.description} />{/if}
 			</div>
 		{/if}
-		<BookBrowser scope={browseScope} showHeading={false} {fetchBooks} {bookErrorMessage} displayStorageKey={`system-collection:${key}`} />
+		<BookBrowser scope={browseScope} showHeading={false} {fetchBooks} {bookErrorMessage} />
 	{/if}
 </div>

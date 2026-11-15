@@ -12,6 +12,7 @@
 	import EntityManagementCover from '#lib/EntityManagementCover.svelte';
 	import { entityIcon } from '#lib/navigation-icons.js';
 	import LibraryCreateDialog from '#lib/libraries/LibraryCreateDialog.svelte';
+	import { bookDisplay } from '#lib/catalog/book-display.svelte.js';
 
 	let libraries = $state<Library[]>([]);
 	let nextCursor = $state<string | null>(null);
@@ -113,7 +114,7 @@
 	{:else if libraries.length === 0}
 		<p class="card p-6 text-slate-600">{m['catalog.home.empty']()}</p>
 	{:else}
-		<ul class="book-grid book-grid-configurable" style="--book-cover-size: 208px; --book-cover-spacing: 20px">
+		<ul class="book-grid book-grid-configurable" style={`--book-cover-size: ${bookDisplay.size}px; --book-cover-spacing: ${bookDisplay.spacing}px`}>
 			{#each libraries as library (library.id)}
 				<li class="min-w-0 space-y-3">
 					<EntityManagementCover href={`/libraries/${library.id}`} name={library.name} icon={entityIcon(library.icon, `library:${library.id}`)} />

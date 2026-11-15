@@ -288,6 +288,7 @@ test('desktop sidebar lists HOME links, Library, and All Books across every libr
 	await expect(account).toBeVisible();
 	await account.click();
 	await expect(page.getByRole('menuitem', { name: 'Profile' })).toBeVisible();
+	await expect(page.getByRole('menuitem', { name: 'Appearance' })).toBeVisible();
 	await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(account).toBeFocused();
@@ -558,8 +559,11 @@ test('theme choice persists and avatar menu supports keyboard navigation', async
 	await account.focus();
 	await page.keyboard.press('Enter');
 	const profile = page.getByRole('menuitem', { name: 'Profile' });
+	const appearance = page.getByRole('menuitem', { name: 'Appearance' });
 	const signOut = page.getByRole('menuitem', { name: 'Sign out' });
 	await expect(profile).toBeFocused();
+	await page.keyboard.press('ArrowDown');
+	await expect(appearance).toBeFocused();
 	await page.keyboard.press('ArrowDown');
 	await expect(signOut).toBeFocused();
 	await page.keyboard.press('Home');
@@ -568,6 +572,45 @@ test('theme choice persists and avatar menu supports keyboard navigation', async
 	await expect(signOut).toBeFocused();
 	await page.keyboard.press('Escape');
 	await expect(account).toBeFocused();
+});
+
+test('appearance controls the shared book grid size and spacing', async ({ page }) => {
+	await authenticate(page);
+	await mockCatalog(page);
+	const timestamp = '2026-11-03T00:00:00Z';
+	await page.route('**/api/v1/wordbooks', (route) => route.fulfill({ json: { wordbooks: [{
+		id: 1, name: 'My words', description: '', cover_color: '', cover_image: '', entry_count: 0,
+		book_count: 0, is_default: true, archived: false, created_at: timestamp, updated_at: timestamp
+	}] } }));
+	await page.route('**/api/v1/wordbooks/1/entries', (route) => route.fulfill({ json: { entries: [] } }));
+	await page.addInitScript(() => {
+		if (localStorage.getItem('pandalibrary.book-display') === null) {
+			localStorage.setItem('pandalibrary.book-display', JSON.stringify({ size: 160, spacing: 12 }));
+		}
+	});
+	await page.goto('/books');
+	const grid = page.locator('.book-grid-configurable');
+	await expect(grid).toHaveAttribute('style', /--book-cover-size:\s*160px/);
+	await expect(grid).toHaveAttribute('style', /--book-cover-spacing:\s*12px/);
+
+	await page.getByRole('button', { name: 'Account menu' }).click();
+	await page.getByRole('menuitem', { name: 'Appearance' }).click();
+	await expect(page).toHaveURL('/appearance');
+	await expect(page.locator('#appearance-cover-size')).toHaveValue('160');
+	await expect(page.locator('#appearance-spacing')).toHaveValue('12');
+	await page.locator('#appearance-cover-size').evaluate((input: HTMLInputElement) => {
+		input.value = '240';
+		input.dispatchEvent(new Event('input', { bubbles: true }));
+	});
+	await expect(page.locator('#appearance-cover-size')).toHaveValue('240');
+	await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pandalibrary.book-display') ?? '{}').size)).toBe(240);
+
+	for (const path of ['/libraries', '/shelves', '/wordbooks']) {
+		await page.goto(path);
+		const grid = path === '/wordbooks' ? page.locator('[data-wordbooks]') : page.locator('.book-grid-configurable');
+		await expect(grid).toHaveAttribute('style', /--book-cover-size:\s*240px/);
+		await expect(grid).toHaveAttribute('style', /--book-cover-spacing:\s*12px/);
+	}
 });
 
 test('header brand uses the favicon and weight feedback without shifting', async ({ page }) => {

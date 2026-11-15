@@ -11,7 +11,7 @@
 		| 'highlighter' | 'underline' | 'strikethrough' | 'message' | 'bookmark-plus'
 		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move'
 		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe' | 'maximize' | 'upload'
-		| 'home' | 'inbox' | 'chart' | 'clock' | 'users';
+		| 'home' | 'inbox' | 'chart' | 'clock' | 'users' | 'sliders';
 </script>
 
 <script lang="ts">
@@ -161,5 +161,7 @@
 		<circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
 	{:else if name === 'users'}
 		<circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m5 10v-2a6 6 0 0 0-4-5.7" />
+	{:else if name === 'sliders'}
+		<path d="M4 6h16M4 18h16M4 12h16" /><circle cx="8" cy="6" r="2" fill="white" /><circle cx="16" cy="12" r="2" fill="white" /><circle cx="10" cy="18" r="2" fill="white" />
 	{/if}
 </svg>

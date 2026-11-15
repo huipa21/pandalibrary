@@ -8,6 +8,7 @@
 	import BuildVersion from '#lib/buildinfo/BuildVersion.svelte';
 	import AppShell from '#lib/shell/AppShell.svelte';
 	import { readerChrome } from '#lib/shell/reader-chrome.js';
+	import { initializeBookDisplay } from '#lib/catalog/book-display.svelte.js';
 	import ShelfNavigation from '#lib/shelves/ShelfNavigation.svelte';
 	import { activateOffline, deactivateOffline, offlineStatus, rememberedViewer, syncNow } from '#lib/sync/client.js';
 	import { withSessionLock } from '#lib/sync/engine.js';
@@ -45,6 +46,7 @@
 	const publicRoute = $derived(page.url.pathname === '/login' || page.url.pathname === '/setup');
 
 	onMount(() => {
+		const disposeBookDisplay = initializeBookDisplay();
 		const accountChanged = () => {
 			viewer = null;
 			clearLocalLanguageOverride();
@@ -61,7 +63,10 @@
 			console.error('Could not read the language-change notice', error);
 		}
 		void checkAuth();
-		return () => window.removeEventListener('pandalibrary-account-invalid', accountChanged);
+		return () => {
+			window.removeEventListener('pandalibrary-account-invalid', accountChanged);
+			disposeBookDisplay();
+		};
 	});
 
 	async function checkAuth() {

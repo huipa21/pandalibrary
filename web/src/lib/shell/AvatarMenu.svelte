@@ -52,6 +52,16 @@
 			</svg>
 			<span>{m['hm1.account.profile']()}</span>
 		</a>
+		<a
+			role="menuitem"
+			class="header-menu-item"
+			href="/appearance"
+			aria-current={pathname === '/appearance' ? 'page' : undefined}
+			data-menu-activate
+		>
+			<Icon name="sliders" class="size-4.5 shrink-0" />
+			<span>{m['hm1.account.appearance']()}</span>
+		</a>
 		{#if viewer.role === 'admin'}
 			<a role="menuitem" class="header-menu-item" href="/admin" aria-current={pathname === '/admin' || pathname.startsWith('/admin/') ? 'page' : undefined} data-menu-activate>
 				<Icon name="users" class="size-4.5 shrink-0" />

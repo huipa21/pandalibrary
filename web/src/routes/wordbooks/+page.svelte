@@ -9,6 +9,7 @@
 	import WordbookDialog from '#lib/wordbooks/WordbookDialog.svelte';
 	import BookCover from '#lib/bookview/BookCover.svelte';
 	import Icon from '#lib/bookview/Icon.svelte';
+	import { bookDisplay } from '#lib/catalog/book-display.svelte.js';
 	import {
 		downloadWordbook, filterEntries, filterWordbooks, involvedBookCount, readPreferences,
 		readWordbookPreferences, sortEntries, writePreferences, writeWordbookPreferences,
@@ -28,8 +29,6 @@
 	let category = $state<Category>('wordbooks');
 	let keyword = $state('');
 	let settingsOpen = $state(false);
-	let coverSize = $state(208);
-	let spacing = $state(20);
 	let showDescriptions = $state(true);
 	let showSources = $state(true);
 	let nameMode = $state<'new' | 'rename' | null>(null);
@@ -198,7 +197,7 @@
 			{/if}
 		</div>
 	{/if}
-	<Header bind:category bind:keyword bind:size={coverSize} bind:spacing bind:wordbookSort bind:status {sort} {view} inside={selectedId !== null} {settingsOpen} disabled={busy || loading} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} onsettings={() => settingsOpen = !settingsOpen} oncreate={() => beginName('new')} />
+	<Header bind:category bind:keyword bind:wordbookSort bind:status {sort} {view} inside={selectedId !== null} {settingsOpen} disabled={busy || loading} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} onsettings={() => settingsOpen = !settingsOpen} oncreate={() => beginName('new')} />
 	{#if selectedId !== null && settingsOpen}
 		<div class="flex flex-wrap gap-4 rounded-md border border-slate-200 p-3 text-sm" aria-label={m['wordbooks.display_settings']()}>
 			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showDescriptions} />{m['wordbooks.show_descriptions']()}</label>
@@ -229,7 +228,7 @@
 		{/if}
 	{:else if selectedId === null}
 		{#if loading}<p role="status">{m['wordbooks.loading']()}</p>{/if}
-		<ul data-wordbooks data-view={view} class={view === 'cards' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${coverSize}px; --book-cover-spacing: ${spacing}px`}>
+		<ul data-wordbooks data-view={view} class={view === 'cards' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${bookDisplay.size}px; --book-cover-spacing: ${bookDisplay.spacing}px`}>
 			{#each visibleBooks as book (book.id)}
 				<li class="min-w-0">
 					<a href="/wordbooks?id={book.id}" aria-label={book.name} class={view === 'cards' ? 'notebook book-tile-lift group block min-w-0 focus-visible:outline-2' : 'notebook group flex min-w-0 gap-4 rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-400 focus-visible:outline-2'}>

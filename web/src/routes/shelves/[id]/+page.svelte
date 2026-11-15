@@ -239,7 +239,7 @@
 					<span class="min-w-0 truncate">{removing === book.id ? m['shelves.books.removing']() : m['shelves.books.remove']()}</span>
 				</button>
 			{/snippet}
-			<BookBrowser scope={browseScope} showHeading={false} {fetchBooks} {bookErrorMessage} displayStorageKey={`collection:${shelf.id}`} refreshKey={membershipVersion} bookActions={membershipEditable ? bookActions : undefined} />
+			<BookBrowser scope={browseScope} showHeading={false} {fetchBooks} {bookErrorMessage} refreshKey={membershipVersion} bookActions={membershipEditable ? bookActions : undefined} />
 		</article>
 	{/if}
 {/if}

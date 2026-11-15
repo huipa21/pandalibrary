@@ -11,7 +11,7 @@
 	import BookCard from './BookCard.svelte';
 	import ClearFiltersButton from './ClearFiltersButton.svelte';
 	import ViewToggle from './ViewToggle.svelte';
-	import BookDisplaySettings from './BookDisplaySettings.svelte';
+	import { bookDisplay } from './book-display.svelte.js';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import { requestErrorKind } from '#lib/paging/errors.js';
 
@@ -20,7 +20,6 @@
 		showHeading = true,
 		rememberSettings = false,
 		fetchBooks = listBooks,
-		displayStorageKey,
 		bookErrorMessage,
 		bookActions,
 		refreshKey = 0
@@ -29,7 +28,6 @@
 		showHeading?: boolean;
 		rememberSettings?: boolean;
 		fetchBooks?: typeof listBooks;
-		displayStorageKey?: string;
 		bookErrorMessage?: (cause: unknown, more: boolean) => string;
 		bookActions?: Snippet<[Book]>;
 		refreshKey?: number;
@@ -51,8 +49,6 @@
 	let series = $state<CatalogEntity[]>([]);
 	let tags = $state<CatalogEntity[]>([]);
 	let mode = $state<'grid' | 'list'>('grid');
-	let coverSize = $state(208);
-	let spacing = $state(20);
 	let reloadVersion = $state(0);
 	let requestVersion = 0;
 	const selectedAuthor = $derived(page.url.searchParams.get('author_id') ?? '');
@@ -298,7 +294,6 @@
 				</select>
 			</label>
 			<ViewToggle view={mode} onchange={(next) => (mode = next)} />
-			<BookDisplaySettings storageKey={displayStorageKey ?? (scope.library_id ? `library:${scope.library_id}` : 'catalog')} bind:size={coverSize} bind:spacing />
 			{#if filterable}
 				<ClearFiltersButton
 					label={m['catalog.books.clear_filters']()}
@@ -328,7 +323,7 @@
 	{:else if books.length === 0}
 		<p class="card p-6 text-slate-600">{m['catalog.books.empty']()}</p>
 	{:else}
-		<ul class={mode === 'grid' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${coverSize}px; --book-cover-spacing: ${spacing}px`}>
+		<ul class={mode === 'grid' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${bookDisplay.size}px; --book-cover-spacing: ${bookDisplay.spacing}px`}>
 			{#each books as book (book.id)}
 				{#snippet actions()}{@render bookActions?.(book)}{/snippet}
 				<BookCard {book} {mode} actions={bookActions ? actions : undefined} />

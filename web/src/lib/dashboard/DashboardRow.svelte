@@ -7,6 +7,7 @@
 	import { rememberOriginScroll } from '#lib/bookview/book-origin.js';
 	import { BOOK_STATE_CHANGED_EVENT } from '#lib/bookview/events.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
+	import { bookDisplay } from '#lib/catalog/book-display.svelte.js';
 	import type { Book } from '#lib/catalog/types.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { getShelf, listShelfBooks } from '#lib/shelves/api.js';
@@ -181,7 +182,12 @@
 	{:else}
 		{#if pager.items.length}
 			<div class="min-w-0 overflow-x-auto pb-2" role="region" aria-label={m['ux5.cover_row']({ section: label })}>
-				<ul class="flex gap-5 pt-1 pb-3 [&>li]:w-36 [&>li]:shrink-0 sm:[&>li]:w-book" onclickcapture={rememberRow} onkeydowncapture={rememberRow}>
+				<ul
+					class="book-cover-row min-w-0 pt-1 pb-3"
+					style={`--book-cover-size: ${bookDisplay.size}px; --book-cover-spacing: ${bookDisplay.spacing}px`}
+					onclickcapture={rememberRow}
+					onkeydowncapture={rememberRow}
+				>
 					{#each pager.items as book (book.id)}
 						<BookCard {book} />
 					{/each}

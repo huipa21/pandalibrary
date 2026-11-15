@@ -10,6 +10,7 @@
 	import Icon from '#lib/bookview/Icon.svelte';
 	import EntityManagementCover from '#lib/EntityManagementCover.svelte';
 	import { entityIcon } from '#lib/navigation-icons.js';
+	import { bookDisplay } from '#lib/catalog/book-display.svelte.js';
 
 	const pager = new CursorPager<Shelf>();
 	let created = $state<Shelf | null>(null);
@@ -59,7 +60,7 @@
 				<p>{m['ux1.shelves.create_help']()}</p>
 			</div>
 		{:else}
-			<ul class="book-grid book-grid-configurable" style="--book-cover-size: 208px; --book-cover-spacing: 20px">
+			<ul class="book-grid book-grid-configurable" style={`--book-cover-size: ${bookDisplay.size}px; --book-cover-spacing: ${bookDisplay.spacing}px`}>
 				{#each pager.items as shelf (shelf.id)}
 					<li class="min-w-0 space-y-3">
 						<EntityManagementCover
