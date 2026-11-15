@@ -311,6 +311,23 @@ describe('foliate appearance styles', () => {
 });
 
 describe('Foliate native selection geometry', () => {
+	it('captures selection chapter and multiple paragraph classification metadata with its exact CFI', async () => {
+		const { view, doc, events } = await openEngine();
+		const range = doc.selection.getRangeAt();
+		Object.assign(range, { intersectsNode: () => true });
+		doc.selection.getRangeAt.mockReturnValue(range);
+		Object.assign(doc, { querySelectorAll: () => [{}, {}] });
+		Object.assign(view, { getProgressOf: () => ({ tocItem: { label: 'Selected chapter' } }) });
+		view.dispatchEvent(new CustomEvent('relocate', {
+			detail: { cfi: 'epubcfi(/6/2!/4/2)', fraction: 0.321, tocItem: { label: 'Visible chapter' } }
+		}));
+		doc.dispatchEvent(new Event('selectionchange'));
+		expect(events.selection).toHaveBeenLastCalledWith({
+			text: 'Selected text', fraction: 0.321, locator: { type: 'cfi', value: 'epubcfi(/6/2!/4/2)' },
+			chapter: 'Selected chapter', paragraphCount: 2
+		});
+	});
+
 	it('makes scaled, bordered iframe geometry available during selection events and updates it live', async () => {
 		const { reader, doc, events, iframe } = await openEngine();
 		vi.mocked(events.selection).mockImplementation((selection) => {

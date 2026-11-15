@@ -35,6 +35,7 @@ import (
 	"pandalibrary/internal/reading"
 	"pandalibrary/internal/search"
 	"pandalibrary/internal/stats"
+	"pandalibrary/internal/wordbooks"
 	webui "pandalibrary/web"
 )
 
@@ -201,6 +202,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		return nil, fmt.Errorf("configure stats: %w", err)
 	}
 	dictionaries = dictionary.NewStore(dictionary.DefaultPath(cfg.DataDir), logger)
+	wordbookService := wordbooks.NewService(databases.Writer, catalogService, dictionaries, logger)
 	opdsMount, err := opds.NewMount(opds.Options{
 		Catalog: catalogService, Search: searchService, Auth: authentication,
 		Reader: databases.Reader, BaseURL: cfg.BaseURL, Logger: logger,
@@ -248,6 +250,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.ExportMount(exportService, authentication, logger),
 			httpapi.SearchMount(searchService, authentication, logger),
 			httpapi.DictionaryMount(dictionaries, authentication, logger),
+			httpapi.WordbookMount(wordbookService, authentication, logger),
 			httpapi.ImportMount(importService, catalogService, authentication, logger),
 			httpapi.BookheapMount(bookheapService, authentication, logger),
 			httpapi.BookheapAssignMount(bookheapService, authentication, logger),

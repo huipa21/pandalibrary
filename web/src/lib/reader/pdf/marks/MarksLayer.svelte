@@ -18,6 +18,8 @@
 	import CommentPopover from './CommentPopover.svelte';
 	import LookupPanel from '#lib/dictionary/LookupPanel.svelte';
 	import './marks.css';
+	import WordbookAction from '../../toolbar/WordbookAction.svelte';
+	import { pdfWordbookSelection } from '../../wordbook-selection.js';
 
 	const ctx = getPdfReaderContext();
 	const { engine, controller } = ctx;
@@ -34,6 +36,7 @@
 
 	let bounds = $state<RectLike>({ left: 0, top: 0, right: 0, bottom: 0 });
 	let selection = $state.raw<PdfSelection | null>(null);
+	let wordbookChosen = $state.raw<ReaderSelection | null>(null);
 	let markTarget = $state<{ id: string; anchor: RectLike } | null>(null);
 	let comment = $state<CommentTarget | null>(null);
 	let lookup = $state.raw<{ text: string; anchor: RectLike } | null>(null);
@@ -58,7 +61,7 @@
 	$effect(() => {
 		const tool = ctx.tool.current;
 		wiring?.update(ctx.ocr.enabled, tool);
-		if (tool !== 'select') selection = null;
+		if (tool !== 'select') { selection = null; wordbookChosen = null; }
 		if (tool === 'insert') markTarget = null;
 	});
 
@@ -87,10 +90,14 @@
 	function capture() {
 		if (ctx.tool.current !== 'select') {
 			selection = null;
+			wordbookChosen = null;
 			return;
 		}
+		// Native select controls can collapse the range; their actions retain the captured page geometry.
+		if (document.activeElement?.closest('.pv8-toolbar') && selection) return;
 		const next = capturePdfSelection(document.getSelection(), engine);
 		selection = next;
+		wordbookChosen = pdfWordbookSelection(next, engine.state.pageCount, document.getSelection()?.toString());
 		if (next) markTarget = null;
 	}
 
@@ -125,6 +132,7 @@
 		const active = document.activeElement;
 		document.getSelection()?.removeAllRanges();
 		selection = null;
+		wordbookChosen = null;
 		if (!active || active === document.body || active.closest('.pv8-toolbar')) focusViewport();
 	}
 
@@ -300,6 +308,7 @@
 
 	onMount(() => {
 		const viewport = engine.viewport;
+		controller.setWordbookCapture(() => wordbookChosen);
 		bounds = clientRect(viewport);
 		const unregister = engine.pageLayers.register(textMarkPainter(() => marks, () => m['pv8.open_comment'](), () => engine.viewport));
 		engine.setSelectionCapture(scheduleCapture);
@@ -359,6 +368,7 @@
 			document.removeEventListener('pointerdown', ondocumentdown, true);
 			window.removeEventListener('resize', onresize);
 			engine.setSelectionCapture(null);
+			controller.setWordbookCapture(null);
 			unsubscribe();
 			unregister();
 			wiring?.dispose();
@@ -388,7 +398,13 @@
 			if (style === 'highlight') mark(style, color);
 		}}
 		onescape={clearSelection}
-	/>
+	>
+		{#snippet wordbook()}
+			<WordbookAction {controller} classify
+				capture={() => wordbookChosen}
+				onadded={clearSelection} />
+		{/snippet}
+	</SelectionToolbar>
 {/if}
 
 {#if lookup}

@@ -9,6 +9,8 @@ import type { Book } from '#lib/catalog/types.js';
 import type { BookState, PageAnnotationInput, ReaderEvents, Setting } from '../types.js';
 import * as m from '#lib/paraglide/messages.js';
 import { createReaderController } from './reader-controller.svelte.js';
+import { wordbooks } from '#lib/wordbooks/api.js';
+import type { WordbookEntry } from '#lib/wordbooks/api.js';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('#lib/catalog/api.js', () => ({ getBook: vi.fn() }));
@@ -36,6 +38,7 @@ vi.mock('#lib/sync/client.js', () => ({
 	}
 }));
 vi.mock('#lib/sync/state.js', () => ({ readerState: vi.fn() }));
+vi.mock('#lib/wordbooks/api.js', () => ({ wordbooks: { add: vi.fn(), list: vi.fn() } }));
 
 const book: Book = {
 	owner_id: null, visibility: 'library', can_manage_visibility: false,
@@ -67,6 +70,76 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('reader controller PDF extensions', () => {
+	async function wordbookController(contextLocator?: string, contextFraction?: string) {
+		let events: ReaderEvents;
+		const reader = {
+			open: vi.fn(), applySettings: vi.fn(), addAnnotation: vi.fn(), removeAnnotation: vi.fn(), destroy: vi.fn(async () => {}),
+			goTo: vi.fn(async () => events.relocate({ fraction: 0, locator: { type: 'pdf', page: 1 } })),
+			previous: vi.fn(), next: vi.fn()
+		};
+		vi.mocked(createReader).mockImplementation(async (_format, _surface, next) => { events = next; return reader; });
+		const controller = createReaderController(() => ({ ...params(), contextLocator, contextFraction }));
+		await controller.retry();
+		vi.stubGlobal('document', { hidden: true });
+		await controller.attach({} as HTMLElement);
+		return { controller, reader };
+	}
+
+	it('persists one captured default collection, guards double clicks and reports enrichment warnings only after saving', async () => {
+		const { controller } = await wordbookController();
+		let release!: (entry: WordbookEntry) => void;
+		vi.mocked(wordbooks.add).mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+		const chosen = { text: 'two words', fraction: 0.25, locator: { type: 'pdf' as const, page: 2 } };
+		const saving = controller.addToWordbook(chosen);
+		expect(controller.wordbookBusy).toBe(true);
+		expect(controller.wordbookMessage).toBe('');
+		expect(await controller.addToWordbook(chosen)).toBe(false);
+		chosen.text = 'changed';
+		expect(wordbooks.add).toHaveBeenCalledTimes(1);
+		expect(wordbooks.add).toHaveBeenCalledWith({
+			kind: 'phrase', text: 'two words', source: {
+				book_id: 21, book_file_id: 31, book_title: 'PDF', locator: { type: 'pdf', page: 2 }, fraction: 0.25
+			}
+		});
+		release({ dictionary_warning: 'lookup unavailable' } as WordbookEntry);
+		expect(await saving).toBe(true);
+		expect(controller.wordbookMessage).toBe(m['wordbooks.added']());
+		expect(controller.wordbookError).toBe(m['wordbooks.dictionary_warning']());
+		expect(controller.wordbookBusy).toBe(false);
+		controller.dispose();
+	});
+
+	it('lets default collection work after list failure and reports save failures without discarding captured text', async () => {
+		const { controller } = await wordbookController();
+		vi.mocked(wordbooks.list).mockRejectedValue(new Error('list unavailable'));
+		await controller.loadWordbookDestinations();
+		expect(controller.wordbookError).toBeTruthy();
+		vi.mocked(wordbooks.add).mockRejectedValueOnce(new Error('save unavailable'));
+		const chosen = { text: '中文短语', fraction: 0.4, locator: { type: 'pdf' as const, page: 3 } };
+		expect(await controller.addToWordbook(chosen, 'phrase', 9)).toBe(false);
+		expect(controller.wordbookMessage).toBe('');
+		expect(controller.wordbookError).toBe(m['reader.error.save']());
+		expect(chosen.text).toBe('中文短语');
+		vi.mocked(wordbooks.add).mockResolvedValue({} as WordbookEntry);
+		expect(await controller.addToWordbook(chosen)).toBe(true);
+		expect(vi.mocked(wordbooks.add).mock.calls[0][0]).toMatchObject({ kind: 'phrase', wordbook_id: 9 });
+		expect(vi.mocked(wordbooks.add).mock.calls[1][0]).not.toHaveProperty('wordbook_id');
+		controller.dispose();
+	});
+
+	it('excludes archived destinations and opens exact source context after normal restoration', async () => {
+		const { controller, reader } = await wordbookController('{"type":"pdf","page":4}', '0.7');
+		expect(reader.goTo).toHaveBeenLastCalledWith({ type: 'pdf', page: 4 });
+		vi.mocked(wordbooks.list).mockResolvedValue([
+			{ id: 1, is_default: true, archived: false },
+			{ id: 2, is_default: false, archived: false },
+			{ id: 3, is_default: false, archived: true }
+		] as Awaited<ReturnType<typeof wordbooks.list>>);
+		await controller.loadWordbookDestinations();
+		expect(controller.wordbookDestinations.map((item) => item.id)).toEqual([1, 2]);
+		controller.dispose();
+	});
+
 	it('automatically saves rapid non-PDF appearance edits and restores only the current user/book preferences', async () => {
 		const stored = new Map<number, Setting[]>([[1, [
 			{ key: 'reader.epub', value: { spacing: 1.7 }, updated_at: '', rev: 1 },

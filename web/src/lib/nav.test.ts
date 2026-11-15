@@ -33,13 +33,14 @@ describe('homeNavigation', () => {
 			['dashboard', '/'],
 			['bookheap', '/bookheap'],
 			['favorites', '/shelves/system/favorites'],
+			['wordbooks', '/wordbooks'],
 			['notes', '/notes']
 		]);
 	});
 
 	it('shows Bookheap only to administrators', () => {
-		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'bookheap', 'favorites', 'notes']);
-		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'favorites', 'notes']);
+		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'bookheap', 'favorites', 'wordbooks', 'notes']);
+		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'favorites', 'wordbooks', 'notes']);
 		expect(homeNavigationFor(null).some((entry) => entry.id === 'bookheap')).toBe(false);
 	});
 });
@@ -61,6 +62,9 @@ describe('isActive', () => {
 		expect(isActive(item('stats-reading'), '/stats/history')).toBe(false);
 		expect(isActive(item('notes'), '/notes')).toBe(true);
 		expect(isActive(item('notes'), '/notesxyz')).toBe(false);
+		expect(isActive(item('wordbooks'), '/wordbooks')).toBe(true);
+		expect(isActive(item('wordbooks'), '/wordbooks/2')).toBe(true);
+		expect(isActive(item('wordbooks'), '/wordbookshelf')).toBe(false);
 		expect(isActive(item('bookheap'), '/bookheap')).toBe(true);
 		expect(isActive(item('bookheap'), '/books')).toBe(false);
 	});

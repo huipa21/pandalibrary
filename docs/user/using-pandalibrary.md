@@ -264,6 +264,42 @@ pronunciation, part of speech, definitions and the dictionary that supplied them
   Selections are limited to 64 characters. Lookup needs a connection to the
   server and is not available offline.
 
+### Wordbooks
+
+Open **Wordbooks**, directly below **Favorites** in the sidebar, to manage your
+private collections of words, phrases, sentences and longer passages. A default
+wordbook is created automatically and always remains available.
+
+Select text in a text or PDF reader and choose **Add to wordbook** in the
+selection actions or reader toolbar. The toolbar action saves to your default
+wordbook; selection actions also let you choose another active wordbook. The
+entry type is suggested from the selection; change it when needed.
+Every entry keeps the source book, file and reading position so **Read in context**
+can reopen the original passage. Collecting requires a server connection; failures
+are shown rather than reported as saved.
+
+Words and phrases include snapshots of matching installed dictionary entries.
+No dictionary installation or match is required to collect text. You can manually
+edit the selected word or phrase and its definition without changing the dictionary.
+Sentences and passages have a personal-note textarea, initially empty, for your
+own notes.
+
+Create additional wordbooks with **New wordbook**. Entries use **List** view by
+default; choose **Cards** or sort by newest first or alphabetically. Archive
+wordbooks to hide them from the normal list, then enable **Show archived wordbooks**
+to restore them. The default wordbook cannot be archived.
+
+Use **Export JSON** to download one wordbook, including dictionary snapshots,
+manual definitions, notes and source positions. **Import JSON** imports a
+PandaLibrary wordbook export into the selected wordbook. Imported entries get new
+IDs; their dates and source information are retained, but opening the original
+book still requires access to that book and file on this server. Each import is
+limited to 16 MiB and 10,000 entries; split larger exports into smaller JSON
+documents with the same version and wordbook header. Invalid imports are rejected
+without adding partial entries.
+
+### PDF reader
+
 PDFs fill the screen below a compact toolbar, without the app header or
 library sidebar. Progress shows two decimal places (for example, **10.05%**), while
 saved positions retain the page and your scroll position within it. Type a page

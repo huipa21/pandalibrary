@@ -70,6 +70,11 @@ async function setupReader(
 		json: { user_book: null, progress: state.progress, highlights: state.highlights, notes: state.notes }
 	}));
 	await page.route('**/api/v1/me/settings', (route) => route.fulfill({ json: { settings: state.settings } }));
+	await page.route('**/api/v1/wordbooks', (route) => route.fulfill({ json: { wordbooks: [
+		{ id: 1, name: 'Default wordbook', is_default: true, archived: false },
+		{ id: 9, name: 'Study', is_default: false, archived: false },
+		{ id: 10, name: 'Archived', is_default: false, archived: true }
+	] } }));
 	await page.route('**/api/v1/sync/pull?*', (route) => {
 		const cursor = Number(new URL(route.request().url()).searchParams.get('cursor'));
 		const newer = (row: Record<string, unknown>) => Number(row.rev) > cursor;
@@ -159,6 +164,92 @@ async function bookFrame(page: Page, text?: string): Promise<Frame> {
 	}).toPass({ timeout: 5000 });
 	if (!frame) throw new Error('Book frame was not created.');
 	return frame;
+}
+
+for (const format of ['epub', 'pdf'] as const) {
+	test(`wordbook ${format} selection overrides destination/type and main toolbar collects default only after persistence`, async ({ page }) => {
+		await setupReader(page, format, format === 'epub' ? epubFixture() : pdfFixture());
+		const attempts: Record<string, unknown>[] = [];
+		let failing = true;
+		let release: (() => void) | undefined;
+		await page.route('**/api/v1/wordbooks/entries', async (route) => {
+			const input = route.request().postDataJSON();
+			attempts.push(input);
+			if (failing) {
+				await route.fulfill({ status: 503, json: { title: 'Unavailable', status: 503 } });
+				return;
+			}
+			await new Promise<void>((resolve) => { release = resolve; });
+			await route.fulfill({ status: 201, json: {
+				...input, id: attempts.length, wordbook_id: input.wordbook_id ?? 1,
+				definition: '', note: '', dictionary_entries: [],
+				dictionary_warning: 'Dictionary unavailable'
+			} });
+		});
+		await page.goto('/read/21/31');
+		const select = async () => {
+			if (format === 'epub') {
+				const frame = await bookFrame(page, 'A passage worth highlighting.');
+				await frame.locator('#passage').evaluate((node) => {
+					const range = document.createRange();
+					range.selectNodeContents(node);
+					document.getSelection()?.removeAllRanges();
+					document.getSelection()?.addRange(range);
+					document.dispatchEvent(new Event('selectionchange'));
+				});
+			} else {
+				await expect(page.locator('.reader-pdf-text span').first()).toBeVisible();
+				await page.locator('.reader-pdf-text span').first().evaluate((node) => {
+					const range = document.createRange();
+					range.selectNodeContents(node);
+					document.getSelection()?.removeAllRanges();
+					document.getSelection()?.addRange(range);
+					document.dispatchEvent(new Event('selectionchange'));
+				});
+			}
+			await expect(page.getByTestId('selection-wordbook-add')).toBeVisible();
+		};
+		await select();
+		await expect(page.getByTestId('wordbook-destination').locator('option', { hasText: 'Study' })).toHaveCount(1);
+		await expect(page.getByTestId('wordbook-destination').locator('option', { hasText: 'Archived' })).toHaveCount(0);
+		await page.getByTestId('wordbook-kind').selectOption('passage');
+		await page.getByTestId('wordbook-destination').selectOption('9');
+		await expect(page.getByTestId('wordbook-kind')).toHaveValue('passage');
+		await page.getByTestId('selection-wordbook-add').click();
+		await expect.poll(() => attempts.length).toBe(1);
+		await expect(page.getByRole('alert').filter({ hasText: 'could not be saved' })).toBeVisible();
+		await expect(page.getByTestId('selection-wordbook-add')).toBeVisible();
+		await expect(page.getByTestId('wordbook-kind')).toHaveValue('passage');
+		await expect(page.getByTestId('wordbook-destination')).toHaveValue('9');
+		expect(attempts[0]).toMatchObject({
+			kind: 'passage', wordbook_id: 9,
+			source: { book_id: 21, book_file_id: 31, book_title: 'Fixture Book', locator: { type: format === 'epub' ? 'cfi' : 'pdf' } }
+		});
+		expect(attempts[0]).not.toHaveProperty('note');
+		failing = false;
+		await page.getByTestId('selection-wordbook-add').click();
+		await expect.poll(() => attempts.length).toBe(2);
+		await expect(page.getByTestId('selection-wordbook-add')).toBeDisabled();
+		await expect(page.getByRole('status').filter({ hasText: 'Added to' })).toHaveCount(0);
+		release!();
+		await expect(page.getByTestId('selection-wordbook-add')).toHaveCount(0);
+		await expect(page.getByRole('status').filter({ hasText: 'Added to' })).toBeVisible();
+		await expect(page.getByRole('alert').filter({ hasText: 'dictionary lookup failed' })).toBeVisible();
+		await select();
+		await page.getByTestId('wordbook-destination').selectOption('9');
+		await page.getByTestId('wordbook-kind').selectOption('word');
+		await page.getByTestId('reader-wordbook-add').click();
+		await expect.poll(() => attempts.length).toBe(3);
+		expect(attempts[2]).not.toHaveProperty('wordbook_id');
+		expect(attempts[2].kind).toBe(format === 'epub' ? 'sentence' : 'phrase');
+		release!();
+		await expect(page.getByTestId('selection-wordbook-add')).toHaveCount(0);
+		const source = attempts[2].source as { locator: Record<string, unknown>; fraction: number };
+		await page.goto(`/read/21/31?${new URLSearchParams({ locator: JSON.stringify(source.locator), fraction: String(source.fraction) })}`);
+		if (format === 'epub') {
+			await expect((await bookFrame(page, 'A passage worth highlighting.')).locator('#passage')).toBeVisible();
+		} else await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
+	});
 }
 
 async function displayState(page: Page) {

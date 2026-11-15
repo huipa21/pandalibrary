@@ -24,6 +24,9 @@ import { PeriodicProgressWriter } from './progress-gate.js';
 import { deletePageAnnotation, makePageAnnotation, validatePageAnnotationInput } from '#lib/reader/page-annotations.js';
 import type { HighlightStyle, PageAnnotation, PageAnnotationInput } from '#lib/reader/types.js';
 import { pdfSettingsForScope, initialPdfSettings } from './pdf-settings.js';
+import { wordbooks, type EntryKind, type Wordbook } from '#lib/wordbooks/api.js';
+import { wordbookEntry } from '../wordbook-selection.js';
+import { sourceContext } from '../source-context.js';
 
 export interface NoteDraft {
 	id: string;
@@ -40,7 +43,7 @@ export interface BookmarkDraft {
 	editing: boolean;
 }
 
-export function createReaderController(params: () => { bookId: string; fileId: string; bookmarkId: string | null; highlightId: string | null; annotationId?: string | null }) {
+export function createReaderController(params: () => { bookId: string; fileId: string; bookmarkId: string | null; highlightId: string | null; annotationId?: string | null; contextLocator?: string | null; contextFraction?: string | null }) {
 
 	let book = $state<Book | null>(null);
 	let file = $state<BookFile | null>(null);
@@ -53,6 +56,11 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let statusAlert = false;
 	let settingsWarning = $state('');
 	let savedMessage = $state('');
+	let wordbookBusy = $state(false);
+	let wordbookMessage = $state('');
+	let wordbookError = $state('');
+	let wordbookDestinations = $state<Wordbook[]>([]);
+	let destinationRequest: Promise<void> | null = null;
 	let closing = $state(false);
 	let busy = $state(false);
 	let ready = $state(false);
@@ -64,6 +72,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let otherPageAnnotations = $state<PageAnnotation[]>([]);
 	let location = $state<Relocation | null>(null);
 	let selection = $state<ReaderSelection | null>(null);
+	let wordbookCapture: (() => ReaderSelection | null) | null = null;
 	let reader: Reader | null = null;
 	let progressWriter: PeriodicProgressWriter | null = null;
 	const retiredProgressWriters = new Set<PeriodicProgressWriter>();
@@ -88,8 +97,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	const availableBookmarks = $derived(bookmarks.filter((bm) => bookmarkForPosition(bm, file?.id ?? -1, format ?? 'epub')));
 
 	$effect(() => {
-		const { bookId, fileId, bookmarkId, highlightId, annotationId } = params();
-		untrack(() => { void openBook(bookId, fileId, bookmarkId, highlightId, annotationId); });
+		const { bookId, fileId, bookmarkId, highlightId, annotationId, contextLocator, contextFraction } = params();
+		untrack(() => { void openBook(bookId, fileId, bookmarkId, highlightId, annotationId, contextLocator, contextFraction); });
 	});
 	let draftGuard = () => true;
 	function setDraftGuard(guard: () => boolean) { draftGuard = guard; }
@@ -220,7 +229,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		await flushReaderWrites(progressWriter, retiredProgressWriters, sessionWriter);
 	}
 
-	async function openBook(rawBookId: string, rawFileId: string, bookmarkId: string | null, highlightId: string | null = null, annotationId: string | null = null) {
+	async function openBook(rawBookId: string, rawFileId: string, bookmarkId: string | null, highlightId: string | null = null, annotationId: string | null = null, contextLocator?: string | null, contextFraction?: string | null) {
 		const version = ++requestVersion;
 		personalSettingsDirty = false;
 		personalSettingsError = '';
@@ -260,6 +269,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		actionError = '';
 		settingsWarning = '';
 		savedMessage = '';
+		wordbookMessage = '';
+		wordbookError = '';
 		const bookId = Number(rawBookId);
 		const fileId = Number(rawFileId);
 		if (!Number.isSafeInteger(bookId) || bookId < 1 || !Number.isSafeInteger(fileId) || fileId < 1) {
@@ -322,7 +333,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
 			otherPageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id !== fileId);
 			progressWriter = new PeriodicProgressWriter(new DurableProgressWriter(reportPendingError));
-			loaded = { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId, annotationId };
+			loaded = { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId, annotationId, context: sourceContext(contextLocator, contextFraction, selectedFormat) };
 		} catch (cause) {
 			if (version !== requestVersion) return;
 			console.error('Could not open book', cause);
@@ -843,14 +854,53 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		}
 	}
 
+	async function loadWordbookDestinations() {
+		if (destinationRequest) return destinationRequest;
+		destinationRequest = (async () => {
+			try { wordbookDestinations = (await wordbooks.list()).filter((item) => !item.archived); }
+			catch (error) {
+				console.error('Could not list wordbook destinations', error);
+				wordbookError = m['reader.error.save']();
+				destinationRequest = null;
+			}
+		})();
+		return destinationRequest;
+	}
+
+	async function addToWordbook(chosen: ReaderSelection | null, kind?: EntryKind, destination?: number): Promise<boolean> {
+		if (wordbookBusy || !ready || !book || !file) return false;
+		wordbookMessage = '';
+		wordbookError = '';
+		if (!chosen?.text.trim()) {
+			wordbookError = m['wordbooks.select']();
+			return false;
+		}
+		const version = requestVersion;
+		const input = wordbookEntry(chosen, book, file.id, kind);
+		if (destination !== undefined) input.wordbook_id = destination;
+		wordbookBusy = true;
+		try {
+			const saved = await wordbooks.add(input);
+			if (version !== requestVersion) return false;
+			wordbookMessage = m['wordbooks.added']();
+			if (saved.dictionary_warning) wordbookError = m['wordbooks.dictionary_warning']();
+			return true;
+		} catch (error) {
+			console.error('Could not add the selected text to the wordbook', error);
+			if (version === requestVersion) wordbookError = m['reader.error.save']();
+			return false;
+		} finally { wordbookBusy = false; }
+	}
+
 	let loaded: {
 		version: number; bookId: number; fileId: number; selectedFormat: ReaderFormat;
 		blob: Blob; state: Awaited<ReturnType<typeof getBookState>>;
 		bookmarkId: string | null; highlightId: string | null; annotationId: string | null;
+		context: ReturnType<typeof sourceContext>;
 	} | null = null;
 	async function attach(surface: HTMLElement): Promise<Reader> {
 		if (!loaded) throw new Error('The reader has not loaded.');
-		const { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId, annotationId } = loaded;
+		const { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId, annotationId, context } = loaded;
 		opening = true;
 		try {
 			const currentReader = await createReader(selectedFormat, surface, {
@@ -926,6 +976,22 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 					}
 				}
 			}
+			if (context) {
+				try {
+					if (context.locator) {
+						try { await currentReader.goTo(context.locator); }
+						catch (error) {
+							if (context.fraction === null) throw error;
+							await currentReader.goTo(context.fraction);
+						}
+					} else if (context.fraction !== null) {
+						await currentReader.goTo(context.fraction);
+					} else actionError = m['ux6.unavailable']();
+				} catch (error) {
+					console.error('Could not open the wordbook source context', error);
+					actionError = m['ux6.jump_failed']();
+				}
+			}
 			if (version !== requestVersion) throw new Error('Reader opening was superseded.');
 			if (!location) throw new Error('The reader did not report a position.');
 			ready = true;
@@ -961,6 +1027,13 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		get actionError() { return actionError; },
 		get pendingError() { return pendingError; },
 		get savedMessage() { return savedMessage; },
+		get wordbookBusy() { return wordbookBusy; },
+		get wordbookMessage() { return wordbookMessage; },
+		get wordbookError() { return wordbookError; },
+		get wordbookDestinations() { return wordbookDestinations; },
+		addToWordbook, loadWordbookDestinations,
+		setWordbookCapture: (capture: (() => ReaderSelection | null) | null) => { wordbookCapture = capture; },
+		captureForWordbook: () => wordbookCapture?.() ?? null,
 		get closing() { return closing; },
 		get busy() { return busy; },
 		get settings() { return settings; },
@@ -998,7 +1071,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			return writePageAnnotation(row, row);
 		},
 		close: closeReader,
-		retry: () => { const p = params(); return openBook(p.bookId, p.fileId, p.bookmarkId, p.highlightId, p.annotationId); },
+		retry: () => { const p = params(); return openBook(p.bookId, p.fileId, p.bookmarkId, p.highlightId, p.annotationId, p.contextLocator, p.contextFraction); },
 		updateHighlight: changeHighlight,
 		deleteNote: removeNote,
 		addBookmark: (input: { label: string; id?: string; at?: Relocation }) => saveBookmark({ id: input.id ?? uuidv7(), label: input.label, original: '', editing: false }, input.at ?? null),

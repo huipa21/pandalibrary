@@ -44,6 +44,7 @@
 .pv8-floating:focus { outline: none; }
 .pv8-hidden { visibility: hidden; }
 .pv8-toolbar { display: flex; align-items: center; gap: 2px; padding: 4px; }
+.pv8-wordbook { flex-wrap: wrap; }
 .pv8-split { display: inline-flex; }
 .pv8-split .pv8-split-main { width: 40px; position: relative; border-radius: 8px 0 0 8px; }
 .pv8-split .pv8-split-caret { width: 20px; border-radius: 0 8px 8px 0; }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import Icon from '#lib/bookview/Icon.svelte';
 	import { resolveMarkColor, type MarkColor, type HighlightStyle } from '../../annotations.js';
@@ -10,7 +11,7 @@
 
 	let {
 		anchor, bounds, hidden = false, highlightColor, lineColor, disabled = false,
-		oncopy, onlookup, onmark, oncomment, onbookmark, onpick, onescape
+		oncopy, onlookup, onmark, oncomment, onbookmark, onpick, onescape, wordbook
 	}: {
 		anchor: RectLike;
 		bounds: RectLike;
@@ -25,6 +26,7 @@
 		onbookmark: () => void;
 		onpick: (style: HighlightStyle, color: MarkColor) => void;
 		onescape: () => void;
+		wordbook?: Snippet;
 	} = $props();
 
 	let paletteOpen = $state<'highlight' | 'line' | null>(null);
@@ -85,6 +87,7 @@
 	use:roving
 	use:floatAt={{ anchor, bounds }}
 	class="pv8-floating pv8-toolbar"
+	class:pv8-wordbook={!!wordbook}
 	class:pv8-hidden={hidden}
 	role="toolbar"
 	tabindex="-1"
@@ -100,6 +103,7 @@
 			<Icon name="search" />
 		</button>
 	{/if}
+	{@render wordbook?.()}
 	<span class="pv8-split">
 		<button type="button" class="pv4-button pv8-split-main" data-roving aria-label={m['pv8.highlight']()} title={m['pv8.highlight']()} {disabled} onmousedown={keep} onclick={() => onmark('highlight')}>
 			<Icon name="highlighter" />

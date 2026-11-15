@@ -14,10 +14,12 @@ export type HighlightStyle = 'highlight' | 'underline' | 'strikeout';
 export interface Relocation {
 	fraction: number;
 	locator: ReaderLocator;
+	chapter?: string;
 }
 
 export interface ReaderSelection extends Relocation {
 	text: string;
+	paragraphCount?: number;
 }
 
 export interface ReaderAnnotation {

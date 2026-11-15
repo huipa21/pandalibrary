@@ -9,6 +9,7 @@
 	import { intersects, type RectLike } from '../pdf/marks/floating.js';
 	import { markColors } from '../pdf/marks/mark-colors.svelte.js';
 	import '../pdf/marks/marks.css';
+	import WordbookAction from '../toolbar/WordbookAction.svelte';
 
 	let { engine, controller, surface, cancomment, oncomment, onerror }: {
 		engine: FoliateReader;
@@ -24,6 +25,8 @@
 	let anchor = $state<RectLike | null>(null);
 	let bounds = $state<RectLike>({ left: 0, top: 0, right: 0, bottom: 0 });
 	let working = $state(false);
+	// Save notifications can resize/reflow the iframe after controls collapsed its native range.
+	let wordbookPinned = false;
 	let status = $state('');
 	let lookup = $state.raw<{ text: string; anchor: RectLike; selection: ReaderSelection } | null>(null);
 	let dismissedSelection: ReaderSelection | null = null;
@@ -35,6 +38,7 @@
 	}
 
 	function dismiss(clear = false) {
+		wordbookPinned = false;
 		const focus = toolbarFocused();
 		dismissedSelection = controller.selection;
 		chosen = null;
@@ -61,25 +65,27 @@
 				if (!rect) {
 					// Palette focus can collapse an iframe's native selection. Keep the captured CFI
 					// only while focus is in this toolbar, never merely because the controller kept it.
-					if (!toolbarFocused()) dismiss();
+					if (!toolbarFocused() && !wordbookPinned) dismiss();
 					return;
 				}
 				const active = document.activeElement;
-				if (active && active !== document.body && !viewport.contains(active) && !toolbarFocused()) {
+				if (active && active !== document.body && !viewport.contains(active) && !toolbarFocused() && !wordbookPinned) {
 					dismiss();
 					return;
 				}
-				if (!intersects(rect, bounds) || !controller.selection) {
+				if ((!intersects(rect, bounds) || !controller.selection) && !wordbookPinned) {
 					dismiss();
 					return;
 				}
 				if (dismissedSelection === controller.selection) return;
+				if (controller.selection && !sameSelection(chosen, controller.selection)) wordbookPinned = false;
 				chosen = controller.selection;
 				anchor = rect;
 			});
 		};
 		const outside = (event: Event) => {
 			if (event.composedPath().includes(host!)) return;
+			if (wordbookPinned && event.type === 'focusin' && (event.target === document.body || event.target === document.documentElement)) return;
 			if (!event.composedPath().includes(viewport)) dismiss();
 		};
 		const keydown = (event: KeyboardEvent) => {
@@ -95,13 +101,13 @@
 		const unsubscribe = reader.subscribeSelection((reason) => {
 			// A new or collapsed selection inside the book frame closes the dictionary panel.
 			if (reason !== 'geometry' && lookup && !sameSelection(controller.selection, lookup.selection)) lookup = null;
-			if (reason === 'geometry' && !reader.getSelectionBounds()) dismiss();
+			if (reason === 'geometry' && !reader.getSelectionBounds() && !wordbookPinned) dismiss();
 			refresh();
 		});
 		const unsubscribeKeyboard = reader.subscribeSelectionKeyboard(keydown);
 		// Scroll/resize must also dismiss a pinned palette if the text no longer has live bounds.
 		const geometry = () => {
-			if (!reader.getSelectionBounds()) dismiss();
+			if (!reader.getSelectionBounds() && !wordbookPinned) dismiss();
 			refresh();
 		};
 		const observer = new ResizeObserver(geometry);
@@ -213,7 +219,12 @@
 				markColors.set(style, color);
 				if (style === 'highlight') mark(style, color);
 			}}
-			onescape={() => dismiss(true)} />
+			onescape={() => dismiss(true)}>
+			{#snippet wordbook()}
+				<WordbookAction {controller} classify capture={() => chosen} onretain={() => { wordbookPinned = true; }}
+					onadded={() => dismiss(true)} />
+			{/snippet}
+		</SelectionToolbar>
 	{/if}
 	{#if lookup}
 		<LookupPanel text={lookup.text} anchor={lookup.anchor} {bounds} bookLanguage={controller.book?.language ?? null}

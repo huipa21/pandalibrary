@@ -25,6 +25,7 @@ export const homeNavigation: readonly NavigationItem[] = [
 	{ id: 'dashboard', href: '/', label: m['ux1.nav.dashboard'], icon: 'home', match: 'exact' },
 	{ id: 'bookheap', href: '/bookheap', label: m['bh4.nav.bookheap'], icon: 'inbox', role: 'admin' },
 	{ id: 'favorites', href: '/shelves/system/favorites', label: m['ux3.shelves.favorites'], icon: 'star' },
+	{ id: 'wordbooks', href: '/wordbooks', label: m['wordbooks.nav'], icon: 'book-open' },
 	{ id: 'notes', href: '/notes', label: m['notes.nav'], icon: 'message' }
 ];
 

@@ -33,6 +33,9 @@
 	import { defaultPdfBookmarkLabel, pageBookmark } from '#lib/reader/pdf/sidebar/bookmarks/bookmarks-model.js';
 	import { toFraction } from '#lib/reader/pdf/progress.js';
 	import { capturePdfSelection } from '#lib/reader/pdf/marks/selection.js';
+	import WordbookAction from '../toolbar/WordbookAction.svelte';
+	import { pdfWordbookSelection } from '../wordbook-selection.js';
+	import ReaderNotifications from '../frame/ReaderNotifications.svelte';
 
 	const SAVE_DELAY = 1000;
 	const OCR_KEY = 'pandalibrary.pdf-ocr';
@@ -375,6 +378,10 @@
 				<RotateMenu onrotate={(delta) => run(() => engine?.rotate(delta))} />
 			{/snippet}
 			{#snippet right()}
+				<WordbookAction {controller}
+					capture={() => engine ? pdfWordbookSelection(capturePdfSelection(document.getSelection(), engine), view?.pageCount ?? 1, document.getSelection()?.toString())
+						?? (document.activeElement?.closest('.pv8-toolbar') ? controller.captureForWordbook() : null) : null}
+					onadded={() => document.getSelection()?.removeAllRanges()} />
 				<button
 					type="button" class="pv4-button" data-testid="pdf-bookmark-toggle"
 					aria-label={m['rp8.add_page']()} aria-pressed={!!currentPageBookmark}
@@ -408,6 +415,12 @@
 			<InsertLayer />
 		{/if}
 	</div>
+	{#if controller.wordbookMessage || controller.wordbookError}
+		<div class="absolute inset-x-2 bottom-2 z-20">
+			<ReaderNotifications errors={[controller.wordbookError]} message={controller.wordbookMessage}
+				bookHref={`/books/${controller.book?.id}`} onretry={() => controller.retryWrites()} />
+		</div>
+	{/if}
 	<p class="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
 	{#if controller.pendingError || controller.actionError || controller.opening}
 		<div class="absolute inset-x-2 top-2 z-20 max-h-[50%] overflow-auto rounded-md bg-[var(--pv-chrome)] p-3 text-sm shadow-md">

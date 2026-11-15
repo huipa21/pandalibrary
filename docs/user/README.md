@@ -10,7 +10,7 @@ browser reader can open depends on your browser.
 
 | Guide | For | Covers |
 |---|---|---|
-| [Using PandaLibrary](./using-pandalibrary.md) | Everyone | Dashboard, browsing, book pages, the reader, offline reading, bookmarks, notes, collections, search, statistics, settings |
+| [Using PandaLibrary](./using-pandalibrary.md) | Everyone | Dashboard, browsing, book pages, the reader, wordbooks, offline reading, bookmarks, notes, collections, search, statistics, settings |
 | [Reading apps and devices](./devices.md) | Everyone | OPDS apps and KOReader progress sync |
 | [Administration](./administration.md) | Administrators | Adding books, the Bookheap, accounts, libraries and access, metadata providers, maintenance |
 
@@ -24,6 +24,7 @@ Installation, configuration, backups and upgrades are in the
 | Dashboard | Sidebar → **Home → Dashboard** | Your home page: reading feeds and the collections you choose to show |
 | All Books | `/books` (not a sidebar item) | Computed list of every book you can see, with filters and sorting |
 | Favorites | Sidebar → **Home → Favorites** | Your special collection of favorite books |
+| Wordbooks | Sidebar, below **Favorites** | Collect selected text with dictionary entries, personal notes and source context; import, export and archive wordbooks |
 | Libraries | Sidebar → **Libraries** | Expand or collapse all available libraries; each book belongs to one library |
 | Authors, Series, Tags | Book metadata links or catalog filters | Browse by author, series or tag |
 | Book page | Open any book | Details, reading status, rating, reviews, collections, files, activity and book-scoped annotations |

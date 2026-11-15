@@ -59,6 +59,7 @@ declare module 'foliate-js/view.js' {
 		prev(): Promise<void>;
 		next(): Promise<void>;
 		getCFI(index: number, range?: Range): string;
+		getProgressOf?(index: number, range: Range): { tocItem?: FoliateTocItem | null };
 		resolveNavigation(target: string): FoliateResolved | undefined;
 		addAnnotation(annotation: FoliateAnnotation): Promise<unknown>;
 		deleteAnnotation(annotation: FoliateAnnotation): Promise<unknown>;

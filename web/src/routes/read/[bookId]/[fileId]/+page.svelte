@@ -9,7 +9,8 @@
 	const controller = createReaderController(() => ({
 		bookId: page.params.bookId ?? '', fileId: page.params.fileId ?? '',
 		bookmarkId: page.url.searchParams.get('bookmark'), highlightId: page.url.searchParams.get('highlight'),
-		annotationId: page.url.searchParams.get('annotation')
+		annotationId: page.url.searchParams.get('annotation'),
+		contextLocator: page.url.searchParams.get('locator'), contextFraction: page.url.searchParams.get('fraction')
 	}));
 	onMount(() => controller.mount());
 	beforeNavigate((navigation) => controller.beforeNavigate(navigation));

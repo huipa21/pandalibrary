@@ -138,7 +138,7 @@ by that user and keep it outside the drop folder and `files/`, `covers/`, `asset
 See the [user guide](docs/user/README.md) for what each part of PandaLibrary does:
 
 - [Using PandaLibrary](docs/user/using-pandalibrary.md): dashboard, browsing, book pages,
-  the reader, dictionary lookup, offline reading, bookmarks, notes, collections, search and statistics.
+  the reader, dictionary lookup, wordbooks, offline reading, bookmarks, notes, collections, search and statistics.
 - [Reading apps and devices](docs/user/devices.md): OPDS apps and KOReader progress sync.
 - [Administration](docs/user/administration.md): adding books, the Bookheap, accounts,
   libraries and access, metadata providers, dictionaries and maintenance.

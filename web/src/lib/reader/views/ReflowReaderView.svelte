@@ -28,6 +28,7 @@
 	import ReaderToolbar from '#lib/reader/toolbar/ReaderToolbar.svelte';
 	import ProgressLabel from '#lib/reader/toolbar/ProgressLabel.svelte';
 	import Icon from '#lib/bookview/Icon.svelte';
+	import WordbookAction from '../toolbar/WordbookAction.svelte';
 	import { readerChrome } from '#lib/shell/reader-chrome.js';
 	import { FoliateReader } from '#lib/reader/foliate.js';
 	import type { FoliateTocItem } from 'foliate-js/view.js';
@@ -291,6 +292,9 @@
 					<RotateMenu onrotate={rotate} disabled={!engine} />
 				{/snippet}
 				{#snippet right()}
+					<WordbookAction {controller}
+						capture={() => engine?.getSelectionBounds() || document.activeElement?.closest('.pv8-toolbar') ? controller.selection : null}
+						onadded={clearSelection} />
 					<InsertMenu bind:open={insertMenuOpen} disabled={!controller.ready || controller.busy} {offline}
 						onselect={(type) => { insertMode = type; clearSelection(); }} />
 					{#if controller.format === 'cbz'}
@@ -473,8 +477,8 @@
 			</div>
 		{/if}
 		{#snippet notifications()}
-			<ReaderNotifications pendingError={controller.pendingError} errors={[controller.actionError, announcement]}
-				message={controller.savedMessage} loading={controller.opening} bookHref={`/books/${controller.book!.id}`}
+			<ReaderNotifications pendingError={controller.pendingError} errors={[controller.actionError, announcement, controller.wordbookError]}
+				message={[controller.savedMessage, controller.wordbookMessage].filter(Boolean).join(' ')} loading={controller.opening} bookHref={`/books/${controller.book!.id}`}
 				onretry={() => controller.retryWrites()} />
 		{/snippet}
 	</ReaderFrame>

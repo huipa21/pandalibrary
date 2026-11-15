@@ -38,6 +38,7 @@ interface FoliateLocation {
 	fraction?: number;
 	cfi?: string;
 	range?: Range | null;
+	tocItem?: { label?: string } | null;
 }
 
 interface FoliateLoad {
@@ -216,7 +217,10 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 			const detail = (event as CustomEvent<FoliateLocation>).detail;
 			if (!detail.cfi || !isCfiLocator({ type: 'cfi', value: detail.cfi })) return;
 			this.visibleRange = detail.range ?? null;
-			this.location = { fraction: fraction(detail.fraction ?? 0), locator: { type: 'cfi', value: detail.cfi } };
+			this.location = {
+				fraction: fraction(detail.fraction ?? 0), locator: { type: 'cfi', value: detail.cfi },
+				...(detail.tocItem?.label ? { chapter: detail.tocItem.label } : {})
+			};
 			this.events.relocate(this.location);
 			this.notifySelectionGeometry();
 		});
@@ -818,12 +822,17 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 			return;
 		}
 		try {
-			const value = this.requireView().getCFI(index, textSelectionRange(doc, range));
+			const view = this.requireView();
+			const value = view.getCFI(index, textSelectionRange(doc, range));
+			const chapter = view.getProgressOf?.(index, range).tocItem?.label ?? this.location?.chapter;
+			const paragraphCount = [...(doc.querySelectorAll?.('p') ?? [])].filter((paragraph) => range.intersectsNode(paragraph)).length;
 			this.selectionDocument = doc;
 			this.events.selection({
 				text,
 				fraction: this.location?.fraction ?? 0,
-				locator: { type: 'cfi', value }
+				locator: { type: 'cfi', value },
+				...(chapter ? { chapter } : {}),
+				...(paragraphCount > 1 ? { paragraphCount } : {})
 			});
 			this.notifySelection();
 		} catch (error) {
