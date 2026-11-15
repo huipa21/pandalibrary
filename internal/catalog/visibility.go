@@ -29,7 +29,7 @@ func (s *Service) SetVisibility(ctx context.Context, viewer Viewer, id int64, vi
 	}
 	if affected == 0 {
 		var owner sql.NullInt64
-		err := s.reader.QueryRowContext(ctx, `SELECT owner_id FROM books WHERE id = ?`, id).Scan(&owner)
+		err := s.reader.QueryRowContext(ctx, `SELECT owner_id FROM active_books WHERE id = ?`, id).Scan(&owner)
 		if errors.Is(err, sql.ErrNoRows) {
 			return Book{}, ErrNotFound
 		}

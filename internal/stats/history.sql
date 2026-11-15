@@ -8,7 +8,7 @@ WITH visible_sessions AS (
     CROSS JOIN reading_sessions rs ON rs.user_id = @user_id
         AND rs.started_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
         AND rs.started_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
-    JOIN books b ON b.id = rs.book_id
+    JOIN active_books b ON b.id = rs.book_id
     WHERE (b.visibility = 'public' OR b.owner_id = @user_id OR
         (b.visibility = 'library' AND (CAST(@is_admin AS INTEGER) = 1 OR EXISTS (
             SELECT 1 FROM library_access la
@@ -79,7 +79,7 @@ SELECT CAST((
         'cycle', p.cycle, 'active_seconds', p.active_seconds, 'session_count', p.session_count,
         'day_active_seconds', p.day_active_seconds, 'day_session_count', p.day_session_count
     ) ORDER BY p.date DESC, p.latest DESC, p.book_id, p.cycle)
-    FROM page p JOIN books b ON b.id = p.book_id
+    FROM page p JOIN active_books b ON b.id = p.book_id
 ) AS TEXT) AS items,
 CAST(json_object(
     'books', (SELECT COUNT(*) FROM per_book),
@@ -96,7 +96,7 @@ CAST(json_object(
         'longest_session_seconds', (SELECT COALESCE(MAX(active_seconds), 0) FROM visible_sessions),
         'most_read_book', json((SELECT json_object(
             'book_id', pb.book_id, 'title', b.title, 'session_count', pb.session_count
-        ) FROM per_book pb JOIN books b ON b.id = pb.book_id
+        ) FROM per_book pb JOIN active_books b ON b.id = pb.book_id
           ORDER BY pb.session_count DESC, pb.book_id LIMIT 1))
     )
 ) AS TEXT) AS summary;

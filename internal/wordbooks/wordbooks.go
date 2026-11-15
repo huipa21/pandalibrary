@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -27,6 +28,7 @@ type Wordbook struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Language    string `json:"language"`
 	CoverColor  string `json:"cover_color"`
 	CoverImage  string `json:"cover_image"`
 	EntryCount  int    `json:"entry_count"`
@@ -40,6 +42,7 @@ type Wordbook struct {
 type BookCreate struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Language    string `json:"language"`
 	CoverColor  string `json:"cover_color"`
 	CoverImage  string `json:"cover_image"`
 }
@@ -123,6 +126,7 @@ type BookPatch struct {
 	Name        *string `json:"name"`
 	Archived    *bool   `json:"archived"`
 	Description *string `json:"description"`
+	Language    *string `json:"language"`
 	CoverColor  *string `json:"cover_color"`
 	CoverImage  *string `json:"cover_image"`
 }
@@ -167,7 +171,7 @@ func now() string                  { return time.Now().UTC().Format(time.RFC3339
 type scanner interface{ Scan(...any) error }
 
 func scanBook(row scanner) (b Wordbook, err error) {
-	err = row.Scan(&b.ID, &b.Name, &b.IsDefault, &b.Archived, &b.CreatedAt, &b.UpdatedAt, &b.Description, &b.CoverColor, &b.CoverImage, &b.EntryCount, &b.BookCount)
+	err = row.Scan(&b.ID, &b.Name, &b.IsDefault, &b.Archived, &b.CreatedAt, &b.UpdatedAt, &b.Description, &b.Language, &b.CoverColor, &b.CoverImage, &b.EntryCount, &b.BookCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = catalog.ErrNotFound
 	}
@@ -175,12 +179,12 @@ func scanBook(row scanner) (b Wordbook, err error) {
 }
 
 // Counts are correlated subqueries so a single list query returns them without per-book round trips.
-const bookColumns = `id, name, is_default, archived, created_at, updated_at, description, cover_color, cover_image,
+const bookColumns = `id, name, is_default, archived, created_at, updated_at, description, language, cover_color, cover_image,
 	(SELECT count(*) FROM wordbook_entries e WHERE e.wordbook_id = wordbooks.id),
 	(SELECT count(DISTINCT json_extract(e.source, '$.book_id')) FROM wordbook_entries e WHERE e.wordbook_id = wordbooks.id)`
 
 func getBook(ctx context.Context, tx *sql.Tx, userID, id int64) (Wordbook, error) {
-	return scanBook(tx.QueryRowContext(ctx, "SELECT "+bookColumns+" FROM wordbooks WHERE user_id = ? AND id = ?", userID, id))
+	return scanBook(tx.QueryRowContext(ctx, "SELECT "+bookColumns+" FROM wordbooks WHERE user_id = ? AND id = ? AND deleted_at IS NULL", userID, id))
 }
 
 func defaultBook(ctx context.Context, tx *sql.Tx, userID int64) (Wordbook, error) {
@@ -200,7 +204,7 @@ func (s *Service) List(ctx context.Context, userID int64) ([]Wordbook, error) {
 	if _, err = defaultBook(ctx, tx, userID); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT "+bookColumns+" FROM wordbooks WHERE user_id = ? ORDER BY is_default DESC, id", userID)
+	rows, err := tx.QueryContext(ctx, "SELECT "+bookColumns+" FROM wordbooks WHERE user_id = ? AND deleted_at IS NULL ORDER BY is_default DESC, id", userID)
 	if err != nil {
 		return nil, err
 	}
@@ -229,6 +233,12 @@ func validName(name string) bool { return strings.TrimSpace(name) != "" && valid
 
 func validDescription(description string) bool { return validString(description, 2000) }
 
+var languagePattern = regexp.MustCompile(`^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$`)
+
+func validLanguage(language string) bool {
+	return language == "" || len(language) <= 35 && languagePattern.MatchString(language)
+}
+
 func (s *Service) Create(ctx context.Context, userID int64, name string) (Wordbook, error) {
 	return s.CreateWithDescription(ctx, userID, BookCreate{Name: name})
 }
@@ -241,6 +251,10 @@ func (s *Service) CreateWithDescription(ctx context.Context, userID int64, input
 	description := strings.TrimSpace(input.Description)
 	if !validDescription(description) {
 		return Wordbook{}, invalid("description must contain at most 2000 characters")
+	}
+	language := strings.TrimSpace(input.Language)
+	if !validLanguage(language) {
+		return Wordbook{}, invalid("language must be a BCP 47 language tag")
 	}
 	if err := validateCover(input.CoverColor, input.CoverImage); err != nil {
 		return Wordbook{}, err
@@ -261,7 +275,7 @@ func (s *Service) CreateWithDescription(ctx context.Context, userID int64, input
 		return Wordbook{}, invalid("wordbook limit reached")
 	}
 	stamp := now()
-	result, err := tx.ExecContext(ctx, "INSERT INTO wordbooks(user_id, name, description, cover_color, cover_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)", userID, name, description, input.CoverColor, input.CoverImage, stamp, stamp)
+	result, err := tx.ExecContext(ctx, "INSERT INTO wordbooks(user_id, name, description, language, cover_color, cover_image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", userID, name, description, language, input.CoverColor, input.CoverImage, stamp, stamp)
 	if err != nil {
 		return Wordbook{}, err
 	}
@@ -277,7 +291,7 @@ func (s *Service) CreateWithDescription(ctx context.Context, userID int64, input
 }
 
 func (s *Service) PatchBook(ctx context.Context, userID, id int64, patch BookPatch) (Wordbook, error) {
-	if patch.Name == nil && patch.Archived == nil && patch.Description == nil && patch.CoverColor == nil && patch.CoverImage == nil {
+	if patch.Name == nil && patch.Archived == nil && patch.Description == nil && patch.Language == nil && patch.CoverColor == nil && patch.CoverImage == nil {
 		return Wordbook{}, invalid("no changes supplied")
 	}
 	tx, err := s.writer.BeginTx(ctx, nil)
@@ -304,6 +318,12 @@ func (s *Service) PatchBook(ctx context.Context, userID, id int64, patch BookPat
 			return Wordbook{}, invalid("description must contain at most 2000 characters")
 		}
 	}
+	if patch.Language != nil {
+		b.Language = strings.TrimSpace(*patch.Language)
+		if !validLanguage(b.Language) {
+			return Wordbook{}, invalid("language must be a BCP 47 language tag")
+		}
+	}
 	if b.IsDefault && b.Archived {
 		return Wordbook{}, invalid("the default wordbook cannot be archived")
 	}
@@ -317,7 +337,7 @@ func (s *Service) PatchBook(ctx context.Context, userID, id int64, patch BookPat
 		return Wordbook{}, err
 	}
 	b.UpdatedAt = now()
-	if _, err = tx.ExecContext(ctx, "UPDATE wordbooks SET name = ?, description = ?, cover_color = ?, cover_image = ?, archived = ?, updated_at = ? WHERE id = ? AND user_id = ?", b.Name, b.Description, b.CoverColor, b.CoverImage, b.Archived, b.UpdatedAt, b.ID, userID); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE wordbooks SET name = ?, description = ?, language = ?, cover_color = ?, cover_image = ?, archived = ?, updated_at = ? WHERE id = ? AND user_id = ?", b.Name, b.Description, b.Language, b.CoverColor, b.CoverImage, b.Archived, b.UpdatedAt, b.ID, userID); err != nil {
 		return Wordbook{}, err
 	}
 	return b, tx.Commit()
@@ -329,7 +349,7 @@ func (s *Service) BookWords(ctx context.Context, viewer catalog.Viewer, bookID i
 		return nil, err
 	}
 	rows, err := s.writer.QueryContext(ctx, "SELECT "+entryColumns+` FROM wordbook_entries
-		WHERE json_extract(source, '$.book_id') = ? AND wordbook_id IN (SELECT id FROM wordbooks WHERE user_id = ?)
+		WHERE json_extract(source, '$.book_id') = ? AND wordbook_id IN (SELECT id FROM wordbooks WHERE user_id = ? AND deleted_at IS NULL)
 		ORDER BY id`, bookID, viewer.UserID)
 	if err != nil {
 		return nil, err
@@ -481,7 +501,7 @@ func (s *Service) Capture(ctx context.Context, viewer catalog.Viewer, input Capt
 	}
 	// Check ownership before dictionary work, but do not hold the writer during lookup.
 	if input.WordbookID != nil {
-		b, err := scanBook(s.writer.QueryRowContext(ctx, "SELECT "+bookColumns+" FROM wordbooks WHERE id = ? AND user_id = ?", *input.WordbookID, viewer.UserID))
+		b, err := scanBook(s.writer.QueryRowContext(ctx, "SELECT "+bookColumns+" FROM wordbooks WHERE id = ? AND user_id = ? AND deleted_at IS NULL", *input.WordbookID, viewer.UserID))
 		if err != nil {
 			return Entry{}, err
 		}
@@ -705,6 +725,7 @@ func (s *Service) DeleteEntry(ctx context.Context, userID, bookID, entryID int64
 	if err != nil {
 		return err
 	}
+
 	defer tx.Rollback()
 	if _, err = getBook(ctx, tx, userID, bookID); err != nil {
 		return err
@@ -721,6 +742,26 @@ func (s *Service) DeleteEntry(ctx context.Context, userID, bookID, entryID int64
 		return catalog.ErrNotFound
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE wordbooks SET updated_at = ? WHERE id = ?", now(), bookID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Delete moves a non-default wordbook and its entries to the trash.
+func (s *Service) Delete(ctx context.Context, userID, id int64) error {
+	tx, err := s.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	book, err := getBook(ctx, tx, userID, id)
+	if err != nil {
+		return err
+	}
+	if book.IsDefault {
+		return fmt.Errorf("%w: the default wordbook cannot be deleted", catalog.ErrConflict)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE wordbooks SET deleted_at = ? WHERE id = ? AND user_id = ?`, time.Now().UTC().UnixMilli(), id, userID); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -1,5 +1,5 @@
 WITH visible_books AS (
-    SELECT b.id, b.title FROM books b
+    SELECT b.id, b.title FROM active_books b
     WHERE @user_id > 0
       AND (b.visibility = 'public' OR b.owner_id = @user_id
            OR (b.visibility = 'library' AND (@is_admin = 1 OR EXISTS (

@@ -148,10 +148,22 @@ func (s *Service) deleteReview(ctx context.Context, viewer Viewer, bookID, revie
 		var count int64
 		var err error
 		if reviewID == 0 {
+			_, err = tx.ExecContext(ctx, `INSERT INTO trash_reviews(original_id,book_id,user_id,deleted_by,body,created_at,updated_at,deleted_at)
+				SELECT id,book_id,user_id,?,body,created_at,updated_at,? FROM book_reviews WHERE book_id=? AND user_id=?`,
+				viewer.UserID, s.now().UnixMilli(), bookID, viewer.UserID)
+			if err != nil {
+				return fmt.Errorf("save deleted review: %w", err)
+			}
 			count, err = queries.ReviewDeleteMine(ctx, sqlc.ReviewDeleteMineParams{BookID: bookID, UserID: viewer.UserID})
 		} else {
 			if err := checkAdmin(viewer); err != nil {
 				return err
+			}
+			_, err = tx.ExecContext(ctx, `INSERT INTO trash_reviews(original_id,book_id,user_id,deleted_by,body,created_at,updated_at,deleted_at)
+				SELECT id,book_id,user_id,?,body,created_at,updated_at,? FROM book_reviews WHERE book_id=? AND id=?`,
+				viewer.UserID, s.now().UnixMilli(), bookID, reviewID)
+			if err != nil {
+				return fmt.Errorf("save deleted review: %w", err)
 			}
 			count, err = queries.ReviewDelete(ctx, sqlc.ReviewDeleteParams{BookID: bookID, ID: reviewID})
 		}

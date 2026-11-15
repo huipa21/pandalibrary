@@ -1,7 +1,7 @@
 -- Files have no independent ACL: CatalogBookFiles uses the parent book's
 -- visibility and hide-list predicate. Keep that same scope for every aggregate.
 WITH visible_books AS (
-    SELECT b.* FROM books b
+    SELECT b.* FROM active_books b
     WHERE :user_id > 0
       AND (b.visibility = 'public' OR b.owner_id = :user_id
            OR (b.visibility = 'library' AND (:is_admin = 1 OR EXISTS (

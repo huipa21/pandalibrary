@@ -28,9 +28,8 @@
 	let status = $state<WordbookStatus>('active');
 	let category = $state<Category>('wordbooks');
 	let keyword = $state('');
-	let settingsOpen = $state(false);
-	let showDescriptions = $state(true);
-	let showSources = $state(true);
+	const showDescriptions = true;
+	const showSources = true;
 	let nameMode = $state<'new' | 'rename' | null>(null);
 	let disposed = false;
 	const selectedId = $derived(Number(page.url.searchParams.get('id')) || null);
@@ -189,20 +188,16 @@
 <svelte:head><title>{m['wordbooks.title']()} · {m['common.app_name']()}</title></svelte:head>
 
 <section class="min-w-0 space-y-5" aria-label={m['wordbooks.title']()} aria-busy={busy || loading}>
-	{#if selectedId !== null}
-		<div class="flex flex-wrap items-center gap-3">
-			<a href="/wordbooks" class="action">{m['wordbooks.back']()}</a>
-			{#if selected}<h2 class="text-xl font-semibold">{selected.name}</h2>
-				<span class="text-sm text-slate-500">{m['wordbooks.book_count']({ count: selected.book_count ?? involvedBookCount(entries) })}</span>
-			{/if}
-		</div>
-	{/if}
-	<Header bind:category bind:keyword bind:wordbookSort bind:status {sort} {view} inside={selectedId !== null} {settingsOpen} disabled={busy || loading} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} onsettings={() => settingsOpen = !settingsOpen} oncreate={() => beginName('new')} />
-	{#if selectedId !== null && settingsOpen}
-		<div class="flex flex-wrap gap-4 rounded-md border border-slate-200 p-3 text-sm" aria-label={m['wordbooks.display_settings']()}>
-			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showDescriptions} />{m['wordbooks.show_descriptions']()}</label>
-			<label class="flex items-center gap-2"><input type="checkbox" bind:checked={showSources} />{m['wordbooks.show_sources']()}</label>
-			<label class="flex items-center gap-2"><input type="checkbox" checked={status !== 'active'} onchange={(event) => { status = event.currentTarget.checked ? 'all' : 'active'; saveOverviewPreferences(); }} />{m['wordbooks.show_archived']()}</label>
+	<Header bind:category bind:keyword bind:wordbookSort bind:status {sort} {view} inside={selectedId !== null} disabled={busy || loading} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} oncreate={() => beginName('new')} />
+	{#if selected}
+		<div data-wordbook-summary class="flex flex-wrap items-center gap-3">
+			<span class="flex items-center gap-1 text-sm text-slate-500" aria-label={m['wordbooks.language']()}>
+				<Icon name="globe" class="size-4" />
+				{selected.language === 'en' ? m['dict.lang.en']() : selected.language === 'zh' ? m['dict.lang.zh']() : selected.language === 'ja' ? m['dict.lang.ja']() : selected.language || m['wordbooks.languageUnspecified']()}
+			</span>
+			<h2 class="break-words text-xl font-semibold">{selected.name}</h2>
+			<span data-entry-count class="text-sm text-slate-500">{m['wordbooks.entry_count']({ count: selected.entry_count ?? entries.length })}</span>
+			<span data-book-count class="flex items-center gap-1 text-sm text-slate-500"><Icon name="books" class="size-4" />{m['wordbooks.book_count']({ count: selected.book_count ?? involvedBookCount(entries) })}</span>
 		</div>
 	{/if}
 	{#if error}<p role="alert" class="whitespace-pre-wrap break-words rounded-md border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>{/if}
@@ -258,5 +253,4 @@
 	.button { display: inline-block; min-height: 2.5rem; border: 1px solid #cbd5e1; border-radius: .375rem; padding: .5rem .75rem; background: white; font-size: .875rem; }
 	.button:disabled { opacity: .5; cursor: not-allowed; }
 	.button:focus-visible, .button:focus-within, input:focus-visible { outline: 2px solid #0f172a; outline-offset: 2px; }
-	.action { text-decoration: underline; text-underline-offset: .2em; }
 </style>

@@ -17,7 +17,7 @@ FROM json_each(CAST(?1 AS TEXT)) d
 CROSS JOIN reading_sessions rs ON rs.user_id = ?2
     AND rs.started_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
     AND rs.started_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
-JOIN books b ON b.id = rs.book_id
+JOIN active_books b ON b.id = rs.book_id
 WHERE (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?2
@@ -73,7 +73,7 @@ WITH terminal_cycles AS (
 )
 SELECT CAST(json_extract(d.value, '$.date') AS TEXT) AS date, COUNT(*) AS books_finished
 FROM terminal_cycles
-JOIN books b ON b.id = terminal_cycles.book_id
+JOIN active_books b ON b.id = terminal_cycles.book_id
 CROSS JOIN json_each(CAST(?1 AS TEXT)) d
 WHERE terminal_cycles.ended_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
 AND terminal_cycles.ended_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
@@ -125,7 +125,7 @@ func (q *Queries) StatsFinishedDays(ctx context.Context, arg StatsFinishedDaysPa
 const statsHistoryBounds = `-- name: StatsHistoryBounds :one
 SELECT CAST(COALESCE(MIN(rs.started_at), ?1) AS INTEGER) AS start_at,
        CAST(COALESCE(MAX(rs.started_at) + 1, ?1) AS INTEGER) AS end_at
-FROM reading_sessions rs JOIN books b ON b.id = rs.book_id
+FROM reading_sessions rs JOIN active_books b ON b.id = rs.book_id
 WHERE rs.user_id = ?2 AND rs.started_at < ?1
 AND rs.active_seconds > 0
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
@@ -165,7 +165,7 @@ WITH local_days AS (
     CROSS JOIN reading_sessions rs ON rs.user_id = ?3
         AND rs.started_at >= CAST(json_extract(z.value, '$.start') AS INTEGER)
         AND rs.started_at < CAST(json_extract(z.value, '$.end') AS INTEGER)
-    JOIN books b ON b.id = rs.book_id
+    JOIN active_books b ON b.id = rs.book_id
     WHERE rs.active_seconds > 0
     AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
         SELECT 1 FROM library_access la
@@ -221,7 +221,7 @@ SELECT b.id AS book_id, b.title,
        )) AS TEXT) AS authors,
        CAST(SUM(rs.active_seconds) AS INTEGER) AS active_seconds,
        COUNT(*) AS session_count
-FROM reading_sessions rs JOIN books b ON b.id = rs.book_id
+FROM reading_sessions rs JOIN active_books b ON b.id = rs.book_id
 WHERE rs.user_id = ?1
 AND rs.started_at >= ?2 AND rs.started_at < ?3
 AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (

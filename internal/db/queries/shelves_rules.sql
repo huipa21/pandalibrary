@@ -13,7 +13,7 @@ VALUES ('private', sqlc.arg(owner_id), sqlc.arg(name), NULL, sqlc.arg(owner_id),
     'manual', sqlc.arg(system_key));
 
 -- name: ShelfAutomaticBookCount :one
-SELECT count(*) FROM books b
+SELECT count(*) FROM active_books b
 WHERE (CAST(sqlc.arg(library_id) AS INTEGER) = 0 OR b.library_id = sqlc.arg(library_id))
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -59,7 +59,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
     ELSE 0 END) = 1));
 
 -- name: ShelfAutomaticBooks :many
-SELECT b.* FROM books b
+SELECT b.* FROM active_books b
 CROSS JOIN (SELECT CAST(sqlc.arg(sort_mode) AS TEXT) AS sort_mode) browse
 WHERE (CAST(sqlc.arg(library_id) AS INTEGER) = 0 OR b.library_id = sqlc.arg(library_id))
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
@@ -135,7 +135,7 @@ ORDER BY
 LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: ShelfRuleMatchingBookIDs :many
-SELECT b.id FROM books b
+SELECT b.id FROM active_books b
 WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -179,7 +179,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
 ORDER BY b.sort_title, b.id;
 
 -- name: ShelfUnshelvedBookCount :one
-SELECT count(*) FROM books b
+SELECT count(*) FROM active_books b
 WHERE (CAST(sqlc.arg(library_id) AS INTEGER) = 0 OR b.library_id = sqlc.arg(library_id))
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -195,7 +195,7 @@ AND NOT EXISTS (
 );
 
 -- name: ShelfUnshelvedBooks :many
-SELECT b.* FROM books b
+SELECT b.* FROM active_books b
 CROSS JOIN (SELECT CAST(sqlc.arg(sort_mode) AS TEXT) AS sort_mode) browse
 WHERE (CAST(sqlc.arg(library_id) AS INTEGER) = 0 OR b.library_id = sqlc.arg(library_id))
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (

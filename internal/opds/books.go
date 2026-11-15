@@ -23,7 +23,7 @@ var errInvalidCursor = errors.New("cursor does not match this list")
 // every returned ID is hydrated again through catalog.GetBook.
 const statusBooksQuery = `
 SELECT ub.book_id, ub.updated_at FROM user_books ub
-JOIN books b ON b.id = ub.book_id
+JOIN active_books b ON b.id = ub.book_id
 WHERE ub.user_id = ?1
 AND (ub.status = ?2 OR (?2 = 'reading' AND ub.status IN ('on_hold', 'rereading')))
 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (

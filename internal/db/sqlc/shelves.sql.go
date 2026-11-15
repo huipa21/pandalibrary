@@ -298,7 +298,7 @@ SELECT sb.book_id, sb.position,
         SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = ?1
     ) THEN 1 ELSE 0 END AS INTEGER) AS is_visible
 FROM shelf_books sb
-JOIN books b ON b.id = sb.book_id
+JOIN active_books b ON b.id = sb.book_id
 WHERE sb.shelf_id = ?3
 ORDER BY sb.position, sb.book_id
 `
@@ -430,7 +430,7 @@ func (q *Queries) ShelfUpdateBookPosition(ctx context.Context, arg ShelfUpdateBo
 
 const shelfVisibleBookCount = `-- name: ShelfVisibleBookCount :one
 SELECT count(*) FROM shelf_books sb
-JOIN books b ON b.id = sb.book_id
+JOIN active_books b ON b.id = sb.book_id
 WHERE sb.shelf_id = ?1
 AND (CAST(?2 AS INTEGER) = 0 OR b.library_id = ?2)
 AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
@@ -463,7 +463,7 @@ func (q *Queries) ShelfVisibleBookCount(ctx context.Context, arg ShelfVisibleBoo
 
 const shelfVisibleBookIDs = `-- name: ShelfVisibleBookIDs :many
 SELECT sb.book_id FROM shelf_books sb
-JOIN books b ON b.id = sb.book_id
+JOIN active_books b ON b.id = sb.book_id
 WHERE sb.shelf_id = ?1
 AND (CAST(?2 AS INTEGER) = 0 OR b.library_id = ?2)
 AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (

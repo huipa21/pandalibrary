@@ -23,12 +23,13 @@ are display-only; change reading status from the book's **Details** tab.
 **Wordbooks** use book-sized covers with entry and source-book count badges,
 category search, sorting and list/grid display controls. Adjust cover size and
 spacing in display settings. The **+** dialog creates a private wordbook with a
-name, optional description, and a generated cover color or a custom image.
+name, optional language and description, and a generated cover color or a custom image.
 The cover preview sits beside preset color swatches, with a random color selected
 for each new wordbook. Drop an image onto the upload frame or browse for one.
 Position and zoom the crop before saving; custom covers are cropped to 2:3 and
 compressed in the browser. Each book's **Words**
-tab lists its saved words, phrases, sentences and passages.
+tab lists its saved words, phrases, sentences and passages. Within a wordbook,
+open an entry to see its details and return to its original reading position.
 
 The **Libraries** sidebar shows five libraries initially; use its expand control
 to see the rest. The Libraries three-dot menu offers **All Libraries** and, for

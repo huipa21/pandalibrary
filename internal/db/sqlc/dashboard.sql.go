@@ -10,7 +10,7 @@ import (
 )
 
 const dashboardContinueReadingBooks = `-- name: DashboardContinueReadingBooks :many
-SELECT b.id, CAST(COALESCE(rp.updated_at, ub.updated_at) AS INTEGER) AS sort_time FROM books b
+SELECT b.id, CAST(COALESCE(rp.updated_at, ub.updated_at) AS INTEGER) AS sort_time FROM active_books b
 LEFT JOIN reading_progress rp ON rp.book_id = b.id AND rp.user_id = ?1
 LEFT JOIN user_books ub ON ub.book_id = b.id AND ub.user_id = ?1
 WHERE ((rp.percentage > 0 AND rp.percentage < 1) OR ub.status IN ('reading', 'rereading', 'on_hold'))
@@ -82,7 +82,7 @@ WITH completed_cycles AS (
 ), completed_books AS (
     SELECT book_id, MAX(ended_at) AS ended_at FROM completed_cycles GROUP BY book_id
 )
-SELECT b.id, CAST(c.ended_at AS INTEGER) AS sort_time FROM books b
+SELECT b.id, CAST(c.ended_at AS INTEGER) AS sort_time FROM active_books b
 JOIN completed_books c ON c.book_id = b.id
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -142,7 +142,7 @@ func (q *Queries) DashboardReadBooks(ctx context.Context, arg DashboardReadBooks
 }
 
 const dashboardRecentlyAddedBooks = `-- name: DashboardRecentlyAddedBooks :many
-SELECT b.id, b.created_at AS sort_time FROM books b
+SELECT b.id, b.created_at AS sort_time FROM active_books b
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -201,7 +201,7 @@ func (q *Queries) DashboardRecentlyAddedBooks(ctx context.Context, arg Dashboard
 }
 
 const dashboardUnreadBooks = `-- name: DashboardUnreadBooks :many
-SELECT b.id, b.title AS sort_title FROM books b
+SELECT b.id, b.title AS sort_title FROM active_books b
 LEFT JOIN user_books ub ON ub.user_id = ?1 AND ub.book_id = b.id
 WHERE (ub.user_id IS NULL OR ub.status = 'unread')
 AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
@@ -263,7 +263,7 @@ func (q *Queries) DashboardUnreadBooks(ctx context.Context, arg DashboardUnreadB
 }
 
 const dashboardWantToReadBooks = `-- name: DashboardWantToReadBooks :many
-SELECT b.id, ub.updated_at AS sort_time FROM books b
+SELECT b.id, ub.updated_at AS sort_time FROM active_books b
 JOIN user_books ub ON ub.user_id = ?1 AND ub.book_id = b.id AND ub.status = 'want_to_read'
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la

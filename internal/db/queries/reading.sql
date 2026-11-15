@@ -1,5 +1,5 @@
 -- name: ReadingVisibleBook :one
-SELECT b.id FROM books b
+SELECT b.id FROM active_books b
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -12,7 +12,7 @@ AND NOT EXISTS (
 
 -- name: ReadingVisibleBookFile :one
 SELECT bf.id FROM book_files bf
-JOIN books b ON b.id = bf.book_id
+JOIN active_books b ON b.id = bf.book_id
 WHERE bf.id = sqlc.arg(book_file_id) AND b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -25,7 +25,7 @@ AND NOT EXISTS (
 
 -- name: ReadingVisibleBookmarkFileFormat :one
 SELECT bf.format FROM book_files bf
-JOIN books b ON b.id = bf.book_id
+JOIN active_books b ON b.id = bf.book_id
 WHERE bf.id = sqlc.arg(book_file_id) AND b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -38,7 +38,7 @@ AND NOT EXISTS (
 
 -- name: ReadingGetUserBook :one
 SELECT ub.* FROM user_books ub
-JOIN books b ON b.id = ub.book_id
+JOIN active_books b ON b.id = ub.book_id
 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -51,7 +51,7 @@ AND NOT EXISTS (
 
 -- name: ReadingGetProgress :one
 SELECT rp.* FROM reading_progress rp
-JOIN books b ON b.id = rp.book_id
+JOIN active_books b ON b.id = rp.book_id
 WHERE rp.user_id = sqlc.arg(user_id) AND rp.book_id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -64,7 +64,7 @@ AND NOT EXISTS (
 
 -- name: ReadingListHighlights :many
 SELECT h.* FROM highlights h
-JOIN books b ON b.id = h.book_id
+JOIN active_books b ON b.id = h.book_id
 WHERE h.user_id = sqlc.arg(user_id) AND h.book_id = sqlc.arg(book_id)
 AND h.deleted_at IS NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
@@ -79,7 +79,7 @@ ORDER BY h.position, h.id;
 
 -- name: ReadingListNotes :many
 SELECT n.* FROM notes n
-JOIN books b ON b.id = n.book_id
+JOIN active_books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(user_id) AND n.book_id = sqlc.arg(book_id)
 AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
@@ -105,7 +105,7 @@ WHERE user_id = sqlc.arg(user_id) AND key = sqlc.arg(key);
 INSERT INTO user_books (user_id, book_id, status, rating, started_at, finished_at, updated_at, rev)
 SELECT sqlc.arg(user_id), b.id, sqlc.arg(status), sqlc.narg(rating), sqlc.narg(started_at),
        sqlc.narg(finished_at), sqlc.arg(updated_at), sqlc.arg(rev)
-FROM books b
+FROM active_books b
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -126,7 +126,7 @@ INSERT INTO reading_progress (
 SELECT sqlc.arg(user_id), b.id, sqlc.narg(book_file_id), sqlc.arg(source), sqlc.narg(locator),
        sqlc.arg(percentage), sqlc.arg(device), sqlc.arg(device_id), sqlc.arg(updated_at),
        sqlc.arg(rev)
-FROM books b
+FROM active_books b
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -146,7 +146,7 @@ INSERT INTO user_books (user_id, book_id, status, started_at, finished_at, updat
 SELECT sqlc.arg(user_id), b.id, sqlc.arg(status), sqlc.arg(updated_at),
        sqlc.narg(finished_at),
        sqlc.arg(updated_at), sqlc.arg(rev)
-FROM books b
+FROM active_books b
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -175,7 +175,7 @@ INSERT INTO highlights (
 SELECT sqlc.arg(id), sqlc.arg(user_id), b.id, sqlc.narg(book_file_id), sqlc.arg(locator),
        sqlc.arg(position), sqlc.arg(text), sqlc.arg(color), sqlc.arg(style), sqlc.narg(chapter),
        sqlc.arg(created_at), sqlc.arg(updated_at), sqlc.narg(deleted_at), sqlc.arg(rev)
-FROM books b
+FROM active_books b
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -197,7 +197,7 @@ INSERT INTO notes (
 )
 SELECT sqlc.arg(id), sqlc.arg(user_id), b.id, sqlc.narg(highlight_id), sqlc.arg(body_md),
        sqlc.arg(created_at), sqlc.arg(updated_at), sqlc.narg(deleted_at), sqlc.arg(rev)
-FROM books b
+FROM active_books b
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -228,7 +228,7 @@ SELECT sqlc.arg(id), sqlc.arg(user_id), b.id, sqlc.arg(source), sqlc.arg(device)
        sqlc.arg(started_at), sqlc.arg(ended_at), sqlc.arg(active_seconds),
        sqlc.narg(start_percentage), sqlc.narg(end_percentage), sqlc.narg(pages_turned),
        sqlc.arg(created_at)
-FROM books b
+FROM active_books b
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -240,7 +240,7 @@ AND NOT EXISTS (
 
 -- name: ReadingGetOwnedHighlight :one
 SELECT h.* FROM highlights h
-JOIN books b ON b.id = h.book_id
+JOIN active_books b ON b.id = h.book_id
 WHERE h.id = sqlc.arg(id) AND h.user_id = sqlc.arg(user_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -249,7 +249,7 @@ AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND
 
 -- name: ReadingGetOwnedNote :one
 SELECT n.* FROM notes n
-JOIN books b ON b.id = n.book_id
+JOIN active_books b ON b.id = n.book_id
 WHERE n.id = sqlc.arg(id) AND n.user_id = sqlc.arg(user_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -321,7 +321,7 @@ WHERE n.highlight_id = sqlc.arg(highlight_id) AND n.deleted_at IS NULL AND h.del
 -- name: ReadingSearchHighlightsFTS :many
 SELECT h.id, h.book_id, h.text AS content, 'highlight' AS kind, h.position, h.created_at
 FROM highlights_fts(sqlc.arg(query)) f JOIN highlights h ON h.seq = f.rowid
-JOIN books b ON b.id = h.book_id
+JOIN active_books b ON b.id = h.book_id
 WHERE h.user_id = sqlc.arg(user_id)
 AND h.deleted_at IS NULL
 AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR h.style = sqlc.arg(kind))
@@ -334,7 +334,7 @@ ORDER BY f.rank, h.id LIMIT sqlc.arg(page_size);
 -- name: ReadingSearchNotesFTS :many
 SELECT n.id, n.book_id, n.body_md AS content, 'note' AS kind, 0.0 AS position, n.created_at
 FROM notes_fts(sqlc.arg(query)) f JOIN notes n ON n.seq = f.rowid
-JOIN books b ON b.id = n.book_id
+JOIN active_books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(user_id)
 AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
 AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR sqlc.arg(kind) = 'comment')
@@ -346,7 +346,7 @@ ORDER BY f.rank, n.id LIMIT sqlc.arg(page_size);
 
 -- name: ReadingSearchHighlightsLike :many
 SELECT h.id, h.book_id, h.text AS content, 'highlight' AS kind, h.position, h.created_at
-FROM highlights h JOIN books b ON b.id = h.book_id
+FROM highlights h JOIN active_books b ON b.id = h.book_id
 WHERE h.user_id = sqlc.arg(user_id) AND h.deleted_at IS NULL
 AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR h.style = sqlc.arg(kind))
 AND ((h.text LIKE sqlc.arg(pattern) ESCAPE '\'))
@@ -358,7 +358,7 @@ ORDER BY h.position, h.id LIMIT sqlc.arg(page_size);
 
 -- name: ReadingSearchNotesLike :many
 SELECT n.id, n.book_id, n.body_md AS content, 'note' AS kind, 0.0 AS position, n.created_at
-FROM notes n JOIN books b ON b.id = n.book_id
+FROM notes n JOIN active_books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(user_id) AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
 AND (CAST(sqlc.arg(kind) AS TEXT) = '' OR sqlc.arg(kind) = 'comment')
 AND ((n.body_md LIKE sqlc.arg(pattern) ESCAPE '\')
@@ -374,7 +374,7 @@ AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND
 ORDER BY n.created_at DESC, n.id LIMIT sqlc.arg(page_size);
 
 -- name: ReadingPullUserBooks :many
-SELECT ub.* FROM user_books ub JOIN books b ON b.id = ub.book_id
+SELECT ub.* FROM user_books ub JOIN active_books b ON b.id = ub.book_id
 WHERE ub.user_id = sqlc.arg(user_id) AND ub.rev > sqlc.arg(cursor) AND ub.rev <= sqlc.arg(high_water)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -383,7 +383,7 @@ AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id
 ORDER BY ub.rev, ub.book_id;
 
 -- name: ReadingPullProgress :many
-SELECT rp.* FROM reading_progress rp JOIN books b ON b.id = rp.book_id
+SELECT rp.* FROM reading_progress rp JOIN active_books b ON b.id = rp.book_id
 WHERE rp.user_id = sqlc.arg(user_id) AND rp.rev > sqlc.arg(cursor) AND rp.rev <= sqlc.arg(high_water)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -392,7 +392,7 @@ AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id
 ORDER BY rp.rev, rp.book_id;
 
 -- name: ReadingPullHighlights :many
-SELECT h.* FROM highlights h JOIN books b ON b.id = h.book_id
+SELECT h.* FROM highlights h JOIN active_books b ON b.id = h.book_id
 WHERE h.user_id = sqlc.arg(user_id) AND h.rev > sqlc.arg(cursor) AND h.rev <= sqlc.arg(high_water)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -401,7 +401,7 @@ AND NOT EXISTS (SELECT 1 FROM book_hidden hidden WHERE hidden.book_id = b.id AND
 ORDER BY h.rev, h.id;
 
 -- name: ReadingPullNotes :many
-SELECT n.* FROM notes n JOIN books b ON b.id = n.book_id
+SELECT n.* FROM notes n JOIN active_books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(user_id) AND n.rev > sqlc.arg(cursor) AND n.rev <= sqlc.arg(high_water)
 AND n.highlight_id IS NOT NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
@@ -416,7 +416,7 @@ WHERE user_id = sqlc.arg(user_id) AND rev > sqlc.arg(cursor) AND rev <= sqlc.arg
 ORDER BY rev, key;
 
 -- name: ReadingPullBookmarks :many
-SELECT bm.* FROM bookmarks bm JOIN books b ON b.id = bm.book_id
+SELECT bm.* FROM bookmarks bm JOIN active_books b ON b.id = bm.book_id
 WHERE bm.user_id = sqlc.arg(user_id) AND bm.rev > sqlc.arg(cursor) AND bm.rev <= sqlc.arg(high_water)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -426,7 +426,7 @@ ORDER BY bm.rev, bm.id;
 
 -- name: ReadingVisibleBookmarkCount :one
 SELECT COUNT(*) FROM bookmarks bm
-JOIN books b ON b.id = bm.book_id
+JOIN active_books b ON b.id = bm.book_id
 WHERE bm.user_id = sqlc.arg(user_id) AND bm.book_id = sqlc.arg(book_id) AND bm.deleted_at IS NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -437,7 +437,7 @@ AND NOT EXISTS (
 
 -- name: ReadingListUserBookmarks :many
 SELECT bm.*, b.title AS book_title, b.cover_sha256 AS book_cover_sha256 FROM bookmarks bm
-JOIN books b ON b.id = bm.book_id
+JOIN active_books b ON b.id = bm.book_id
 WHERE bm.user_id = sqlc.arg(user_id) AND bm.deleted_at IS NULL
 AND (CAST(sqlc.arg(book_filter) AS INTEGER) = 0 OR bm.book_id = sqlc.arg(book_filter))
 AND (CAST(sqlc.arg(has_cursor) AS INTEGER) = 0
@@ -454,7 +454,7 @@ LIMIT sqlc.arg(limit);
 
 -- name: ReadingListBookmarksByBookID :many
 SELECT bm.* FROM bookmarks bm
-JOIN books b ON b.id = bm.book_id
+JOIN active_books b ON b.id = bm.book_id
 WHERE bm.user_id = sqlc.arg(user_id) AND bm.book_id = sqlc.arg(book_id) AND bm.deleted_at IS NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -466,7 +466,7 @@ ORDER BY bm.position, bm.id;
 
 -- name: ReadingGetOwnedBookmark :one
 SELECT bm.* FROM bookmarks bm
-JOIN books b ON b.id = bm.book_id
+JOIN active_books b ON b.id = bm.book_id
 WHERE bm.id = sqlc.arg(id) AND bm.user_id = sqlc.arg(user_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -484,7 +484,7 @@ INSERT INTO bookmarks (id, user_id, book_id, book_file_id, locator, position, la
 SELECT sqlc.arg(id), sqlc.arg(user_id), b.id, sqlc.narg(book_file_id), sqlc.arg(locator),
        sqlc.arg(position), sqlc.arg(label), sqlc.narg(chapter), sqlc.arg(created_at),
        sqlc.arg(updated_at), sqlc.narg(deleted_at), sqlc.arg(rev)
-FROM books b
+FROM active_books b
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -506,7 +506,7 @@ UPDATE bookmarks SET updated_at = sqlc.arg(updated_at), deleted_at = sqlc.arg(de
 WHERE id = sqlc.arg(id) AND user_id = sqlc.arg(user_id) AND deleted_at IS NULL;
 
 -- name: ReadingListPageAnnotations :many
-SELECT pa.* FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+SELECT pa.* FROM page_annotations pa JOIN active_books b ON b.id = pa.book_id
 WHERE pa.user_id = sqlc.arg(user_id) AND pa.book_id = sqlc.arg(book_id) AND pa.deleted_at IS NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -515,7 +515,7 @@ AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id
 ORDER BY pa.position, pa.id;
 
 -- name: ReadingPullPageAnnotations :many
-SELECT pa.* FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+SELECT pa.* FROM page_annotations pa JOIN active_books b ON b.id = pa.book_id
 WHERE pa.user_id = sqlc.arg(user_id) AND pa.rev > sqlc.arg(cursor) AND pa.rev <= sqlc.arg(high_water)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -527,7 +527,7 @@ ORDER BY pa.rev, pa.id;
 SELECT user_id FROM page_annotations WHERE id = sqlc.arg(id);
 
 -- name: ReadingGetOwnedPageAnnotation :one
-SELECT pa.* FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+SELECT pa.* FROM page_annotations pa JOIN active_books b ON b.id = pa.book_id
 WHERE pa.id = sqlc.arg(id) AND pa.user_id = sqlc.arg(user_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -545,7 +545,7 @@ INSERT INTO page_annotations (
 SELECT sqlc.arg(id), sqlc.arg(user_id), b.id, sqlc.narg(book_file_id), sqlc.arg(kind),
        sqlc.arg(locator), sqlc.arg(position), sqlc.arg(data), sqlc.narg(asset_sha256),
        sqlc.arg(created_at), sqlc.arg(updated_at), NULL, sqlc.arg(rev)
-FROM books b
+FROM active_books b
 WHERE b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -599,7 +599,7 @@ SELECT b.id AS book_id,
        rp.percentage AS percentage,
        rp.book_file_id AS book_file_id,
        rp.updated_at AS progress_updated_at
-FROM books b
+FROM active_books b
 LEFT JOIN user_books ub ON ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id
 LEFT JOIN reading_progress rp ON rp.user_id = sqlc.arg(user_id) AND rp.book_id = b.id
 WHERE b.id IN (SELECT value FROM json_each(CAST(sqlc.arg(book_ids_json) AS TEXT)))

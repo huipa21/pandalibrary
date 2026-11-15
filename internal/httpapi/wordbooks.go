@@ -32,12 +32,26 @@ func WordbookMount(service *wordbooks.Service, authentication *auth.Service, log
 			secured.Get("/api/v1/wordbooks/{id}/export", h.withViewer(h.export))
 			secured.With(cookieProtection).Post("/api/v1/wordbooks", h.withViewer(h.create))
 			secured.With(cookieProtection).Patch("/api/v1/wordbooks/{id}", h.withViewer(h.patchBook))
+			secured.With(cookieProtection).Delete("/api/v1/wordbooks/{id}", h.withViewer(h.deleteBook))
 			secured.With(cookieProtection).Post("/api/v1/wordbooks/entries", h.withViewer(h.capture))
 			secured.With(cookieProtection).Patch("/api/v1/wordbooks/{id}/entries/{entryID}", h.withViewer(h.patchEntry))
 			secured.With(cookieProtection).Delete("/api/v1/wordbooks/{id}/entries/{entryID}", h.withViewer(h.deleteEntry))
 			secured.With(cookieProtection).Post("/api/v1/wordbooks/{id}/import", h.withViewer(h.importEntries))
 		})
 	}
+}
+
+func (h *wordbookHTTP) deleteBook(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	id, ok := h.pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	if err := h.wordbooks.Delete(r.Context(), viewer.UserID, id); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Decode separately from catalog's smaller body cap so bounded snapshot imports fit.

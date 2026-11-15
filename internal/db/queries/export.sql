@@ -25,7 +25,7 @@ SELECT b.id, b.title, s.name AS series_name, b.series_index,
            ORDER BY CASE bi.scheme WHEN 'isbn13' THEN 0 ELSE 1 END, bi.value
            LIMIT 1
        ), '') AS TEXT) AS isbn
-FROM books b
+FROM active_books b
 LEFT JOIN series s ON s.id = b.series_id
 WHERE (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -40,7 +40,7 @@ ORDER BY b.id;
 -- name: ExportHighlights :many
 SELECT h.book_id, h.id, h.position, h.text, h.style
 FROM highlights h
-JOIN books b ON b.id = h.book_id
+JOIN active_books b ON b.id = h.book_id
 WHERE h.user_id = sqlc.arg(UserID)
 AND h.deleted_at IS NULL
 AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
@@ -57,7 +57,7 @@ LIMIT 10001;
 -- name: ExportPageAnnotations :many
 SELECT p.book_id, p.id, p.kind, p.locator, p.data
 FROM page_annotations p
-JOIN books b ON b.id = p.book_id
+JOIN active_books b ON b.id = p.book_id
 WHERE p.user_id = sqlc.arg(UserID)
 AND p.deleted_at IS NULL
 AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
@@ -74,7 +74,7 @@ LIMIT 10001;
 -- name: ExportNotes :many
 SELECT n.book_id, n.id, n.highlight_id, n.body_md, n.created_at, n.updated_at
 FROM notes n
-JOIN books b ON b.id = n.book_id
+JOIN active_books b ON b.id = n.book_id
 WHERE n.user_id = sqlc.arg(UserID)
 AND n.deleted_at IS NULL
 AND EXISTS (
@@ -98,7 +98,7 @@ SELECT
     COALESCE((
         SELECT SUM(length(CAST(h.text AS BLOB)))
         FROM highlights h
-        JOIN books b ON b.id = h.book_id
+        JOIN active_books b ON b.id = h.book_id
         WHERE h.user_id = sqlc.arg(UserID)
         AND h.deleted_at IS NULL
         AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (
@@ -114,7 +114,7 @@ SELECT
     COALESCE((
         SELECT SUM(length(CAST(n.body_md AS BLOB)))
         FROM notes n
-        JOIN books b ON b.id = n.book_id
+        JOIN active_books b ON b.id = n.book_id
         WHERE n.user_id = sqlc.arg(UserID)
         AND n.deleted_at IS NULL
         AND EXISTS (
@@ -135,7 +135,7 @@ SELECT
     COALESCE((
         SELECT SUM(length(CAST(p.data AS BLOB)) + length(CAST(p.locator AS BLOB)))
         FROM page_annotations p
-        JOIN books b ON b.id = p.book_id
+        JOIN active_books b ON b.id = p.book_id
         WHERE p.user_id = sqlc.arg(UserID)
         AND p.deleted_at IS NULL
         AND (CAST(sqlc.arg(UserID) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(UserID) OR (b.visibility = 'library' AND (CAST(sqlc.arg(IsAdmin) AS INTEGER) = 1 OR EXISTS (

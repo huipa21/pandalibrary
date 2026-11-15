@@ -358,12 +358,6 @@ func (s *Service) DeleteBook(ctx context.Context, viewer Viewer, id int64) error
 		if _, err := visibleBook(ctx, queries, viewer, id); err != nil {
 			return err
 		}
-		authors, err := queries.CatalogBookAuthors(ctx, sqlc.CatalogBookAuthorsParams{
-			BookID: id, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
-		})
-		if err != nil {
-			return fmt.Errorf("load deleted book authors: %w", err)
-		}
 		// sqlc's SQLite parser does not expose FTS rowid.
 		for _, statement := range []string{
 			`DELETE FROM notes_fts WHERE rowid IN (
@@ -376,17 +370,16 @@ func (s *Service) DeleteBook(ctx context.Context, viewer Viewer, id int64) error
 				return fmt.Errorf("remove book search documents: %w", err)
 			}
 		}
-		deleted, err := queries.CatalogDeleteBook(ctx, id)
+		result, err := tx.ExecContext(ctx, `UPDATE books SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`, s.now().UnixMilli(), id)
 		if err != nil {
-			return fmt.Errorf("delete book: %w", err)
+			return fmt.Errorf("trash book: %w", err)
+		}
+		deleted, err := result.RowsAffected()
+		if err != nil {
+			return err
 		}
 		if deleted != 1 {
 			return ErrNotFound
-		}
-		for _, author := range authors {
-			if err := queries.CatalogDeleteOrphanAuthor(ctx, author.ID); err != nil {
-				return fmt.Errorf("remove orphan author: %w", err)
-			}
 		}
 		return nil
 	})

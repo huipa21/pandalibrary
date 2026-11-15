@@ -1,7 +1,7 @@
 import type { EntrySource, Wordbook, WordbookEntry } from './api.js';
 
 export type EntryView = 'list' | 'cards';
-export type EntrySort = 'chronological' | 'alphabetical';
+export type EntrySort = 'chronological' | 'chronological-asc' | 'alphabetical' | 'alphabetical-desc';
 export type WordbookSort = 'recent' | 'created-asc' | 'created-desc' | 'name-asc' | 'name-desc';
 export type WordbookStatus = 'all' | 'active' | 'archived';
 export type Category = 'wordbooks' | 'lexical' | 'passages';
@@ -18,7 +18,8 @@ export function readPreferences(id: number, fallbackView: EntryView = 'list'): P
 		const value = stored as Record<string, unknown>;
 		return {
 			view: value.view === 'cards' || value.view === 'list' ? value.view : fallbackView,
-			sort: value.sort === 'alphabetical' ? 'alphabetical' : 'chronological'
+			sort: ['chronological', 'chronological-asc', 'alphabetical', 'alphabetical-desc'].includes(value.sort as string)
+				? value.sort as EntrySort : 'chronological'
 		};
 	} catch {
 		return defaults(fallbackView);
@@ -62,9 +63,16 @@ export function writeWordbookPreferences(preferences: WordbookPreferences): void
 export function sortEntries(entries: readonly WordbookEntry[], sort: EntrySort): WordbookEntry[] {
 	const newest = (a: WordbookEntry, b: WordbookEntry) =>
 		(Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0) || b.id - a.id;
-	return [...entries].sort(sort === 'alphabetical'
-		? (a, b) => a.text.localeCompare(b.text, undefined, { sensitivity: 'base' }) || newest(a, b)
-		: newest);
+	const alphabetical = (a: WordbookEntry, b: WordbookEntry) =>
+		a.text.localeCompare(b.text, undefined, { sensitivity: 'base' });
+	return [...entries].sort((a, b) => {
+		switch (sort) {
+			case 'chronological-asc': return newest(b, a);
+			case 'alphabetical': return alphabetical(a, b) || newest(a, b);
+			case 'alphabetical-desc': return alphabetical(b, a) || newest(a, b);
+			default: return newest(a, b);
+		}
+	});
 }
 
 export function lexicalEntry(entry: Pick<WordbookEntry, 'kind'>): boolean {

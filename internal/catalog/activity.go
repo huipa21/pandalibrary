@@ -45,7 +45,7 @@ WITH activity AS (
 		b.cover_sha256, r.body AS content, '' AS anchor, r.created_at, r.updated_at,
 		NULL AS book_file_id, '' AS locator, '' AS data, NULL AS highlight_id
 	FROM book_reviews r
-	JOIN books b ON b.id = r.book_id
+	JOIN active_books b ON b.id = r.book_id
 	WHERE r.user_id = ?
 	AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
 		SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
@@ -56,7 +56,7 @@ WITH activity AS (
 		n.id, n.book_id, b.title AS book_title, b.cover_sha256, n.body_md AS content,
 		COALESCE(h.text, '') AS anchor, n.created_at, n.updated_at, h.book_file_id, '', '', n.highlight_id
 	FROM notes n
-	JOIN books b ON b.id = n.book_id
+	JOIN active_books b ON b.id = n.book_id
 	LEFT JOIN highlights h ON h.id = n.highlight_id AND h.user_id = n.user_id
 		AND h.book_id = n.book_id AND h.deleted_at IS NULL
 	WHERE n.user_id = ? AND n.deleted_at IS NULL AND n.highlight_id IS NOT NULL
@@ -67,7 +67,7 @@ WITH activity AS (
 	UNION ALL
 	SELECT h.style, h.id, h.book_id, b.title, b.cover_sha256, h.text, '',
 		h.created_at, h.updated_at, h.book_file_id, '', '', h.id
-	FROM highlights h JOIN books b ON b.id = h.book_id
+	FROM highlights h JOIN active_books b ON b.id = h.book_id
 	WHERE h.user_id = ? AND h.deleted_at IS NULL
 	AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
 		SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?
@@ -77,7 +77,7 @@ WITH activity AS (
 	SELECT pa.kind, pa.id, pa.book_id, b.title, b.cover_sha256,
 		CASE WHEN pa.kind = 'text' THEN json_extract(pa.data, '$.text') ELSE '' END, '',
 		pa.created_at, pa.updated_at, pa.book_file_id, pa.locator, pa.data, NULL
-	FROM page_annotations pa JOIN books b ON b.id = pa.book_id
+	FROM page_annotations pa JOIN active_books b ON b.id = pa.book_id
 	WHERE pa.user_id = ? AND pa.deleted_at IS NULL
 	AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
 		SELECT 1 FROM library_access la WHERE la.library_id = b.library_id AND la.user_id = ?

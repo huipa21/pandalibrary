@@ -2,16 +2,16 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import SearchField from '#lib/search/SearchField.svelte';
 	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
-	import { filterControlClass, iconControlClass, primaryIconControlClass } from '#lib/catalog/filter-styles.js';
+	import { filterControlClass, primaryIconControlClass } from '#lib/catalog/filter-styles.js';
 	import type { Category, EntrySort, EntryView, WordbookSort, WordbookStatus } from './management.js';
 
 	let { category = $bindable<Category>('wordbooks'), keyword = $bindable(''), sort, view,
 		inside = false, wordbookSort = $bindable<WordbookSort>('recent'), status = $bindable<WordbookStatus>('active'),
-		settingsOpen, disabled = false, onchange, onoverviewchange, onsettings, oncreate }: {
+		disabled = false, onchange, onoverviewchange, oncreate }: {
 		category?: Category; keyword?: string; sort: EntrySort; view: EntryView;
 		wordbookSort?: WordbookSort; status?: WordbookStatus; onoverviewchange: () => void;
-		inside?: boolean; settingsOpen: boolean; disabled?: boolean;
-		onchange: (view: EntryView, sort: EntrySort) => void; onsettings: () => void; oncreate: () => void;
+		inside?: boolean; disabled?: boolean;
+		onchange: (view: EntryView, sort: EntrySort) => void; oncreate: () => void;
 	} = $props();
 </script>
 
@@ -21,11 +21,13 @@
 		<option value="lexical">{m['wordbooks.category_lexical']()}</option>
 		<option value="passages">{m['wordbooks.category_passages']()}</option>
 	</select>
-	<SearchField bind:value={keyword} class="min-w-36 flex-1" label={inside || category !== 'wordbooks' ? m['wordbooks.search_entries']() : m['wordbooks.search_wordbooks']()} onsearch={() => {}} />
+	<SearchField bind:value={keyword} class="min-w-52 flex-1 sm:max-w-sm" label={inside || category !== 'wordbooks' ? m['wordbooks.search_entries']() : m['wordbooks.search_wordbooks']()} onsearch={() => {}} />
 	{#if inside}
 		<select class={filterControlClass} aria-label={m['wordbooks.sort']()} value={sort} onchange={(event) => onchange(view, event.currentTarget.value as EntrySort)}>
-			<option value="chronological">{m['wordbooks.chronological']()}</option>
-			<option value="alphabetical">{m['wordbooks.alphabetical']()}</option>
+			<option value="chronological">{m['wordbooks.sort_created_desc']()}</option>
+			<option value="chronological-asc">{m['wordbooks.sort_created_asc']()}</option>
+			<option value="alphabetical">{m['wordbooks.sort_name_asc']()}</option>
+			<option value="alphabetical-desc">{m['wordbooks.sort_name_desc']()}</option>
 		</select>
 	{:else}
 		<select class={filterControlClass} aria-label={m['wordbooks.sort']()} value={wordbookSort} onchange={(event) => { wordbookSort = event.currentTarget.value as WordbookSort; onoverviewchange(); }}>
@@ -42,12 +44,9 @@
 		</select>
 	{/if}
 	<ViewToggle view={view === 'cards' ? 'grid' : 'list'} onchange={(next) => onchange(next === 'grid' ? 'cards' : 'list', sort)} />
-	{#if inside}
-	<button type="button" class={iconControlClass} aria-label={m['wordbooks.display_settings']()} title={m['wordbooks.display_settings']()} aria-expanded={settingsOpen} onclick={onsettings}>
-		<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" fill="white" /><circle cx="16" cy="12" r="2" fill="white" /><circle cx="8" cy="18" r="2" fill="white" /></svg>
-	</button>
-	{/if}
+	{#if !inside}
 	<button type="button" class="{primaryIconControlClass} ml-auto" aria-label={m['wordbooks.new']()} title={m['wordbooks.new']()} {disabled} onclick={oncreate}>
 		<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16M4 12h16" /></svg>
 	</button>
+	{/if}
 </div>

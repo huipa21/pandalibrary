@@ -15,6 +15,7 @@
 	let dialog = $state<HTMLDialogElement | null>(null);
 	let name = $state(untrack(() => mode === 'rename' ? book?.name ?? '' : ''));
 	let description = $state(untrack(() => mode === 'rename' ? book?.description ?? '' : ''));
+	let language = $state('');
 	let color = $state(untrack(() => mode === 'rename' ? book?.cover_color || coverCloth(book?.id ?? 0).name : randomCoverColor()));
 	let image = $state(untrack(() => mode === 'rename' ? book?.cover_image ?? '' : ''));
 	let submitting = $state(false);
@@ -41,7 +42,7 @@
 		submitting = true;
 		error = '';
 		try {
-			await onsave(name.trim(), { description: description.trim(), cover_color: color, cover_image: image });
+			await onsave(name.trim(), { description: description.trim(), cover_color: color, cover_image: image, ...(mode === 'new' ? { language } : {}) });
 			onclose();
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
@@ -66,6 +67,14 @@
 	<h2 class="mb-4 text-lg font-semibold">{label}</h2>
 	<form class="space-y-4" aria-label={label} onsubmit={save}>
 		<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.name']()}</span><input class="field" name="name" required maxlength="200" bind:value={name} disabled={submitting} /></label>
+		{#if mode === 'new'}
+			<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.language']()}</span><select class="field" name="language" bind:value={language} disabled={submitting}>
+				<option value="">{m['wordbooks.languageUnspecified']()}</option>
+				<option value="en">{m['dict.lang.en']()}</option>
+				<option value="zh">{m['dict.lang.zh']()}</option>
+				<option value="ja">{m['dict.lang.ja']()}</option>
+			</select></label>
+		{/if}
 		<label class="grid gap-2"><span class="text-sm font-medium">{m['wordbooks.description']()}</span><textarea class="field" rows="2" maxlength="2000" bind:value={description} disabled={submitting}></textarea></label>
 		<CoverEditor title={name} seed={mode === 'rename' ? book?.id ?? 0 : 0} bind:color bind:image disabled={submitting} onbusy={(value) => coverBusy = value} />
 		{#if error}<p role="alert" class="whitespace-pre-wrap break-words text-sm text-red-800">{error}</p>{/if}

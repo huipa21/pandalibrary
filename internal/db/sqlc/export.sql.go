@@ -37,7 +37,7 @@ SELECT b.id, b.title, s.name AS series_name, b.series_index,
            ORDER BY CASE bi.scheme WHEN 'isbn13' THEN 0 ELSE 1 END, bi.value
            LIMIT 1
        ), '') AS TEXT) AS isbn
-FROM books b
+FROM active_books b
 LEFT JOIN series s ON s.id = b.series_id
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -102,7 +102,7 @@ SELECT
     COALESCE((
         SELECT SUM(length(CAST(h.text AS BLOB)))
         FROM highlights h
-        JOIN books b ON b.id = h.book_id
+        JOIN active_books b ON b.id = h.book_id
         WHERE h.user_id = ?1
         AND h.deleted_at IS NULL
         AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
@@ -118,7 +118,7 @@ SELECT
     COALESCE((
         SELECT SUM(length(CAST(n.body_md AS BLOB)))
         FROM notes n
-        JOIN books b ON b.id = n.book_id
+        JOIN active_books b ON b.id = n.book_id
         WHERE n.user_id = ?1
         AND n.deleted_at IS NULL
         AND EXISTS (
@@ -139,7 +139,7 @@ SELECT
     COALESCE((
         SELECT SUM(length(CAST(p.data AS BLOB)) + length(CAST(p.locator AS BLOB)))
         FROM page_annotations p
-        JOIN books b ON b.id = p.book_id
+        JOIN active_books b ON b.id = p.book_id
         WHERE p.user_id = ?1
         AND p.deleted_at IS NULL
         AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
@@ -169,7 +169,7 @@ func (q *Queries) ExportContentBytes(ctx context.Context, arg ExportContentBytes
 const exportHighlights = `-- name: ExportHighlights :many
 SELECT h.book_id, h.id, h.position, h.text, h.style
 FROM highlights h
-JOIN books b ON b.id = h.book_id
+JOIN active_books b ON b.id = h.book_id
 WHERE h.user_id = ?1
 AND h.deleted_at IS NULL
 AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
@@ -230,7 +230,7 @@ func (q *Queries) ExportHighlights(ctx context.Context, arg ExportHighlightsPara
 const exportNotes = `-- name: ExportNotes :many
 SELECT n.book_id, n.id, n.highlight_id, n.body_md, n.created_at, n.updated_at
 FROM notes n
-JOIN books b ON b.id = n.book_id
+JOIN active_books b ON b.id = n.book_id
 WHERE n.user_id = ?1
 AND n.deleted_at IS NULL
 AND EXISTS (
@@ -298,7 +298,7 @@ func (q *Queries) ExportNotes(ctx context.Context, arg ExportNotesParams) ([]Exp
 const exportPageAnnotations = `-- name: ExportPageAnnotations :many
 SELECT p.book_id, p.id, p.kind, p.locator, p.data
 FROM page_annotations p
-JOIN books b ON b.id = p.book_id
+JOIN active_books b ON b.id = p.book_id
 WHERE p.user_id = ?1
 AND p.deleted_at IS NULL
 AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (

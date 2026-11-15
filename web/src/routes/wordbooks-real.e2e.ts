@@ -21,11 +21,11 @@ test('wordbook cover choices persist through API updates and page reloads', asyn
 		return canvas.toDataURL('image/jpeg', 0.8);
 	});
 	const response = await page.request.post('/api/v1/wordbooks', {
-		data: { name: 'Persistent cover', description: 'Custom notebook', cover_color: 'forest', cover_image: image }
+		data: { name: 'Persistent cover', description: 'Custom notebook', language: 'en', cover_color: 'forest', cover_image: image }
 	});
 	expect(response.status()).toBe(201);
 	const created = await response.json() as Wordbook & { cover_color: string; cover_image: string };
-	expect(created).toMatchObject({ cover_color: 'forest', cover_image: image });
+	expect(created).toMatchObject({ language: 'en', cover_color: 'forest', cover_image: image });
 	const updated = await page.request.patch(`/api/v1/wordbooks/${created.id}`, {
 		data: { description: 'Updated without replacing cover' }
 	});
@@ -43,8 +43,12 @@ test('wordbook cover choices persist through API updates and page reloads', asyn
 	expect(listed.ok()).toBe(true);
 	const result = await listed.json() as { wordbooks: Wordbook[] };
 	expect(result.wordbooks.find((book) => book.id === created.id)).toMatchObject({
-		description: 'Updated without replacing cover', cover_color: 'forest', cover_image: image
+		description: 'Updated without replacing cover', language: 'en', cover_color: 'forest', cover_image: image
 	});
+	await cover.click();
+	await expect(page.locator('[data-wordbook-summary]')).toContainText('English');
+	await page.reload();
+	await expect(page.locator('[data-wordbook-summary]')).toContainText('English');
 });
 
 test('reader collection persists without dictionaries and wordbook context reopens the source page', async ({ page }) => {
@@ -149,6 +153,7 @@ test('reader collection persists without dictionaries and wordbook context reope
 	await expect(page.locator(`[data-wordbooks] a[href="/wordbooks?id=${target.id}"]`)).toHaveCount(0);
 	await page.reload();
 	await expect(page.getByText('My own interpretation', { exact: true })).toBeVisible();
-	await page.getByRole('link', { name: 'Read in context', exact: true }).click();
+	await page.locator(`[data-entry-id="${entries[0].id}"]`).getByRole('button', { name: selected, exact: true }).click();
+	await page.getByRole('dialog', { name: 'Word details', exact: true }).getByRole('link', { name: 'Read in context', exact: true }).click();
 	await expect(pdfPageBox(page)).toHaveValue('3', { timeout: 30_000 });
 });

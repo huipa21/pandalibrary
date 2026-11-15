@@ -123,7 +123,7 @@ func TestAnnotationAssetsGC(t *testing.T) {
 		{name: "live", created: old, referenced: true, keepRow: true, keepBlob: true},
 		{name: "recent", created: now, keepRow: true, keepBlob: true},
 		{name: "unused", created: old},
-		{name: "tombstone", created: old, referenced: true, deleted: true},
+		{name: "tombstone", created: old, referenced: true, deleted: true, keepRow: true, keepBlob: true},
 		{name: "shared", created: old, shared: true, keepBlob: true},
 	}
 	hashes := make(map[string]string)
@@ -182,6 +182,18 @@ func TestAnnotationAssetsGC(t *testing.T) {
 		if test.keepBlob && err != nil || !test.keepBlob && !os.IsNotExist(err) {
 			t.Errorf("%s blob: %v", test.name, err)
 		}
+	}
+	if _, err := fixture.databases.Writer.Exec(`UPDATE page_annotations SET asset_sha256=NULL, purged=1 WHERE asset_sha256=?`, hashes["tombstone"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if file, err := fixture.service.blobs.OpenAsset(hashes["tombstone"], "image/png"); !errors.Is(err, os.ErrNotExist) {
+		if file != nil {
+			_ = file.Close()
+		}
+		t.Fatalf("purged asset retained: %v", err)
 	}
 	// Once the other owner ages out, the shared blob can also be removed.
 	if _, err := fixture.databases.Writer.Exec("UPDATE annotation_assets SET created_at = ? WHERE user_id = 2", old); err != nil {

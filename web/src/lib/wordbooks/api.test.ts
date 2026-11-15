@@ -34,6 +34,14 @@ describe('wordbook sidebar count', () => {
 });
 
 describe('wordbook API contract', () => {
+	it('sends a selected language when creating or updating a wordbook', async () => {
+		request.mockResolvedValue({ id: 1 });
+		await wordbooks.create('Study', { language: 'ja' });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks', { method: 'POST', body: { name: 'Study', language: 'ja' } });
+		await wordbooks.update(1, { language: '' });
+		expect(request).toHaveBeenLastCalledWith('/wordbooks/1', { method: 'PATCH', body: { language: '' } });
+	});
+
 	it('creates notebooks with optional descriptions and allows description editing', async () => {
 		request.mockResolvedValue({ id: 1 });
 		await wordbooks.create('Private');

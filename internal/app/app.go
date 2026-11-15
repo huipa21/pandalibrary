@@ -35,6 +35,7 @@ import (
 	"pandalibrary/internal/reading"
 	"pandalibrary/internal/search"
 	"pandalibrary/internal/stats"
+	"pandalibrary/internal/trash"
 	"pandalibrary/internal/wordbooks"
 	webui "pandalibrary/web"
 )
@@ -251,6 +252,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.SearchMount(searchService, authentication, logger),
 			httpapi.DictionaryMount(dictionaries, authentication, logger),
 			httpapi.WordbookMount(wordbookService, authentication, logger),
+			httpapi.TrashMount(trash.NewService(databases.Writer), authentication, logger),
 			httpapi.ImportMount(importService, catalogService, authentication, logger),
 			httpapi.BookheapMount(bookheapService, authentication, logger),
 			httpapi.BookheapAssignMount(bookheapService, authentication, logger),

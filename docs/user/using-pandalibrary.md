@@ -285,7 +285,7 @@ pronunciation, part of speech, definitions and the dictionary that supplied them
 
 ### Wordbooks
 
-Open **Wordbooks**, directly below **Favorites** in the sidebar, to manage your
+Open **Others → Wordbooks** in the sidebar to manage your
 private collections of words, phrases, sentences and longer passages. A default
 wordbook is created automatically and always remains available.
 
@@ -313,12 +313,13 @@ entries. Sort wordbooks by **Most Recent** (last changed first), **Old - New**
 (creation time, oldest first), **New - Old** (creation time, newest first),
 **A - Z** or **Z - A**. The status dropdown to its right selects **All**,
 **Active** (the default) or **Archived** wordbooks.
-Search, entry sorting, the list/grid toggle and display settings remain
-available when you open a notebook. Inside, the notebook also shows how many
-distinct source books its entries involve.
+Inside a wordbook, use search, entry sorting and the list/grid toggle to browse
+its entries. The heading shows its language, total entries and number of
+distinct source books. Open an entry to see its details and use **Read in
+context** to return to the original reading position.
 
-Use the **+** button to open the creation dialog and enter a name and optional
-description. Choose a preset cover color, keep the automatic generated cover,
+Use the **+** button to open the creation dialog and enter a name, optional
+language and description. Choose a preset cover color, keep the automatic generated cover,
 or upload a JPEG, PNG or WebP image. Position and zoom the crop on the original
 image to choose the visible area. Custom covers are cropped to the same 2:3
 proportions as book covers and compressed to a 600-by-900 JPEG in your browser
@@ -597,6 +598,17 @@ magnifier back so you can search again.
 
 Search works with Chinese and other languages that do not use spaces, and with
 short queries such as two-character titles.
+
+## Trash
+
+Open **Others → Trash** to find deleted books, wordbooks and annotations.
+Use the filter and search field to narrow the list. Each item has actions to
+restore it or delete it permanently. Enable multi-select to select several
+items and restore or permanently delete them together. Deleted books are
+available to administrators; private wordbooks and annotations are available
+to their owners. Reviews removed by a moderator are available only to
+administrators. A review cannot be restored while a newer review by the same
+author exists for that book.
 
 ## Statistics
 

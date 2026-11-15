@@ -16,7 +16,7 @@ WHERE (user_id, sha256) IN (
     WHERE a.created_at < ?1
       AND NOT EXISTS (
           SELECT 1 FROM page_annotations p
-          WHERE p.user_id = a.user_id AND p.asset_sha256 = a.sha256 AND p.deleted_at IS NULL
+          WHERE p.user_id = a.user_id AND p.asset_sha256 = a.sha256
       )
     ORDER BY a.created_at, a.user_id, a.sha256
     LIMIT ?2

@@ -10,7 +10,7 @@ SELECT b.id, b.title,
     s.id AS series_id, s.name AS series_name, b.series_index, b.cover_sha256,
     CAST(f.rank AS REAL) AS score
 FROM books_fts(CAST(sqlc.arg(match_query) AS TEXT)) f
-JOIN books b ON b.id = f.rowid
+JOIN active_books b ON b.id = f.rowid
 LEFT JOIN series s ON s.id = b.series_id
 WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -46,7 +46,7 @@ SELECT b.id, b.title,
     s.id AS series_id, s.name AS series_name, b.series_index, b.cover_sha256,
     CAST(0 AS REAL) AS score
 FROM books_fts f
-JOIN books b ON b.id = f.rowid
+JOIN active_books b ON b.id = f.rowid
 LEFT JOIN series s ON s.id = b.series_id
 WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la

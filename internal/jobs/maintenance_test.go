@@ -211,7 +211,7 @@ func TestCleanupExpiredBoundariesAndSyncInvariants(t *testing.T) {
 		}
 	}
 	if expiredSessions != 0 || retainedSessions != 1 || expiredMetadata != 0 || retainedMetadata != 1 ||
-		completedImports != 0 || activeImports != 1 || highlights != 0 || notes != 0 || bookmarks != 1 || searchRows != 0 || syncRevision != 0 {
+		completedImports != 0 || activeImports != 1 || highlights != 1 || notes != 1 || bookmarks != 1 || searchRows != 0 || syncRevision != 0 {
 		t.Fatalf("cleanup results: sessions=%d/%d metadata=%d/%d imports=%d/%d tombstones=%d/%d bookmarks=%d fts=%d rev=%d",
 			expiredSessions, retainedSessions, expiredMetadata, retainedMetadata, completedImports,
 			activeImports, highlights, notes, bookmarks, searchRows, syncRevision)
@@ -436,7 +436,7 @@ func TestCleanupExactBoundariesAndChildRetention(t *testing.T) {
 		`SELECT count(*) FROM metadata_cache`:   1,
 		`SELECT count(*) FROM import_jobs`:      2,
 		`SELECT count(*) FROM highlights`:       3,
-		`SELECT count(*) FROM page_annotations`: 3,
+		`SELECT count(*) FROM page_annotations`: 4,
 		`SELECT count(*) FROM notes`:            1,
 		`SELECT value FROM sync_counter`:        42,
 	} {
@@ -458,8 +458,8 @@ func TestCleanupExactBoundariesAndChildRetention(t *testing.T) {
 	if err := fixture.databases.Reader.QueryRow(`SELECT count(*) FROM page_annotations`).Scan(&pageAnnotations); err != nil {
 		t.Fatal(err)
 	}
-	if children != 0 || parents != 1 || pageAnnotations != 2 {
-		t.Fatalf("after tombstone expiry: children=%d parents=%d page annotations=%d", children, parents, pageAnnotations)
+	if children != 1 || parents != 3 || pageAnnotations != 4 {
+		t.Fatalf("trash retention: children=%d parents=%d page annotations=%d", children, parents, pageAnnotations)
 	}
 	rows, err := fixture.databases.Reader.Query(`PRAGMA foreign_key_check`)
 	if err != nil {

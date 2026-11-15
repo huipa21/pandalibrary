@@ -157,7 +157,7 @@ func (q *Queries) ImportDefaultLibrary(ctx context.Context) (int64, error) {
 }
 
 const importDuplicate = `-- name: ImportDuplicate :one
-SELECT f.book_id FROM book_files f JOIN books b ON b.id = f.book_id
+SELECT f.book_id FROM book_files f JOIN active_books b ON b.id = f.book_id
 WHERE f.sha256 = ?1 AND b.library_id = ?2
 ORDER BY f.book_id LIMIT 1
 `
@@ -457,7 +457,7 @@ func (q *Queries) ImportTag(ctx context.Context, arg ImportTagParams) (int64, er
 }
 
 const importTarget = `-- name: ImportTarget :one
-SELECT id FROM books WHERE id = ?1 AND library_id = ?2
+SELECT id FROM active_books books WHERE id = ?1 AND library_id = ?2
 AND (visibility != 'private' OR owner_id = CAST(?3 AS INTEGER))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = books.id
     AND h.user_id = CAST(?3 AS INTEGER))

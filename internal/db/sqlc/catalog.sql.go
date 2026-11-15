@@ -25,7 +25,7 @@ const catalogBookAuthors = `-- name: CatalogBookAuthors :many
 SELECT a.id, a.name, ba.role, ba.position
 FROM book_authors ba
 JOIN authors a ON a.id = ba.author_id
-JOIN books b ON b.id = ba.book_id
+JOIN active_books b ON b.id = ba.book_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -79,7 +79,7 @@ func (q *Queries) CatalogBookAuthors(ctx context.Context, arg CatalogBookAuthors
 }
 
 const catalogBookExists = `-- name: CatalogBookExists :one
-SELECT count(*) FROM books WHERE id = ?
+SELECT count(*) FROM active_books WHERE id = ?
 `
 
 func (q *Queries) CatalogBookExists(ctx context.Context, id int64) (int64, error) {
@@ -90,7 +90,7 @@ func (q *Queries) CatalogBookExists(ctx context.Context, id int64) (int64, error
 }
 
 const catalogBookFieldSources = `-- name: CatalogBookFieldSources :many
-SELECT fs.book_id, fs.field, fs.source, fs.source_ref, fs.chosen_by, fs.chosen_at FROM book_field_sources fs JOIN books b ON b.id = fs.book_id
+SELECT fs.book_id, fs.field, fs.source, fs.source_ref, fs.chosen_by, fs.chosen_at FROM book_field_sources fs JOIN active_books b ON b.id = fs.book_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -139,7 +139,7 @@ func (q *Queries) CatalogBookFieldSources(ctx context.Context, arg CatalogBookFi
 }
 
 const catalogBookFile = `-- name: CatalogBookFile :one
-SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default FROM book_files f JOIN books b ON b.id = f.book_id
+SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default FROM book_files f JOIN active_books b ON b.id = f.book_id
 WHERE b.id = ?1 AND f.id = ?2
 AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -180,7 +180,7 @@ func (q *Queries) CatalogBookFile(ctx context.Context, arg CatalogBookFileParams
 }
 
 const catalogBookFiles = `-- name: CatalogBookFiles :many
-SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default FROM book_files f JOIN books b ON b.id = f.book_id
+SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default FROM book_files f JOIN active_books b ON b.id = f.book_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -233,7 +233,7 @@ func (q *Queries) CatalogBookFiles(ctx context.Context, arg CatalogBookFilesPara
 
 const catalogBookIdentifiers = `-- name: CatalogBookIdentifiers :many
 SELECT bi.scheme, bi.value FROM book_identifiers bi
-JOIN books b ON b.id = bi.book_id
+JOIN active_books b ON b.id = bi.book_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -281,7 +281,7 @@ func (q *Queries) CatalogBookIdentifiers(ctx context.Context, arg CatalogBookIde
 
 const catalogBookRatings = `-- name: CatalogBookRatings :many
 SELECT br.provider, br.rating, br.rating_count FROM book_ratings br
-JOIN books b ON b.id = br.book_id
+JOIN active_books b ON b.id = br.book_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -330,7 +330,7 @@ func (q *Queries) CatalogBookRatings(ctx context.Context, arg CatalogBookRatings
 
 const catalogBookSeries = `-- name: CatalogBookSeries :one
 SELECT s.id, s.name, b.series_index, b.series_total
-FROM books b JOIN series s ON s.id = b.series_id
+FROM active_books b JOIN series s ON s.id = b.series_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -369,7 +369,7 @@ func (q *Queries) CatalogBookSeries(ctx context.Context, arg CatalogBookSeriesPa
 const catalogBookTags = `-- name: CatalogBookTags :many
 SELECT t.id, t.name FROM book_tags bt
 JOIN tags t ON t.id = bt.tag_id
-JOIN books b ON b.id = bt.book_id
+JOIN active_books b ON b.id = bt.book_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -417,7 +417,7 @@ func (q *Queries) CatalogBookTags(ctx context.Context, arg CatalogBookTagsParams
 
 const catalogBookTerms = `-- name: CatalogBookTerms :many
 SELECT bt.kind, bt.name FROM book_terms bt
-JOIN books b ON b.id = bt.book_id
+JOIN active_books b ON b.id = bt.book_id
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -595,7 +595,7 @@ func (q *Queries) CatalogDeleteOrphanAuthor(ctx context.Context, id int64) error
 
 const catalogGetAuthor = `-- name: CatalogGetAuthor :one
 SELECT a.id, a.name, a.sort_name, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
-FROM authors a JOIN book_authors ba ON ba.author_id = a.id JOIN books b ON b.id = ba.book_id
+FROM authors a JOIN book_authors ba ON ba.author_id = a.id JOIN active_books b ON b.id = ba.book_id
 WHERE a.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -633,7 +633,7 @@ func (q *Queries) CatalogGetAuthor(ctx context.Context, arg CatalogGetAuthorPara
 }
 
 const catalogGetBook = `-- name: CatalogGetBook :one
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
 WHERE b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -711,7 +711,7 @@ func (q *Queries) CatalogGetLibrary(ctx context.Context, arg CatalogGetLibraryPa
 
 const catalogGetSeries = `-- name: CatalogGetSeries :one
 SELECT s.id, s.name, s.description, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
-FROM series s JOIN books b ON b.series_id = s.id
+FROM series s JOIN active_books b ON b.series_id = s.id
 WHERE s.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -750,7 +750,7 @@ func (q *Queries) CatalogGetSeries(ctx context.Context, arg CatalogGetSeriesPara
 
 const catalogGetTag = `-- name: CatalogGetTag :one
 SELECT t.id, t.name, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
-FROM tags t JOIN book_tags bt ON bt.tag_id = t.id JOIN books b ON b.id = bt.book_id
+FROM tags t JOIN book_tags bt ON bt.tag_id = t.id JOIN active_books b ON b.id = bt.book_id
 WHERE t.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
@@ -995,7 +995,7 @@ func (q *Queries) CatalogLibrarySlugTaken(ctx context.Context, arg CatalogLibrar
 }
 
 const catalogLibraryVisibleBookCount = `-- name: CatalogLibraryVisibleBookCount :one
-SELECT count(*) FROM books b
+SELECT count(*) FROM active_books b
 WHERE b.library_id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2
     OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
@@ -1019,7 +1019,7 @@ func (q *Queries) CatalogLibraryVisibleBookCount(ctx context.Context, arg Catalo
 
 const catalogListAuthors = `-- name: CatalogListAuthors :many
 SELECT a.id, a.name, a.sort_name, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
-FROM authors a JOIN book_authors ba ON ba.author_id = a.id JOIN books b ON b.id = ba.book_id
+FROM authors a JOIN book_authors ba ON ba.author_id = a.id JOIN active_books b ON b.id = ba.book_id
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1086,7 +1086,7 @@ func (q *Queries) CatalogListAuthors(ctx context.Context, arg CatalogListAuthors
 }
 
 const catalogListBooksByAdded = `-- name: CatalogListBooksByAdded :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1178,7 +1178,7 @@ func (q *Queries) CatalogListBooksByAdded(ctx context.Context, arg CatalogListBo
 }
 
 const catalogListBooksBySeries = `-- name: CatalogListBooksBySeries :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1277,7 +1277,7 @@ func (q *Queries) CatalogListBooksBySeries(ctx context.Context, arg CatalogListB
 }
 
 const catalogListBooksByTitle = `-- name: CatalogListBooksByTitle :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1412,7 +1412,7 @@ func (q *Queries) CatalogListHiddenBooks(ctx context.Context, arg CatalogListHid
 
 const catalogListLibraries = `-- name: CatalogListLibraries :many
 SELECT l.id, l.name, l.slug, l.created_at, l.updated_at, l.icon, (
-    SELECT count(*) FROM books b
+    SELECT count(*) FROM active_books b
     WHERE b.library_id = l.id
     AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1
         OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
@@ -1530,7 +1530,7 @@ func (q *Queries) CatalogListLibraryAccess(ctx context.Context, arg CatalogListL
 
 const catalogListSeries = `-- name: CatalogListSeries :many
 SELECT s.id, s.name, s.description, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
-FROM series s JOIN books b ON b.series_id = s.id
+FROM series s JOIN active_books b ON b.series_id = s.id
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1598,7 +1598,7 @@ func (q *Queries) CatalogListSeries(ctx context.Context, arg CatalogListSeriesPa
 
 const catalogListTags = `-- name: CatalogListTags :many
 SELECT t.id, t.name, CAST(count(DISTINCT b.id) AS INTEGER) AS visible_book_count
-FROM tags t JOIN book_tags bt ON bt.tag_id = t.id JOIN books b ON b.id = bt.book_id
+FROM tags t JOIN book_tags bt ON bt.tag_id = t.id JOIN active_books b ON b.id = bt.book_id
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
@@ -1662,7 +1662,7 @@ const catalogMoveFileConflict = `-- name: CatalogMoveFileConflict :one
 SELECT EXISTS (
     SELECT 1 FROM book_files source
     JOIN book_files destination ON destination.sha256 = source.sha256
-    JOIN books b ON b.id = destination.book_id
+    JOIN active_books b ON b.id = destination.book_id
     WHERE source.book_id = ?1
       AND b.library_id = ?2 AND b.id != ?1
 )
@@ -1952,7 +1952,7 @@ func (q *Queries) CatalogUserRole(ctx context.Context, id int64) (string, error)
 }
 
 const catalogVisibleBookCount = `-- name: CatalogVisibleBookCount :one
-SELECT count(*) FROM books b
+SELECT count(*) FROM active_books b
 WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1

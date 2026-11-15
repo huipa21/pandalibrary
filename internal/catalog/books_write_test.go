@@ -174,7 +174,7 @@ func TestBookPatchValidationAndRollback(t *testing.T) {
 	assertCount(t, fixture.db.Reader, `SELECT count(*) FROM book_tags WHERE book_id = 101 AND tag_id = 1`, 1)
 }
 
-func TestDeleteBookCascadesAndFTSRollback(t *testing.T) {
+func TestDeleteBookPreservesDependentsAndFTSRollback(t *testing.T) {
 	fixture := newCatalogFixture(t)
 	ctx := context.Background()
 	admin := Viewer{UserID: 1, IsAdmin: true}
@@ -208,7 +208,7 @@ func TestDeleteBookCascadesAndFTSRollback(t *testing.T) {
 		`INSERT INTO notes_fts (rowid, body, highlight_text, user_id, book_id) VALUES
 			(21, 'direct note', '', 2, 101), (22, 'linked note', 'first highlight', 2, 104),
 			(23, 'keep note', '', 2, 104)`,
-		`CREATE TRIGGER fail_book_delete BEFORE DELETE ON books WHEN OLD.id = 101
+		`CREATE TRIGGER fail_book_delete BEFORE UPDATE OF deleted_at ON books WHEN OLD.id = 101
 			BEGIN SELECT RAISE(ABORT, 'forced delete failure'); END`,
 	}
 	for _, statement := range statements {
@@ -235,20 +235,19 @@ func TestDeleteBookCascadesAndFTSRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, query := range []string{
-		`SELECT count(*) FROM books WHERE id = 101`,
+		`SELECT count(*) FROM active_books WHERE id = 101`,
 		`SELECT count(*) FROM books_fts WHERE rowid = 101`,
-		`SELECT count(*) FROM book_files WHERE book_id = 101`,
-		`SELECT count(*) FROM user_books WHERE book_id = 101`,
-		`SELECT count(*) FROM reading_progress WHERE book_id = 101`,
-		`SELECT count(*) FROM reading_sessions WHERE book_id = 101`,
-		`SELECT count(*) FROM highlights WHERE seq = 11`,
 		`SELECT count(*) FROM highlights_fts WHERE rowid = 11`,
-		`SELECT count(*) FROM notes WHERE seq IN (21, 22)`,
 		`SELECT count(*) FROM notes_fts WHERE rowid IN (21, 22)`,
 	} {
 		assertCount(t, fixture.db.Reader, query, 0)
 	}
 	for _, query := range []string{
+		`SELECT count(*) FROM books WHERE id = 101 AND deleted_at IS NOT NULL`,
+		`SELECT count(*) FROM book_files WHERE book_id = 101`,
+		`SELECT count(*) FROM reading_progress WHERE book_id = 101`,
+		`SELECT count(*) FROM reading_sessions WHERE book_id = 101`,
+		`SELECT count(*) FROM highlights WHERE seq = 11`,
 		`SELECT count(*) FROM books_fts WHERE rowid = 104`,
 		`SELECT count(*) FROM highlights_fts WHERE rowid = 12`,
 		`SELECT count(*) FROM notes_fts WHERE rowid = 23`,
@@ -256,6 +255,8 @@ func TestDeleteBookCascadesAndFTSRollback(t *testing.T) {
 	} {
 		assertCount(t, fixture.db.Reader, query, 1)
 	}
+	assertCount(t, fixture.db.Reader, `SELECT count(*) FROM user_books WHERE book_id = 101`, 2)
+	assertCount(t, fixture.db.Reader, `SELECT count(*) FROM notes WHERE seq IN (21, 22)`, 2)
 	file, err := fixture.store.OpenBook(fileHash, "epub")
 	if err != nil {
 		t.Fatalf("deleted book's shared blob was removed: %v", err)

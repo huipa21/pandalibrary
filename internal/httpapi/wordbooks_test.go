@@ -22,6 +22,7 @@ import (
 	"pandalibrary/internal/blobstore"
 	"pandalibrary/internal/catalog"
 	"pandalibrary/internal/dictionary"
+	"pandalibrary/internal/trash"
 	"pandalibrary/internal/wordbooks"
 )
 
@@ -54,7 +55,7 @@ func newWordbookFixture(t *testing.T) wordbookFixture {
 		Database: f.db.Reader, Ready: func() bool { return true },
 		Assets: fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("test")}},
 		Logger: logger, MaxBodyBytes: 32 << 20,
-		Mounts: []Mount{WordbookMount(service, authentication, logger)},
+		Mounts: []Mount{WordbookMount(service, authentication, logger), TrashMount(trash.NewService(f.db.Writer), authentication, logger)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -101,6 +102,41 @@ func wordbookSource() wordbooks.Source {
 
 func wordbookCapture(kind string) wordbooks.Capture {
 	return wordbooks.Capture{Kind: kind, Text: "Cats", Source: wordbookSource()}
+}
+
+func TestWordbookLanguage(t *testing.T) {
+	f := newWordbookFixture(t)
+	defaultID := f.defaultID(t)
+	book := wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{
+		"name": "Study", "language": " zh-Hans ",
+	}, f.reader), http.StatusCreated)
+	if book.Language != "zh-Hans" {
+		t.Fatalf("created language = %q", book.Language)
+	}
+	base := fmt.Sprintf("/api/v1/wordbooks/%d", book.ID)
+	book = wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"name": "Renamed"}, f.reader), http.StatusOK)
+	if book.Language != "zh-Hans" {
+		t.Fatalf("rename lost language: %+v", book)
+	}
+	list := wordbookDecode[struct {
+		Wordbooks []wordbooks.Wordbook `json:"wordbooks"`
+	}](t, f.request(http.MethodGet, "/api/v1/wordbooks", nil, f.reader, nil), http.StatusOK)
+	if len(list.Wordbooks) != 2 || list.Wordbooks[0].ID != defaultID || list.Wordbooks[0].Language != "" || list.Wordbooks[1].Language != "zh-Hans" {
+		t.Fatalf("list = %+v", list.Wordbooks)
+	}
+	for _, invalid := range []any{nil, 1, "en_US", "a", strings.Repeat("a", 36), "en\x00x"} {
+		expectShelfStatus(t, f.send(http.MethodPost, "/api/v1/wordbooks", map[string]any{"name": "Bad", "language": invalid}, f.reader), http.StatusBadRequest)
+		expectShelfStatus(t, f.send(http.MethodPatch, base, map[string]any{"language": invalid}, f.reader), http.StatusBadRequest)
+	}
+	expectShelfStatus(t, f.send(http.MethodPatch, base, map[string]any{"language": "en"}, f.other), http.StatusNotFound)
+	book = wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"language": "ja"}, f.reader), http.StatusOK)
+	if book.Language != "ja" {
+		t.Fatalf("patched language = %q", book.Language)
+	}
+	book = wordbookDecode[wordbooks.Wordbook](t, f.send(http.MethodPatch, base, map[string]any{"language": ""}, f.reader), http.StatusOK)
+	if book.Language != "" {
+		t.Fatalf("cleared language = %q", book.Language)
+	}
 }
 
 func TestWordbookDescription(t *testing.T) {

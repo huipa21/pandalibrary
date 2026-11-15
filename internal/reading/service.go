@@ -495,6 +495,17 @@ func (s *Service) applyMutation(
 	if mutation.Op != "upsert" && mutation.Op != "delete" {
 		return reject("operation is unsupported")
 	}
+	switch mutation.Entity {
+	case "highlights", "notes", "page_annotations":
+		var purged int
+		err := tx.QueryRowContext(ctx, "SELECT purged FROM "+mutation.Entity+" WHERE id = ? AND user_id = ?", mutationID(mutation), viewer.UserID).Scan(&purged)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", "", err
+		}
+		if purged != 0 {
+			return reject("annotation was permanently deleted")
+		}
+	}
 	now := s.now().UTC().UnixMilli()
 	updatedAt := min(*mutation.UpdatedAt, now)
 	switch mutation.Entity {
@@ -1193,6 +1204,9 @@ func (s *Service) deleteHighlight(
 			}); err != nil {
 				return "", "", fmt.Errorf("tombstone note for deleted highlight: %w", err)
 			}
+			if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO trash_highlight_notes(highlight_id, note_id, deleted_rev) VALUES (?, ?, ?)`, highlight.ID, child.ID, rev); err != nil {
+				return "", "", fmt.Errorf("record deleted highlight note: %w", err)
+			}
 		}
 	}
 	rev, err := db.NextRev(ctx, tx)
@@ -1437,7 +1451,7 @@ func (s *Service) SearchAnnotations(
 				UNION ALL
 				SELECT id, book_id, user_id, 'text', json_extract(data, '$.text'), position, created_at
 				FROM page_annotations WHERE kind = 'text' AND deleted_at IS NULL
-			) a JOIN books b ON b.id = a.book_id
+			) a JOIN active_books b ON b.id = a.book_id
 			WHERE a.user_id = ? AND a.content LIKE ? ESCAPE '\'
 			AND (? = '' OR a.kind = ?)
 			AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND (? = 1 OR EXISTS (
@@ -1480,7 +1494,7 @@ func (s *Service) SearchAnnotations(
 		for i := range results {
 			item := &results[i]
 			var cover sql.NullString
-			if err := tx.QueryRowContext(ctx, `SELECT title, cover_sha256 FROM books WHERE id = ?`,
+			if err := tx.QueryRowContext(ctx, `SELECT title, cover_sha256 FROM active_books WHERE id = ?`,
 				item.BookID).Scan(&item.BookTitle, &cover); err != nil {
 				return fmt.Errorf("read annotation book: %w", err)
 			}

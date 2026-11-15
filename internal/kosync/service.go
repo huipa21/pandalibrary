@@ -109,7 +109,7 @@ type queryer interface {
 func visibleFile(ctx context.Context, database queryer, viewer reading.Viewer, document string) (file, error) {
 	var result file
 	err := database.QueryRowContext(ctx, `
-		SELECT f.id, f.book_id, f.format FROM book_files f JOIN books b ON b.id = f.book_id
+		SELECT f.id, f.book_id, f.format FROM book_files f JOIN active_books b ON b.id = f.book_id
 		WHERE f.koreader_md5 = ?
 		AND (b.owner_id = ? OR b.visibility = 'public' OR (b.visibility = 'library' AND
 			(? OR EXISTS (SELECT 1 FROM library_access a WHERE a.library_id = b.library_id AND a.user_id = ?))))

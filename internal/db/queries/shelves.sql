@@ -41,7 +41,7 @@ UPDATE shelves SET updated_at = ? WHERE id = ?;
 
 -- name: ShelfVisibleBookCount :one
 SELECT count(*) FROM shelf_books sb
-JOIN books b ON b.id = sb.book_id
+JOIN active_books b ON b.id = sb.book_id
 WHERE sb.shelf_id = sqlc.arg(shelf_id)
 AND (CAST(sqlc.arg(library_id) AS INTEGER) = 0 OR b.library_id = sqlc.arg(library_id))
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
@@ -54,7 +54,7 @@ AND NOT EXISTS (
 
 -- name: ShelfVisibleBookIDs :many
 SELECT sb.book_id FROM shelf_books sb
-JOIN books b ON b.id = sb.book_id
+JOIN active_books b ON b.id = sb.book_id
 WHERE sb.shelf_id = sqlc.arg(shelf_id)
 AND (CAST(sqlc.arg(library_id) AS INTEGER) = 0 OR b.library_id = sqlc.arg(library_id))
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
@@ -75,7 +75,7 @@ SELECT sb.book_id, sb.position,
         SELECT 1 FROM book_hidden h WHERE h.book_id = b.id AND h.user_id = sqlc.arg(user_id)
     ) THEN 1 ELSE 0 END AS INTEGER) AS is_visible
 FROM shelf_books sb
-JOIN books b ON b.id = sb.book_id
+JOIN active_books b ON b.id = sb.book_id
 WHERE sb.shelf_id = sqlc.arg(shelf_id)
 ORDER BY sb.position, sb.book_id;
 

@@ -61,6 +61,11 @@ describe('entry sorting', () => {
 	it('sorts alphabetically ignoring case, with chronological ties', () => {
 		expect(sortEntries(entries, 'alphabetical').map((item) => item.id)).toEqual([2, 3, 1]);
 	});
+	it('supports oldest-first and reverse alphabetical sorting', () => {
+		expect(sortEntries(entries, 'chronological-asc').map((item) => item.id)).toEqual([1, 3, 2]);
+		expect(sortEntries(entries, 'alphabetical-desc').map((item) => item.id)).toEqual([1, 2, 3]);
+		expect(sortEntries([entry(1, 'a', 'invalid'), entry(2, 'a', 'invalid')], 'chronological-asc').map((item) => item.id)).toEqual([1, 2]);
+	});
 	it('breaks identical/invalid creation timestamps consistently', () => {
 		expect(sortEntries([entry(1, 'a', 'invalid'), entry(2, 'a', 'invalid')], 'chronological').map((item) => item.id)).toEqual([2, 1]);
 	});
@@ -142,6 +147,16 @@ describe('per-wordbook view preferences', () => {
 		expect(readPreferences(1)).toEqual({ view: 'list', sort: 'chronological' });
 		values.set('pandalibrary.wordbooks.1.view', '{"view":"obsolete","sort":"obsolete"}');
 		expect(readPreferences(1)).toEqual({ view: 'list', sort: 'chronological' });
+	});
+	it.each(['chronological-asc', 'alphabetical-desc'] as const)('persists %s per wordbook', (sort) => {
+		const values = new Map<string, string>();
+		vi.stubGlobal('localStorage', {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => values.set(key, value)
+		});
+		writePreferences(1, { view: 'cards', sort });
+		expect(readPreferences(1)).toEqual({ view: 'cards', sort });
+		expect(readPreferences(2)).toEqual({ view: 'list', sort: 'chronological' });
 	});
 });
 

@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import * as m from '#lib/paraglide/messages.js';
-	import { homeNavigationFor, isActive, navigationFor, type NavigationItem } from '#lib/nav.js';
+	import { homeNavigationFor, isActive, navigationFor, otherNavigationFor, type NavigationItem } from '#lib/nav.js';
 	import BookheapCount from '#lib/bookheap/BookheapCount.svelte';
 	import AnnotationsCount from '#lib/notes/AnnotationsCount.svelte';
 	import FavoritesCount from '#lib/shelves/FavoritesCount.svelte';
@@ -73,9 +73,13 @@
 		{:else}
 			<SidebarShelves {pathname} {role} />
 		{/if}
-		<section class="shell-section" aria-labelledby="sidebar-browse-heading">
-			<h2 id="sidebar-browse-heading" class="shell-heading">{m['organize.statistics']()}</h2>
+		<section class="shell-section" aria-labelledby="sidebar-statistics-heading">
+			<h2 id="sidebar-statistics-heading" class="shell-heading">{m['organize.statistics']()}</h2>
 			{@render links(navigationFor(role))}
+		</section>
+		<section class="shell-section" aria-labelledby="sidebar-others-heading">
+			<h2 id="sidebar-others-heading" class="shell-heading">{m['ux1.nav.others_heading']()}</h2>
+			{@render links(otherNavigationFor(role))}
 		</section>
 	</nav>
 	{@render account?.()}

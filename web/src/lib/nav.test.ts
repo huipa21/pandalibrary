@@ -1,9 +1,9 @@
 import en from '../../messages/en.json';
 import zh from '../../messages/zh.json';
 import { describe, expect, it } from 'vitest';
-import { homeNavigation, homeNavigationFor, isActive, isImmersiveRoute, navigation, navigationFor } from './nav.js';
+import { homeNavigation, homeNavigationFor, isActive, isImmersiveRoute, navigation, navigationFor, otherNavigation, otherNavigationFor } from './nav.js';
 
-const item = (id: string) => [...homeNavigation, ...navigation].find((entry) => entry.id === id)!;
+const item = (id: string) => [...homeNavigation, ...navigation, ...otherNavigation].find((entry) => entry.id === id)!;
 
 describe('navigationFor', () => {
 	it('shows only Books, Reading and History under Statistics for every role', () => {
@@ -21,7 +21,7 @@ describe('navigationFor', () => {
 
 	it('does not expose a library-wide bookmarks destination', () => {
 		for (const role of ['admin', 'user', null]) {
-			const entries = [...homeNavigationFor(role), ...navigationFor(role)];
+			const entries = [...homeNavigationFor(role), ...navigationFor(role), ...otherNavigationFor(role)];
 			expect(entries.some((entry) => entry.id === 'bookmarks' || entry.href === '/bookmarks')).toBe(false);
 		}
 	});
@@ -33,15 +33,25 @@ describe('homeNavigation', () => {
 			['dashboard', '/'],
 			['bookheap', '/bookheap'],
 			['favorites', '/shelves/system/favorites'],
-			['wordbooks', '/wordbooks'],
 			['notes', '/notes']
 		]);
 	});
 
 	it('shows Bookheap only to administrators', () => {
-		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'bookheap', 'favorites', 'wordbooks', 'notes']);
-		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'favorites', 'wordbooks', 'notes']);
+		expect(homeNavigationFor('admin').map((entry) => entry.id)).toEqual(['dashboard', 'bookheap', 'favorites', 'notes']);
+		expect(homeNavigationFor('user').map((entry) => entry.id)).toEqual(['dashboard', 'favorites', 'notes']);
 		expect(homeNavigationFor(null).some((entry) => entry.id === 'bookheap')).toBe(false);
+	});
+});
+
+describe('otherNavigation', () => {
+	it('places Wordbooks before Trash under Others for every role', () => {
+		for (const role of ['admin', 'user', null]) {
+			expect(otherNavigationFor(role).map((entry) => [entry.id, entry.href])).toEqual([
+				['wordbooks', '/wordbooks'],
+				['trash', '/trash']
+			]);
+		}
 	});
 });
 
@@ -53,7 +63,7 @@ describe('isActive', () => {
 
 	it('does not imply a sidebar destination for computed or individual book pages', () => {
 		for (const path of ['/books', '/books/21', '/books/21/metadata', '/books/21/edit']) {
-			expect([...homeNavigation, ...navigation].some((entry) => isActive(entry, path))).toBe(false);
+			expect([...homeNavigation, ...navigation, ...otherNavigation].some((entry) => isActive(entry, path))).toBe(false);
 		}
 	});
 
@@ -65,6 +75,8 @@ describe('isActive', () => {
 		expect(isActive(item('wordbooks'), '/wordbooks')).toBe(true);
 		expect(isActive(item('wordbooks'), '/wordbooks/2')).toBe(true);
 		expect(isActive(item('wordbooks'), '/wordbookshelf')).toBe(false);
+		expect(isActive(item('trash'), '/trash')).toBe(true);
+		expect(isActive(item('trash'), '/trash/')).toBe(true);
 		expect(isActive(item('bookheap'), '/bookheap')).toBe(true);
 		expect(isActive(item('bookheap'), '/books')).toBe(false);
 	});

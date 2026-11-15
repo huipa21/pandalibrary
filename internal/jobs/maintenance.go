@@ -343,43 +343,18 @@ func (m *Maintenance) cleanupExpiredAt(ctx context.Context, instant time.Time) e
 	if err := m.pruneImportHistory(ctx, tx, importCutoff); err != nil {
 		return rollback(tx, fmt.Errorf("prune completed import history: %w", err))
 	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM notes_fts
-		WHERE rowid IN (SELECT seq FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < ?)
-	`, tombstoneCutoff); err != nil {
+	// Trash and scrubbed sync tombstones must survive retention cleanup.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM notes_fts WHERE rowid IN
+		(SELECT seq FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < ?)`, tombstoneCutoff); err != nil {
 		return rollback(tx, fmt.Errorf("remove expired note search entries: %w", err))
 	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < ?
-	`, tombstoneCutoff); err != nil {
-		return rollback(tx, fmt.Errorf("prune note tombstones: %w", err))
-	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM highlights_fts
-		WHERE rowid IN (
-			SELECT h.seq FROM highlights h
-			WHERE h.deleted_at IS NOT NULL AND h.deleted_at < ?
-			AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.highlight_id = h.id)
-		)
-	`, tombstoneCutoff); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM highlights_fts WHERE rowid IN
+		(SELECT seq FROM highlights WHERE deleted_at IS NOT NULL AND deleted_at < ?)`, tombstoneCutoff); err != nil {
 		return rollback(tx, fmt.Errorf("remove expired highlight search entries: %w", err))
 	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM highlights
-		WHERE deleted_at IS NOT NULL AND deleted_at < ?
-		AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.highlight_id = highlights.id)
-	`, tombstoneCutoff); err != nil {
-		return rollback(tx, fmt.Errorf("prune highlight tombstones: %w", err))
-	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM bookmarks WHERE deleted_at IS NOT NULL AND deleted_at < ?
-	`, tombstoneCutoff); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM bookmarks WHERE deleted_at IS NOT NULL AND deleted_at < ?
+		AND NOT EXISTS (SELECT 1 FROM books WHERE books.id = bookmarks.book_id AND books.deleted_at IS NOT NULL)`, tombstoneCutoff); err != nil {
 		return rollback(tx, fmt.Errorf("prune bookmark tombstones: %w", err))
-	}
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM page_annotations WHERE deleted_at IS NOT NULL AND deleted_at < ?
-	`, tombstoneCutoff); err != nil {
-		return rollback(tx, fmt.Errorf("prune page annotation tombstones: %w", err))
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit expired-state cleanup: %w", err)

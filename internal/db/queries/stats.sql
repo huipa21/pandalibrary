@@ -6,7 +6,7 @@ FROM json_each(CAST(sqlc.arg(days) AS TEXT)) d
 CROSS JOIN reading_sessions rs ON rs.user_id = sqlc.arg(user_id)
     AND rs.started_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
     AND rs.started_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
-JOIN books b ON b.id = rs.book_id
+JOIN active_books b ON b.id = rs.book_id
 WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -26,7 +26,7 @@ WITH terminal_cycles AS (
 )
 SELECT CAST(json_extract(d.value, '$.date') AS TEXT) AS date, COUNT(*) AS books_finished
 FROM terminal_cycles
-JOIN books b ON b.id = terminal_cycles.book_id
+JOIN active_books b ON b.id = terminal_cycles.book_id
 CROSS JOIN json_each(CAST(sqlc.arg(days) AS TEXT)) d
 WHERE terminal_cycles.ended_at >= CAST(json_extract(d.value, '$.start') AS INTEGER)
 AND terminal_cycles.ended_at < CAST(json_extract(d.value, '$.end') AS INTEGER)
@@ -49,7 +49,7 @@ SELECT b.id AS book_id, b.title,
        )) AS TEXT) AS authors,
        CAST(SUM(rs.active_seconds) AS INTEGER) AS active_seconds,
        COUNT(*) AS session_count
-FROM reading_sessions rs JOIN books b ON b.id = rs.book_id
+FROM reading_sessions rs JOIN active_books b ON b.id = rs.book_id
 WHERE rs.user_id = sqlc.arg(user_id)
 AND rs.started_at >= sqlc.arg(start_at) AND rs.started_at < sqlc.arg(end_at)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
@@ -67,7 +67,7 @@ LIMIT sqlc.arg(result_limit);
 -- name: StatsHistoryBounds :one
 SELECT CAST(COALESCE(MIN(rs.started_at), sqlc.arg(end_at)) AS INTEGER) AS start_at,
        CAST(COALESCE(MAX(rs.started_at) + 1, sqlc.arg(end_at)) AS INTEGER) AS end_at
-FROM reading_sessions rs JOIN books b ON b.id = rs.book_id
+FROM reading_sessions rs JOIN active_books b ON b.id = rs.book_id
 WHERE rs.user_id = sqlc.arg(user_id) AND rs.started_at < sqlc.arg(end_at)
 AND rs.active_seconds > 0
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
@@ -92,7 +92,7 @@ WITH local_days AS (
     CROSS JOIN reading_sessions rs ON rs.user_id = sqlc.arg(user_id)
         AND rs.started_at >= CAST(json_extract(z.value, '$.start') AS INTEGER)
         AND rs.started_at < CAST(json_extract(z.value, '$.end') AS INTEGER)
-    JOIN books b ON b.id = rs.book_id
+    JOIN active_books b ON b.id = rs.book_id
     WHERE rs.active_seconds > 0
     AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
         SELECT 1 FROM library_access la

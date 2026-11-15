@@ -22,7 +22,7 @@ ORDER BY id DESC LIMIT sqlc.arg(page_limit);
 UPDATE import_jobs SET status = ?, error = ?, book_id = ?, duplicate_of_book_id = ?, finished_at = ? WHERE id = ?;
 
 -- name: ImportDuplicate :one
-SELECT f.book_id FROM book_files f JOIN books b ON b.id = f.book_id
+SELECT f.book_id FROM book_files f JOIN active_books b ON b.id = f.book_id
 WHERE f.sha256 = sqlc.arg(sha256) AND b.library_id = sqlc.arg(library_id)
 ORDER BY f.book_id LIMIT 1;
 
@@ -42,7 +42,7 @@ INSERT INTO books (library_id, title, sort_title, subtitle, description, languag
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id;
 
 -- name: ImportTarget :one
-SELECT id FROM books WHERE id = sqlc.arg(book_id) AND library_id = sqlc.arg(library_id)
+SELECT id FROM active_books books WHERE id = sqlc.arg(book_id) AND library_id = sqlc.arg(library_id)
 AND (visibility != 'private' OR owner_id = CAST(sqlc.arg(user_id) AS INTEGER))
 AND NOT EXISTS (SELECT 1 FROM book_hidden h WHERE h.book_id = books.id
     AND h.user_id = CAST(sqlc.arg(user_id) AS INTEGER));

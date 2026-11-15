@@ -132,9 +132,9 @@ test('overview offers five global sort orders and persistent All, Active and Arc
 	await expect(page.getByText('No matches found.', { exact: true })).toBeVisible();
 	await page.getByRole('searchbox', { name: 'Search wordbook names and descriptions', exact: true }).fill('');
 	await links.first().click();
-	await expect(sort.locator('option')).toHaveText(['Newest first', 'Alphabetical']);
+	await expect(sort.locator('option')).toHaveText(['New - Old', 'Old - New', 'A - Z', 'Z - A']);
 	await expect(status).toHaveCount(0);
-	await page.getByRole('link', { name: 'Back to wordbooks' }).click();
+	await page.goto('/wordbooks');
 	await expect(sort).toHaveValue('name-desc');
 	await expect(status).toHaveValue('archived');
 });
@@ -151,11 +151,13 @@ for (const operation of ['edit', 'delete', 'import'] as const) {
 		await page.locator('[data-wordbooks] a[href="/wordbooks?id=1"]').click();
 		const apple = page.locator('[data-entry-id="1"]');
 		if (operation === 'edit') {
+			await apple.getByRole('button', { name: 'apple', exact: true }).click();
 			await apple.getByRole('button', { name: 'Edit', exact: true }).click();
 			await apple.getByLabel('Definition (editable)', { exact: true }).fill('Updated definition');
 			await apple.getByRole('button', { name: 'Save', exact: true }).click();
 			await expect(apple).toContainText('Updated definition');
 		} else if (operation === 'delete') {
+			await apple.getByRole('button', { name: 'apple', exact: true }).click();
 			await confirmInApp(page, () => apple.getByRole('button', { name: 'Delete', exact: true }).click());
 			await expect(apple).toHaveCount(0);
 		} else {
@@ -165,9 +167,8 @@ for (const operation of ['edit', 'delete', 'import'] as const) {
 			});
 			await expect(page.getByRole('main').getByRole('status')).toHaveText('Imported 1 entries');
 		}
-		await expect(page.getByRole('link', { name: 'Back to wordbooks' })).toBeVisible();
 		await expect(page.locator('section[aria-busy]')).toHaveAttribute('aria-busy', 'false');
-		await page.getByRole('link', { name: 'Back to wordbooks' }).click();
+		await page.goto('/wordbooks');
 		await expect(links.first()).toHaveAttribute('href', '/wordbooks?id=1');
 		await page.reload();
 		await expect(links.first()).toHaveAttribute('href', '/wordbooks?id=1');
@@ -189,6 +190,7 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await expect(list.locator('[data-entry-text]').first()).toHaveText('A sentence.');
 	await expect(list.locator('[data-entry-text]').nth(1)).toHaveText('apple');
 	const apple = page.locator('[data-entry-id="1"]');
+	await apple.getByRole('button', { name: 'apple', exact: true }).click();
 	await expect(apple).toContainText('Snapshot dictionary');
 	const url = new URL(await apple.getByRole('link', { name: 'Read in context' }).getAttribute('href') ?? '', 'https://reader.invalid');
 	expect(JSON.parse(url.searchParams.get('locator')!)).toMatchObject({ type: 'pdf', page: 3 });
@@ -196,7 +198,9 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await apple.getByLabel('Definition (editable)', { exact: true }).fill('My definition');
 	await apple.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(apple).toContainText('My definition');
+	await page.keyboard.press('Escape');
 	const sentence = page.locator('[data-entry-id="3"]');
+	await sentence.getByRole('button', { name: 'A sentence.', exact: true }).click();
 	await expect(sentence).toContainText('Original source is unavailable');
 	await expect(sentence).toContainText('Stored book title · Chapter 2');
 	await sentence.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -204,6 +208,7 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await sentence.getByLabel('Personal note', { exact: true }).fill('Manual note');
 	await sentence.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(sentence).toContainText('Manual note');
+	await page.keyboard.press('Escape');
 	const downloadPromise = page.waitForEvent('download');
 	await page.getByRole('button', { name: 'Export JSON', exact: true }).click();
 	const download = await downloadPromise;
@@ -220,7 +225,7 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await page.reload();
 	await expect(list).toHaveAttribute('data-view', 'cards');
 	await expect(page.getByRole('combobox', { name: 'Sort', exact: true })).toHaveValue('alphabetical');
-	await page.getByRole('link', { name: 'Back to wordbooks' }).click();
+	await page.goto('/wordbooks');
 	await expect(page.locator('[data-wordbooks] a[href="/wordbooks?id=1"] [data-entry-count]')).toHaveText('6');
 	await page.locator('[data-wordbooks] a[href="/wordbooks?id=2"]').click();
 	await page.getByRole('button', { name: 'Archive', exact: true }).click();
@@ -235,6 +240,7 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await rename.getByLabel('Wordbook name', { exact: true }).fill('Renamed study');
 	await rename.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Renamed study', exact: true })).toBeVisible();
+	await page.goto('/wordbooks');
 	await page.getByRole('button', { name: 'New wordbook', exact: true }).click();
 	const create = page.getByRole('form', { name: 'New wordbook', exact: true });
 	await create.getByLabel('Wordbook name', { exact: true }).fill('New study');
@@ -243,7 +249,7 @@ test('wordbooks default to lists; cards, sorting, edit, archive, import/export a
 	await expect(page.locator('button[data-view]')).toHaveAttribute('data-view', 'list');
 });
 
-test('collection searches notebook descriptions and entry categories, preserving direct navigation and display settings', async ({ page }) => {
+test('collection searches notebook descriptions and entry categories, preserving direct navigation and compact controls', async ({ page }) => {
 	await mockAPI(page);
 	await page.goto('/wordbooks');
 	const collection = page.locator('[data-wordbooks]');
@@ -256,17 +262,20 @@ test('collection searches notebook descriptions and entry categories, preserving
 	await collection.locator('a').click();
 	await expect(page).toHaveURL(/wordbooks\?id=3$/);
 	await expect(page.getByText('Travel phrase', { exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Travel phrase', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
+	await page.keyboard.press('Escape');
 	await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Archive', exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Export JSON', exact: true })).toBeVisible();
 	await expect(page.getByLabel('Import JSON', { exact: true })).toBeEnabled();
 	await page.reload();
 	await expect(page.getByText('Travel phrase', { exact: true })).toBeVisible();
-	await page.getByRole('button', { name: 'Display settings', exact: true }).click();
-	await page.getByLabel('Show source information', { exact: true }).uncheck();
-	await expect(page.getByText('Stored book title · Chapter 2', { exact: false })).toHaveCount(0);
-	await page.getByRole('link', { name: 'Back to wordbooks' }).click();
+	await expect(page.getByRole('main').getByRole('button', { name: 'Display settings', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'New wordbook', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Back to wordbooks' })).toHaveCount(0);
+	await expect(page.getByText('Stored book title · Chapter 2', { exact: false })).toBeVisible();
+	await page.goto('/wordbooks');
 	await page.getByRole('combobox', { name: 'Category', exact: true }).selectOption('passages');
 	await page.getByRole('searchbox', { name: 'Search entries' }).fill('sentence');
 	await expect(collection.locator('a')).toHaveCount(1);
@@ -287,12 +296,14 @@ test('new notebooks use a modal and persist their name, description and cover pr
 	await expect(form.getByRole('checkbox')).toHaveCount(0);
 	await form.getByLabel('Wordbook name', { exact: true }).fill('New study');
 	await form.getByLabel('Description (optional)', { exact: true }).fill('Optional description');
+	await form.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ja');
 	await expect(form.getByRole('radio', { checked: true })).toHaveCount(1);
 	await form.getByRole('radio', { name: 'Forest', exact: true }).check();
 	const created = page.waitForRequest((request) => request.url().endsWith('/api/v1/wordbooks') && request.method() === 'POST');
 	await form.getByRole('button', { name: 'Create', exact: true }).click();
-	expect((await created).postDataJSON()).toEqual({ name: 'New study', description: 'Optional description', cover_color: 'forest', cover_image: '' });
+	expect((await created).postDataJSON()).toEqual({ name: 'New study', description: 'Optional description', cover_color: 'forest', cover_image: '', language: 'ja' });
 	await expect(page.getByRole('heading', { name: 'New study', exact: true })).toBeVisible();
+	await expect(page.locator('[data-wordbook-summary]').getByLabel('Language', { exact: true })).toHaveText('Japanese');
 	await expect(page.getByText('Optional description', { exact: true })).toBeVisible();
 	await page.reload();
 	await page.getByRole('button', { name: 'Rename', exact: true }).click();
@@ -422,7 +433,7 @@ test('wordbook upload crops an image into a persistent 600 by 900 JPEG', async (
 	await page.getByRole('button', { name: 'Rename', exact: true }).click();
 	await expect(page.getByRole('dialog', { name: 'Rename', exact: true }).locator('.preview .book-cover img')).toHaveAttribute('src', payload.cover_image);
 	await page.getByRole('dialog', { name: 'Rename', exact: true }).getByRole('button', { name: 'Cancel', exact: true }).click();
-	await page.getByRole('link', { name: 'Back to wordbooks' }).click();
+	await page.goto('/wordbooks');
 	await expect(page.getByRole('link', { name: 'Cropped cover', exact: true }).locator('.book-cover img')).toHaveAttribute('src', payload.cover_image);
 });
 
@@ -473,6 +484,7 @@ test('failed edits/imports are visible, unsaved input survives, deletion require
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/wordbooks?id=1');
 	const apple = page.locator('[data-entry-id="1"]');
+	await apple.getByRole('button', { name: 'apple', exact: true }).click();
 	await apple.getByRole('button', { name: 'Edit', exact: true }).click();
 	await apple.getByLabel('Definition (editable)', { exact: true }).fill('Unsaved draft');
 	api.failEdits(true);
@@ -482,11 +494,49 @@ test('failed edits/imports are visible, unsaved input survives, deletion require
 	api.failEdits(false);
 	await apple.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(apple).toContainText('Unsaved draft');
+	await page.keyboard.press('Escape');
 	await page.getByLabel('Import JSON', { exact: true }).setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{') });
 	await expect(page.getByRole('alert')).toContainText('Choose a valid version 1 wordbook JSON export.');
+	await apple.getByRole('button', { name: 'apple', exact: true }).click();
 	await confirmInApp(page, () => apple.getByRole('button', { name: 'Delete', exact: true }).click(), false);
 	await expect(apple).toBeVisible();
 	await confirmInApp(page, () => apple.getByRole('button', { name: 'Delete', exact: true }).click());
 	await expect(apple).toHaveCount(0);
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('specific wordbook has compact controls, metadata and four persistent entry sort orders', async ({ page }) => {
+	await mockAPI(page, [{ ...makeBook(1, 'English notebook', true), language: 'en' }]);
+	await page.goto('/wordbooks?id=1');
+	const main = page.getByRole('main');
+	const sort = main.getByRole('combobox', { name: 'Sort', exact: true });
+	const summary = page.locator('[data-wordbook-summary]');
+	await expect(main.getByRole('link', { name: 'Back to wordbooks' })).toHaveCount(0);
+	await expect(main.getByRole('button', { name: 'New wordbook', exact: true })).toHaveCount(0);
+	await expect(main.getByRole('button', { name: 'Display settings', exact: true })).toHaveCount(0);
+	await expect(sort.locator('option')).toHaveText(['New - Old', 'Old - New', 'A - Z', 'Z - A']);
+	await expect(summary).toContainText('English');
+	await expect(summary.getByRole('heading', { name: 'English notebook' })).toBeVisible();
+	await expect(summary.locator('[data-entry-count]')).toHaveText('3 entries');
+	await expect(summary.locator('[data-book-count]')).toHaveText('1 source books');
+	await expect(summary.locator('[data-icon="globe"]')).toBeVisible();
+	const search = main.getByRole('searchbox', { name: 'Search entries', exact: true });
+	const searchBounds = await search.boundingBox();
+	const summaryBounds = await summary.boundingBox();
+	expect(searchBounds!.width).toBeLessThanOrEqual(384);
+	expect(summaryBounds!.y).toBeGreaterThan(searchBounds!.y);
+	for (const [value, ids] of [
+		['chronological', ['3', '2', '1']],
+		['chronological-asc', ['1', '2', '3']],
+		['alphabetical', ['3', '1', '2']],
+		['alphabetical-desc', ['2', '1', '3']]
+	] as const) {
+		await sort.selectOption(value);
+		await expect.poll(() => page.locator('[data-entry-id]').evaluateAll((items) =>
+			items.map((item) => item.getAttribute('data-entry-id')))).toEqual([...ids]);
+	}
+	await page.locator('button[data-view="list"]').click();
+	await page.reload();
+	await expect(sort).toHaveValue('alphabetical-desc');
+	await expect(page.locator('ol[data-view]')).toHaveAttribute('data-view', 'cards');
 });
