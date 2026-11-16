@@ -116,11 +116,21 @@ export const wordbooks = {
 	edit(
 		wordbookId: number,
 		entryId: number,
-		changes: { text?: string; definition?: string; note?: string }
+		changes: { text?: string; definition?: string; note?: string; dictionary_entries?: DictionaryEntry[] }
 	): Promise<WordbookEntry> {
+		const { dictionary_entries, ...fields } = changes;
 		return api.request(`/wordbooks/${wordbookId}/entries/${entryId}`, {
 			method: 'PATCH',
-			body: changes
+			body: {
+				...fields,
+				...(dictionary_entries === undefined ? {} : {
+					dictionary_entries: dictionary_entries.map((entry) => ({
+						...entry,
+						definitions: [...entry.definitions],
+						...(entry.hiddenDefinitions === undefined ? {} : { hiddenDefinitions: [...entry.hiddenDefinitions] })
+					}))
+				})
+			}
 		});
 	},
 	remove(wordbookId: number, entryId: number): Promise<void> {

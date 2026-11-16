@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { DictionaryEntry } from '#lib/dictionary/types.js';
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -10,6 +11,7 @@
 	import DeleteWordbookDialog from '#lib/wordbooks/DeleteWordbookDialog.svelte';
 	import BookCover from '#lib/bookview/BookCover.svelte';
 	import Icon from '#lib/bookview/Icon.svelte';
+	import { Flag } from '@lucide/svelte';
 	import { bookDisplay } from '#lib/catalog/book-display.svelte.js';
 	import {
 		downloadWordbook, filterEntries, filterWordbooks, involvedBookCount, readPreferences,
@@ -173,7 +175,7 @@
 	async function refreshBooks() {
 		books = await wordbooks.list();
 	}
-	async function saveEntry(id: number, changes: { text: string; definition?: string; note?: string }) {
+	async function saveEntry(id: number, changes: { text: string; definition?: string; note?: string; dictionary_entries?: DictionaryEntry[] }) {
 		const bookId = selectedId;
 		if (bookId === null || selected?.archived) return false;
 		return operate(async () => {
@@ -218,7 +220,7 @@
 	{#if selected}
 		<div data-wordbook-summary class="flex flex-wrap items-center gap-3">
 			<span class="flex items-center gap-1 text-sm text-slate-500" aria-label={m['wordbooks.language']()}>
-				<Icon name="globe" class="size-4" />
+				<Flag data-language-flag aria-hidden="true" class="size-4" />
 				{selected.language === 'en' ? m['dict.lang.en']() : selected.language === 'zh' ? m['dict.lang.zh']() : selected.language === 'ja' ? m['dict.lang.ja']() : selected.language || m['wordbooks.languageUnspecified']()}
 			</span>
 			<h2 class="break-words text-xl font-semibold">{selected.name}</h2>

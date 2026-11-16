@@ -118,6 +118,9 @@ func addWiktextractEntry(w *writer, edition dictionary.Lang, entry *wiktextractE
 	if !ok {
 		return nil
 	}
+	if strings.EqualFold(strings.TrimSpace(entry.POS), "romanization") {
+		return nil
+	}
 	word := strings.TrimSpace(entry.Word)
 	if word == "" {
 		return nil

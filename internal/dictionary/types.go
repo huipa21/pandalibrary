@@ -67,15 +67,16 @@ type Query struct {
 
 // Entry is one dictionary entry in a lookup result.
 type Entry struct {
-	From         Lang      `json:"from,omitempty"`
-	To           Lang      `json:"to,omitempty"`
-	Source       string    `json:"source"`
-	SourceName   string    `json:"sourceName"`
-	Headword     string    `json:"headword"`
-	Reading      string    `json:"reading,omitempty"`
-	PartOfSpeech string    `json:"partOfSpeech,omitempty"`
-	Definitions  []string  `json:"definitions"`
-	Match        MatchKind `json:"match"`
+	From              Lang      `json:"from,omitempty"`
+	To                Lang      `json:"to,omitempty"`
+	Source            string    `json:"source"`
+	SourceName        string    `json:"sourceName"`
+	Headword          string    `json:"headword"`
+	Reading           string    `json:"reading,omitempty"`
+	PartOfSpeech      string    `json:"partOfSpeech,omitempty"`
+	Definitions       []string  `json:"definitions"`
+	HiddenDefinitions []string  `json:"hiddenDefinitions,omitempty"`
+	Match             MatchKind `json:"match"`
 }
 
 // Result is the response to one lookup.

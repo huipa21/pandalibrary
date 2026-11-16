@@ -146,6 +146,8 @@
 	"wordbooks.sentence": "Sentence",
 	"wordbooks.passage": "Passage",
 	"wordbooks.definition": "Definition (editable)",
+	"wordbooks.removeMeaning": "Remove meaning",
+	"wordbooks.restoreMeaning": "Restore meaning",
 	"wordbooks.note": "Personal note",
 	"wordbooks.dictionary": "Dictionary entries",
 	"wordbooks.context": "Read in context",

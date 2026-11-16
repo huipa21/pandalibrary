@@ -3,8 +3,10 @@
 	import { focusableWithin, nextTrappedFocus } from '#lib/shell/focus.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { WordbookEntry } from './api.js';
+	import type { DictionaryEntry } from '#lib/dictionary/types.js';
 	import { lexicalEntry, sourceHref } from './management.js';
 	import { appropriateSnapshots } from './preview.js';
+	import { Pencil, Trash2 } from '@lucide/svelte';
 
 	let { entry, disabled = false, readonly = false, language = '', meaningLanguage = '', meaningLanguages, onsave, ondelete, onclose }: {
 		entry: WordbookEntry;
@@ -13,7 +15,7 @@
 		language?: string;
 		meaningLanguage?: string;
 		meaningLanguages?: string[];
-		onsave: (id: number, changes: { text: string; definition?: string; note?: string }) => Promise<boolean>;
+		onsave: (id: number, changes: { text: string; definition?: string; note?: string; dictionary_entries?: DictionaryEntry[] }) => Promise<boolean>;
 		ondelete: (id: number) => Promise<void>;
 		onclose: () => void;
 	} = $props();
@@ -22,6 +24,7 @@
 	let text = $state('');
 	let definition = $state('');
 	let note = $state('');
+	let dictionaryEntries = $state<DictionaryEntry[]>([]);
 	const lexical = $derived(lexicalEntry(entry));
 	const snapshots = $derived(appropriateSnapshots(entry.dictionary_entries, language, meaningLanguages ?? meaningLanguage));
 	const href = $derived(sourceHref(entry.source));
@@ -39,12 +42,41 @@
 		text = entry.text;
 		definition = entry.definition;
 		note = entry.note;
+		dictionaryEntries = entry.dictionary_entries.map((snapshot) => ({
+			...snapshot,
+			definitions: [...snapshot.definitions],
+			hiddenDefinitions: [...(snapshot.hiddenDefinitions ?? [])]
+		}));
 		editing = true;
 	}
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
 		if (!text.trim()) return;
-		if (await onsave(entry.id, { text: text.trim(), ...(lexical ? { definition } : { note }) })) editing = false;
+		if (await onsave(entry.id, {
+			text: text.trim(),
+			...(lexical ? { definition, dictionary_entries: dictionaryEntries } : { note })
+		})) editing = false;
+	}
+	function updateMeaning(snapshotIndex: number, meaningIndex: number, value: string) {
+		dictionaryEntries = dictionaryEntries.map((snapshot, index) => index === snapshotIndex
+			? { ...snapshot, definitions: snapshot.definitions.map((meaning, item) => item === meaningIndex ? value : meaning) }
+			: snapshot);
+	}
+	function removeMeaning(snapshotIndex: number, meaningIndex: number) {
+		dictionaryEntries = dictionaryEntries.map((snapshot, index) => {
+			if (index !== snapshotIndex) return snapshot;
+			const definitions = [...snapshot.definitions];
+			const [removed] = definitions.splice(meaningIndex, 1);
+			return { ...snapshot, definitions, hiddenDefinitions: [...(snapshot.hiddenDefinitions ?? []), removed] };
+		});
+	}
+	function restoreMeaning(snapshotIndex: number, meaningIndex: number) {
+		dictionaryEntries = dictionaryEntries.map((snapshot, index) => {
+			if (index !== snapshotIndex) return snapshot;
+			const hiddenDefinitions = [...(snapshot.hiddenDefinitions ?? [])];
+			const [restored] = hiddenDefinitions.splice(meaningIndex, 1);
+			return { ...snapshot, definitions: [...snapshot.definitions, restored], hiddenDefinitions };
+		});
 	}
 	$effect(() => {
 		if (!dialog) return;
@@ -64,16 +96,16 @@
 	}
 </script>
 
-<dialog bind:this={dialog} class="fixed inset-0 m-auto max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 text-slate-950 shadow-lg" aria-label={m['wordbooks.entry_details']()} oncancel={(event) => { event.preventDefault(); onclose(); }} {onkeydown}>
+<dialog bind:this={dialog} class="fixed inset-0 m-auto max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-6 text-slate-950 shadow-lg" aria-label={m['wordbooks.entry_details']()} oncancel={(event) => { event.preventDefault(); onclose(); }} onclick={(event) => { if (event.target === event.currentTarget) onclose(); }} {onkeydown}>
 <article class="space-y-4" aria-label={entry.text}>
 	<div class="flex flex-wrap items-start justify-between gap-2">
 		<p class="text-xs font-medium text-slate-600">{kindLabels[entry.kind]()}</p>
 		{#if !editing && !readonly}
-			<div class="flex gap-3">
-				<button class="action" {disabled} onclick={edit}>{m['wordbooks.edit']()}</button>
-				<button class="action text-red-700" {disabled} onclick={async () => {
+			<div class="flex gap-2">
+				<button type="button" class="icon-action" aria-label={m['wordbooks.edit']()} title={m['wordbooks.edit']()} {disabled} onclick={edit}><Pencil size={18} aria-hidden="true" /></button>
+				<button type="button" class="icon-action text-red-700" aria-label={m['wordbooks.delete']()} title={m['wordbooks.delete']()} {disabled} onclick={async () => {
 					if (await confirmAction(m['wordbooks.delete_confirm']())) await ondelete(entry.id);
-				}}>{m['wordbooks.delete']()}</button>
+				}}><Trash2 size={18} aria-hidden="true" /></button>
 			</div>
 		{/if}
 	</div>
@@ -88,6 +120,28 @@
 					<span class="text-sm font-medium">{m['wordbooks.definition']()}</span>
 					<textarea class="field" rows="4" bind:value={definition} {disabled}></textarea>
 				</label>
+				{#if dictionaryEntries.length}
+					<section class="space-y-3 rounded-md bg-slate-50 p-3" aria-label={m['wordbooks.dictionary']()}>
+						<h3 class="text-sm font-medium">{m['wordbooks.dictionary']()}</h3>
+						{#each dictionaryEntries as snapshot, snapshotIndex}
+							<div class="space-y-2 border-t border-slate-200 pt-2">
+								<p class="text-sm font-medium">{snapshot.headword} <span class="font-normal text-slate-600">{snapshot.partOfSpeech ?? ''} · {snapshot.sourceName}</span></p>
+								{#each snapshot.definitions as meaning, meaningIndex}
+									<div class="flex items-start gap-2">
+										<textarea class="field" rows="2" aria-label={`${snapshot.headword} ${m['wordbooks.definition']()} ${meaningIndex + 1}`} value={meaning} {disabled} oninput={(event) => updateMeaning(snapshotIndex, meaningIndex, event.currentTarget.value)}></textarea>
+										<button class="action shrink-0" type="button" aria-label={`${m['wordbooks.removeMeaning']()}: ${meaning}`} {disabled} onclick={() => removeMeaning(snapshotIndex, meaningIndex)}>{m['wordbooks.removeMeaning']()}</button>
+									</div>
+								{/each}
+								{#each snapshot.hiddenDefinitions ?? [] as meaning, meaningIndex}
+									<div class="flex items-center justify-between gap-2 text-sm text-slate-600">
+										<p class="whitespace-pre-wrap break-words line-through">{meaning}</p>
+										<button class="action shrink-0" type="button" aria-label={`${m['wordbooks.restoreMeaning']()}: ${meaning}`} {disabled} onclick={() => restoreMeaning(snapshotIndex, meaningIndex)}>{m['wordbooks.restoreMeaning']()}</button>
+									</div>
+								{/each}
+							</div>
+						{/each}
+					</section>
+				{/if}
 			{:else}
 				<label class="block space-y-1">
 					<span class="text-sm font-medium">{m['wordbooks.note']()}</span>
@@ -135,7 +189,11 @@
 <style>
 	dialog::backdrop { background: rgb(15 23 42 / 0.6); }
 	.action { border-radius: .25rem; text-decoration: underline; text-underline-offset: .2em; padding: .25rem; }
+	.icon-action { display: grid; width: 2rem; height: 2rem; place-items: center; border-radius: .25rem; }
+	.icon-action:hover { background: rgb(148 163 184 / 0.2); }
 	.action:focus-visible, .field:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+	.icon-action:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 	.action:disabled { opacity: .5; }
+	.icon-action:disabled { opacity: .5; }
 	.field { display: block; width: 100%; min-width: 0; border: 1px solid #94a3b8; border-radius: .375rem; padding: .5rem; background: white; }
 </style>

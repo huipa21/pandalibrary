@@ -579,7 +579,8 @@ test('specific wordbook has compact controls, metadata and four persistent entry
 	await expect(summary.getByRole('heading', { name: 'English notebook' })).toBeVisible();
 	await expect(summary.locator('[data-entry-count]')).toHaveText('3 entries');
 	await expect(summary.locator('[data-book-count]')).toHaveText('1 source books');
-	await expect(summary.locator('[data-icon="globe"]')).toBeVisible();
+	await expect(summary.locator('[data-language-flag]')).toBeVisible();
+	await expect(summary.locator('[data-icon="globe"]')).toHaveCount(0);
 	const search = main.getByRole('searchbox', { name: 'Search entries', exact: true });
 	const searchBounds = await search.boundingBox();
 	const summaryBounds = await summary.boundingBox();

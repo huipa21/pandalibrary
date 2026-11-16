@@ -23,8 +23,8 @@ describe('compact entry preview', () => {
 		expect(appropriateSnapshots(snapshots, 'en', ['ZH-hant', 'ja'])).toEqual([snapshots[1], snapshots[2]]);
 		expect(appropriateSnapshots(snapshots, 'en', [])).toEqual([snapshots[0]]);
 		const input = entry({ dictionary_entries: snapshots });
-		expect(entryPreview(input, 'en', ['zh', 'ja']).meaning).toBe('苹果 · りんご');
-		expect(entryPreview({ ...input, definition: 'Custom' }, 'en', ['zh', 'ja']).meaning).toBe('Custom');
+		expect(entryPreview(input, 'en', ['zh', 'ja']).meanings).toEqual(['苹果', 'りんご']);
+		expect(entryPreview({ ...input, definition: 'Custom' }, 'en', ['zh', 'ja']).meanings).toEqual(['Custom']);
 	});
 
 	it('limits Unicode code points including the ellipsis without splitting surrogate pairs', () => {
@@ -67,20 +67,30 @@ describe('compact entry preview', () => {
 		expect(appropriateSnapshots(snapshots, 'EN-gb', 'ZH-hant')).toEqual([chinese]);
 		expect(appropriateSnapshots(snapshots, 'en-GB')).toEqual([english]);
 		expect(entryPreview(entry({ dictionary_entries: snapshots }), 'en-GB', 'zh-Hant')).toMatchObject({
-			meaning: '苹果', metadata: 'noun · ˈæpəl', speechLanguage: 'en-GB'
+			meanings: ['苹果'], metadata: 'noun · ˈæpəl', speechLanguage: 'en-GB'
 		});
 	});
 
-	it('shows one primary meaning but keeps snapshot data intact, including source readings', () => {
+	it('shows all meanings but keeps snapshot data intact, including source readings', () => {
 		const input = entry({ dictionary_entries: [
 			snapshot('jmdict', 'りんご', { reading: 'wrong reading', partOfSpeech: 'wrong POS' }),
 			snapshot('ecdict', 'apple', { reading: 'ˈæpəl', partOfSpeech: 'noun', definitions: ['苹果'] }),
 			snapshot('wiktionary-en', 'apple', { definitions: ['A fruit', 'A tree'] })
 		] });
-		expect(entryPreview(input, 'en')).toMatchObject({ meaning: 'A fruit', metadata: 'noun · ˈæpəl', speechLanguage: 'en' });
-		expect(entryPreview(input, 'en', 'zh').meaning).toBe('苹果');
-		expect(entryPreview({ ...input, definition: 'My own meaning' }, 'en').meaning).toBe('My own meaning');
+		expect(entryPreview(input, 'en')).toMatchObject({ meanings: ['A fruit', 'A tree'], metadata: 'noun · ˈæpəl', speechLanguage: 'en' });
+		expect(entryPreview(input, 'en', 'zh').meanings).toEqual(['苹果']);
+		expect(entryPreview({ ...input, definition: 'My own meaning' }, 'en').meanings).toEqual(['My own meaning']);
 		expect(input.dictionary_entries[2].definitions).toEqual(['A fruit', 'A tree']);
-		expect(entryPreview(entry({ kind: 'passage', note: 'Full passage note' })).meaning).toBe('Full passage note');
+		expect(entryPreview(entry({ kind: 'passage', note: 'Full passage note' })).meanings).toEqual(['Full passage note']);
+	});
+
+	it('does not show romanization articles as lexical meanings', () => {
+		const romanization = snapshot('wiktionary-en', 'hu', {
+			from: 'en', to: 'en', partOfSpeech: 'romanization', definitions: ['nonstandard spelling of hū']
+		});
+		expect(appropriateSnapshots([romanization])).toEqual([]);
+		expect(entryPreview(entry({ dictionary_entries: [romanization] }))).toMatchObject({
+			meanings: [], metadata: '', reading: ''
+		});
 	});
 });

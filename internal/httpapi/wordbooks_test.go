@@ -569,6 +569,44 @@ func TestWordbookEditsArchiveDelete(t *testing.T) {
 	}
 }
 
+func TestWordbookMeaningPatch(t *testing.T) {
+	f := newWordbookFixture(t)
+	input := wordbookCapture("word")
+	snapshot := dictionary.Entry{
+		Source: dictionary.SourceWiktionaryEN, SourceName: "English Wiktionary", Headword: "apple",
+		Definitions: []string{"A fruit", "A tree"}, Match: dictionary.MatchExact,
+	}
+	input.DictionaryEntries = &[]dictionary.Entry{snapshot}
+	entry := wordbookDecode[wordbooks.Entry](t,
+		f.send(http.MethodPost, "/api/v1/wordbooks/entries", input, f.reader), http.StatusCreated)
+	path := fmt.Sprintf("/api/v1/wordbooks/%d/entries/%d", entry.WordbookID, entry.ID)
+	snapshot.Definitions = []string{"A better fruit"}
+	snapshot.HiddenDefinitions = []string{"A tree"}
+	updated := wordbookDecode[wordbooks.Entry](t,
+		f.send(http.MethodPatch, path, map[string]any{"dictionary_entries": []dictionary.Entry{snapshot}}, f.reader), http.StatusOK)
+	if len(updated.DictionaryEntries) != 1 ||
+		!reflect.DeepEqual(updated.DictionaryEntries[0].Definitions, []string{"A better fruit"}) ||
+		!reflect.DeepEqual(updated.DictionaryEntries[0].HiddenDefinitions, []string{"A tree"}) {
+		t.Fatalf("patched meanings = %+v", updated.DictionaryEntries)
+	}
+	loaded := wordbookDecode[struct {
+		Entries []wordbooks.Entry `json:"entries"`
+	}](t, f.request(http.MethodGet, fmt.Sprintf("/api/v1/wordbooks/%d/entries", entry.WordbookID), nil, f.reader, nil), http.StatusOK)
+	if len(loaded.Entries) != 1 ||
+		!reflect.DeepEqual(loaded.Entries[0].DictionaryEntries[0].Definitions, []string{"A better fruit"}) ||
+		!reflect.DeepEqual(loaded.Entries[0].DictionaryEntries[0].HiddenDefinitions, []string{"A tree"}) {
+		t.Fatalf("saved meanings = %+v", loaded.Entries)
+	}
+	snapshot.Definitions = []string{"A better fruit", "A tree"}
+	snapshot.HiddenDefinitions = nil
+	restored := wordbookDecode[wordbooks.Entry](t,
+		f.send(http.MethodPatch, path, map[string]any{"dictionary_entries": []dictionary.Entry{snapshot}}, f.reader), http.StatusOK)
+	if !reflect.DeepEqual(restored.DictionaryEntries[0].Definitions, []string{"A better fruit", "A tree"}) ||
+		len(restored.DictionaryEntries[0].HiddenDefinitions) != 0 {
+		t.Fatalf("restored meanings = %+v", restored.DictionaryEntries)
+	}
+}
+
 func TestWordbookImportExportInvalidRollback(t *testing.T) {
 	f := newWordbookFixture(t)
 	snapshot := dictionary.Entry{Source: "custom", SourceName: "Custom", Headword: "Cats", Definitions: []string{"definition"}, Match: dictionary.MatchExact}

@@ -146,6 +146,8 @@
 	"wordbooks.sentence": "句子",
 	"wordbooks.passage": "段落或文章",
 	"wordbooks.definition": "释义（可编辑）",
+	"wordbooks.removeMeaning": "删除释义",
+	"wordbooks.restoreMeaning": "恢复释义",
 	"wordbooks.note": "个人笔记",
 	"wordbooks.dictionary": "词典条目",
 	"wordbooks.context": "查看原文",

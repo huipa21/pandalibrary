@@ -31,6 +31,7 @@ export interface DictionaryEntry {
 	reading?: string;
 	partOfSpeech?: string;
 	definitions: string[];
+	hiddenDefinitions?: string[];
 	match: DictionaryMatch;
 }
 

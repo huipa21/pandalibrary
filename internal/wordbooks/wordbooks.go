@@ -138,9 +138,10 @@ type BookPatch struct {
 }
 
 type EntryPatch struct {
-	Text       *string `json:"text"`
-	Definition *string `json:"definition"`
-	Note       *string `json:"note"`
+	Text              *string             `json:"text"`
+	Definition        *string             `json:"definition"`
+	Note              *string             `json:"note"`
+	DictionaryEntries *[]dictionary.Entry `json:"dictionary_entries"`
 }
 
 type Export struct {
@@ -463,7 +464,7 @@ func validateEntry(e *Entry) error {
 		return invalid("too many dictionary entries")
 	}
 	for _, d := range e.DictionaryEntries {
-		if d.Source == "" || d.Headword == "" || !validString(d.Source, 200) || !validString(d.SourceName, 1000) || !validString(d.Headword, 2000) || !validString(d.Reading, 2000) || !validString(d.PartOfSpeech, 1000) || len(d.Definitions) > 100 {
+		if d.Source == "" || d.Headword == "" || !validString(d.Source, 200) || !validString(d.SourceName, 1000) || !validString(d.Headword, 2000) || !validString(d.Reading, 2000) || !validString(d.PartOfSpeech, 1000) || len(d.Definitions)+len(d.HiddenDefinitions) > 100 {
 			return invalid("dictionary entry is invalid")
 		}
 		if !validLanguage(string(d.From)) || !validLanguage(string(d.To)) {
@@ -475,7 +476,7 @@ func validateEntry(e *Entry) error {
 		if d.Definitions == nil {
 			return invalid("dictionary definitions must be an array")
 		}
-		for _, definition := range d.Definitions {
+		for _, definition := range append(append([]string{}, d.Definitions...), d.HiddenDefinitions...) {
 			if !validString(definition, 100000) {
 				return invalid("dictionary definition is too long")
 			}
@@ -752,7 +753,7 @@ func importTimestamps(e *Entry) error {
 }
 
 func (s *Service) PatchEntry(ctx context.Context, userID, bookID, entryID int64, patch EntryPatch) (Entry, error) {
-	if patch.Text == nil && patch.Definition == nil && patch.Note == nil {
+	if patch.Text == nil && patch.Definition == nil && patch.Note == nil && patch.DictionaryEntries == nil {
 		return Entry{}, invalid("no changes supplied")
 	}
 	tx, err := s.writer.BeginTx(ctx, nil)
@@ -776,11 +777,18 @@ func (s *Service) PatchEntry(ctx context.Context, userID, bookID, entryID int64,
 	if patch.Note != nil {
 		e.Note = *patch.Note
 	}
+	if patch.DictionaryEntries != nil {
+		e.DictionaryEntries = *patch.DictionaryEntries
+	}
 	if err = validateEntry(&e); err != nil {
 		return Entry{}, err
 	}
 	e.UpdatedAt = now()
-	if _, err = tx.ExecContext(ctx, "UPDATE wordbook_entries SET text = ?, definition = ?, note = ?, updated_at = ? WHERE id = ?", e.Text, e.Definition, e.Note, e.UpdatedAt, e.ID); err != nil {
+	dictionaries, err := json.Marshal(e.DictionaryEntries)
+	if err != nil {
+		return Entry{}, err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE wordbook_entries SET text = ?, definition = ?, note = ?, dictionary_entries = ?, updated_at = ? WHERE id = ?", e.Text, e.Definition, e.Note, string(dictionaries), e.UpdatedAt, e.ID); err != nil {
 		return Entry{}, err
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE wordbooks SET updated_at = ? WHERE id = ?", e.UpdatedAt, bookID); err != nil {

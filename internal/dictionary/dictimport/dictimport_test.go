@@ -226,6 +226,7 @@ func TestImportJMdict(t *testing.T) {
 }
 
 const wiktextractFixture = `{"word": "dictionary", "lang_code": "en", "pos": "noun", "forms": [{"form": "dictionaries", "tags": ["plural"]}], "senses": [{"glosses": ["A reference work listing words."]}]}
+{"word": "hu", "lang_code": "en", "pos": "romanization", "senses": [{"glosses": ["nonstandard spelling of hū"]}]}
 {"word": "Wörterbuch", "lang_code": "de", "pos": "noun", "senses": [{"glosses": ["dictionary"]}]}
 {"title": "Dict", "redirect": "dictionary"}
 {"word": "詞典", "lang_code": "zh", "pos": "noun", "sounds": [{"zh-pron": "cídiǎn", "tags": ["Mandarin", "Pinyin"]}], "senses": [{"glosses": ["dictionary"]}]}
@@ -262,6 +263,9 @@ func TestImportWiktextractEnglishEdition(t *testing.T) {
 	}
 	if n := countRows(t, database, `SELECT count(*) FROM entries WHERE source_id = ? AND headword = 'Wörterbuch'`, dictionary.SourceWiktionaryEN); n != 0 {
 		t.Fatalf("German entry imported")
+	}
+	if n := countRows(t, database, `SELECT count(*) FROM entries WHERE source_id = ? AND headword = 'hu'`, dictionary.SourceWiktionaryEN); n != 0 {
+		t.Fatalf("romanization entry imported")
 	}
 }
 

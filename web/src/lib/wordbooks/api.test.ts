@@ -139,6 +139,23 @@ describe('wordbook API contract', () => {
 		}]);
 	});
 
+	it('saves edited dictionary meanings, including restorable removed meanings', async () => {
+		const dictionary_entries: DictionaryEntry[] = [{
+			source: 'wiktionary-en',
+			sourceName: 'English Wiktionary',
+			headword: 'apple',
+			definitions: ['A fruit'],
+			hiddenDefinitions: ['A tree'],
+			match: 'exact'
+		}];
+		request.mockResolvedValue({ id: 9 });
+		await wordbooks.edit(4, 9, { dictionary_entries });
+		expect(request).toHaveBeenCalledWith('/wordbooks/4/entries/9', {
+			method: 'PATCH',
+			body: { dictionary_entries }
+		});
+	});
+
 	it('imports the original JSON file into the chosen book and exports the versioned document', async () => {
 		const file = new Blob(['{"version":1}'], { type: 'application/json' });
 		request.mockResolvedValueOnce({ imported: 2 }).mockResolvedValueOnce({

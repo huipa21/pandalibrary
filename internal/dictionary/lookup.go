@@ -162,7 +162,8 @@ func searchKeys(ctx context.Context, database *sql.DB, from, to Lang, keys []str
 		rows, err := database.QueryContext(ctx,
 			`SELECT k.key, k.kind, e.id, e.source_id, e.headword, e.reading, e.pos, e.definitions, e.rank
 			FROM entry_keys AS k JOIN entries AS e ON e.id = k.entry_id
-			WHERE k.from_lang = ? AND k.to_lang = ? AND k.key IN (?`+strings.Repeat(", ?", len(chunk)-1)+`)
+			WHERE k.from_lang = ? AND k.to_lang = ? AND lower(trim(e.pos)) != 'romanization'
+			AND k.key IN (?`+strings.Repeat(", ?", len(chunk)-1)+`)
 			ORDER BY e.rank, e.id LIMIT ?`, args...)
 		if err != nil {
 			return nil, fmt.Errorf("query dictionary keys: %w", err)

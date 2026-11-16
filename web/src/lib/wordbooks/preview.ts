@@ -10,6 +10,10 @@ function primaryLanguage(language = ''): string {
 	return language.trim().split('-')[0].toLowerCase();
 }
 
+function isRomanization(snapshot: DictionaryEntry): boolean {
+	return snapshot.partOfSpeech?.trim().toLowerCase() === 'romanization';
+}
+
 // Wiktionary editions contain multiple source languages; Han-only headwords
 // cannot distinguish Chinese from Japanese, so do not guess their direction.
 export function snapshotDirection(snapshot: DictionaryEntry): { from?: string; to?: string } {
@@ -39,6 +43,7 @@ export function appropriateSnapshots(
 		.map(primaryLanguage).filter(Boolean);
 	if (!targets.length && source) targets.push(source);
 	return snapshots.filter((snapshot) => {
+		if (isRomanization(snapshot)) return false;
 		const direction = snapshotDirection(snapshot);
 		return (!source || primaryLanguage(direction.from) === source)
 			&& (!targets.length || targets.includes(primaryLanguage(direction.to)));
@@ -49,20 +54,18 @@ export function entryPreview(entry: WordbookEntry, language = '', meaningLanguag
 	const snapshots = appropriateSnapshots(entry.dictionary_entries, language, meaningLanguage);
 	const source = primaryLanguage(language);
 	// Readings/POS belong to the headword, even when its translation target differs.
-	const metadata = source
-		? entry.dictionary_entries.filter((snapshot) => primaryLanguage(snapshotDirection(snapshot).from) === source)
-		: entry.dictionary_entries;
+	const metadata = entry.dictionary_entries.filter((snapshot) => !isRomanization(snapshot)
+		&& (!source || primaryLanguage(snapshotDirection(snapshot).from) === source));
 	const reading = metadata.find((snapshot) => snapshot.reading?.trim())?.reading?.trim() ?? '';
 	const partOfSpeech = metadata.find((snapshot) => snapshot.partOfSpeech?.trim())?.partOfSpeech?.trim() ?? '';
 	const lexical = entry.kind === 'word' || entry.kind === 'phrase';
-	const meanings = [...new Set(snapshots.map((snapshot) => snapshot.definitions.find((meaning) => meaning.trim()) ?? '').filter(Boolean))];
+	const meanings = [...new Set(snapshots.flatMap((snapshot) => snapshot.definitions)
+		.filter((meaning) => meaning.trim()))];
 	return {
 		text: truncatePreview(entry.text),
 		reading,
 		metadata: [partOfSpeech, reading].filter(Boolean).join(' · '),
-		meaning: lexical
-			? entry.definition.trim() || (Array.isArray(meaningLanguage) && meaningLanguage.length > 1 ? meanings.join(' · ') : meanings[0]) || ''
-			: entry.note,
+		meanings: lexical ? (entry.definition.trim() ? [entry.definition] : meanings) : (entry.note ? [entry.note] : []),
 		speechLanguage: language || (metadata[0] ? snapshotDirection(metadata[0]).from : '') || ''
 	};
 }
