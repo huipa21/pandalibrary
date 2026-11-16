@@ -2,18 +2,25 @@ ARG NODE_VERSION=24.15.0
 ARG GO_VERSION=1.27.0
 
 FROM node:${NODE_VERSION}-alpine AS web
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ENV COREPACK_NPM_REGISTRY=${NPM_REGISTRY} \
+    npm_config_registry=${NPM_REGISTRY}
 WORKDIR /src/web
 RUN corepack enable
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 COPY web/project.inlang ./project.inlang
 COPY web/ ./
-RUN pnpm install --frozen-lockfile && pnpm build
+RUN pnpm install --frozen-lockfile --registry="${NPM_REGISTRY}" && pnpm build
 
 FROM golang:${GO_VERSION}-alpine AS build
 ARG COMMIT
 ARG COMMIT_DATE
 ARG DIRTY
 ARG RELEASE
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOSUMDB=sum.golang.org
+ENV GOPROXY=${GOPROXY} \
+    GOSUMDB=${GOSUMDB}
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

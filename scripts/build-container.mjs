@@ -11,14 +11,18 @@ export function selectContainerEngine(override, probe = (engine) =>
 	throw new Error('No usable container engine found. Start Docker or Podman, or set CONTAINER_ENGINE explicitly.');
 }
 
-export function containerBuildArgs(engine, image, stamp, root = projectRoot) {
+export function containerBuildArgs(engine, image, stamp, root = projectRoot, options = {}) {
 	const format = /^podman(?:\.exe)?$/i.test(basename(engine)) ? ['--format', 'docker'] : [];
+	const passthrough = (name, value) => value ? ['--build-arg', `${name}=${value}`] : [];
 	return [
 		'build', ...format,
 		'--build-arg', `COMMIT=${stamp.commit}`,
 		'--build-arg', `COMMIT_DATE=${stamp.commitDate}`,
 		'--build-arg', `DIRTY=${stamp.dirty}`,
 		'--build-arg', `RELEASE=${stamp.release}`,
+		...passthrough('NPM_REGISTRY', options.npmRegistry),
+		...passthrough('GOPROXY', options.goProxy),
+		...passthrough('GOSUMDB', options.goSumDB),
 		'--tag', image, root
 	];
 }
@@ -28,7 +32,11 @@ function main() {
 	const stamp = resolveProvenance(projectRoot, release);
 	const engine = selectContainerEngine(process.env.CONTAINER_ENGINE);
 	console.error(`Using container engine: ${engine}`);
-	runChecked(engine, containerBuildArgs(engine, output, stamp));
+	runChecked(engine, containerBuildArgs(engine, output, stamp, projectRoot, {
+		npmRegistry: process.env.NPM_CONFIG_REGISTRY,
+		goProxy: process.env.GOPROXY,
+		goSumDB: process.env.GOSUMDB
+	}));
 }
 
 if (isMain(import.meta.url)) {

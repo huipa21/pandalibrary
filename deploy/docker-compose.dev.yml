@@ -1,0 +1,16 @@
+name: pandalibrary-dev
+
+# Local HTTP-only test stack. Production uses docker-compose.yml behind Caddy.
+services:
+  pandalibrary:
+    image: localhost/pandalibrary:latest
+    pull_policy: never
+    restart: unless-stopped
+    user: "${PANDA_DEV_UID:-1000}:${PANDA_DEV_GID:-1000}"
+    environment:
+      PANDA_BASE_URL: ${PANDA_DEV_BASE_URL:-http://localhost:8080}
+      PANDA_TRUSTED_PROXIES: ""
+    ports:
+      - "${PANDA_DEV_BIND:-127.0.0.1}:${PANDA_DEV_PORT:-8080}:8080"
+    volumes:
+      - ./data:/data

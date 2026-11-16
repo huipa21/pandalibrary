@@ -6,10 +6,60 @@ Build `localhost/pandalibrary:latest` from the repository root:
 node scripts/build-container.mjs --tag localhost/pandalibrary:latest
 ```
 
+If the default package registries are slow or blocked, point the build at
+reachable mirrors. Use registries you trust:
+
+```sh
+NPM_CONFIG_REGISTRY=https://registry.npmmirror.com \
+GOPROXY=https://goproxy.cn,direct \
+  node scripts/build-container.mjs --tag localhost/pandalibrary:latest
+```
+
+The build script passes
+`NPM_REGISTRY`, `GOPROXY`, and `GOSUMDB` to Docker when the matching
+environment variables are set. `NPM_CONFIG_REGISTRY` is passed as
+`NPM_REGISTRY`.
+
 The build script selects a working Docker or Podman engine, preferring Docker.
 Set `CONTAINER_ENGINE=podman` if both are available and you want to use Podman's
 image store. Run the following Compose commands with the same engine used to
 build the image. `podman compose` requires a Compose provider.
+
+### Local HTTP-only test
+
+For local testing without Caddy, use `docker-compose.dev.yml`. It publishes
+`127.0.0.1:8080`, sets `PANDA_BASE_URL=http://localhost:8080`, disables
+forwarded-header trust, and uses the same `./data` bind mount. From this
+directory:
+
+```sh
+mkdir -p data
+chmod 700 data
+docker compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml logs -f pandalibrary
+```
+
+Open `http://localhost:8080/setup` and use the one-time token from the logs.
+This runs the production image with an HTTP-only origin; it is not the Vite
+hot-reload workflow. To change the host port, set `PANDA_DEV_PORT` and keep
+`PANDA_DEV_BASE_URL` in sync:
+
+```sh
+PANDA_DEV_PORT=8081 PANDA_DEV_BASE_URL=http://localhost:8081 \
+  docker compose -f docker-compose.dev.yml up -d
+```
+
+To test from another device on a trusted LAN, bind the host address and use
+the same address in the base URL:
+
+```sh
+PANDA_DEV_BIND=0.0.0.0 PANDA_DEV_BASE_URL=http://192.0.2.10:8080 \
+  docker compose -f docker-compose.dev.yml up -d
+```
+
+This publishes plain HTTP with no TLS. Do not expose it to the public internet.
+If the host user is not UID/GID `1000`, set `PANDA_DEV_UID` and `PANDA_DEV_GID`
+to match, or make `data` writable by the selected IDs.
 
 Create `data` inside this directory, and make it and its
 contents writable by UID/GID `1000:1000`. With rootless Podman on Linux, uncomment

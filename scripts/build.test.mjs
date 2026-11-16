@@ -75,6 +75,19 @@ test('passes the same raw stamp to Go and Docker without formatting a version', 
 		'--tag', 'pandalibrary:test', 'a path'
 	]);
 	assert.equal(containerBuildArgs('docker', 'test', stamp).includes('--format'), false);
+	assert.deepEqual(containerBuildArgs('docker', 'test', stamp, 'root', {
+		npmRegistry: 'https://registry.example', goProxy: 'https://goproxy.example,direct', goSumDB: 'sum.example'
+	}), [
+		'build',
+		'--build-arg', `COMMIT=${stamp.commit}`,
+		'--build-arg', `COMMIT_DATE=${stamp.commitDate}`,
+		'--build-arg', 'DIRTY=true',
+		'--build-arg', 'RELEASE=v1.2.3',
+		'--build-arg', 'NPM_REGISTRY=https://registry.example',
+		'--build-arg', 'GOPROXY=https://goproxy.example,direct',
+		'--build-arg', 'GOSUMDB=sum.example',
+		'--tag', 'test', 'root'
+	]);
 });
 
 test('selects a usable container engine or honors the explicit override', () => {
