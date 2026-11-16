@@ -10,6 +10,7 @@ import {
 	createLibrary,
 	deleteUser,
 	deleteLibrary,
+	getDictionarySettings,
 	grantLibraryAccess,
 	hideBook,
 	listAllAdminLibraries,
@@ -21,7 +22,9 @@ import {
 	revokeUserCredentials,
 	resetUserPassword,
 	runMaintenanceJob,
+	testDictionaryConnection,
 	unhideBook,
+	updateDictionarySettings,
 	updateLibrary,
 	updateUser,
 	updateProvider,
@@ -221,5 +224,42 @@ describe('provider and maintenance requests', () => {
 		request.mockResolvedValueOnce({ run: { id: 'r1', status: 'accepted' } });
 		await expect(runMaintenanceJob('fts-check')).resolves.toEqual({ id: 'r1', status: 'accepted' });
 		expect(request).toHaveBeenLastCalledWith('/admin/maintenance/fts-check', { method: 'POST' });
+	});
+});
+
+describe('dictionary settings requests', () => {
+	const settings = { base_url: 'https://dict.example', has_api_key: true, updated_at: '2026-01-01T00:00:00Z' };
+
+	it('loads and unwraps the settings envelope', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ settings });
+		await expect(getDictionarySettings()).resolves.toEqual(settings);
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/settings', { signal: undefined });
+	});
+
+	it('patches only the provided fields and sends null to clear', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ settings });
+		await expect(updateDictionarySettings({ base_url: 'https://dict.example' })).resolves.toEqual(settings);
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/settings', { method: 'PATCH', body: { base_url: 'https://dict.example' } });
+		await updateDictionarySettings({ base_url: null, api_key: null });
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/settings', { method: 'PATCH', body: { base_url: null, api_key: null } });
+		await updateDictionarySettings({ api_key: 'secret' });
+		expect(request.mock.lastCall?.[1]).toEqual({ method: 'PATCH', body: { api_key: 'secret' } });
+	});
+
+	it('posts a connection test and normalizes the reported status', async () => {
+		const status = {
+			directions: [{ from: 'en', to: 'zh', sources: ['ecdict'] }],
+			sources: [{ id: 'ecdict', name: 'ECDICT', license: 'MIT', url: '', entries: 1, importedAt: 0 }]
+		};
+		const request = vi.spyOn(api, 'request').mockResolvedValueOnce({ status });
+		await expect(testDictionaryConnection()).resolves.toEqual(status);
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/test', { method: 'POST' });
+		request.mockResolvedValueOnce({ status: {} });
+		await expect(testDictionaryConnection()).resolves.toEqual({ directions: [], sources: [] });
+	});
+
+	it('propagates problem responses from the connection test', async () => {
+		vi.spyOn(api, 'request').mockRejectedValue(new ApiError(409, 'Conflict', ''));
+		await expect(testDictionaryConnection()).rejects.toMatchObject({ status: 409 });
 	});
 });

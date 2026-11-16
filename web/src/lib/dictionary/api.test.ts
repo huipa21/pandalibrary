@@ -118,6 +118,7 @@ describe('dictionary helpers', () => {
 		expect(dictionaryErrorKey(problem(400))).toBe('dict.error.invalid');
 		expect(dictionaryErrorKey(problem(401))).toBe('dict.error.session');
 		expect(dictionaryErrorKey(problem(500))).toBe('dict.error.api');
+		expect(dictionaryErrorKey(problem(503))).toBe('dict.error.unavailable');
 		expect(dictionaryErrorKey(new TypeError('offline'))).toBe('dict.error.connection');
 	});
 

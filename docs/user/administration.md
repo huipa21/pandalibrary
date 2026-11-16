@@ -115,6 +115,7 @@ library through the assignment API.
 | **Hidden books** | Hide specific books from one reader. Hidden books disappear from that reader's lists, search and downloads |
 | **Uploads** | Upload books and view processing history, including failures and their reasons |
 | **Metadata providers** | Turn online sources on or off and set their priority. Open Library and Google Books are on by default; NeoDB and Hardcover need a token |
+| **Dicts** | Configure the online dictionary API used by **Look up**; see [Dictionaries](#dictionaries) |
 | **Maintenance** | See scheduled jobs and run one now: database backup, cleanup, unused annotation images, orphaned file removal, database optimization and search index checks |
 | **Backup** | Create and download full database-and-media `.tar.gz` backups; stage a server-saved or uploaded backup for restoration on restart |
 
@@ -174,49 +175,57 @@ should use `PATCH /api/v1/books/{id}` instead.
 
 ## Dictionaries
 
-The reader's **Look up** action uses dictionaries that an administrator imports
-from the server command line. They are stored separately from the library
-database in `<data-dir>/dictionaries/dictionaries.db`. Download the source
-files yourself and import each one:
+The reader's **Look up** action uses an online dictionary API configured by an
+administrator. PandaLibrary does not store dictionary data itself. On
+**Admin → Dicts**, enter:
 
-| Source ID | Download | Provides |
-|---|---|---|
-| `cc-cedict` | [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cc-cedict) `cedict_1_0_ts_utf-8_mdbg.txt.gz` | Chinese → English, and the Traditional → Simplified table used by other Chinese imports |
-| `ecdict` | [ECDICT](https://github.com/skywind3000/ECDICT) `ecdict.csv` | English → Chinese, with inflected forms |
-| `jmdict` | [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html) `JMdict_e.gz` (English-only) | Japanese → English and English → Japanese |
-| `wiktionary-en` | [Kaikki English edition](https://kaikki.org/dictionary/rawdata.html) | English definitions; Chinese/Japanese → English |
-| `wiktionary-zh` | [Kaikki Chinese edition](https://kaikki.org/zhwiktionary/rawdata.html) `raw-wiktextract-data.jsonl.gz` | Chinese definitions; English/Japanese → Chinese |
-| `wiktionary-ja` | [Kaikki Japanese edition](https://kaikki.org/jawiktionary/rawdata.html) `raw-wiktextract-data.jsonl.gz` | Japanese definitions; English/Chinese → Japanese |
+- **API address:** the base URL of the dictionary API, for example
+  `https://dict.example.org/api/v1/dictionary`.
+- **API key** (optional): sent as `Authorization: Bearer <key>`. The key is
+  write-only and is not shown again after saving.
 
-Import CC-CEDICT first: Chinese Wiktionary entries are converted to Simplified
-Chinese with its table. Files can be plain or gzip-compressed:
+Select **Test connection** to check that the API answers and lists its
+directions and sources. The settings are stored in the main PandaLibrary
+database, so they are included in full-data backups.
 
-```sh
-./pandalibrary dict import --source cc-cedict --file cedict_1_0_ts_utf-8_mdbg.txt.gz --data-dir /data
-./pandalibrary dict import --source ecdict --file ecdict.csv --data-dir /data
-./pandalibrary dict import --source jmdict --file JMdict_e.gz --data-dir /data
-./pandalibrary dict import --source wiktionary-zh --file raw-wiktextract-data.jsonl.gz --data-dir /data
-./pandalibrary dict list --data-dir /data
-```
+The API must implement the same JSON responses as PandaLibrary's own
+`/api/v1/dictionary/status` and `/api/v1/dictionary/lookup` endpoints:
 
-In a container, mount the data volume and the download folder and override the
-entrypoint, as for other CLI commands:
+- `GET {address}/status` returns the available directions and sources:
 
-```sh
-docker run --rm -v pandalibrary-data:/data -v "$PWD:/import:ro" --entrypoint /pandalibrary \
-  pandalibrary:local dict import --source ecdict --file /import/ecdict.csv
-```
+  ```json
+  {
+    "directions": [{"from": "en", "to": "zh", "sources": ["ecdict"]}],
+    "sources": [{"id": "ecdict", "name": "ECDICT", "license": "MIT",
+                 "url": "https://github.com/skywind3000/ECDICT",
+                 "entries": 770000, "importedAt": "2026-01-01T00:00:00Z"}]
+  }
+  ```
 
-Importing a source again replaces that source's earlier entries. Imports can run
-while the server is running; new dictionaries become available to readers
-within about 30 seconds. Wiktionary files are large, so their imports take
-longer and need several gigabytes of free disk space. Readers see each
-dictionary's name with its entries. Check each source's licence before
-redistributing an installation: CC-CEDICT, JMdict and Wiktionary data require
-attribution and share-alike; ECDICT is published under MIT.
+- `GET {address}/lookup?q=<text>&from=<en|zh|ja>&to=<en|zh|ja>&limit=<1-50>`
+  returns matching entries:
 
-Dictionaries are not part of full-data backups. Keep the downloaded files and
-import them again after restoring onto a new server.
+  ```json
+  {
+    "query": "running", "term": "run", "from": "en", "to": "zh",
+    "entries": [{"source": "ecdict", "sourceName": "ECDICT", "headword": "run",
+                 "reading": "rʌn", "partOfSpeech": "v.",
+                 "definitions": ["跑"], "hiddenDefinitions": [],
+                 "match": "lemma"}]
+  }
+  ```
+
+  `reading`, `partOfSpeech` and `hiddenDefinitions` are optional; `match` is
+  `exact`, `lemma` or `prefix`. A `400` response with an RFC 7807 problem JSON
+  `detail` is shown to the reader as an invalid request.
+
+Readers see each dictionary's name with its entries. Without an API address,
+lookup offers no directions. If the API is unreachable, readers see the
+dictionary as unavailable (HTTP 503); collecting words into wordbooks still
+works, without dictionary snapshots.
+
+For API clients, the settings are at `GET`/`PATCH /api/v1/admin/dictionary/settings`,
+and `POST /api/v1/admin/dictionary/test` checks the connection.
 
 ## Backups
 

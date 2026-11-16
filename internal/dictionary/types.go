@@ -1,10 +1,12 @@
-// Package dictionary stores imported word dictionaries in a separate SQLite file
-// and answers selection lookups between English, Simplified Chinese and Japanese.
+// Package dictionary answers selection lookups between English, Simplified Chinese
+// and Japanese through an administrator-configured online dictionary API.
 package dictionary
 
 import (
 	"errors"
-	"path/filepath"
+	"time"
+
+	"pandalibrary/internal/catalog"
 )
 
 // Lang is a supported dictionary language. Chinese is always Simplified Chinese.
@@ -37,6 +39,12 @@ const (
 // ErrInvalid marks a rejected lookup request; its message is safe to show to clients.
 var ErrInvalid = errors.New("invalid dictionary request")
 
+// ErrUnavailable marks a failed call to the online dictionary API.
+var ErrUnavailable = errors.New("dictionary API is unavailable")
+
+// ErrNotConfigured marks a lookup attempted before an administrator set the API address.
+var ErrNotConfigured = errors.New("dictionary API is not configured")
+
 // MatchKind explains how a lookup reached an entry.
 type MatchKind string
 
@@ -47,14 +55,6 @@ const (
 	MatchLemma MatchKind = "lemma"
 	// MatchPrefix matches the longest dictionary word at the start of the selection.
 	MatchPrefix MatchKind = "prefix"
-)
-
-// Key kinds stored in entry_keys.kind.
-const (
-	KeyHeadword = "headword"
-	KeyReading  = "reading"
-	KeyVariant  = "variant"
-	KeyForm     = "form" // an inflected form that leads to the entry's lemma
 )
 
 // Query is one lookup request.
@@ -88,14 +88,14 @@ type Result struct {
 	Entries []Entry `json:"entries"`
 }
 
-// Direction is an installed lookup direction and the sources that serve it.
+// Direction is an available lookup direction and the sources that serve it.
 type Direction struct {
 	From    Lang     `json:"from"`
 	To      Lang     `json:"to"`
 	Sources []string `json:"sources"`
 }
 
-// SourceInfo describes one imported source.
+// SourceInfo describes one dictionary source reported by the online API.
 type SourceInfo struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
@@ -105,51 +105,21 @@ type SourceInfo struct {
 	ImportedAt int64  `json:"importedAt"` // Unix milliseconds
 }
 
-// Status lists installed directions and sources.
+// Status lists available directions and sources.
 type Status struct {
 	Directions []Direction  `json:"directions"`
 	Sources    []SourceInfo `json:"sources"`
 }
 
-// SourceSpec is static metadata for a supported source.
-type SourceSpec struct {
-	ID      string
-	Name    string
-	License string
-	URL     string
+// Settings is the administrator view of the online dictionary API; the key is write-only.
+type Settings struct {
+	BaseURL   *string   `json:"base_url"`
+	HasAPIKey bool      `json:"has_api_key"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Supported source IDs.
-const (
-	SourceECDICT       = "ecdict"
-	SourceCEDICT       = "cc-cedict"
-	SourceJMdict       = "jmdict"
-	SourceWiktionaryEN = "wiktionary-en"
-	SourceWiktionaryZH = "wiktionary-zh"
-	SourceWiktionaryJA = "wiktionary-ja"
-)
-
-// Sources is the registry of supported sources. Earlier sources rank first among equal matches.
-var Sources = []SourceSpec{
-	{SourceECDICT, "ECDICT", "MIT", "https://github.com/skywind3000/ECDICT"},
-	{SourceCEDICT, "CC-CEDICT", "CC BY-SA 4.0", "https://www.mdbg.net/chinese/dictionary?page=cc-cedict"},
-	{SourceJMdict, "JMdict", "CC BY-SA 4.0 (EDRDG)", "https://www.edrdg.org/jmdict/j_jmdict.html"},
-	{SourceWiktionaryEN, "English Wiktionary (Kaikki)", "CC BY-SA 4.0 / GFDL", "https://kaikki.org/dictionary/rawdata.html"},
-	{SourceWiktionaryZH, "Chinese Wiktionary (Kaikki)", "CC BY-SA 4.0 / GFDL", "https://kaikki.org/zhwiktionary/rawdata.html"},
-	{SourceWiktionaryJA, "Japanese Wiktionary (Kaikki)", "CC BY-SA 4.0 / GFDL", "https://kaikki.org/jawiktionary/rawdata.html"},
-}
-
-// SourceByID returns the registry entry for id and its ranking position.
-func SourceByID(id string) (SourceSpec, int, bool) {
-	for index, spec := range Sources {
-		if spec.ID == id {
-			return spec, index, true
-		}
-	}
-	return SourceSpec{}, 0, false
-}
-
-// DefaultPath is the dictionary database location inside the data directory.
-func DefaultPath(dataDir string) string {
-	return filepath.Join(dataDir, "dictionaries", "dictionaries.db")
+// SettingsPatch distinguishes absent properties from explicit nulls, which clear a value.
+type SettingsPatch struct {
+	BaseURL catalog.Optional[string] `json:"base_url"`
+	APIKey  catalog.Optional[string] `json:"api_key"`
 }

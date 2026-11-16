@@ -1,8 +1,11 @@
 import { api, ApiError, type JsonValue, type ProblemDetails } from '#lib/api/client.js';
 import { buildPagePath, MAX_PAGE_SIZE, type PageOptions } from '#lib/catalog/api.js';
 import type { UploadVisibility } from '#lib/bookheap/types.js';
+import type { DictionaryStatus } from '#lib/dictionary/types.js';
 import type {
 	AccessEntry,
+	DictionarySettings,
+	DictionarySettingsPatch,
 	HiddenEntry,
 	ImportJob,
 	Library,
@@ -198,6 +201,23 @@ export async function updateProvider(provider: string, patch: ProviderPatch): Pr
 			body
 		})
 	).provider;
+}
+
+export async function getDictionarySettings(signal?: AbortSignal): Promise<DictionarySettings> {
+	return (await api.request<{ settings: DictionarySettings }>('/admin/dictionary/settings', { signal })).settings;
+}
+
+export async function updateDictionarySettings(patch: DictionarySettingsPatch): Promise<DictionarySettings> {
+	const body: { [key: string]: JsonValue } = {};
+	if (patch.base_url !== undefined) body.base_url = patch.base_url;
+	if (patch.api_key !== undefined) body.api_key = patch.api_key;
+	return (await api.request<{ settings: DictionarySettings }>('/admin/dictionary/settings', { method: 'PATCH', body })).settings;
+}
+
+/** Asks the server to reach the configured dictionary API and returns its reported status. */
+export async function testDictionaryConnection(): Promise<DictionaryStatus> {
+	const status = (await api.request<{ status: DictionaryStatus }>('/admin/dictionary/test', { method: 'POST' })).status;
+	return { directions: status?.directions ?? [], sources: status?.sources ?? [] };
 }
 
 export async function listMaintenanceJobs(signal?: AbortSignal): Promise<MaintenanceJob[]> {

@@ -77,6 +77,19 @@ export interface ProviderPatch {
 	api_token?: string | null;
 }
 
+/** Online dictionary API settings. The API key is write-only and never returned. */
+export interface DictionarySettings {
+	readonly base_url: string | null;
+	readonly has_api_key: boolean;
+	readonly updated_at: string;
+}
+
+/** Omitted fields are preserved; `null` clears the address or removes the key. */
+export interface DictionarySettingsPatch {
+	base_url?: string | null;
+	api_key?: string | null;
+}
+
 export type MaintenanceStatus = 'idle' | 'accepted' | 'running' | 'completed' | 'error';
 
 export interface MaintenanceRun {

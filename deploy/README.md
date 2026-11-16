@@ -11,7 +11,7 @@ Set `CONTAINER_ENGINE=podman` if both are available and you want to use Podman's
 image store. Run the following Compose commands with the same engine used to
 build the image. `podman compose` requires a Compose provider.
 
-Create `data` and `dict-import` inside this directory, and make `data` and its
+Create `data` inside this directory, and make it and its
 contents writable by UID/GID `1000:1000`. With rootless Podman on Linux, uncomment
 `userns_mode: keep-id` in the Compose file if the host user has those IDs.
 On SELinux-enabled Linux, the bind mounts may need the `:Z` option. On Windows,
@@ -67,13 +67,7 @@ send forwarded headers, so use a dedicated network with only trusted containers.
 Recheck the subnet if the network is recreated. After changing `.env`, run
 `podman compose up -d` again to apply the new environment.
 
-Dictionary source files can be placed in `dict-import` and imported, for example:
-
-```sh
-podman compose run --rm --no-deps pandalibrary dict import --source ecdict --file /import/ecdict.csv
-podman compose run --rm --no-deps pandalibrary dict list
-```
-
-The imported database is stored at `data/dictionaries/dictionaries.db`. See the
+The reader's dictionary lookup uses an online dictionary API. Configure its
+address and optional key on **Admin → Dicts** after setup; see the
 [dictionary documentation](../docs/user/administration.md#dictionaries) for
-supported sources and import order.
+the required API.

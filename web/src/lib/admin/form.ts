@@ -1,5 +1,14 @@
 import { ApiError } from '#lib/api/client.js';
-import type { Library, LibraryPatch, ProviderPatch, ProviderSettings, User, UserPatch } from './types.js';
+import type {
+	DictionarySettings,
+	DictionarySettingsPatch,
+	Library,
+	LibraryPatch,
+	ProviderPatch,
+	ProviderSettings,
+	User,
+	UserPatch
+} from './types.js';
 
 const encoder = new TextEncoder();
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
@@ -282,8 +291,73 @@ export function buildProviderPatch(settings: ProviderSettings, draft: ProviderDr
 	};
 }
 
+export interface DictionaryDraft {
+	baseURL: string;
+	apiKey: string;
+	removeKey: boolean;
+}
+
+export type DictionaryFieldError = 'base_url_invalid' | 'api_key_invalid' | 'no_changes';
+
+export type DictionaryPatchResult =
+	| { ok: true; patch: DictionarySettingsPatch; removesKey: boolean }
+	| { ok: false; field: 'base_url' | 'api_key' | 'form'; error: DictionaryFieldError };
+
+export function dictionaryDraft(settings: DictionarySettings): DictionaryDraft {
+	return { baseURL: settings.base_url ?? '', apiKey: '', removeKey: false };
+}
+
+/** Accepts an absolute HTTP(S) URL (a path prefix is allowed) without credentials, query, or fragment. */
+export function validDictionaryURL(value: string): boolean {
+	let url: URL;
+	try {
+		url = new URL(value);
+	} catch {
+		return false;
+	}
+	if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+	return !url.username && !url.password && !/[?#]/.test(value);
+}
+
+/**
+ * Builds a minimal dictionary settings PATCH. An empty address clears it, the key is only
+ * sent when typed (or null when removing), and unchanged fields are omitted.
+ */
+export function buildDictionaryPatch(settings: DictionarySettings, draft: DictionaryDraft): DictionaryPatchResult {
+	const patch: DictionarySettingsPatch = {};
+	const baseURL = draft.baseURL.trim();
+	if (baseURL === '') {
+		if (settings.base_url !== null) patch.base_url = null;
+	} else if (!validDictionaryURL(baseURL)) {
+		return { ok: false, field: 'base_url', error: 'base_url_invalid' };
+	} else if (baseURL !== settings.base_url) {
+		patch.base_url = baseURL;
+	}
+
+	if (draft.removeKey) {
+		if (settings.has_api_key) patch.api_key = null;
+	} else {
+		const key = draft.apiKey.trim();
+		if (key) {
+			if (encoder.encode(key).length > MAX_PROVIDER_TOKEN_BYTES || /[\r\n\t\u0000]/.test(key)) {
+				return { ok: false, field: 'api_key', error: 'api_key_invalid' };
+			}
+			patch.api_key = key;
+		}
+	}
+
+	if (Object.keys(patch).length === 0) return { ok: false, field: 'form', error: 'no_changes' };
+	return { ok: true, patch, removesKey: patch.api_key === null };
+}
+
+export function dictionaryFieldErrorKey(error: DictionaryFieldError): string {
+	return `admin.dictionaries.error.${error}`;
+}
+
 export type AdminAction =
 	| 'load'
+	| 'save_dictionary'
+	| 'test_dictionary'
 	| 'more'
 	| 'save_library'
 	| 'delete_library'
@@ -337,6 +411,7 @@ export function adminErrorKey(error: unknown, action: AdminAction): string {
 					return 'admin.error.not_found';
 			}
 		case 409:
+			if (action === 'test_dictionary') return 'admin.dictionaries.error.no_address';
 			if (action === 'save_library') return 'admin.error.library_conflict';
 			if (action === 'delete_library') return 'admin.error.library_delete_conflict';
 			if (action === 'run_job') return 'admin.error.job_running';
@@ -355,12 +430,15 @@ export function adminErrorKey(error: unknown, action: AdminAction): string {
 					return 'admin.error.upload_invalid';
 				case 'save_provider':
 					return 'admin.error.provider_invalid';
+				case 'save_dictionary':
+					return 'admin.dictionaries.error.invalid';
 				default:
 					return 'admin.error.invalid';
 			}
 		case 413:
 			return action === 'upload' ? 'admin.error.upload_too_large' : 'admin.error.invalid';
 		case 502:
+			if (action === 'test_dictionary') return 'admin.dictionaries.error.unreachable';
 			return action === 'save_provider' ? 'admin.error.provider_failed' : 'admin.error.api';
 		case 503:
 			if (action === 'upload') return 'admin.error.importer_stopped';

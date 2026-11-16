@@ -1,4 +1,4 @@
-import { api } from '#lib/api/client.js';
+import { api, ApiError } from '#lib/api/client.js';
 import { requestErrorKind } from '#lib/paging/errors.js';
 import type { DictionaryLanguage, DictionaryResult, DictionaryStatus } from './types.js';
 
@@ -123,7 +123,10 @@ export function rememberTarget(from: DictionaryLanguage, to: DictionaryLanguage,
 	}
 }
 
-export function dictionaryErrorKey(error: unknown): 'dict.error.invalid' | 'dict.error.connection' | 'dict.error.session' | 'dict.error.api' {
+export function dictionaryErrorKey(
+	error: unknown
+): 'dict.error.invalid' | 'dict.error.connection' | 'dict.error.session' | 'dict.error.unavailable' | 'dict.error.api' {
+	if (error instanceof ApiError && error.status === 503) return 'dict.error.unavailable';
 	switch (requestErrorKind(error)) {
 		case 'invalid':
 			return 'dict.error.invalid';

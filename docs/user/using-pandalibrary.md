@@ -277,9 +277,11 @@ pronunciation, part of speech, definitions and the dictionary that supplied them
 - Inflected words find their dictionary form, for example *running* → *run*
   or 食べました → 食べる (marked **Base form**). When a longer selection has
   no entry, the longest word at its start is shown (marked **Partial match**).
-- Only directions with installed dictionaries can be chosen. Dictionaries are
-  installed by an administrator; see
-  [Administration: dictionaries](administration.md#dictionaries).
+- Only directions offered by the online dictionary service can be chosen. The
+  service is configured by an administrator; see
+  [Administration: dictionaries](administration.md#dictionaries). If it is
+  not configured, no directions are available; if it cannot be reached, the
+  dictionary is shown as unavailable.
   Selections are limited to 64 characters. Lookup needs a connection to the
   server and is not available offline.
 
@@ -297,8 +299,8 @@ Every entry keeps the source book, file and reading position so **Read in contex
 can reopen the original passage. Collecting requires a server connection; failures
 are shown rather than reported as saved.
 
-Words and phrases include snapshots of matching installed dictionary entries.
-No dictionary installation or match is required to collect text. You can manually
+Words and phrases include snapshots of matching dictionary entries.
+No configured or reachable dictionary, or match, is required to collect text. You can manually
 edit the selected word or phrase and its definition without changing the dictionary.
 Sentences and passages have a personal-note textarea, initially empty, for your
 own notes.

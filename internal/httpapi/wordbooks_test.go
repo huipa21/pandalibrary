@@ -573,7 +573,7 @@ func TestWordbookMeaningPatch(t *testing.T) {
 	f := newWordbookFixture(t)
 	input := wordbookCapture("word")
 	snapshot := dictionary.Entry{
-		Source: dictionary.SourceWiktionaryEN, SourceName: "English Wiktionary", Headword: "apple",
+		Source: "wiktionary-en", SourceName: "English Wiktionary", Headword: "apple",
 		Definitions: []string{"A fruit", "A tree"}, Match: dictionary.MatchExact,
 	}
 	input.DictionaryEntries = &[]dictionary.Entry{snapshot}

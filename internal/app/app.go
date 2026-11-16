@@ -50,7 +50,6 @@ type application struct {
 	maintenance *jobs.Maintenance
 	importer    *importer.Service
 	bookheap    *bookheap.Service
-	dictionary  *dictionary.Store
 	ready       atomic.Bool
 	logger      *slog.Logger
 }
@@ -102,14 +101,8 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	backups.Writer = databases.Writer
 	var maintenance *jobs.Maintenance
 	var bookheapService *bookheap.Service
-	var dictionaries *dictionary.Store
 	defer func() {
 		if returnErr != nil {
-			if dictionaries != nil {
-				if err := dictionaries.Close(); err != nil {
-					returnErr = errors.Join(returnErr, fmt.Errorf("close dictionaries after startup failure: %w", err))
-				}
-			}
 			if bookheapService != nil {
 				stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 				if err := bookheapService.Close(stopCtx); err != nil {
@@ -202,7 +195,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure stats: %w", err)
 	}
-	dictionaries = dictionary.NewStore(dictionary.DefaultPath(cfg.DataDir), logger)
+	dictionaries := dictionary.NewService(databases.Writer, databases.Reader, logger)
 	wordbookService := wordbooks.NewService(databases.Writer, catalogService, dictionaries, logger)
 	opdsMount, err := opds.NewMount(opds.Options{
 		Catalog: catalogService, Search: searchService, Auth: authentication,
@@ -234,7 +227,6 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		maintenance: maintenance,
 		importer:    importService,
 		bookheap:    bookheapService,
-		dictionary:  dictionaries,
 		logger:      logger,
 	}
 	app.handler, err = httpapi.NewRouter(httpapi.RouterOptions{
@@ -250,7 +242,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.AnnotationAssetsMount(annotationAssets, authentication, logger),
 			httpapi.ExportMount(exportService, authentication, logger),
 			httpapi.SearchMount(searchService, authentication, logger),
-			httpapi.DictionaryMount(dictionaries, authentication, logger),
+			httpapi.DictionaryMount(dictionaries, dictionaries, authentication, logger),
 			httpapi.WordbookMount(wordbookService, authentication, logger),
 			httpapi.TrashMount(trash.NewService(databases.Writer), authentication, logger),
 			httpapi.ImportMount(importService, catalogService, authentication, logger),
@@ -299,14 +291,10 @@ func (a *application) close() error {
 	if err := a.maintenance.Stop(stopCtx); err != nil {
 		return err
 	}
-	var dictionaryErr error
-	if err := a.dictionary.Close(); err != nil {
-		dictionaryErr = fmt.Errorf("close dictionaries: %w", err)
-	}
 	if err := a.databases.Close(); err != nil {
-		return errors.Join(dictionaryErr, fmt.Errorf("close application database: %w", err))
+		return fmt.Errorf("close application database: %w", err)
 	}
-	return errors.Join(dictionaryErr, a.dataLock.Close())
+	return a.dataLock.Close()
 }
 
 // Run initializes the application before opening the HTTP listener.

@@ -10,10 +10,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"pandalibrary/internal/auth"
+	"pandalibrary/internal/catalog"
 	"pandalibrary/internal/dictionary"
 
 	"github.com/go-chi/chi/v5"
@@ -36,10 +39,36 @@ func (f *fakeDictionaryService) Status(context.Context) (dictionary.Status, erro
 	return f.status, f.statusErr
 }
 
+type fakeDictionarySettingsService struct {
+	viewers  []catalog.Viewer
+	patches  []dictionary.SettingsPatch
+	settings dictionary.Settings
+	status   dictionary.Status
+	err      error
+	testErr  error
+}
+
+func (f *fakeDictionarySettingsService) Settings(_ context.Context, viewer catalog.Viewer) (dictionary.Settings, error) {
+	f.viewers = append(f.viewers, viewer)
+	return f.settings, f.err
+}
+
+func (f *fakeDictionarySettingsService) UpdateSettings(_ context.Context, viewer catalog.Viewer, patch dictionary.SettingsPatch) (dictionary.Settings, error) {
+	f.viewers = append(f.viewers, viewer)
+	f.patches = append(f.patches, patch)
+	return f.settings, f.err
+}
+
+func (f *fakeDictionarySettingsService) TestConnection(_ context.Context, viewer catalog.Viewer) (dictionary.Status, error) {
+	f.viewers = append(f.viewers, viewer)
+	return f.status, f.testErr
+}
+
 type dictionaryHTTPFixture struct {
 	catalogHTTPFixture
-	service *fakeDictionaryService
-	logs    *bytes.Buffer
+	service  *fakeDictionaryService
+	settings *fakeDictionarySettingsService
+	logs     *bytes.Buffer
 }
 
 func newDictionaryHTTPFixture(t *testing.T) dictionaryHTTPFixture {
@@ -50,11 +79,17 @@ func newDictionaryHTTPFixture(t *testing.T) dictionaryHTTPFixture {
 		t.Fatal(err)
 	}
 	service := &fakeDictionaryService{}
+	settings := &fakeDictionarySettingsService{}
 	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	protection, err := CookieProtection(&url.URL{Scheme: "https", Host: "books.example"}, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
 	router := chi.NewRouter()
-	DictionaryMount(service, authentication, slog.New(slog.NewTextHandler(&logs, nil)))(router, nil)
+	DictionaryMount(service, settings, authentication, logger)(router, protection)
 	fixture.router = router
-	return dictionaryHTTPFixture{catalogHTTPFixture: fixture, service: service, logs: &logs}
+	return dictionaryHTTPFixture{catalogHTTPFixture: fixture, service: service, settings: settings, logs: &logs}
 }
 
 func (f dictionaryHTTPFixture) get(target string, cookie *http.Cookie) *httptest.ResponseRecorder {
@@ -192,4 +227,147 @@ func TestDictionaryHTTPStatus(t *testing.T) {
 		t.Fatalf("failed status = %d %s", response.Code, response.Body.String())
 	}
 	_ = io.Discard
+}
+
+func TestDictionaryHTTPUnavailable(t *testing.T) {
+	fixture := newDictionaryHTTPFixture(t)
+	for _, err := range []error{
+		dictionary.ErrNotConfigured,
+		fmt.Errorf("%w: GET https://dict.example/?key=secret-key: timeout", dictionary.ErrUnavailable),
+	} {
+		fixture.service.lookupErr = err
+		fixture.service.statusErr = err
+		for _, target := range []string{"/api/v1/dictionary/status", "/api/v1/dictionary/lookup?q=cat&from=en&to=zh"} {
+			response := fixture.get(target, fixture.reader)
+			requireProblem(t, response, http.StatusServiceUnavailable)
+			if !strings.Contains(response.Body.String(), "The online dictionary is unavailable.") ||
+				strings.Contains(response.Body.String(), "secret-key") {
+				t.Fatalf("%s unavailable = %s", target, response.Body.String())
+			}
+		}
+	}
+	if !strings.Contains(fixture.logs.String(), "level=WARN") || strings.Contains(fixture.logs.String(), "secret-key") {
+		t.Fatalf("unavailable logs = %s", fixture.logs.String())
+	}
+}
+
+func TestDictionaryHTTPAdminSettings(t *testing.T) {
+	fixture := newDictionaryHTTPFixture(t)
+	routes := []struct {
+		method string
+		path   string
+		body   any
+	}{
+		{http.MethodGet, "/api/v1/admin/dictionary/settings", nil},
+		{http.MethodPatch, "/api/v1/admin/dictionary/settings", map[string]any{"base_url": "https://dict.example"}},
+		{http.MethodPost, "/api/v1/admin/dictionary/test", nil},
+	}
+	for _, route := range routes {
+		requireProblem(t, authRequest(t, fixture.router, route.method, route.path, route.body, nil), http.StatusUnauthorized)
+		requireProblem(t, authRequest(t, fixture.router, route.method, route.path, route.body, fixture.reader), http.StatusForbidden)
+	}
+	if len(fixture.settings.viewers) != 0 {
+		t.Fatalf("settings service called without an administrator: %+v", fixture.settings.viewers)
+	}
+
+	baseURL := "https://dict.example"
+	fixture.settings.settings = dictionary.Settings{BaseURL: &baseURL, HasAPIKey: true, UpdatedAt: time.UnixMilli(1700).UTC()}
+	response := authRequest(t, fixture.router, http.MethodGet, "/api/v1/admin/dictionary/settings", nil, fixture.admin)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
+		!strings.Contains(response.Body.String(), `{"settings":{"base_url":"https://dict.example","has_api_key":true,`) {
+		t.Fatalf("settings = %d %q %s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	}
+	if !fixture.settings.viewers[0].IsAdmin {
+		t.Fatalf("viewer = %+v", fixture.settings.viewers[0])
+	}
+
+	const secret = "dictionary-write-only-key"
+	response = authRequest(t, fixture.router, http.MethodPatch, "/api/v1/admin/dictionary/settings",
+		map[string]any{"base_url": "https://dict.example", "api_key": secret}, fixture.admin)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
+		strings.Contains(response.Body.String(), secret) || !strings.Contains(response.Body.String(), `"has_api_key":true`) {
+		t.Fatalf("update = %d %s", response.Code, response.Body.String())
+	}
+	patch := fixture.settings.patches[0]
+	if !patch.BaseURL.Set || *patch.BaseURL.Value != baseURL || !patch.APIKey.Set || *patch.APIKey.Value != secret {
+		t.Fatalf("patch = %+v", patch)
+	}
+	authRequest(t, fixture.router, http.MethodPatch, "/api/v1/admin/dictionary/settings", map[string]any{"api_key": nil}, fixture.admin)
+	if patch = fixture.settings.patches[1]; patch.BaseURL.Set || !patch.APIKey.Set || patch.APIKey.Value != nil {
+		t.Fatalf("clearing patch = %+v", patch)
+	}
+
+	for _, body := range []string{`{"unknown":true}`, `{"base_url":1}`, `{} {}`, `not json`} {
+		response = fixture.request(http.MethodPatch, "/api/v1/admin/dictionary/settings", strings.NewReader(body), fixture.admin,
+			map[string]string{"Content-Type": "application/json"})
+		requireProblem(t, response, http.StatusBadRequest)
+	}
+	if len(fixture.settings.patches) != 2 {
+		t.Fatalf("invalid bodies reached the service: %+v", fixture.settings.patches)
+	}
+	fixture.settings.err = fmt.Errorf("%w: base_url must use https", dictionary.ErrInvalid)
+	response = authRequest(t, fixture.router, http.MethodPatch, "/api/v1/admin/dictionary/settings",
+		map[string]any{"base_url": "ftp://dict.example"}, fixture.admin)
+	requireProblem(t, response, http.StatusBadRequest)
+	if !strings.Contains(response.Body.String(), "The dictionary settings are invalid.") {
+		t.Fatalf("invalid settings = %s", response.Body.String())
+	}
+	fixture.settings.err = catalog.ErrForbidden
+	requireProblem(t, authRequest(t, fixture.router, http.MethodGet, "/api/v1/admin/dictionary/settings", nil, fixture.admin), http.StatusForbidden)
+	fixture.settings.err = nil
+
+	for _, method := range []string{http.MethodPatch, http.MethodPost} {
+		path := "/api/v1/admin/dictionary/settings"
+		if method == http.MethodPost {
+			path = "/api/v1/admin/dictionary/test"
+		}
+		calls := len(fixture.settings.viewers)
+		response = fixture.request(method, path, strings.NewReader(`{}`), fixture.admin,
+			map[string]string{"Content-Type": "application/json", "Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"})
+		requireProblem(t, response, http.StatusForbidden)
+		if len(fixture.settings.viewers) != calls {
+			t.Fatalf("cross-site %s reached the service", method)
+		}
+	}
+	if strings.Contains(fixture.logs.String(), secret) {
+		t.Fatal("dictionary settings logged the API key")
+	}
+}
+
+func TestDictionaryHTTPAdminTestConnection(t *testing.T) {
+	fixture := newDictionaryHTTPFixture(t)
+	response := authRequest(t, fixture.router, http.MethodPost, "/api/v1/admin/dictionary/test", nil, fixture.admin)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
+		strings.TrimSpace(response.Body.String()) != `{"status":{"directions":[],"sources":[]}}` {
+		t.Fatalf("empty test = %d %q %s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+	}
+	fixture.settings.status = dictionary.Status{
+		Directions: []dictionary.Direction{{From: dictionary.English, To: dictionary.Japanese}},
+	}
+	response = authRequest(t, fixture.router, http.MethodPost, "/api/v1/admin/dictionary/test", nil, fixture.admin)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"sources":[]}],"sources":[]`) {
+		t.Fatalf("test = %d %s", response.Code, response.Body.String())
+	}
+
+	for _, test := range []struct {
+		err    error
+		status int
+		detail string
+	}{
+		{dictionary.ErrNotConfigured, http.StatusConflict, "Set the dictionary API address first."},
+		{fmt.Errorf("%w: dial https://dict.example?key=secret-key", dictionary.ErrUnavailable), http.StatusBadGateway, "The dictionary API could not be reached."},
+		{catalog.ErrForbidden, http.StatusForbidden, ""},
+		{errors.New("boom secret-key"), http.StatusInternalServerError, ""},
+	} {
+		fixture.settings.testErr = test.err
+		response = authRequest(t, fixture.router, http.MethodPost, "/api/v1/admin/dictionary/test", nil, fixture.admin)
+		requireProblem(t, response, test.status)
+		if response.Header().Get("Cache-Control") != "no-store" || !strings.Contains(response.Body.String(), test.detail) ||
+			strings.Contains(response.Body.String(), "secret-key") {
+			t.Fatalf("%v = %q %s", test.err, response.Header().Get("Cache-Control"), response.Body.String())
+		}
+	}
+	if strings.Contains(fixture.logs.String(), "secret-key") {
+		t.Fatalf("connection test logged upstream details: %s", fixture.logs.String())
+	}
 }

@@ -21,7 +21,7 @@ func TestDictionaryRoutesAreMountedInApplication(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	for _, target := range []string{"/api/v1/dictionary/status", "/api/v1/dictionary/lookup?q=cat&from=en&to=zh"} {
+	for _, target := range []string{"/api/v1/dictionary/status", "/api/v1/dictionary/lookup?q=cat&from=en&to=zh", "/api/v1/admin/dictionary/settings"} {
 		response := httptest.NewRecorder()
 		application.handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
 		if response.Code != http.StatusUnauthorized {

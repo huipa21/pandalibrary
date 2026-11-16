@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import {
 	adminErrorKey,
+	buildDictionaryPatch,
 	buildProviderPatch,
+	dictionaryDraft,
+	dictionaryFieldErrorKey,
 	libraryFieldErrorKey,
 	libraryPatch,
 	parsePositiveID,
@@ -15,9 +18,10 @@ import {
 	validateUserDraft,
 	validBaseURL,
 	validateLibraryDraft,
-	type AdminAction
+	type AdminAction,
+	type DictionaryDraft
 } from './form.js';
-import type { Library, ProviderSettings, User } from './types.js';
+import type { DictionarySettings, Library, ProviderSettings, User } from './types.js';
 
 const problem = (status: number) => new ApiError(status, '', '{}', { status });
 const has = (messages: Record<string, string>, key: string) => Object.hasOwn(messages, key);
@@ -133,6 +137,30 @@ describe('provider patches', () => {
 	});
 });
 
+describe('dictionary settings patches', () => {
+	const saved: DictionarySettings = { base_url: 'https://dict.example/api', has_api_key: true, updated_at: '' };
+	const draft = (patch: Partial<DictionaryDraft> = {}): DictionaryDraft => ({ ...dictionaryDraft(saved), ...patch });
+
+	it('sends only changed fields, clears an empty address, and keeps a blank key', () => {
+		expect(buildDictionaryPatch(saved, draft())).toEqual({ ok: false, field: 'form', error: 'no_changes' });
+		expect(buildDictionaryPatch(saved, draft({ baseURL: '  ' }))).toEqual({ ok: true, patch: { base_url: null }, removesKey: false });
+		expect(buildDictionaryPatch(saved, draft({ baseURL: 'http://localhost:8080' }))).toEqual({
+			ok: true,
+			patch: { base_url: 'http://localhost:8080' },
+			removesKey: false
+		});
+		expect(buildDictionaryPatch(saved, draft({ apiKey: ' secret ' }))).toEqual({ ok: true, patch: { api_key: 'secret' }, removesKey: false });
+		expect(buildDictionaryPatch(saved, draft({ apiKey: 'typed', removeKey: true }))).toEqual({ ok: true, patch: { api_key: null }, removesKey: true });
+	});
+
+	it('rejects invalid addresses and keys', () => {
+		expect(buildDictionaryPatch(saved, draft({ baseURL: 'ftp://dict.example' }))).toMatchObject({ ok: false, field: 'base_url' });
+		expect(buildDictionaryPatch(saved, draft({ baseURL: 'https://u:p@dict.example' }))).toMatchObject({ ok: false, field: 'base_url' });
+		expect(buildDictionaryPatch(saved, draft({ baseURL: 'https://dict.example/?x=1' }))).toMatchObject({ ok: false, field: 'base_url' });
+		expect(buildDictionaryPatch(saved, draft({ apiKey: 'a\nb' }))).toMatchObject({ ok: false, field: 'api_key' });
+	});
+});
+
 describe('admin error keys', () => {
 	it('maps conflicts and failures by action without echoing server text', () => {
 		expect(adminErrorKey(new TypeError('offline'), 'load')).toBe('admin.error.connection');
@@ -146,6 +174,9 @@ describe('admin error keys', () => {
 		expect(adminErrorKey(problem(503), 'upload')).toBe('admin.error.importer_stopped');
 		expect(adminErrorKey(problem(400), 'grant')).toBe('admin.error.grant_invalid');
 		expect(adminErrorKey(problem(502), 'save_provider')).toBe('admin.error.provider_failed');
+		expect(adminErrorKey(problem(409), 'test_dictionary')).toBe('admin.dictionaries.error.no_address');
+		expect(adminErrorKey(problem(502), 'test_dictionary')).toBe('admin.dictionaries.error.unreachable');
+		expect(adminErrorKey(problem(400), 'save_dictionary')).toBe('admin.dictionaries.error.invalid');
 	});
 
 	it('only produces keys that exist in both locales', () => {
@@ -163,6 +194,8 @@ describe('admin error keys', () => {
 			'upload',
 			'load_libraries',
 			'save_provider',
+			'save_dictionary',
+			'test_dictionary',
 			'run_job'
 		];
 		const keys = new Set<string>();
@@ -184,6 +217,7 @@ describe('admin error keys', () => {
 		] as const) {
 			keys.add(providerFieldErrorKey(error));
 		}
+		for (const error of ['base_url_invalid', 'api_key_invalid', 'no_changes'] as const) keys.add(dictionaryFieldErrorKey(error));
 		for (const error of [
 			'username_required',
 			'username_too_long',
