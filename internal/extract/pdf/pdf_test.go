@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -81,6 +83,26 @@ func TestExtractPDFRejectsOversizedInput(t *testing.T) {
 	}
 }
 
+func TestConfigurationDoesNotDependOnUserConfigDir(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "config-root")
+	if err := os.WriteFile(blocked, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", blocked)
+	t.Setenv("PDFCPU_CONFIG_ROOT", "")
+
+	config := newConfiguration()
+	if config == nil {
+		t.Fatal("newConfiguration() returned nil")
+	}
+	if _, available := config.UserFontStore(); available {
+		t.Fatal("PDF extraction must not depend on a user font directory")
+	}
+	if _, available := config.TrustedCertificateStore(); available {
+		t.Fatal("PDF extraction must not depend on a trusted certificate directory")
+	}
+}
+
 func TestRegisteredPDFExtraction(t *testing.T) {
 	data := makePDF(t, `/Title (Registered PDF)`)
 	registry := extract.NewRegistry(0)
@@ -133,7 +155,7 @@ func makePDF(t *testing.T, info string) []byte {
 
 func encryptedPDF(t *testing.T) []byte {
 	t.Helper()
-	config := model.NewDefaultConfiguration()
+	config := model.NewStatelessConfiguration()
 	config.UserPW = "reader password"
 	config.OwnerPW = "owner password"
 	var encrypted bytes.Buffer

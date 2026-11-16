@@ -30,18 +30,7 @@ func Extract(ctx context.Context, input io.ReaderAt, size int64, _ string) (extr
 		return extract.Metadata{}, err
 	}
 
-	config := model.NewDefaultConfiguration()
-	config.Limits.MaxInputBytes = extract.MaxCompressedInput
-	config.Limits.MaxObjectBytes = 16 << 20
-	config.Limits.MaxStreamBytes = 64 << 20
-	config.Limits.MaxDecodeBytes = 64 << 20
-	config.Limits.MaxImagePixels = 20_000_000
-	config.Limits.MaxImageBytes = 80 << 20
-	config.Limits.MaxObjectCount = 1_000_000
-	config.Limits.MaxObjectStreamCount = 100_000
-	config.Limits.MaxObjectStreamFirst = 8 << 20
-	config.Limits.MaxXRefEntries = 1_000_000
-	config.Limits.MaxRecursionDepth = 100
+	config := newConfiguration()
 
 	pdfContext, err := api.ReadContext(ctx, io.NewSectionReader(input, 0, size), config)
 	if err != nil {
@@ -73,6 +62,25 @@ func Extract(ctx context.Context, input io.ReaderAt, size int64, _ string) (extr
 	}
 	metadata.Tags = parseKeywords(pdfContext.Keywords)
 	return metadata, nil
+}
+
+// newConfiguration builds a stateless pdfcpu configuration. PDF metadata
+// extraction must not depend on a writable user config, font or certificate
+// directory (for example in the container's scratch filesystem).
+func newConfiguration() *model.Configuration {
+	config := model.NewStatelessConfiguration()
+	config.Limits.MaxInputBytes = extract.MaxCompressedInput
+	config.Limits.MaxObjectBytes = 16 << 20
+	config.Limits.MaxStreamBytes = 64 << 20
+	config.Limits.MaxDecodeBytes = 64 << 20
+	config.Limits.MaxImagePixels = 20_000_000
+	config.Limits.MaxImageBytes = 80 << 20
+	config.Limits.MaxObjectCount = 1_000_000
+	config.Limits.MaxObjectStreamCount = 100_000
+	config.Limits.MaxObjectStreamFirst = 8 << 20
+	config.Limits.MaxXRefEntries = 1_000_000
+	config.Limits.MaxRecursionDepth = 100
+	return config
 }
 
 func pdfError(ctx context.Context, err error) error {
