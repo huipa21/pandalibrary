@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
 import Icon from './Icon.svelte';
-import { homeNavigation } from '#lib/nav.js';
+import { otherNavigation } from '#lib/nav.js';
 import { entityIcon, selectableIcons } from '#lib/navigation-icons.js';
 
 describe('semantic navigation icons', () => {
 	it('renders distinct decorative shapes for wordbooks, collections, libraries and involved books', () => {
 		const names = [
-			homeNavigation.find((item) => item.id === 'wordbooks')!.icon,
+			otherNavigation.find((item) => item.id === 'wordbooks')!.icon,
 			entityIcon('', 'collection:1'),
 			entityIcon('', 'library:1'),
 			'books'
