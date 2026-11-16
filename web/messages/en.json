@@ -102,7 +102,6 @@
 	"wordbooks.mergeTrashExplanation": "Entries will move to the selected active wordbook. Only the empty wordbook will move to Trash; restoring it will not undo the merge.",
 	"wordbooks.mergeTarget": "Merge into",
 	"wordbooks.noMergeTargets": "No other active wordbook is available. Archived wordbooks cannot receive merged entries.",
-	"wordbooks.lastBookDelete": "Your last wordbook cannot be deleted. Create another wordbook first.",
 	"wordbooks.deleteDefaultExplanation": "Another remaining wordbook will become your default wordbook.",
 	"wordbooks.confirmBookDeletion": "I confirm deleting this wordbook with the selected option.",
 	"wordbooks.pronounce": "Pronounce",

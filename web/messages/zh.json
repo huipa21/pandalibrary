@@ -102,7 +102,6 @@
 	"wordbooks.mergeTrashExplanation": "条目将移至所选的未归档词本，只有空词本会移至回收站。恢复该词本不会撤销合并。",
 	"wordbooks.mergeTarget": "合并到",
 	"wordbooks.noMergeTargets": "没有其他未归档词本可供选择。已归档词本不能接收合并条目。",
-	"wordbooks.lastBookDelete": "不能删除最后一个词本。请先创建另一个词本。",
 	"wordbooks.deleteDefaultExplanation": "另一个剩余词本将成为默认词本。",
 	"wordbooks.confirmBookDeletion": "我确认按所选方式删除此词本。",
 	"wordbooks.pronounce": "朗读",

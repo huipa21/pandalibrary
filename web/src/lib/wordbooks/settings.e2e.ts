@@ -209,7 +209,7 @@ test('last book deletion is disabled and deletion cancellation returns focus to 
 	await page.goto('/wordbooks?id=1');
 	const remove = page.getByRole('button', { name: 'Delete wordbook', exact: true });
 	await expect(remove).toBeDisabled();
-	await expect(page.getByText('Your last wordbook cannot be deleted.')).toBeVisible();
+	await expect(page.getByText('Your last wordbook cannot be deleted.')).toHaveCount(0);
 	await page.unroute('**/api/v1/**');
 	const api = await mockAPI(page, [makeBook(1, 'Only active'), makeBook(2, 'Archived', { archived: true })]);
 	await page.reload();

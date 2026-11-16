@@ -214,10 +214,7 @@
 <svelte:head><title>{m['wordbooks.title']()} · {m['common.app_name']()}</title></svelte:head>
 
 <section class="min-w-0 space-y-5" aria-label={m['wordbooks.title']()} aria-busy={busy || loading}>
-	<Header bind:category bind:keyword bind:wordbookSort bind:status {sort} {view} inside={!!selected} disabled={busy || loading} canDelete={books.length > 1} importDisabled={!!selected?.archived} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} oncreate={() => beginName('new')} onsettings={() => beginName('rename')} ondelete={beginDelete} onimport={importBook} onexport={exportBook} />
-	{#if selected && books.length === 1 && !loading}
-		<p id="wordbook-last-delete" class="text-sm text-slate-600">{m['wordbooks.lastBookDelete']()}</p>
-	{/if}
+	<Header bind:category bind:keyword bind:wordbookSort bind:status {sort} {view} inside={!!selected} disabled={busy || loading} canDelete={books.length > 1} importDisabled={!!selected?.archived} onchange={changePreferences} onoverviewchange={saveOverviewPreferences} oncreate={() => beginName('new')} onsettings={() => beginName('rename')} ondelete={beginDelete} onback={() => navigate(null)} onimport={importBook} onexport={exportBook} />
 	{#if selected}
 		<div data-wordbook-summary class="flex flex-wrap items-center gap-3">
 			<span class="flex items-center gap-1 text-sm text-slate-500" aria-label={m['wordbooks.language']()}>

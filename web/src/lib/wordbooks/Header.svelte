@@ -3,18 +3,18 @@
 	import SearchField from '#lib/search/SearchField.svelte';
 	import ViewToggle from '#lib/catalog/ViewToggle.svelte';
 	import HeaderMenu from '#lib/shell/HeaderMenu.svelte';
-	import { Settings, ArrowDownUp, Trash2 } from '@lucide/svelte';
+	import { Settings, ArrowDownUp, Trash2, ArrowLeft } from '@lucide/svelte';
 	import { filterControlClass, iconControlClass, primaryIconControlClass } from '#lib/catalog/filter-styles.js';
 	import type { Category, EntrySort, EntryView, WordbookSort, WordbookStatus } from './management.js';
 
 	let { category = $bindable<Category>('wordbooks'), keyword = $bindable(''), sort, view,
 		inside = false, wordbookSort = $bindable<WordbookSort>('recent'), status = $bindable<WordbookStatus>('active'),
-		disabled = false, canDelete = false, importDisabled = false, onchange, onoverviewchange, oncreate, onsettings, ondelete, onimport, onexport }: {
+		disabled = false, canDelete = false, importDisabled = false, onchange, onoverviewchange, oncreate, onsettings, ondelete, onback, onimport, onexport }: {
 		category?: Category; keyword?: string; sort: EntrySort; view: EntryView;
 		wordbookSort?: WordbookSort; status?: WordbookStatus; onoverviewchange: () => void;
 		inside?: boolean; disabled?: boolean;
 		onchange: (view: EntryView, sort: EntrySort) => void; oncreate: () => void;
-		onsettings: () => void; ondelete: () => void;
+		onsettings: () => void; ondelete: () => void; onback: () => void;
 		onimport: (event: Event) => void; onexport: () => void;
 		canDelete?: boolean; importDisabled?: boolean;
 	} = $props();
@@ -68,8 +68,11 @@
 				{/snippet}
 			</HeaderMenu>
 			<input bind:this={importInput} type="file" accept=".json,application/json" aria-label={m['wordbooks.import']()} disabled={disabled || importDisabled} onchange={onimport} hidden />
-			<button type="button" class={iconControlClass} aria-label={m['wordbooks.deleteBook']()} aria-describedby={!canDelete ? 'wordbook-last-delete' : undefined} title={!canDelete ? m['wordbooks.lastBookDelete']() : m['wordbooks.deleteBook']()} disabled={disabled || !canDelete} onclick={ondelete}>
+			<button type="button" class={iconControlClass} aria-label={m['wordbooks.deleteBook']()} title={m['wordbooks.deleteBook']()} disabled={disabled || !canDelete} onclick={ondelete}>
 				<Trash2 aria-hidden="true" class="size-5" />
+			</button>
+			<button type="button" class={iconControlClass} aria-label={m['wordbooks.back']()} title={m['wordbooks.back']()} {disabled} onclick={onback}>
+				<ArrowLeft aria-hidden="true" class="size-5" />
 			</button>
 		</div>
 	{/if}

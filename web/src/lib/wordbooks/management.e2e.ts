@@ -567,10 +567,11 @@ test('specific wordbook has compact controls, metadata and four persistent entry
 	const sort = main.getByRole('combobox', { name: 'Sort', exact: true });
 	const summary = page.locator('[data-wordbook-summary]');
 	const remove = main.getByRole('button', { name: 'Delete wordbook', exact: true });
+	const back = main.getByRole('button', { name: 'Back to wordbooks', exact: true });
 	await expect(remove).toBeDisabled();
-	await expect(main.getByText('Your last wordbook cannot be deleted. Create another wordbook first.', { exact: true })).toBeVisible();
-	await expect(remove).toHaveAttribute('aria-describedby', 'wordbook-last-delete');
-	await expect(main.getByRole('link', { name: 'Back to wordbooks' })).toHaveCount(0);
+	await expect(main.getByText('Your last wordbook cannot be deleted. Create another wordbook first.', { exact: true })).toHaveCount(0);
+	await expect(remove).not.toHaveAttribute('aria-describedby');
+	await expect(back).toBeVisible();
 	await expect(main.getByRole('button', { name: 'New wordbook', exact: true })).toHaveCount(0);
 	await expect(main.getByRole('button', { name: 'Display settings', exact: true })).toHaveCount(0);
 	await expect(sort.locator('option')).toHaveText(['New - Old', 'Old - New', 'A - Z', 'Z - A']);
@@ -598,4 +599,7 @@ test('specific wordbook has compact controls, metadata and four persistent entry
 	await page.reload();
 	await expect(sort).toHaveValue('alphabetical-desc');
 	await expect(page.locator('ol[data-view]')).toHaveAttribute('data-view', 'cards');
+	await back.click();
+	await expect(page).toHaveURL('/wordbooks');
+	await expect(main.getByRole('button', { name: 'New wordbook', exact: true })).toBeVisible();
 });

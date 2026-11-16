@@ -68,7 +68,6 @@
 			{/if}
 		</fieldset>
 		{#if book.is_default}<p class="text-sm text-slate-600">{m['wordbooks.deleteDefaultExplanation']()}</p>{/if}
-		{#if !canDelete}<p class="text-sm text-slate-600">{m['wordbooks.lastBookDelete']()}</p>{/if}
 		<label class="flex items-start gap-2"><input type="checkbox" bind:checked={confirmed} disabled={busy || !canDelete} /><span>{m['wordbooks.confirmBookDeletion']()}</span></label>
 		{#if error}<p role="alert" class="whitespace-pre-wrap break-words text-sm text-red-800">{error}</p>{/if}
 		<div class="flex gap-3">
