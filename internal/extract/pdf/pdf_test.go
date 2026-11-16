@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -36,7 +39,37 @@ func TestExtractPDFInfoAndPageCount(t *testing.T) {
 		t.Fatalf("page count = %#v, want 1", metadata.PageCount)
 	}
 	if len(metadata.Cover) != 0 {
-		t.Fatal("PDF extractor must not render a cover")
+		t.Fatal("PDF page without embedded images must not have a cover")
+	}
+}
+
+func TestExtractPDFUsesFirstPageEmbeddedImageAsCover(t *testing.T) {
+	source := image.NewRGBA(image.Rect(0, 0, 120, 180))
+	for index := range source.Pix {
+		source.Pix[index] = uint8(index % 251)
+	}
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, source, &jpeg.Options{Quality: 85}); err != nil {
+		t.Fatal(err)
+	}
+	var document bytes.Buffer
+	if err := api.ImportImages(context.Background(), nil, &document, []io.Reader{bytes.NewReader(encoded.Bytes())}, nil, model.NewStatelessConfiguration()); err != nil {
+		t.Fatalf("create image PDF: %v", err)
+	}
+
+	metadata, err := Extract(context.Background(), bytes.NewReader(document.Bytes()), int64(document.Len()), "scan.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metadata.Cover) == 0 {
+		t.Fatal("PDF embedded first-page image was not extracted as a cover")
+	}
+	config, format, err := image.DecodeConfig(bytes.NewReader(metadata.Cover))
+	if err != nil {
+		t.Fatalf("decode extracted cover: %v", err)
+	}
+	if format != "jpeg" || config.Width != 120 || config.Height != 180 {
+		t.Fatalf("extracted cover = %s %dx%d, want jpeg 120x180", format, config.Width, config.Height)
 	}
 }
 

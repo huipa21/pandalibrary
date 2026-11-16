@@ -1,9 +1,14 @@
 package pdf
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"sort"
 	"strings"
@@ -11,6 +16,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	pdfcpu "github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
+	_ "golang.org/x/image/webp"
 
 	"pandalibrary/internal/extract"
 )
@@ -61,7 +67,62 @@ func Extract(ctx context.Context, input io.ReaderAt, size int64, _ string) (extr
 		metadata.Authors = []extract.Author{{Name: author, Role: "author"}}
 	}
 	metadata.Tags = parseKeywords(pdfContext.Keywords)
+	cover, err := firstPageCover(ctx, input, size)
+	if err != nil {
+		return extract.Metadata{}, err
+	}
+	metadata.Cover = cover
 	return metadata, nil
+}
+
+// firstPageCover returns the largest supported image on page 1. PDFs produced
+// from scans or image conversions usually store the cover as one full-page
+// image, while text-based PDFs have no usable cover image. Cover extraction is
+// best effort: a malformed or unsupported image must not discard valid
+// document metadata.
+func firstPageCover(ctx context.Context, input io.ReaderAt, size int64) ([]byte, error) {
+	images, _ := api.ExtractImagesRaw(ctx, io.NewSectionReader(input, 0, size), []string{"1"}, newConfiguration())
+	if contextErr := ctx.Err(); contextErr != nil {
+		return nil, contextErr
+	}
+
+	var cover []byte
+	var coverPixels int64
+	for _, page := range images {
+		for _, imageInfo := range page {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if imageInfo.Reader == nil {
+				continue
+			}
+			data, readErr := io.ReadAll(io.LimitReader(imageInfo.Reader, extract.MaxCoverEntrySize+1))
+			if readErr != nil || len(data) == 0 || len(data) > extract.MaxCoverEntrySize {
+				continue
+			}
+			config, format, decodeErr := image.DecodeConfig(bytes.NewReader(data))
+			if decodeErr != nil || config.Width <= 0 || config.Height <= 0 || !coverImageFormat(format) {
+				continue
+			}
+			pixels := int64(config.Width) * int64(config.Height)
+			if pixels > 20_000_000 || pixels <= coverPixels {
+				continue
+			}
+			cover = data
+			coverPixels = pixels
+		}
+	}
+
+	return cover, nil
+}
+
+func coverImageFormat(format string) bool {
+	switch format {
+	case "jpeg", "png", "gif", "webp":
+		return true
+	default:
+		return false
+	}
 }
 
 // newConfiguration builds a stateless pdfcpu configuration. PDF metadata
