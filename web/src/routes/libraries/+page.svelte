@@ -5,7 +5,9 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import { catalogErrorMessage } from '#lib/catalog/errors.js';
 	import { listLibraries } from '#lib/catalog/api.js';
+	import { BOOKS_CHANGED_EVENT } from '#lib/catalog/events.js';
 	import { hasNextPage } from '#lib/catalog/query.js';
+	import { BOOKHEAP_CHANGED_EVENT } from '#lib/bookheap/events.js';
 	import type { Library } from '#lib/catalog/types.js';
 	import { getSessionViewer } from '#lib/shelves/api.js';
 	import { isAdministrator } from '#lib/shelves/form.js';
@@ -40,10 +42,11 @@
 	onMount(() => {
 		void loadLibraries();
 		const changed = () => { void loadLibraries(); };
-		window.addEventListener('pandalibrary-libraries-changed', changed);
+		const events = ['pandalibrary-libraries-changed', BOOKS_CHANGED_EVENT, BOOKHEAP_CHANGED_EVENT];
+		for (const event of events) window.addEventListener(event, changed);
 		return () => {
 			loadVersion++;
-			window.removeEventListener('pandalibrary-libraries-changed', changed);
+			for (const event of events) window.removeEventListener(event, changed);
 		};
 	});
 

@@ -4,7 +4,9 @@
 	import { deLocalizeHref } from '#lib/paraglide/runtime.js';
 	import { listAllLibraries } from '#lib/catalog/api.js';
 	import { catalogErrorMessage } from '#lib/catalog/errors.js';
+	import { BOOKS_CHANGED_EVENT } from '#lib/catalog/events.js';
 	import type { Library } from '#lib/catalog/types.js';
+	import { BOOKHEAP_CHANGED_EVENT } from '#lib/bookheap/events.js';
 	import LibraryActionsMenu from '#lib/libraries/LibraryActionsMenu.svelte';
 	import { selectedLibrary } from '#lib/libraries/context.js';
 	import { translate } from '#lib/paging/translate.js';
@@ -63,11 +65,15 @@
 
 	onMount(() => {
 		const refresh = () => { refreshVersion += 1; };
-		window.addEventListener('pandalibrary-shelves-changed', refresh);
-		window.addEventListener('pandalibrary-libraries-changed', refresh);
+		const events = [
+			'pandalibrary-shelves-changed',
+			'pandalibrary-libraries-changed',
+			BOOKS_CHANGED_EVENT,
+			BOOKHEAP_CHANGED_EVENT
+		];
+		for (const event of events) window.addEventListener(event, refresh);
 		return () => {
-			window.removeEventListener('pandalibrary-shelves-changed', refresh);
-			window.removeEventListener('pandalibrary-libraries-changed', refresh);
+			for (const event of events) window.removeEventListener(event, refresh);
 		};
 	});
 </script>

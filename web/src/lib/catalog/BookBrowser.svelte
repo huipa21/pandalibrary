@@ -14,7 +14,9 @@
 	import ViewToggle from './ViewToggle.svelte';
 	import { bookDisplay } from './book-display.svelte.js';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
+	import { BOOKHEAP_CHANGED_EVENT } from '#lib/bookheap/events.js';
 	import { requestErrorKind } from '#lib/paging/errors.js';
+	import { BOOKS_CHANGED_EVENT } from './events.js';
 	import { getSessionViewer } from '#lib/shelves/api.js';
 	import { isAdministrator } from '#lib/shelves/form.js';
 	import Icon from '#lib/bookview/Icon.svelte';
@@ -83,6 +85,13 @@
 		if (filterable) void loadFilterOptions();
 		if (selectionEnabled) void loadSelectionAccess();
 		void restoreSettings();
+		const changed = () => { reloadVersion += 1; };
+		window.addEventListener(BOOKS_CHANGED_EVENT, changed);
+		window.addEventListener(BOOKHEAP_CHANGED_EVENT, changed);
+		return () => {
+			window.removeEventListener(BOOKS_CHANGED_EVENT, changed);
+			window.removeEventListener(BOOKHEAP_CHANGED_EVENT, changed);
+		};
 	});
 
 	async function loadSelectionAccess() {
@@ -280,7 +289,6 @@
 				? m['catalog.selection.move_success']({ count: outcome.succeeded.length })
 				: m['catalog.selection.delete_success']({ count: outcome.succeeded.length });
 		}
-		reloadVersion += 1;
 	}
 </script>
 
