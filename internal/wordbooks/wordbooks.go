@@ -467,6 +467,9 @@ func validateEntry(e *Entry) error {
 		if d.Source == "" || d.Headword == "" || !validString(d.Source, 200) || !validString(d.SourceName, 1000) || !validString(d.Headword, 2000) || !validString(d.Reading, 2000) || !validString(d.PartOfSpeech, 1000) || len(d.Definitions)+len(d.HiddenDefinitions) > 100 {
 			return invalid("dictionary entry is invalid")
 		}
+		if d.AudioURL != "" && (!strings.HasPrefix(d.AudioURL, "https://") || !validString(d.AudioURL, 2000)) {
+			return invalid("dictionary entry is invalid")
+		}
 		if !validLanguage(string(d.From)) || !validLanguage(string(d.To)) {
 			return invalid("dictionary direction is invalid")
 		}

@@ -67,7 +67,9 @@ send forwarded headers, so use a dedicated network with only trusted containers.
 Recheck the subnet if the network is recreated. After changing `.env`, run
 `podman compose up -d` again to apply the new environment.
 
-The reader's dictionary lookup uses an online dictionary API. Configure its
-address and optional key on **Admin → Dicts** after setup; see the
-[dictionary documentation](../docs/user/administration.md#dictionaries) for
-the required API.
+The reader's dictionary lookup uses online dictionary providers. Enter
+Merriam-Webster API keys or add custom dictionary APIs on **Admin → Dicts**
+after setup; see the
+[dictionary documentation](../docs/user/administration.md#dictionaries).
+Lookup responses are cached in `data/dictionaries/cache.db`. The cache is not
+part of backups and can be deleted safely.

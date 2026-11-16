@@ -1,3 +1,5 @@
+import type { DictionaryDirection } from '#lib/dictionary/types.js';
+
 export type { Library, Page } from '#lib/catalog/types.js';
 
 /** UX8 user account visible to administrators. */
@@ -77,17 +79,43 @@ export interface ProviderPatch {
 	api_token?: string | null;
 }
 
-/** Online dictionary API settings. The API key is write-only and never returned. */
-export interface DictionarySettings {
+export type DictionaryProviderKind = 'mw-collegiate' | 'mw-thesaurus' | 'custom';
+
+/** An online dictionary provider. Presets are built in; the API key is write-only and never returned. */
+export interface DictionaryProvider {
+	readonly id: number;
+	readonly kind: DictionaryProviderKind;
+	readonly name: string;
+	readonly preset: boolean;
+	readonly signup_url?: string;
 	readonly base_url: string | null;
 	readonly has_api_key: boolean;
+	readonly enabled: boolean;
+	readonly priority: number;
+	readonly directions: readonly DictionaryDirection[];
 	readonly updated_at: string;
 }
 
-/** Omitted fields are preserved; `null` clears the address or removes the key. */
-export interface DictionarySettingsPatch {
-	base_url?: string | null;
+export interface DictionaryProviderList {
+	providers: DictionaryProvider[];
+	cache_entries: number;
+}
+
+/** Creates a custom provider. */
+export interface DictionaryProviderInput {
+	name: string;
+	base_url: string;
 	api_key?: string | null;
+	priority?: number;
+}
+
+/** Omitted fields are preserved; `api_key: null` removes the key. Presets accept only api_key/enabled/priority. */
+export interface DictionaryProviderPatch {
+	name?: string;
+	base_url?: string;
+	api_key?: string | null;
+	enabled?: boolean;
+	priority?: number;
 }
 
 export type MaintenanceStatus = 'idle' | 'accepted' | 'running' | 'completed' | 'error';

@@ -23,27 +23,31 @@ type DictionaryService interface {
 	Status(ctx context.Context) (dictionary.Status, error)
 }
 
-// DictionarySettingsService manages the online dictionary API address and key.
+// DictionaryAdminService manages online dictionary providers and the lookup cache.
 // Implementations return catalog.ErrForbidden for non-administrators, dictionary.ErrInvalid
-// for rejected patches, dictionary.ErrNotConfigured when no address is set and
-// dictionary.ErrUnavailable when the API cannot be reached.
-type DictionarySettingsService interface {
-	Settings(ctx context.Context, viewer catalog.Viewer) (dictionary.Settings, error)
-	UpdateSettings(ctx context.Context, viewer catalog.Viewer, patch dictionary.SettingsPatch) (dictionary.Settings, error)
-	TestConnection(ctx context.Context, viewer catalog.Viewer) (dictionary.Status, error)
+// for rejected input, dictionary.ErrNotFound for unknown IDs, dictionary.ErrNotConfigured when
+// a provider cannot be tested (no key or address) and dictionary.ErrUnavailable when it
+// cannot be reached.
+type DictionaryAdminService interface {
+	ListProviders(ctx context.Context, viewer catalog.Viewer) (dictionary.Providers, error)
+	CreateProvider(ctx context.Context, viewer catalog.Viewer, input dictionary.ProviderInput) (dictionary.Provider, error)
+	UpdateProvider(ctx context.Context, viewer catalog.Viewer, id int64, patch dictionary.ProviderPatch) (dictionary.Provider, error)
+	DeleteProvider(ctx context.Context, viewer catalog.Viewer, id int64) error
+	TestProvider(ctx context.Context, viewer catalog.Viewer, id int64) (dictionary.Status, error)
+	ClearCache(ctx context.Context, viewer catalog.Viewer) (int64, error)
 }
 
 type dictionaryHTTP struct {
-	service  DictionaryService
-	settings DictionarySettingsService
-	common   *catalogHTTP
-	logger   *slog.Logger
+	service DictionaryService
+	admin   DictionaryAdminService
+	common  *catalogHTTP
+	logger  *slog.Logger
 }
 
 // DictionaryMount registers the authenticated dictionary lookup endpoints and the
-// administrator-only online dictionary API settings endpoints.
-func DictionaryMount(service DictionaryService, settings DictionarySettingsService, authentication *auth.Service, logger *slog.Logger) Mount {
-	handler := &dictionaryHTTP{service: service, settings: settings, common: &catalogHTTP{logger: logger}, logger: logger}
+// administrator-only online dictionary provider endpoints.
+func DictionaryMount(service DictionaryService, admin DictionaryAdminService, authentication *auth.Service, logger *slog.Logger) Mount {
+	handler := &dictionaryHTTP{service: service, admin: admin, common: &catalogHTTP{logger: logger}, logger: logger}
 	return func(router chi.Router, cookieProtection Middleware) {
 		router.Group(func(secured chi.Router) {
 			secured.Use(SessionMiddleware(authentication, logger))
@@ -53,9 +57,12 @@ func DictionaryMount(service DictionaryService, settings DictionarySettingsServi
 		router.Group(func(admin chi.Router) {
 			admin.Use(SessionMiddleware(authentication, logger))
 			admin.Use(RequireRole("admin", logger))
-			admin.Get("/api/v1/admin/dictionary/settings", handler.common.withViewer(handler.getSettings))
-			admin.With(cookieProtection).Patch("/api/v1/admin/dictionary/settings", handler.common.withViewer(handler.updateSettings))
-			admin.With(cookieProtection).Post("/api/v1/admin/dictionary/test", handler.common.withViewer(handler.testConnection))
+			admin.Get("/api/v1/admin/dictionary/providers", handler.common.withViewer(handler.listProviders))
+			admin.With(cookieProtection).Post("/api/v1/admin/dictionary/providers", handler.common.withViewer(handler.createProvider))
+			admin.With(cookieProtection).Patch("/api/v1/admin/dictionary/providers/{id}", handler.common.withViewer(handler.updateProvider))
+			admin.With(cookieProtection).Delete("/api/v1/admin/dictionary/providers/{id}", handler.common.withViewer(handler.deleteProvider))
+			admin.With(cookieProtection).Post("/api/v1/admin/dictionary/providers/{id}/test", handler.common.withViewer(handler.testProvider))
+			admin.With(cookieProtection).Delete("/api/v1/admin/dictionary/cache", handler.common.withViewer(handler.clearCache))
 		})
 	}
 }
@@ -174,52 +181,125 @@ func (h *dictionaryHTTP) writeUnavailable(w http.ResponseWriter, r *http.Request
 	return true
 }
 
-func (h *dictionaryHTTP) getSettings(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	result, err := h.settings.Settings(r.Context(), viewer)
+func (h *dictionaryHTTP) listProviders(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	result, err := h.admin.ListProviders(r.Context(), viewer)
 	if err != nil {
-		h.writeSettingsError(w, r, err)
+		h.writeAdminError(w, r, err)
 		return
 	}
-	h.common.writeJSON(w, http.StatusOK, map[string]dictionary.Settings{"settings": result})
+	if result.Providers == nil {
+		result.Providers = []dictionary.Provider{}
+	}
+	for index := range result.Providers {
+		result.Providers[index] = normalizeDictionaryProvider(result.Providers[index])
+	}
+	h.common.writeJSON(w, http.StatusOK, result)
 }
 
-func (h *dictionaryHTTP) updateSettings(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	var patch dictionary.SettingsPatch
-	if !h.common.decodeJSON(w, r, &patch) {
+func (h *dictionaryHTTP) createProvider(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	var input dictionary.ProviderInput
+	if !h.decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := h.settings.UpdateSettings(r.Context(), viewer, patch)
+	provider, err := h.admin.CreateProvider(r.Context(), viewer, input)
 	if err != nil {
-		h.writeSettingsError(w, r, err)
+		h.writeAdminError(w, r, err)
 		return
 	}
-	h.common.writeJSON(w, http.StatusOK, map[string]dictionary.Settings{"settings": result})
+	h.common.writeJSON(w, http.StatusCreated, map[string]dictionary.Provider{"provider": normalizeDictionaryProvider(provider)})
 }
 
-func (h *dictionaryHTTP) testConnection(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	status, err := h.settings.TestConnection(r.Context(), viewer)
+func (h *dictionaryHTTP) updateProvider(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	id, ok := h.providerID(w, r)
+	if !ok {
+		return
+	}
+	var patch dictionary.ProviderPatch
+	if !h.decodeJSON(w, r, &patch) {
+		return
+	}
+	provider, err := h.admin.UpdateProvider(r.Context(), viewer, id, patch)
 	if err != nil {
-		h.writeSettingsError(w, r, err)
+		h.writeAdminError(w, r, err)
+		return
+	}
+	h.common.writeJSON(w, http.StatusOK, map[string]dictionary.Provider{"provider": normalizeDictionaryProvider(provider)})
+}
+
+func (h *dictionaryHTTP) deleteProvider(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	id, ok := h.providerID(w, r)
+	if !ok {
+		return
+	}
+	if err := h.admin.DeleteProvider(r.Context(), viewer, id); err != nil {
+		h.writeAdminError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *dictionaryHTTP) testProvider(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	id, ok := h.providerID(w, r)
+	if !ok {
+		return
+	}
+	status, err := h.admin.TestProvider(r.Context(), viewer, id)
+	if err != nil {
+		h.writeAdminError(w, r, err)
 		return
 	}
 	h.common.writeJSON(w, http.StatusOK, map[string]dictionary.Status{"status": normalizeDictionaryStatus(status)})
 }
 
-// writeSettingsError never logs raw errors because they may contain the API address or key.
-func (h *dictionaryHTTP) writeSettingsError(w http.ResponseWriter, r *http.Request, err error) {
+func (h *dictionaryHTTP) clearCache(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	deleted, err := h.admin.ClearCache(r.Context(), viewer)
+	if err != nil {
+		h.writeAdminError(w, r, err)
+		return
+	}
+	h.common.writeJSON(w, http.StatusOK, map[string]int64{"deleted": deleted})
+}
+
+func normalizeDictionaryProvider(provider dictionary.Provider) dictionary.Provider {
+	if provider.Directions == nil {
+		provider.Directions = []dictionary.Direction{}
+	}
+	for index := range provider.Directions {
+		if provider.Directions[index].Sources == nil {
+			provider.Directions[index].Sources = []string{}
+		}
+	}
+	return provider
+}
+
+func (h *dictionaryHTTP) providerID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	w.Header().Set("Cache-Control", "no-store")
+	return h.common.pathID(w, r, "id")
+}
+
+func (h *dictionaryHTTP) decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
+	w.Header().Set("Cache-Control", "no-store")
+	return h.common.decodeJSON(w, r, target)
+}
+
+// writeAdminError never logs raw errors because they may contain a provider address or API key.
+func (h *dictionaryHTTP) writeAdminError(w http.ResponseWriter, r *http.Request, err error) {
 	w.Header().Set("Cache-Control", "no-store")
 	switch {
 	case errors.Is(err, catalog.ErrForbidden):
 		WriteProblem(w, h.logger, http.StatusForbidden, "")
 	case errors.Is(err, dictionary.ErrInvalid):
-		WriteProblem(w, h.logger, http.StatusBadRequest, "The dictionary settings are invalid.")
+		WriteProblem(w, h.logger, http.StatusBadRequest, "The dictionary provider settings are invalid.")
+	case errors.Is(err, dictionary.ErrNotFound):
+		WriteProblem(w, h.logger, http.StatusNotFound, "")
 	case errors.Is(err, dictionary.ErrNotConfigured):
-		WriteProblem(w, h.logger, http.StatusConflict, "Set the dictionary API address first.")
+		WriteProblem(w, h.logger, http.StatusConflict, "Enter the provider's API key or address first.")
 	case errors.Is(err, dictionary.ErrUnavailable):
-		h.logger.Warn("dictionary API connection test failed", "request_id", RequestID(r))
-		WriteProblem(w, h.logger, http.StatusBadGateway, "The dictionary API could not be reached.")
+		h.logger.Warn("dictionary provider test failed", "request_id", RequestID(r))
+		WriteProblem(w, h.logger, http.StatusBadGateway, "The dictionary provider could not be reached.")
 	default:
-		h.logger.Error("dictionary settings request failed", "request_id", RequestID(r))
+		h.logger.Error("dictionary admin request failed", "request_id", RequestID(r))
 		WriteProblem(w, h.logger, http.StatusInternalServerError, "")
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"pandalibrary/internal/catalog"
 	"pandalibrary/internal/db"
 	"pandalibrary/internal/db/migrations"
+	"pandalibrary/internal/dictionary"
 )
 
 func testCover(t *testing.T, width, height int) []byte {
@@ -119,5 +120,25 @@ func TestWordbookCoverServicePersistence(t *testing.T) {
 	books, err = service.List(ctx, 1)
 	if err != nil || len(books) != 2 || books[1].CoverColor != color || books[1].CoverImage != cover {
 		t.Fatalf("updated cover persistence: %v", err)
+	}
+}
+
+func TestValidateEntryDictionaryAudioURL(t *testing.T) {
+	for audio, valid := range map[string]bool{
+		"":                                     true,
+		"https://media.example/audio/run.mp3":  true,
+		"http://media.example/audio/run.mp3":   false,
+		"javascript:alert(1)":                  false,
+		"https://" + strings.Repeat("a", 2000): false,
+	} {
+		entry := Entry{Kind: "word", Text: "run", Source: Source{Locator: []byte(`{"cfi":"x"}`)},
+			DictionaryEntries: []dictionary.Entry{{Source: "mw-collegiate", Headword: "run", Definitions: []string{"to go"}, Match: dictionary.MatchExact, AudioURL: audio}}}
+		err := validateEntry(&entry)
+		if valid && err != nil {
+			t.Fatalf("audio %q rejected: %v", audio, err)
+		}
+		if !valid && !errors.Is(err, catalog.ErrInvalid) {
+			t.Fatalf("audio %q accepted: %v", audio, err)
+		}
 	}
 }

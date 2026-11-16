@@ -4,8 +4,10 @@ import type { UploadVisibility } from '#lib/bookheap/types.js';
 import type { DictionaryStatus } from '#lib/dictionary/types.js';
 import type {
 	AccessEntry,
-	DictionarySettings,
-	DictionarySettingsPatch,
+	DictionaryProvider,
+	DictionaryProviderInput,
+	DictionaryProviderList,
+	DictionaryProviderPatch,
 	HiddenEntry,
 	ImportJob,
 	Library,
@@ -203,21 +205,46 @@ export async function updateProvider(provider: string, patch: ProviderPatch): Pr
 	).provider;
 }
 
-export async function getDictionarySettings(signal?: AbortSignal): Promise<DictionarySettings> {
-	return (await api.request<{ settings: DictionarySettings }>('/admin/dictionary/settings', { signal })).settings;
+function normalizeDictionaryProvider(provider: DictionaryProvider): DictionaryProvider {
+	return { ...provider, directions: provider.directions ?? [] };
 }
 
-export async function updateDictionarySettings(patch: DictionarySettingsPatch): Promise<DictionarySettings> {
+export async function listDictionaryProviders(signal?: AbortSignal): Promise<DictionaryProviderList> {
+	const list = await api.request<Partial<DictionaryProviderList>>('/admin/dictionary/providers', { signal });
+	return { providers: (list?.providers ?? []).map(normalizeDictionaryProvider), cache_entries: list?.cache_entries ?? 0 };
+}
+
+/** Adds a custom PandaLibrary-protocol dictionary API. */
+export async function createDictionaryProvider(input: DictionaryProviderInput): Promise<DictionaryProvider> {
+	const body: { [key: string]: JsonValue } = { name: input.name, base_url: input.base_url };
+	if (input.api_key !== undefined) body.api_key = input.api_key;
+	if (input.priority !== undefined) body.priority = input.priority;
+	const created = await api.request<{ provider: DictionaryProvider }>('/admin/dictionary/providers', { method: 'POST', body });
+	return normalizeDictionaryProvider(created.provider);
+}
+
+export async function updateDictionaryProvider(id: number, patch: DictionaryProviderPatch): Promise<DictionaryProvider> {
 	const body: { [key: string]: JsonValue } = {};
-	if (patch.base_url !== undefined) body.base_url = patch.base_url;
-	if (patch.api_key !== undefined) body.api_key = patch.api_key;
-	return (await api.request<{ settings: DictionarySettings }>('/admin/dictionary/settings', { method: 'PATCH', body })).settings;
+	for (const key of ['name', 'base_url', 'api_key', 'enabled', 'priority'] as const) {
+		if (patch[key] !== undefined) body[key] = patch[key];
+	}
+	const updated = await api.request<{ provider: DictionaryProvider }>(`/admin/dictionary/providers/${id}`, { method: 'PATCH', body });
+	return normalizeDictionaryProvider(updated.provider);
 }
 
-/** Asks the server to reach the configured dictionary API and returns its reported status. */
-export async function testDictionaryConnection(): Promise<DictionaryStatus> {
-	const status = (await api.request<{ status: DictionaryStatus }>('/admin/dictionary/test', { method: 'POST' })).status;
+export async function deleteDictionaryProvider(id: number): Promise<void> {
+	await api.request(`/admin/dictionary/providers/${id}`, { method: 'DELETE' });
+}
+
+/** Asks the server to reach the provider with its saved settings and returns the reported status. */
+export async function testDictionaryProvider(id: number): Promise<DictionaryStatus> {
+	const status = (await api.request<{ status: DictionaryStatus }>(`/admin/dictionary/providers/${id}/test`, { method: 'POST' })).status;
 	return { directions: status?.directions ?? [], sources: status?.sources ?? [] };
+}
+
+/** Clears the server-side lookup cache and returns the number of deleted entries. */
+export async function clearDictionaryCache(): Promise<number> {
+	return (await api.request<{ deleted: number }>('/admin/dictionary/cache', { method: 'DELETE' }))?.deleted ?? 0;
 }
 
 export async function listMaintenanceJobs(signal?: AbortSignal): Promise<MaintenanceJob[]> {

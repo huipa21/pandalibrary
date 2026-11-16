@@ -42,8 +42,11 @@ var ErrInvalid = errors.New("invalid dictionary request")
 // ErrUnavailable marks a failed call to the online dictionary API.
 var ErrUnavailable = errors.New("dictionary API is unavailable")
 
-// ErrNotConfigured marks a lookup attempted before an administrator set the API address.
+// ErrNotConfigured marks a lookup or test for which no enabled, usable provider exists.
 var ErrNotConfigured = errors.New("dictionary API is not configured")
+
+// ErrNotFound marks an unknown provider ID.
+var ErrNotFound = errors.New("dictionary provider not found")
 
 // MatchKind explains how a lookup reached an entry.
 type MatchKind string
@@ -76,6 +79,7 @@ type Entry struct {
 	PartOfSpeech      string    `json:"partOfSpeech,omitempty"`
 	Definitions       []string  `json:"definitions"`
 	HiddenDefinitions []string  `json:"hiddenDefinitions,omitempty"`
+	AudioURL          string    `json:"audioUrl,omitempty"` // https pronunciation recording
 	Match             MatchKind `json:"match"`
 }
 
@@ -111,15 +115,84 @@ type Status struct {
 	Sources    []SourceInfo `json:"sources"`
 }
 
-// Settings is the administrator view of the online dictionary API; the key is write-only.
-type Settings struct {
-	BaseURL   *string   `json:"base_url"`
-	HasAPIKey bool      `json:"has_api_key"`
-	UpdatedAt time.Time `json:"updated_at"`
+// Provider kinds stored in dictionary_providers.kind.
+const (
+	KindMWCollegiate = "mw-collegiate"
+	KindMWThesaurus  = "mw-thesaurus"
+	// KindCustom speaks PandaLibrary's own JSON protocol: GET {base}/status and GET {base}/lookup.
+	KindCustom = "custom"
+)
+
+// Preset is a built-in provider that only needs an API key.
+type Preset struct {
+	Kind        string
+	Name        string
+	SignupURL   string
+	Directions  []Direction // Sources holds the entry source ID the preset reports
+	RequestBase string      // the word and ?key= are appended
 }
 
-// SettingsPatch distinguishes absent properties from explicit nulls, which clear a value.
-type SettingsPatch struct {
-	BaseURL catalog.Optional[string] `json:"base_url"`
-	APIKey  catalog.Optional[string] `json:"api_key"`
+// Presets are seeded by migration and cannot be deleted; both serve English → English.
+var Presets = []Preset{
+	{
+		Kind: KindMWCollegiate, Name: "Merriam-Webster's Collegiate Dictionary", SignupURL: "https://dictionaryapi.com/register/index",
+		Directions:  []Direction{{From: English, To: English, Sources: []string{KindMWCollegiate}}},
+		RequestBase: "https://www.dictionaryapi.com/api/v3/references/collegiate/json/",
+	},
+	{
+		Kind: KindMWThesaurus, Name: "Merriam-Webster's Collegiate Thesaurus", SignupURL: "https://dictionaryapi.com/register/index",
+		Directions:  []Direction{{From: English, To: English, Sources: []string{KindMWThesaurus}}},
+		RequestBase: "https://www.dictionaryapi.com/api/v3/references/thesaurus/json/",
+	},
+}
+
+// PresetByKind returns the preset for kind.
+func PresetByKind(kind string) (Preset, bool) {
+	for _, preset := range Presets {
+		if preset.Kind == kind {
+			return preset, true
+		}
+	}
+	return Preset{}, false
+}
+
+// Provider is the administrator view of one online dictionary; the API key is write-only.
+type Provider struct {
+	ID        int64   `json:"id"`
+	Kind      string  `json:"kind"`
+	Name      string  `json:"name"`
+	Preset    bool    `json:"preset"`
+	SignupURL string  `json:"signup_url,omitempty"`
+	BaseURL   *string `json:"base_url"`
+	HasAPIKey bool    `json:"has_api_key"`
+	Enabled   bool    `json:"enabled"`
+	Priority  int64   `json:"priority"`
+	// Directions are static for presets and the last known remote status for custom providers.
+	Directions []Direction `json:"directions"`
+	UpdatedAt  time.Time   `json:"updated_at"`
+}
+
+// Providers is the administrator overview of configured providers and the lookup cache.
+type Providers struct {
+	Providers    []Provider `json:"providers"`
+	CacheEntries int64      `json:"cache_entries"`
+}
+
+// ProviderInput creates a custom provider.
+type ProviderInput struct {
+	Name     string  `json:"name"`
+	BaseURL  string  `json:"base_url"`
+	APIKey   *string `json:"api_key"`
+	Priority *int64  `json:"priority"`
+}
+
+// ProviderPatch distinguishes absent properties from explicit nulls, which clear a value.
+// Setting an API key on a disabled preset enables it unless enabled is also sent;
+// clearing a preset's key disables it.
+type ProviderPatch struct {
+	Name     catalog.Optional[string] `json:"name"`
+	BaseURL  catalog.Optional[string] `json:"base_url"`
+	APIKey   catalog.Optional[string] `json:"api_key"`
+	Enabled  catalog.Optional[bool]   `json:"enabled"`
+	Priority catalog.Optional[int64]  `json:"priority"`
 }

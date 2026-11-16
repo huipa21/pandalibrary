@@ -115,7 +115,7 @@ library through the assignment API.
 | **Hidden books** | Hide specific books from one reader. Hidden books disappear from that reader's lists, search and downloads |
 | **Uploads** | Upload books and view processing history, including failures and their reasons |
 | **Metadata providers** | Turn online sources on or off and set their priority. Open Library and Google Books are on by default; NeoDB and Hardcover need a token |
-| **Dicts** | Configure the online dictionary API used by **Look up**; see [Dictionaries](#dictionaries) |
+| **Dicts** | Manage the dictionary providers used by **Look up** (Merriam-Webster presets and custom APIs), their priority and the lookup cache; see [Dictionaries](#dictionaries) |
 | **Maintenance** | See scheduled jobs and run one now: database backup, cleanup, unused annotation images, orphaned file removal, database optimization and search index checks |
 | **Backup** | Create and download full database-and-media `.tar.gz` backups; stage a server-saved or uploaded backup for restoration on restart |
 
@@ -175,20 +175,46 @@ should use `PATCH /api/v1/books/{id}` instead.
 
 ## Dictionaries
 
-The reader's **Look up** action uses an online dictionary API configured by an
-administrator. PandaLibrary does not store dictionary data itself. On
-**Admin → Dicts**, enter:
+The reader's **Look up** action uses online dictionary providers configured by
+an administrator. PandaLibrary does not ship dictionary data itself.
+**Admin → Dicts** lists the providers, their priority and status, and the
+lookup cache.
 
+### Merriam-Webster presets
+
+Two built-in presets provide English → English lookups:
+
+- **Merriam-Webster's Collegiate Dictionary:** definitions, pronunciation,
+  audio pronunciation that readers can play from the lookup panel, etymology
+  and examples.
+- **Merriam-Webster's Collegiate Thesaurus:** synonyms, antonyms, related words
+  and concise definitions.
+
+Each preset needs its own free API key from
+[dictionaryapi.com](https://dictionaryapi.com/register/index). Entering a key
+enables the preset; removing the key disables it. A preset with a key can also
+be disabled and enabled again, and **Test** checks that the key works. The
+presets query
+`https://www.dictionaryapi.com/api/v3/references/{collegiate|thesaurus}/json/<word>?key=<key>`.
+
+Use of the Merriam-Webster API is subject to its terms, including the
+non-commercial conditions of the free tier and attribution requirements;
+review them at [dictionaryapi.com](https://dictionaryapi.com/) before enabling
+the presets.
+
+### Custom dictionary APIs
+
+Additional providers can be added as custom dictionary APIs, each with:
+
+- **Name:** shown to readers next to its entries.
 - **API address:** the base URL of the dictionary API, for example
   `https://dict.example.org/api/v1/dictionary`.
-- **API key** (optional): sent as `Authorization: Bearer <key>`. The key is
-  write-only and is not shown again after saving.
+- **API key** (optional): sent as `Authorization: Bearer <key>`.
 
-Select **Test connection** to check that the API answers and lists its
-directions and sources. The settings are stored in the main PandaLibrary
-database, so they are included in full-data backups.
+Custom providers can be enabled, disabled, tested and deleted. Changing a
+provider's address clears its cached responses.
 
-The API must implement the same JSON responses as PandaLibrary's own
+A custom API must implement the same JSON responses as PandaLibrary's own
 `/api/v1/dictionary/status` and `/api/v1/dictionary/lookup` endpoints:
 
 - `GET {address}/status` returns the available directions and sources:
@@ -219,13 +245,40 @@ The API must implement the same JSON responses as PandaLibrary's own
   `exact`, `lemma` or `prefix`. A `400` response with an RFC 7807 problem JSON
   `detail` is shown to the reader as an invalid request.
 
-Readers see each dictionary's name with its entries. Without an API address,
-lookup offers no directions. If the API is unreachable, readers see the
-dictionary as unavailable (HTTP 503); collecting words into wordbooks still
-works, without dictionary snapshots.
+### Keys, priority and results
 
-For API clients, the settings are at `GET`/`PATCH /api/v1/admin/dictionary/settings`,
-and `POST /api/v1/admin/dictionary/test` checks the connection.
+API keys are stored on the server and are write-only: they are not shown again
+after saving. Provider settings, including keys, are stored in the main
+PandaLibrary database, so they are included in full-data backups.
+
+Each provider has a **priority**; lower numbers are queried and shown first.
+A lookup combines the results of all enabled providers that serve the chosen
+direction, and readers see each dictionary's name with its entries. If one
+provider fails, the others still answer. Without an enabled provider, lookup
+offers no directions. If no provider for a direction can be reached, readers
+see the dictionary as unavailable (HTTP 503); collecting words into wordbooks
+still works, without dictionary snapshots.
+
+### Lookup cache
+
+Meanings and pronunciations rarely change, so successful provider responses
+are cached in a separate SQLite file, `<data-dir>/dictionaries/cache.db`.
+Responses with results are kept for 365 days and empty results for 7 days.
+The cache reduces API usage and speeds up repeated lookups. **Admin → Dicts**
+shows the number of cached lookups and a **Clear cache** button. The cache is
+not included in backups and can be deleted safely; it is rebuilt as readers
+look up words.
+
+### Dictionary API
+
+| Request | Purpose |
+|---|---|
+| `GET /api/v1/admin/dictionary/providers` | List providers and their status |
+| `POST /api/v1/admin/dictionary/providers` | Add a custom provider |
+| `PATCH /api/v1/admin/dictionary/providers/{id}` | Change a provider's key, address, name, priority or enabled state |
+| `DELETE /api/v1/admin/dictionary/providers/{id}` | Delete a custom provider |
+| `POST /api/v1/admin/dictionary/providers/{id}/test` | Test a provider's connection |
+| `DELETE /api/v1/admin/dictionary/cache` | Clear the lookup cache |
 
 ## Backups
 
@@ -241,7 +294,8 @@ change managed folders while a backup is running.
 Download archives and keep an off-site copy. These archives are **not encrypted**:
 protect them like the original database, passwords and private books. They do
 not include the application binary, environment configuration, TLS/proxy setup,
-client-side browser/PWA data, or the backups directory itself. Full archives are
+client-side browser/PWA data, the dictionary lookup cache, or the backups
+directory itself. Full archives are
 not automatically pruned. The separate daily maintenance job still retains seven
 database-only backups; those cannot be uploaded to the full-data restore API.
 

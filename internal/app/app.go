@@ -50,6 +50,7 @@ type application struct {
 	maintenance *jobs.Maintenance
 	importer    *importer.Service
 	bookheap    *bookheap.Service
+	dictCache   *dictionary.Cache
 	ready       atomic.Bool
 	logger      *slog.Logger
 }
@@ -101,8 +102,14 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	backups.Writer = databases.Writer
 	var maintenance *jobs.Maintenance
 	var bookheapService *bookheap.Service
+	var dictionaryCache *dictionary.Cache
 	defer func() {
 		if returnErr != nil {
+			if dictionaryCache != nil {
+				if err := dictionaryCache.Close(); err != nil {
+					returnErr = errors.Join(returnErr, fmt.Errorf("close dictionary cache after startup failure: %w", err))
+				}
+			}
 			if bookheapService != nil {
 				stopCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 				if err := bookheapService.Close(stopCtx); err != nil {
@@ -195,7 +202,12 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("configure stats: %w", err)
 	}
-	dictionaries := dictionary.NewService(databases.Writer, databases.Reader, logger)
+	dictionaryCache, err = dictionary.OpenCache(ctx, dictionary.CachePath(cfg.DataDir))
+	if err != nil {
+		logger.WarnContext(ctx, "dictionary cache is unavailable; lookups will not be cached", "error", err)
+		dictionaryCache = nil
+	}
+	dictionaries := dictionary.NewService(databases.Writer, databases.Reader, dictionaryCache, logger)
 	wordbookService := wordbooks.NewService(databases.Writer, catalogService, dictionaries, logger)
 	opdsMount, err := opds.NewMount(opds.Options{
 		Catalog: catalogService, Search: searchService, Auth: authentication,
@@ -227,6 +239,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		maintenance: maintenance,
 		importer:    importService,
 		bookheap:    bookheapService,
+		dictCache:   dictionaryCache,
 		logger:      logger,
 	}
 	app.handler, err = httpapi.NewRouter(httpapi.RouterOptions{
@@ -291,10 +304,14 @@ func (a *application) close() error {
 	if err := a.maintenance.Stop(stopCtx); err != nil {
 		return err
 	}
-	if err := a.databases.Close(); err != nil {
-		return fmt.Errorf("close application database: %w", err)
+	var cacheErr error
+	if err := a.dictCache.Close(); err != nil {
+		cacheErr = fmt.Errorf("close dictionary cache: %w", err)
 	}
-	return a.dataLock.Close()
+	if err := a.databases.Close(); err != nil {
+		return errors.Join(cacheErr, fmt.Errorf("close application database: %w", err))
+	}
+	return errors.Join(cacheErr, a.dataLock.Close())
 }
 
 // Run initializes the application before opening the HTTP listener.

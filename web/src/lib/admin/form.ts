@@ -1,7 +1,8 @@
 import { ApiError } from '#lib/api/client.js';
 import type {
-	DictionarySettings,
-	DictionarySettingsPatch,
+	DictionaryProvider,
+	DictionaryProviderInput,
+	DictionaryProviderPatch,
 	Library,
 	LibraryPatch,
 	ProviderPatch,
@@ -291,20 +292,30 @@ export function buildProviderPatch(settings: ProviderSettings, draft: ProviderDr
 	};
 }
 
-export interface DictionaryDraft {
+export const MAX_DICTIONARY_NAME_CHARS = 200;
+
+/** Editable fields of a dictionary provider card or the "Add API" form. The key is write-only. */
+export interface DictionaryProviderDraft {
+	name: string;
 	baseURL: string;
 	apiKey: string;
-	removeKey: boolean;
+	/** Blank in the "Add API" form lets the server pick a default. */
+	priority: string;
 }
 
-export type DictionaryFieldError = 'base_url_invalid' | 'api_key_invalid' | 'no_changes';
+export type DictionaryFieldError =
+	| 'name_required'
+	| 'name_too_long'
+	| 'base_url_invalid'
+	| 'api_key_required'
+	| 'api_key_invalid'
+	| 'priority_invalid'
+	| 'no_changes';
 
-export type DictionaryPatchResult =
-	| { ok: true; patch: DictionarySettingsPatch; removesKey: boolean }
-	| { ok: false; field: 'base_url' | 'api_key' | 'form'; error: DictionaryFieldError };
+export type DictionaryFieldFailure = { ok: false; field: 'name' | 'base_url' | 'api_key' | 'priority' | 'form'; error: DictionaryFieldError };
 
-export function dictionaryDraft(settings: DictionarySettings): DictionaryDraft {
-	return { baseURL: settings.base_url ?? '', apiKey: '', removeKey: false };
+export function dictionaryProviderDraft(provider?: DictionaryProvider): DictionaryProviderDraft {
+	return { name: provider?.name ?? '', baseURL: provider?.base_url ?? '', apiKey: '', priority: provider ? String(provider.priority) : '' };
 }
 
 /** Accepts an absolute HTTP(S) URL (a path prefix is allowed) without credentials, query, or fragment. */
@@ -319,35 +330,93 @@ export function validDictionaryURL(value: string): boolean {
 	return !url.username && !url.password && !/[?#]/.test(value);
 }
 
+function dictionaryName(value: string): { ok: true; name: string } | DictionaryFieldFailure {
+	const name = value.trim();
+	if (!name) return { ok: false, field: 'name', error: 'name_required' };
+	if ([...name].length > MAX_DICTIONARY_NAME_CHARS) {
+		return { ok: false, field: 'name', error: 'name_too_long' };
+	}
+	return { ok: true, name };
+}
+
+function dictionaryAddress(value: string): { ok: true; baseURL: string } | DictionaryFieldFailure {
+	const baseURL = value.trim();
+	if (!validDictionaryURL(baseURL)) return { ok: false, field: 'base_url', error: 'base_url_invalid' };
+	return { ok: true, baseURL };
+}
+
+/** Returns the trimmed key ('' when blank) or a validation failure. */
+function dictionaryKey(value: string): { ok: true; key: string } | DictionaryFieldFailure {
+	const key = value.trim();
+	if (encoder.encode(key).length > MAX_PROVIDER_TOKEN_BYTES || /[\r\n\t\u0000]/.test(key)) {
+		return { ok: false, field: 'api_key', error: 'api_key_invalid' };
+	}
+	return { ok: true, key };
+}
+
+/** Parses a priority input (lower values are asked first). */
+export function parseDictionaryPriority(value: string | number): number | null {
+	const text = String(value).trim();
+	if (!/^\d{1,5}$/.test(text) || Number(text) > MAX_PROVIDER_PRIORITY) return null;
+	return Number(text);
+}
+
+/** Validates the "Add API" form for a custom provider; a blank key is omitted. */
+export function buildDictionaryProviderInput(
+	draft: DictionaryProviderDraft
+): { ok: true; input: DictionaryProviderInput } | DictionaryFieldFailure {
+	const name = dictionaryName(draft.name);
+	if (!name.ok) return name;
+	const address = dictionaryAddress(draft.baseURL);
+	if (!address.ok) return address;
+	const key = dictionaryKey(draft.apiKey);
+	if (!key.ok) return key;
+	const input: DictionaryProviderInput = { name: name.name, base_url: address.baseURL };
+	if (key.key) input.api_key = key.key;
+	if (draft.priority.trim()) {
+		const priority = parseDictionaryPriority(draft.priority);
+		if (priority === null) return { ok: false, field: 'priority', error: 'priority_invalid' };
+		input.priority = priority;
+	}
+	return { ok: true, input };
+}
+
 /**
- * Builds a minimal dictionary settings PATCH. An empty address clears it, the key is only
- * sent when typed (or null when removing), and unchanged fields are omitted.
+ * Builds a minimal PATCH from a provider card. Presets only send a typed key and a changed
+ * priority; custom providers also send a changed name or address. A blank key keeps the saved one.
  */
-export function buildDictionaryPatch(settings: DictionarySettings, draft: DictionaryDraft): DictionaryPatchResult {
-	const patch: DictionarySettingsPatch = {};
-	const baseURL = draft.baseURL.trim();
-	if (baseURL === '') {
-		if (settings.base_url !== null) patch.base_url = null;
-	} else if (!validDictionaryURL(baseURL)) {
-		return { ok: false, field: 'base_url', error: 'base_url_invalid' };
-	} else if (baseURL !== settings.base_url) {
-		patch.base_url = baseURL;
+export function buildDictionaryProviderPatch(
+	provider: DictionaryProvider,
+	draft: DictionaryProviderDraft
+): { ok: true; patch: DictionaryProviderPatch } | DictionaryFieldFailure {
+	const patch: DictionaryProviderPatch = {};
+	if (!provider.preset) {
+		const name = dictionaryName(draft.name);
+		if (!name.ok) return name;
+		if (name.name !== provider.name) patch.name = name.name;
+		const address = dictionaryAddress(draft.baseURL);
+		if (!address.ok) return address;
+		if (address.baseURL !== provider.base_url) patch.base_url = address.baseURL;
 	}
+	const priority = parseDictionaryPriority(draft.priority);
+	if (priority === null) return { ok: false, field: 'priority', error: 'priority_invalid' };
+	if (priority !== provider.priority) patch.priority = priority;
+	const key = dictionaryKey(draft.apiKey);
+	if (!key.ok) return key;
+	if (key.key) patch.api_key = key.key;
 
-	if (draft.removeKey) {
-		if (settings.has_api_key) patch.api_key = null;
-	} else {
-		const key = draft.apiKey.trim();
-		if (key) {
-			if (encoder.encode(key).length > MAX_PROVIDER_TOKEN_BYTES || /[\r\n\t\u0000]/.test(key)) {
-				return { ok: false, field: 'api_key', error: 'api_key_invalid' };
-			}
-			patch.api_key = key;
-		}
+	if (Object.keys(patch).length === 0) {
+		if (provider.preset && !provider.has_api_key) return { ok: false, field: 'api_key', error: 'api_key_required' };
+		return { ok: false, field: 'form', error: 'no_changes' };
 	}
+	return { ok: true, patch };
+}
 
-	if (Object.keys(patch).length === 0) return { ok: false, field: 'form', error: 'no_changes' };
-	return { ok: true, patch, removesKey: patch.api_key === null };
+export type DictionaryProviderState = 'enabled' | 'needs_key' | 'disabled';
+
+export function dictionaryProviderState(provider: DictionaryProvider): DictionaryProviderState {
+	if (provider.preset && !provider.has_api_key) return 'needs_key';
+	return provider.enabled ? 'enabled' : 'disabled';
 }
 
 export function dictionaryFieldErrorKey(error: DictionaryFieldError): string {
@@ -358,6 +427,8 @@ export type AdminAction =
 	| 'load'
 	| 'save_dictionary'
 	| 'test_dictionary'
+	| 'delete_dictionary'
+	| 'clear_dictionary_cache'
 	| 'more'
 	| 'save_library'
 	| 'delete_library'
@@ -407,11 +478,15 @@ export function adminErrorKey(error: unknown, action: AdminAction): string {
 					return 'admin.error.provider_unknown';
 				case 'run_job':
 					return 'admin.error.job_unsupported';
+				case 'save_dictionary':
+				case 'test_dictionary':
+				case 'delete_dictionary':
+					return 'admin.dictionaries.error.not_found';
 				default:
 					return 'admin.error.not_found';
 			}
 		case 409:
-			if (action === 'test_dictionary') return 'admin.dictionaries.error.no_address';
+			if (action === 'test_dictionary') return 'admin.dictionaries.error.missing_config';
 			if (action === 'save_library') return 'admin.error.library_conflict';
 			if (action === 'delete_library') return 'admin.error.library_delete_conflict';
 			if (action === 'run_job') return 'admin.error.job_running';

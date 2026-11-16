@@ -19,6 +19,7 @@
 		trimSelection
 	} from './api.js';
 	import type { DictionaryEntry, DictionaryLanguage, DictionaryStatus } from './types.js';
+	import PronunciationButton from './PronunciationButton.svelte';
 
 	let { text, anchor, bounds, bookLanguage = null, onclose }: {
 		text: string;
@@ -183,6 +184,7 @@
 							{#if entry.reading && entry.reading !== entry.headword}
 								<span class="dict-reading" lang={from ?? undefined}>{entry.reading}</span>
 							{/if}
+							<PronunciationButton url={entry.audioUrl} />
 							{#if entry.partOfSpeech}<span class="dict-pos">{entry.partOfSpeech}</span>{/if}
 							{#if entry.match === 'lemma'}
 								<span class="dict-tag">{m['dict.match.lemma']()}</span>

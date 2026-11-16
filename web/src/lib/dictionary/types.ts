@@ -29,6 +29,8 @@ export interface DictionaryEntry {
 	sourceName: string;
 	headword: string;
 	reading?: string;
+	/** HTTPS MP3 pronunciation, when the provider has one. */
+	audioUrl?: string;
 	partOfSpeech?: string;
 	definitions: string[];
 	hiddenDefinitions?: string[];

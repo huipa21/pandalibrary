@@ -6,6 +6,7 @@
 	import type { DictionaryEntry } from '#lib/dictionary/types.js';
 	import { lexicalEntry, sourceHref } from './management.js';
 	import { appropriateSnapshots } from './preview.js';
+	import PronunciationButton from '#lib/dictionary/PronunciationButton.svelte';
 	import { Pencil, Trash2 } from '@lucide/svelte';
 
 	let { entry, disabled = false, readonly = false, language = '', meaningLanguage = '', meaningLanguages, onsave, ondelete, onclose }: {
@@ -166,7 +167,7 @@
 			<h3 class="font-medium">{m['wordbooks.dictionary']()}</h3>
 			{#each snapshots as snapshot}
 				<div class="space-y-1">
-					<p><strong>{snapshot.headword}</strong> {snapshot.reading ?? ''} <span class="text-slate-600">{snapshot.partOfSpeech ?? ''} · {snapshot.sourceName}</span></p>
+					<p><strong>{snapshot.headword}</strong> {snapshot.reading ?? ''} <PronunciationButton url={snapshot.audioUrl} /> <span class="text-slate-600">{snapshot.partOfSpeech ?? ''} · {snapshot.sourceName}</span></p>
 					<ul class="list-disc space-y-1 pl-5">
 						{#each snapshot.definitions as meaning}<li class="whitespace-pre-wrap break-words">{meaning}</li>{/each}
 					</ul>

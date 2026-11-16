@@ -7,11 +7,14 @@ import {
 	buildHiddenBooksPath,
 	buildImportsPath,
 	createUser,
+	clearDictionaryCache,
+	createDictionaryProvider,
 	createLibrary,
 	deleteUser,
 	deleteLibrary,
-	getDictionarySettings,
+	deleteDictionaryProvider,
 	grantLibraryAccess,
+	listDictionaryProviders,
 	hideBook,
 	listAllAdminLibraries,
 	listImports,
@@ -22,9 +25,9 @@ import {
 	revokeUserCredentials,
 	resetUserPassword,
 	runMaintenanceJob,
-	testDictionaryConnection,
+	testDictionaryProvider,
 	unhideBook,
-	updateDictionarySettings,
+	updateDictionaryProvider,
 	updateLibrary,
 	updateUser,
 	updateProvider,
@@ -227,39 +230,69 @@ describe('provider and maintenance requests', () => {
 	});
 });
 
-describe('dictionary settings requests', () => {
-	const settings = { base_url: 'https://dict.example', has_api_key: true, updated_at: '2026-01-01T00:00:00Z' };
+describe('dictionary provider requests', () => {
+	const provider = {
+		id: 1,
+		kind: 'mw-collegiate',
+		name: 'Merriam-Webster',
+		preset: true,
+		signup_url: 'https://dictionaryapi.com/register/index',
+		base_url: null,
+		has_api_key: true,
+		enabled: true,
+		priority: 10,
+		directions: [{ from: 'en', to: 'en', sources: ['mw-collegiate'] }],
+		updated_at: '2026-01-01T00:00:00Z'
+	};
 
-	it('loads and unwraps the settings envelope', async () => {
-		const request = vi.spyOn(api, 'request').mockResolvedValue({ settings });
-		await expect(getDictionarySettings()).resolves.toEqual(settings);
-		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/settings', { signal: undefined });
+	it('lists providers with the cache size and fills missing collections', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValueOnce({ providers: [provider], cache_entries: 42 });
+		await expect(listDictionaryProviders()).resolves.toEqual({ providers: [provider], cache_entries: 42 });
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/providers', { signal: undefined });
+		request.mockResolvedValueOnce({ providers: [{ ...provider, directions: undefined }] });
+		await expect(listDictionaryProviders()).resolves.toEqual({ providers: [{ ...provider, directions: [] }], cache_entries: 0 });
 	});
 
-	it('patches only the provided fields and sends null to clear', async () => {
-		const request = vi.spyOn(api, 'request').mockResolvedValue({ settings });
-		await expect(updateDictionarySettings({ base_url: 'https://dict.example' })).resolves.toEqual(settings);
-		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/settings', { method: 'PATCH', body: { base_url: 'https://dict.example' } });
-		await updateDictionarySettings({ base_url: null, api_key: null });
-		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/settings', { method: 'PATCH', body: { base_url: null, api_key: null } });
-		await updateDictionarySettings({ api_key: 'secret' });
-		expect(request.mock.lastCall?.[1]).toEqual({ method: 'PATCH', body: { api_key: 'secret' } });
+	it('creates a custom provider and omits unset optional fields', async () => {
+		const custom = { ...provider, id: 3, kind: 'custom', preset: false, base_url: 'https://dict.example' };
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ provider: custom });
+		await expect(createDictionaryProvider({ name: 'Mine', base_url: 'https://dict.example' })).resolves.toEqual(custom);
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/providers', {
+			method: 'POST',
+			body: { name: 'Mine', base_url: 'https://dict.example' }
+		});
+		await createDictionaryProvider({ name: 'Mine', base_url: 'https://dict.example', api_key: 'secret', priority: 5 });
+		expect(request.mock.lastCall?.[1]).toEqual({
+			method: 'POST',
+			body: { name: 'Mine', base_url: 'https://dict.example', api_key: 'secret', priority: 5 }
+		});
 	});
 
-	it('posts a connection test and normalizes the reported status', async () => {
-		const status = {
-			directions: [{ from: 'en', to: 'zh', sources: ['ecdict'] }],
-			sources: [{ id: 'ecdict', name: 'ECDICT', license: 'MIT', url: '', entries: 1, importedAt: 0 }]
-		};
+	it('patches only provided fields and sends null to remove the key', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ provider });
+		await expect(updateDictionaryProvider(1, { api_key: 'secret' })).resolves.toEqual(provider);
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/providers/1', { method: 'PATCH', body: { api_key: 'secret' } });
+		await updateDictionaryProvider(1, { api_key: null, enabled: false, priority: 0 });
+		expect(request.mock.lastCall?.[1]).toEqual({ method: 'PATCH', body: { api_key: null, enabled: false, priority: 0 } });
+	});
+
+	it('deletes a provider and clears the cache', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValueOnce(undefined);
+		await expect(deleteDictionaryProvider(3)).resolves.toBeUndefined();
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/providers/3', { method: 'DELETE' });
+		request.mockResolvedValueOnce({ deleted: 7 });
+		await expect(clearDictionaryCache()).resolves.toBe(7);
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/cache', { method: 'DELETE' });
+	});
+
+	it('tests a provider, normalizes the status, and propagates problems', async () => {
+		const status = { directions: [{ from: 'en', to: 'en', sources: ['mw-collegiate'] }], sources: [] };
 		const request = vi.spyOn(api, 'request').mockResolvedValueOnce({ status });
-		await expect(testDictionaryConnection()).resolves.toEqual(status);
-		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/test', { method: 'POST' });
+		await expect(testDictionaryProvider(2)).resolves.toEqual(status);
+		expect(request).toHaveBeenLastCalledWith('/admin/dictionary/providers/2/test', { method: 'POST' });
 		request.mockResolvedValueOnce({ status: {} });
-		await expect(testDictionaryConnection()).resolves.toEqual({ directions: [], sources: [] });
-	});
-
-	it('propagates problem responses from the connection test', async () => {
-		vi.spyOn(api, 'request').mockRejectedValue(new ApiError(409, 'Conflict', ''));
-		await expect(testDictionaryConnection()).rejects.toMatchObject({ status: 409 });
+		await expect(testDictionaryProvider(2)).resolves.toEqual({ directions: [], sources: [] });
+		request.mockRejectedValueOnce(new ApiError(409, 'Conflict', ''));
+		await expect(testDictionaryProvider(2)).rejects.toMatchObject({ status: 409 });
 	});
 });

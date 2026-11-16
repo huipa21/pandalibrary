@@ -277,11 +277,15 @@ pronunciation, part of speech, definitions and the dictionary that supplied them
 - Inflected words find their dictionary form, for example *running* → *run*
   or 食べました → 食べる (marked **Base form**). When a longer selection has
   no entry, the longest word at its start is shown (marked **Partial match**).
-- Only directions offered by the online dictionary service can be chosen. The
-  service is configured by an administrator; see
-  [Administration: dictionaries](administration.md#dictionaries). If it is
-  not configured, no directions are available; if it cannot be reached, the
-  dictionary is shown as unavailable.
+- When Merriam-Webster is configured, English lookups can show the
+  pronunciation with a play button for audio, and thesaurus entries list
+  synonyms and antonyms.
+- Only directions offered by the enabled dictionary providers can be chosen.
+  Results from several dictionaries are combined, in the order set by the
+  administrator; see
+  [Administration: dictionaries](administration.md#dictionaries). If no
+  provider is configured, no directions are available; if none can be reached,
+  the dictionary is shown as unavailable.
   Selections are limited to 64 characters. Lookup needs a connection to the
   server and is not available offline.
 

@@ -4,10 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import {
 	adminErrorKey,
-	buildDictionaryPatch,
+	buildDictionaryProviderInput,
+	buildDictionaryProviderPatch,
 	buildProviderPatch,
-	dictionaryDraft,
 	dictionaryFieldErrorKey,
+	dictionaryProviderDraft,
+	dictionaryProviderState,
 	libraryFieldErrorKey,
 	libraryPatch,
 	parsePositiveID,
@@ -18,10 +20,9 @@ import {
 	validateUserDraft,
 	validBaseURL,
 	validateLibraryDraft,
-	type AdminAction,
-	type DictionaryDraft
+	type AdminAction
 } from './form.js';
-import type { DictionarySettings, Library, ProviderSettings, User } from './types.js';
+import type { DictionaryProvider, Library, ProviderSettings, User } from './types.js';
 
 const problem = (status: number) => new ApiError(status, '', '{}', { status });
 const has = (messages: Record<string, string>, key: string) => Object.hasOwn(messages, key);
@@ -137,27 +138,62 @@ describe('provider patches', () => {
 	});
 });
 
-describe('dictionary settings patches', () => {
-	const saved: DictionarySettings = { base_url: 'https://dict.example/api', has_api_key: true, updated_at: '' };
-	const draft = (patch: Partial<DictionaryDraft> = {}): DictionaryDraft => ({ ...dictionaryDraft(saved), ...patch });
+describe('dictionary provider forms', () => {
+	const preset: DictionaryProvider = {
+		id: 1,
+		kind: 'mw-collegiate',
+		name: 'Merriam-Webster',
+		preset: true,
+		base_url: null,
+		has_api_key: false,
+		enabled: false,
+		priority: 10,
+		directions: [],
+		updated_at: ''
+	};
+	const custom: DictionaryProvider = { ...preset, id: 3, kind: 'custom', name: 'Mine', preset: false, base_url: 'https://dict.example/api', has_api_key: true, enabled: true };
+	const draft = (provider: DictionaryProvider, patch: Partial<ReturnType<typeof dictionaryProviderDraft>> = {}) => ({ ...dictionaryProviderDraft(provider), ...patch });
 
-	it('sends only changed fields, clears an empty address, and keeps a blank key', () => {
-		expect(buildDictionaryPatch(saved, draft())).toEqual({ ok: false, field: 'form', error: 'no_changes' });
-		expect(buildDictionaryPatch(saved, draft({ baseURL: '  ' }))).toEqual({ ok: true, patch: { base_url: null }, removesKey: false });
-		expect(buildDictionaryPatch(saved, draft({ baseURL: 'http://localhost:8080' }))).toEqual({
+	it('requires a key for a preset without one and only sends key and priority for presets', () => {
+		expect(buildDictionaryProviderPatch(preset, draft(preset))).toEqual({ ok: false, field: 'api_key', error: 'api_key_required' });
+		expect(buildDictionaryProviderPatch({ ...preset, has_api_key: true }, draft(preset))).toEqual({ ok: false, field: 'form', error: 'no_changes' });
+		expect(buildDictionaryProviderPatch(preset, draft(preset, { apiKey: ' secret ', name: 'ignored', baseURL: 'ftp://x' }))).toEqual({
 			ok: true,
-			patch: { base_url: 'http://localhost:8080' },
-			removesKey: false
+			patch: { api_key: 'secret' }
 		});
-		expect(buildDictionaryPatch(saved, draft({ apiKey: ' secret ' }))).toEqual({ ok: true, patch: { api_key: 'secret' }, removesKey: false });
-		expect(buildDictionaryPatch(saved, draft({ apiKey: 'typed', removeKey: true }))).toEqual({ ok: true, patch: { api_key: null }, removesKey: true });
+		expect(buildDictionaryProviderPatch(preset, draft(preset, { priority: '3' }))).toEqual({ ok: true, patch: { priority: 3 } });
+		expect(buildDictionaryProviderPatch(preset, draft(preset, { priority: '-1' }))).toMatchObject({ ok: false, field: 'priority' });
+		expect(buildDictionaryProviderPatch(preset, draft(preset, { apiKey: 'a\nb' }))).toMatchObject({ ok: false, field: 'api_key' });
 	});
 
-	it('rejects invalid addresses and keys', () => {
-		expect(buildDictionaryPatch(saved, draft({ baseURL: 'ftp://dict.example' }))).toMatchObject({ ok: false, field: 'base_url' });
-		expect(buildDictionaryPatch(saved, draft({ baseURL: 'https://u:p@dict.example' }))).toMatchObject({ ok: false, field: 'base_url' });
-		expect(buildDictionaryPatch(saved, draft({ baseURL: 'https://dict.example/?x=1' }))).toMatchObject({ ok: false, field: 'base_url' });
-		expect(buildDictionaryPatch(saved, draft({ apiKey: 'a\nb' }))).toMatchObject({ ok: false, field: 'api_key' });
+	it('sends changed custom fields and validates the name and address', () => {
+		expect(buildDictionaryProviderPatch(custom, draft(custom, { name: ' Other ', baseURL: 'http://localhost:8080/dict' }))).toEqual({
+			ok: true,
+			patch: { name: 'Other', base_url: 'http://localhost:8080/dict' }
+		});
+		expect(buildDictionaryProviderPatch(custom, draft(custom, { name: ' ' }))).toMatchObject({ ok: false, field: 'name', error: 'name_required' });
+		expect(buildDictionaryProviderPatch(custom, draft(custom, { baseURL: '' }))).toMatchObject({ ok: false, field: 'base_url' });
+		expect(buildDictionaryProviderPatch(custom, draft(custom, { baseURL: 'https://u:p@dict.example' }))).toMatchObject({ ok: false, field: 'base_url' });
+	});
+
+	it('builds the add form input and omits a blank key and priority', () => {
+		const blank = dictionaryProviderDraft();
+		expect(buildDictionaryProviderInput({ ...blank, name: 'Mine', baseURL: 'https://dict.example' })).toEqual({
+			ok: true,
+			input: { name: 'Mine', base_url: 'https://dict.example' }
+		});
+		expect(buildDictionaryProviderInput({ name: 'Mine', baseURL: 'https://dict.example', apiKey: 'k', priority: '7' })).toEqual({
+			ok: true,
+			input: { name: 'Mine', base_url: 'https://dict.example', api_key: 'k', priority: 7 }
+		});
+		expect(buildDictionaryProviderInput({ ...blank, name: 'Mine', baseURL: 'https://dict.example/?x=1' })).toMatchObject({ ok: false, field: 'base_url' });
+		expect(buildDictionaryProviderInput({ ...blank, baseURL: 'https://dict.example' })).toMatchObject({ ok: false, field: 'name' });
+	});
+
+	it('derives the card status', () => {
+		expect(dictionaryProviderState(preset)).toBe('needs_key');
+		expect(dictionaryProviderState({ ...preset, has_api_key: true, enabled: true })).toBe('enabled');
+		expect(dictionaryProviderState({ ...custom, has_api_key: false, enabled: false })).toBe('disabled');
 	});
 });
 
@@ -174,7 +210,8 @@ describe('admin error keys', () => {
 		expect(adminErrorKey(problem(503), 'upload')).toBe('admin.error.importer_stopped');
 		expect(adminErrorKey(problem(400), 'grant')).toBe('admin.error.grant_invalid');
 		expect(adminErrorKey(problem(502), 'save_provider')).toBe('admin.error.provider_failed');
-		expect(adminErrorKey(problem(409), 'test_dictionary')).toBe('admin.dictionaries.error.no_address');
+		expect(adminErrorKey(problem(409), 'test_dictionary')).toBe('admin.dictionaries.error.missing_config');
+		expect(adminErrorKey(problem(404), 'delete_dictionary')).toBe('admin.dictionaries.error.not_found');
 		expect(adminErrorKey(problem(502), 'test_dictionary')).toBe('admin.dictionaries.error.unreachable');
 		expect(adminErrorKey(problem(400), 'save_dictionary')).toBe('admin.dictionaries.error.invalid');
 	});
@@ -196,6 +233,8 @@ describe('admin error keys', () => {
 			'save_provider',
 			'save_dictionary',
 			'test_dictionary',
+			'delete_dictionary',
+			'clear_dictionary_cache',
 			'run_job'
 		];
 		const keys = new Set<string>();
@@ -217,7 +256,17 @@ describe('admin error keys', () => {
 		] as const) {
 			keys.add(providerFieldErrorKey(error));
 		}
-		for (const error of ['base_url_invalid', 'api_key_invalid', 'no_changes'] as const) keys.add(dictionaryFieldErrorKey(error));
+		for (const error of [
+			'name_required',
+			'name_too_long',
+			'base_url_invalid',
+			'api_key_required',
+			'api_key_invalid',
+			'priority_invalid',
+			'no_changes'
+		] as const) {
+			keys.add(dictionaryFieldErrorKey(error));
+		}
 		for (const error of [
 			'username_required',
 			'username_too_long',

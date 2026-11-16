@@ -39,36 +39,58 @@ func (f *fakeDictionaryService) Status(context.Context) (dictionary.Status, erro
 	return f.status, f.statusErr
 }
 
-type fakeDictionarySettingsService struct {
-	viewers  []catalog.Viewer
-	patches  []dictionary.SettingsPatch
-	settings dictionary.Settings
-	status   dictionary.Status
-	err      error
-	testErr  error
+type fakeDictionaryAdminService struct {
+	viewers   []catalog.Viewer
+	ids       []int64
+	inputs    []dictionary.ProviderInput
+	patches   []dictionary.ProviderPatch
+	providers dictionary.Providers
+	provider  dictionary.Provider
+	status    dictionary.Status
+	deleted   int64
+	err       error
 }
 
-func (f *fakeDictionarySettingsService) Settings(_ context.Context, viewer catalog.Viewer) (dictionary.Settings, error) {
+func (f *fakeDictionaryAdminService) ListProviders(_ context.Context, viewer catalog.Viewer) (dictionary.Providers, error) {
 	f.viewers = append(f.viewers, viewer)
-	return f.settings, f.err
+	return f.providers, f.err
 }
 
-func (f *fakeDictionarySettingsService) UpdateSettings(_ context.Context, viewer catalog.Viewer, patch dictionary.SettingsPatch) (dictionary.Settings, error) {
+func (f *fakeDictionaryAdminService) CreateProvider(_ context.Context, viewer catalog.Viewer, input dictionary.ProviderInput) (dictionary.Provider, error) {
 	f.viewers = append(f.viewers, viewer)
+	f.inputs = append(f.inputs, input)
+	return f.provider, f.err
+}
+
+func (f *fakeDictionaryAdminService) UpdateProvider(_ context.Context, viewer catalog.Viewer, id int64, patch dictionary.ProviderPatch) (dictionary.Provider, error) {
+	f.viewers = append(f.viewers, viewer)
+	f.ids = append(f.ids, id)
 	f.patches = append(f.patches, patch)
-	return f.settings, f.err
+	return f.provider, f.err
 }
 
-func (f *fakeDictionarySettingsService) TestConnection(_ context.Context, viewer catalog.Viewer) (dictionary.Status, error) {
+func (f *fakeDictionaryAdminService) DeleteProvider(_ context.Context, viewer catalog.Viewer, id int64) error {
 	f.viewers = append(f.viewers, viewer)
-	return f.status, f.testErr
+	f.ids = append(f.ids, id)
+	return f.err
+}
+
+func (f *fakeDictionaryAdminService) TestProvider(_ context.Context, viewer catalog.Viewer, id int64) (dictionary.Status, error) {
+	f.viewers = append(f.viewers, viewer)
+	f.ids = append(f.ids, id)
+	return f.status, f.err
+}
+
+func (f *fakeDictionaryAdminService) ClearCache(_ context.Context, viewer catalog.Viewer) (int64, error) {
+	f.viewers = append(f.viewers, viewer)
+	return f.deleted, f.err
 }
 
 type dictionaryHTTPFixture struct {
 	catalogHTTPFixture
-	service  *fakeDictionaryService
-	settings *fakeDictionarySettingsService
-	logs     *bytes.Buffer
+	service      *fakeDictionaryService
+	adminService *fakeDictionaryAdminService
+	logs         *bytes.Buffer
 }
 
 func newDictionaryHTTPFixture(t *testing.T) dictionaryHTTPFixture {
@@ -79,7 +101,7 @@ func newDictionaryHTTPFixture(t *testing.T) dictionaryHTTPFixture {
 		t.Fatal(err)
 	}
 	service := &fakeDictionaryService{}
-	settings := &fakeDictionarySettingsService{}
+	admin := &fakeDictionaryAdminService{}
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
 	protection, err := CookieProtection(&url.URL{Scheme: "https", Host: "books.example"}, logger)
@@ -87,9 +109,9 @@ func newDictionaryHTTPFixture(t *testing.T) dictionaryHTTPFixture {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
-	DictionaryMount(service, settings, authentication, logger)(router, protection)
+	DictionaryMount(service, admin, authentication, logger)(router, protection)
 	fixture.router = router
-	return dictionaryHTTPFixture{catalogHTTPFixture: fixture, service: service, settings: settings, logs: &logs}
+	return dictionaryHTTPFixture{catalogHTTPFixture: fixture, service: service, adminService: admin, logs: &logs}
 }
 
 func (f dictionaryHTTPFixture) get(target string, cookie *http.Cookie) *httptest.ResponseRecorder {
@@ -251,123 +273,175 @@ func TestDictionaryHTTPUnavailable(t *testing.T) {
 	}
 }
 
-func TestDictionaryHTTPAdminSettings(t *testing.T) {
+func TestDictionaryHTTPAdminProvidersAccess(t *testing.T) {
 	fixture := newDictionaryHTTPFixture(t)
 	routes := []struct {
 		method string
 		path   string
 		body   any
 	}{
-		{http.MethodGet, "/api/v1/admin/dictionary/settings", nil},
-		{http.MethodPatch, "/api/v1/admin/dictionary/settings", map[string]any{"base_url": "https://dict.example"}},
-		{http.MethodPost, "/api/v1/admin/dictionary/test", nil},
+		{http.MethodGet, "/api/v1/admin/dictionary/providers", nil},
+		{http.MethodPost, "/api/v1/admin/dictionary/providers", map[string]any{"name": "Mine", "base_url": "https://dict.example"}},
+		{http.MethodPatch, "/api/v1/admin/dictionary/providers/1", map[string]any{"enabled": true}},
+		{http.MethodDelete, "/api/v1/admin/dictionary/providers/1", nil},
+		{http.MethodPost, "/api/v1/admin/dictionary/providers/1/test", nil},
+		{http.MethodDelete, "/api/v1/admin/dictionary/cache", nil},
 	}
 	for _, route := range routes {
 		requireProblem(t, authRequest(t, fixture.router, route.method, route.path, route.body, nil), http.StatusUnauthorized)
 		requireProblem(t, authRequest(t, fixture.router, route.method, route.path, route.body, fixture.reader), http.StatusForbidden)
-	}
-	if len(fixture.settings.viewers) != 0 {
-		t.Fatalf("settings service called without an administrator: %+v", fixture.settings.viewers)
-	}
-
-	baseURL := "https://dict.example"
-	fixture.settings.settings = dictionary.Settings{BaseURL: &baseURL, HasAPIKey: true, UpdatedAt: time.UnixMilli(1700).UTC()}
-	response := authRequest(t, fixture.router, http.MethodGet, "/api/v1/admin/dictionary/settings", nil, fixture.admin)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
-		!strings.Contains(response.Body.String(), `{"settings":{"base_url":"https://dict.example","has_api_key":true,`) {
-		t.Fatalf("settings = %d %q %s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
-	}
-	if !fixture.settings.viewers[0].IsAdmin {
-		t.Fatalf("viewer = %+v", fixture.settings.viewers[0])
-	}
-
-	const secret = "dictionary-write-only-key"
-	response = authRequest(t, fixture.router, http.MethodPatch, "/api/v1/admin/dictionary/settings",
-		map[string]any{"base_url": "https://dict.example", "api_key": secret}, fixture.admin)
-	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
-		strings.Contains(response.Body.String(), secret) || !strings.Contains(response.Body.String(), `"has_api_key":true`) {
-		t.Fatalf("update = %d %s", response.Code, response.Body.String())
-	}
-	patch := fixture.settings.patches[0]
-	if !patch.BaseURL.Set || *patch.BaseURL.Value != baseURL || !patch.APIKey.Set || *patch.APIKey.Value != secret {
-		t.Fatalf("patch = %+v", patch)
-	}
-	authRequest(t, fixture.router, http.MethodPatch, "/api/v1/admin/dictionary/settings", map[string]any{"api_key": nil}, fixture.admin)
-	if patch = fixture.settings.patches[1]; patch.BaseURL.Set || !patch.APIKey.Set || patch.APIKey.Value != nil {
-		t.Fatalf("clearing patch = %+v", patch)
-	}
-
-	for _, body := range []string{`{"unknown":true}`, `{"base_url":1}`, `{} {}`, `not json`} {
-		response = fixture.request(http.MethodPatch, "/api/v1/admin/dictionary/settings", strings.NewReader(body), fixture.admin,
-			map[string]string{"Content-Type": "application/json"})
-		requireProblem(t, response, http.StatusBadRequest)
-	}
-	if len(fixture.settings.patches) != 2 {
-		t.Fatalf("invalid bodies reached the service: %+v", fixture.settings.patches)
-	}
-	fixture.settings.err = fmt.Errorf("%w: base_url must use https", dictionary.ErrInvalid)
-	response = authRequest(t, fixture.router, http.MethodPatch, "/api/v1/admin/dictionary/settings",
-		map[string]any{"base_url": "ftp://dict.example"}, fixture.admin)
-	requireProblem(t, response, http.StatusBadRequest)
-	if !strings.Contains(response.Body.String(), "The dictionary settings are invalid.") {
-		t.Fatalf("invalid settings = %s", response.Body.String())
-	}
-	fixture.settings.err = catalog.ErrForbidden
-	requireProblem(t, authRequest(t, fixture.router, http.MethodGet, "/api/v1/admin/dictionary/settings", nil, fixture.admin), http.StatusForbidden)
-	fixture.settings.err = nil
-
-	for _, method := range []string{http.MethodPatch, http.MethodPost} {
-		path := "/api/v1/admin/dictionary/settings"
-		if method == http.MethodPost {
-			path = "/api/v1/admin/dictionary/test"
+		if route.method == http.MethodGet {
+			continue
 		}
-		calls := len(fixture.settings.viewers)
-		response = fixture.request(method, path, strings.NewReader(`{}`), fixture.admin,
+		response := fixture.request(route.method, route.path, strings.NewReader(`{}`), fixture.admin,
 			map[string]string{"Content-Type": "application/json", "Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"})
 		requireProblem(t, response, http.StatusForbidden)
-		if len(fixture.settings.viewers) != calls {
-			t.Fatalf("cross-site %s reached the service", method)
-		}
 	}
-	if strings.Contains(fixture.logs.String(), secret) {
-		t.Fatal("dictionary settings logged the API key")
+	if len(fixture.adminService.viewers) != 0 {
+		t.Fatalf("admin service called without an allowed administrator request: %+v", fixture.adminService.viewers)
 	}
 }
 
-func TestDictionaryHTTPAdminTestConnection(t *testing.T) {
+func TestDictionaryHTTPAdminProviders(t *testing.T) {
 	fixture := newDictionaryHTTPFixture(t)
-	response := authRequest(t, fixture.router, http.MethodPost, "/api/v1/admin/dictionary/test", nil, fixture.admin)
+	response := authRequest(t, fixture.router, http.MethodGet, "/api/v1/admin/dictionary/providers", nil, fixture.admin)
 	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
-		strings.TrimSpace(response.Body.String()) != `{"status":{"directions":[],"sources":[]}}` {
-		t.Fatalf("empty test = %d %q %s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+		strings.TrimSpace(response.Body.String()) != `{"providers":[],"cache_entries":0}` {
+		t.Fatalf("empty list = %d %q %s", response.Code, response.Header().Get("Cache-Control"), response.Body.String())
 	}
-	fixture.settings.status = dictionary.Status{
-		Directions: []dictionary.Direction{{From: dictionary.English, To: dictionary.Japanese}},
+	if !fixture.adminService.viewers[0].IsAdmin {
+		t.Fatalf("viewer = %+v", fixture.adminService.viewers[0])
 	}
-	response = authRequest(t, fixture.router, http.MethodPost, "/api/v1/admin/dictionary/test", nil, fixture.admin)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"sources":[]}],"sources":[]`) {
+
+	baseURL := "https://dict.example"
+	fixture.adminService.providers = dictionary.Providers{
+		Providers: []dictionary.Provider{
+			{ID: 1, Kind: dictionary.KindMWCollegiate, Preset: true, Directions: []dictionary.Direction{{From: dictionary.English, To: dictionary.English}}},
+			{ID: 3, Kind: dictionary.KindCustom, BaseURL: &baseURL, HasAPIKey: true},
+		},
+		CacheEntries: 7,
+	}
+	response = authRequest(t, fixture.router, http.MethodGet, "/api/v1/admin/dictionary/providers", nil, fixture.admin)
+	body := response.Body.String()
+	if response.Code != http.StatusOK || !strings.Contains(body, `"directions":[{"from":"en","to":"en","sources":[]}]`) ||
+		!strings.Contains(body, `"base_url":"https://dict.example","has_api_key":true`) || !strings.Contains(body, `"directions":[]`) ||
+		!strings.HasSuffix(strings.TrimSpace(body), `"cache_entries":7}`) {
+		t.Fatalf("list = %d %s", response.Code, body)
+	}
+
+	const secret = "dictionary-write-only-key"
+	fixture.adminService.provider = dictionary.Provider{ID: 4, Kind: dictionary.KindCustom, Name: "Mine", BaseURL: &baseURL, HasAPIKey: true, UpdatedAt: time.UnixMilli(1700).UTC()}
+	response = authRequest(t, fixture.router, http.MethodPost, "/api/v1/admin/dictionary/providers",
+		map[string]any{"name": "Mine", "base_url": baseURL, "api_key": secret, "priority": 5}, fixture.admin)
+	if response.Code != http.StatusCreated || response.Header().Get("Cache-Control") != "no-store" || strings.Contains(response.Body.String(), secret) ||
+		!strings.Contains(response.Body.String(), `{"provider":{"id":4,"kind":"custom","name":"Mine"`) || !strings.Contains(response.Body.String(), `"directions":[]`) {
+		t.Fatalf("create = %d %s", response.Code, response.Body.String())
+	}
+	if input := fixture.adminService.inputs[0]; input.Name != "Mine" || input.BaseURL != baseURL || *input.APIKey != secret || *input.Priority != 5 {
+		t.Fatalf("input = %+v", input)
+	}
+
+	response = authRequest(t, fixture.router, http.MethodPatch, "/api/v1/admin/dictionary/providers/4",
+		map[string]any{"api_key": nil, "enabled": false}, fixture.admin)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
+		!strings.Contains(response.Body.String(), `{"provider":{"id":4`) {
+		t.Fatalf("update = %d %s", response.Code, response.Body.String())
+	}
+	if patch := fixture.adminService.patches[0]; fixture.adminService.ids[0] != 4 || !patch.APIKey.Set || patch.APIKey.Value != nil ||
+		!patch.Enabled.Set || *patch.Enabled.Value || patch.Name.Set || patch.BaseURL.Set {
+		t.Fatalf("patch %v = %+v", fixture.adminService.ids, patch)
+	}
+
+	response = authRequest(t, fixture.router, http.MethodDelete, "/api/v1/admin/dictionary/providers/4", nil, fixture.admin)
+	if response.Code != http.StatusNoContent || response.Body.Len() != 0 || fixture.adminService.ids[1] != 4 {
+		t.Fatalf("delete = %d %s %v", response.Code, response.Body.String(), fixture.adminService.ids)
+	}
+
+	fixture.adminService.status = dictionary.Status{Directions: []dictionary.Direction{{From: dictionary.English, To: dictionary.Japanese}}}
+	response = authRequest(t, fixture.router, http.MethodPost, "/api/v1/admin/dictionary/providers/4/test", nil, fixture.admin)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" || fixture.adminService.ids[2] != 4 ||
+		strings.TrimSpace(response.Body.String()) != `{"status":{"directions":[{"from":"en","to":"ja","sources":[]}],"sources":[]}}` {
 		t.Fatalf("test = %d %s", response.Code, response.Body.String())
 	}
 
+	fixture.adminService.deleted = 12
+	response = authRequest(t, fixture.router, http.MethodDelete, "/api/v1/admin/dictionary/cache", nil, fixture.admin)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" ||
+		strings.TrimSpace(response.Body.String()) != `{"deleted":12}` {
+		t.Fatalf("clear cache = %d %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(fixture.logs.String(), secret) {
+		t.Fatal("dictionary provider routes logged the API key")
+	}
+}
+
+func TestDictionaryHTTPAdminProviderBadRequests(t *testing.T) {
+	fixture := newDictionaryHTTPFixture(t)
+	for _, route := range []struct{ method, path string }{
+		{http.MethodPatch, "/api/v1/admin/dictionary/providers/0"},
+		{http.MethodPatch, "/api/v1/admin/dictionary/providers/abc"},
+		{http.MethodDelete, "/api/v1/admin/dictionary/providers/-1"},
+		{http.MethodPost, "/api/v1/admin/dictionary/providers/x/test"},
+	} {
+		response := authRequest(t, fixture.router, route.method, route.path, map[string]any{}, fixture.admin)
+		requireProblem(t, response, http.StatusBadRequest)
+		if response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("%s %s missing no-store", route.method, route.path)
+		}
+	}
+	for _, path := range []string{"/api/v1/admin/dictionary/providers", "/api/v1/admin/dictionary/providers/2"} {
+		method := http.MethodPost
+		if strings.HasSuffix(path, "/2") {
+			method = http.MethodPatch
+		}
+		for _, body := range []string{`{"unknown":true}`, `{"name":1}`, `{} {}`, `not json`} {
+			response := fixture.request(method, path, strings.NewReader(body), fixture.admin,
+				map[string]string{"Content-Type": "application/json"})
+			requireProblem(t, response, http.StatusBadRequest)
+		}
+	}
+	if len(fixture.adminService.viewers) != 0 {
+		t.Fatalf("invalid requests reached the service: %+v", fixture.adminService.viewers)
+	}
+}
+
+func TestDictionaryHTTPAdminProviderErrors(t *testing.T) {
+	fixture := newDictionaryHTTPFixture(t)
+	routes := []struct {
+		method string
+		path   string
+		body   any
+	}{
+		{http.MethodGet, "/api/v1/admin/dictionary/providers", nil},
+		{http.MethodPost, "/api/v1/admin/dictionary/providers", map[string]any{"name": "Mine", "base_url": "ftp://dict.example"}},
+		{http.MethodPatch, "/api/v1/admin/dictionary/providers/9", map[string]any{"priority": 1}},
+		{http.MethodDelete, "/api/v1/admin/dictionary/providers/9", nil},
+		{http.MethodPost, "/api/v1/admin/dictionary/providers/9/test", nil},
+		{http.MethodDelete, "/api/v1/admin/dictionary/cache", nil},
+	}
 	for _, test := range []struct {
 		err    error
 		status int
 		detail string
 	}{
-		{dictionary.ErrNotConfigured, http.StatusConflict, "Set the dictionary API address first."},
-		{fmt.Errorf("%w: dial https://dict.example?key=secret-key", dictionary.ErrUnavailable), http.StatusBadGateway, "The dictionary API could not be reached."},
+		{fmt.Errorf("%w: base_url must use https secret-key", dictionary.ErrInvalid), http.StatusBadRequest, "The dictionary provider settings are invalid."},
+		{dictionary.ErrNotFound, http.StatusNotFound, ""},
+		{dictionary.ErrNotConfigured, http.StatusConflict, "Enter the provider's API key or address first."},
+		{fmt.Errorf("%w: dial https://dict.example?key=secret-key", dictionary.ErrUnavailable), http.StatusBadGateway, "The dictionary provider could not be reached."},
 		{catalog.ErrForbidden, http.StatusForbidden, ""},
 		{errors.New("boom secret-key"), http.StatusInternalServerError, ""},
 	} {
-		fixture.settings.testErr = test.err
-		response = authRequest(t, fixture.router, http.MethodPost, "/api/v1/admin/dictionary/test", nil, fixture.admin)
-		requireProblem(t, response, test.status)
-		if response.Header().Get("Cache-Control") != "no-store" || !strings.Contains(response.Body.String(), test.detail) ||
-			strings.Contains(response.Body.String(), "secret-key") {
-			t.Fatalf("%v = %q %s", test.err, response.Header().Get("Cache-Control"), response.Body.String())
+		fixture.adminService.err = test.err
+		for _, route := range routes {
+			response := authRequest(t, fixture.router, route.method, route.path, route.body, fixture.admin)
+			requireProblem(t, response, test.status)
+			if response.Header().Get("Cache-Control") != "no-store" || !strings.Contains(response.Body.String(), test.detail) ||
+				strings.Contains(response.Body.String(), "secret-key") {
+				t.Fatalf("%s %s %v = %q %s", route.method, route.path, test.err, response.Header().Get("Cache-Control"), response.Body.String())
+			}
 		}
 	}
 	if strings.Contains(fixture.logs.String(), "secret-key") {
-		t.Fatalf("connection test logged upstream details: %s", fixture.logs.String())
+		t.Fatalf("dictionary admin routes logged raw errors: %s", fixture.logs.String())
 	}
 }
