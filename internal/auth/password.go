@@ -20,6 +20,8 @@ const (
 	passwordThreads   = 4
 	passwordSaltBytes = 16
 	passwordKeyBytes  = 32
+	minPasswordLength = 8
+	maxPasswordLength = 32
 	maxPasswordBytes  = 1024
 )
 
@@ -92,11 +94,12 @@ func validatePassword(password string) error {
 	if !utf8.ValidString(password) {
 		return errors.New("password must be valid UTF-8")
 	}
-	if len(password) < 12 {
-		return errors.New("password must be at least 12 bytes")
+	length := utf8.RuneCountInString(password)
+	if length < minPasswordLength {
+		return fmt.Errorf("password must be at least %d characters", minPasswordLength)
 	}
-	if len(password) > maxPasswordBytes {
-		return fmt.Errorf("password must not exceed %d bytes", maxPasswordBytes)
+	if length > maxPasswordLength {
+		return fmt.Errorf("password must not exceed %d characters", maxPasswordLength)
 	}
 	return nil
 }

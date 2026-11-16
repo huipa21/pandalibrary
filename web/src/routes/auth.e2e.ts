@@ -77,7 +77,17 @@ test('setup, manage an app password, sign out, and sign in', async ({ page }) =>
 	await page.goto('/setup');
 	await page.getByLabel('One-time setup token').fill('setup-token');
 	await page.getByLabel('Username').fill('admin');
-	await page.getByLabel('Password').fill('correct horse battery');
+	const passwordInput = page.getByLabel('Password', { exact: true });
+	await passwordInput.fill('correct horse battery');
+	await page.getByRole('button', { name: 'Show password' }).first().click();
+	await expect(passwordInput).toHaveAttribute('type', 'text');
+	await page.getByRole('button', { name: 'Hide password' }).first().click();
+	await expect(passwordInput).toHaveAttribute('type', 'password');
+	const confirmationInput = page.getByLabel('Confirm password', { exact: true });
+	await confirmationInput.fill('different password');
+	await page.getByRole('button', { name: 'Create administrator' }).click();
+	await expect(page.getByText('The passwords do not match.')).toBeVisible();
+	await confirmationInput.fill('correct horse battery');
 	await page.getByRole('button', { name: 'Create administrator' }).click();
 	await expect(page).toHaveURL('/');
 	await page.getByRole('button', { name: 'Account menu' }).click();

@@ -15,6 +15,9 @@ export async function signInRealAdmin(page: Page) {
 	}
 	await page.getByLabel('Username', { exact: true }).fill(realAdmin.username);
 	await page.getByLabel('Password', { exact: true }).fill(realAdmin.password);
+	if (required) {
+		await page.getByLabel('Confirm password', { exact: true }).fill(realAdmin.password);
+	}
 	await page.getByRole('button', { name: required ? 'Create administrator' : 'Sign in', exact: true }).click();
 	await expect(page).toHaveURL('/');
 }

@@ -21,8 +21,8 @@ export const MAX_PROVIDER_PRIORITY = 10000;
 export const MAX_PROVIDER_TOKEN_BYTES = 8192;
 export const MAX_USERNAME_BYTES = 64;
 export const MAX_DISPLAY_NAME_BYTES = 128;
-export const MIN_PASSWORD_LENGTH = 12;
-export const MAX_PASSWORD_LENGTH = 1024;
+export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_PASSWORD_LENGTH = 32;
 
 /** Returns a positive safe integer ID, or null for anything else. */
 export function parsePositiveID(value: string): number | null {
@@ -69,13 +69,13 @@ export function validateUserDraft(draft: Partial<UserFormDraft>, requirePassword
 	}
 
 	const password = draft.password ?? '';
-	const passwordBytes = encoder.encode(password).length;
+	const passwordLength = Array.from(password).length;
 	if (requirePassword) {
 		if (!password) return { ok: false, field: 'password', error: 'password_required' };
 	}
 	if (password) {
-		if (passwordBytes < MIN_PASSWORD_LENGTH) return { ok: false, field: 'password', error: 'password_too_short' };
-		if (passwordBytes > MAX_PASSWORD_LENGTH) return { ok: false, field: 'password', error: 'password_too_long' };
+		if (passwordLength < MIN_PASSWORD_LENGTH) return { ok: false, field: 'password', error: 'password_too_short' };
+		if (passwordLength > MAX_PASSWORD_LENGTH) return { ok: false, field: 'password', error: 'password_too_long' };
 	}
 
 	const role = draft.role ?? 'user';

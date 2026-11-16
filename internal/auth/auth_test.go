@@ -48,6 +48,19 @@ func TestPasswordHashAndSemaphore(t *testing.T) {
 	}
 }
 
+func TestPasswordPolicy(t *testing.T) {
+	for _, password := range []string{"", "1234567", strings.Repeat("x", 33)} {
+		if err := validatePassword(password); err == nil {
+			t.Fatalf("validatePassword(%q) accepted an out-of-range password", password)
+		}
+	}
+	for _, password := range []string{"12345678", strings.Repeat("x", 32), strings.Repeat("书", 8)} {
+		if err := validatePassword(password); err != nil {
+			t.Fatalf("validatePassword(%q) rejected a valid password: %v", password, err)
+		}
+	}
+}
+
 func TestRateLimiterBoundAndReset(t *testing.T) {
 	limiter := NewRateLimiter()
 	now := time.Now()
