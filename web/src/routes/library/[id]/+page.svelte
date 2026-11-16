@@ -60,6 +60,6 @@
 {:else if library}
 	<section>
 		<h1 class="sr-only">{library.name}</h1>
-		<BookBrowser scope={{ library_id: library.id }} showHeading={false} />
+		<BookBrowser scope={{ library_id: library.id }} showHeading={false} selectionEnabled />
 	</section>
 {/if}

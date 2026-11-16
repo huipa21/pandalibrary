@@ -112,6 +112,48 @@ export async function moveBook(bookId: number, libraryId: number): Promise<Book>
 	return response.book;
 }
 
+export async function deleteBook(bookId: number): Promise<void> {
+	const response = await api.request<{ deleted: boolean }>(`/books/${bookId}`, { method: 'DELETE' });
+	if (response?.deleted !== true) throw new Error('The server did not confirm the book deletion.');
+}
+
+export interface BulkBookOutcome {
+	readonly succeeded: number[];
+	readonly failed: number[];
+}
+
+function uniqueBookIDs(bookIds: readonly number[]): number[] {
+	return [...new Set(bookIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
+}
+
+export async function moveBooks(bookIds: readonly number[], libraryId: number): Promise<BulkBookOutcome> {
+	const succeeded: number[] = [];
+	const failed: number[] = [];
+	for (const id of uniqueBookIDs(bookIds)) {
+		try {
+			await moveBook(id, libraryId);
+			succeeded.push(id);
+		} catch {
+			failed.push(id);
+		}
+	}
+	return { succeeded, failed };
+}
+
+export async function deleteBooks(bookIds: readonly number[]): Promise<BulkBookOutcome> {
+	const succeeded: number[] = [];
+	const failed: number[] = [];
+	for (const id of uniqueBookIDs(bookIds)) {
+		try {
+			await deleteBook(id);
+			succeeded.push(id);
+		} catch {
+			failed.push(id);
+		}
+	}
+	return { succeeded, failed };
+}
+
 /** Lists the viewer-visible manual shelves (including Favorites) that contain a book. */
 export async function getBookShelves(bookId: number, signal?: AbortSignal): Promise<Shelf[]> {
 	const response = await api.request<{ shelves: Shelf[] }>(

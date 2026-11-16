@@ -3,7 +3,7 @@ import zh from '../../../messages/zh.json';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '#lib/api/client.js';
 import type { Shelf } from '#lib/shelves/types.js';
-import { buildBooksPath, buildPagePath, countBooks, DEFAULT_PAGE_SIZE, getBookShelves, listAllLibraries, MAX_PAGE_SIZE } from './api';
+import { buildBooksPath, buildPagePath, countBooks, DEFAULT_PAGE_SIZE, deleteBook, deleteBooks, getBookShelves, listAllLibraries, MAX_PAGE_SIZE, moveBooks } from './api';
 import { allowsCatalogFilters, bookFiltersFromSearch, hasNextPage, selectedSort, setCatalogFilter } from './query';
 
 afterEach(() => vi.restoreAllMocks());
@@ -55,6 +55,38 @@ describe('getBookShelves', () => {
 	it('propagates request failures', async () => {
 		vi.spyOn(api, 'request').mockRejectedValue(new Error('not found'));
 		await expect(getBookShelves(404)).rejects.toThrow('not found');
+	});
+});
+
+describe('bulk book actions', () => {
+	it('deletes one book and validates the server confirmation', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ deleted: true });
+		await expect(deleteBook(21)).resolves.toBeUndefined();
+		expect(request).toHaveBeenCalledWith('/books/21', { method: 'DELETE' });
+
+		request.mockResolvedValueOnce({ deleted: false });
+		await expect(deleteBook(22)).rejects.toThrow('did not confirm');
+	});
+
+	it('deduplicates selected IDs and reports partial move failures', async () => {
+		const book = (id: number, libraryId: number) => ({
+			id, library_id: libraryId, title: `Book ${id}`, sort_title: `Book ${id}`
+		});
+		const request = vi.spyOn(api, 'request')
+			.mockResolvedValueOnce({ book: book(2, 7) })
+			.mockRejectedValueOnce(new Error('destination conflict'));
+		await expect(moveBooks([2, 2, 3, 0, Number.NaN], 7)).resolves.toEqual({ succeeded: [2], failed: [3] });
+		expect(request.mock.calls.map(([path, options]) => [path, options?.method, options?.body])).toEqual([
+			['/books/2', 'PATCH', { library_id: 7 }],
+			['/books/3', 'PATCH', { library_id: 7 }]
+		]);
+	});
+
+	it('summarizes successful and failed deletions', async () => {
+		vi.spyOn(api, 'request')
+			.mockResolvedValueOnce({ deleted: true })
+			.mockRejectedValueOnce(new Error('book is unavailable'));
+		await expect(deleteBooks([4, 5])).resolves.toEqual({ succeeded: [4], failed: [5] });
 	});
 });
 

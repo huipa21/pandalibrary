@@ -4,16 +4,20 @@
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import { catalogErrorMessage } from './errors.js';
-	import { listAllEntities, listBooks } from './api.js';
-	import { filterControlClass } from './filter-styles.js';
+	import { listAllEntities, listBooks, type BulkBookOutcome } from './api.js';
+	import { controlIconClass, filterControlClass, iconControlClass } from './filter-styles.js';
 	import { allowsCatalogFilters, bookFiltersFromSearch, bookPageOptions, hasNextPage, selectedSort, setCatalogFilter } from './query.js';
 	import type { Book, BookFilters, BookSort, CatalogEntity, EntityKind } from './types.js';
 	import BookCard from './BookCard.svelte';
+	import BulkBookActions from './BulkBookActions.svelte';
 	import ClearFiltersButton from './ClearFiltersButton.svelte';
 	import ViewToggle from './ViewToggle.svelte';
 	import { bookDisplay } from './book-display.svelte.js';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import { requestErrorKind } from '#lib/paging/errors.js';
+	import { getSessionViewer } from '#lib/shelves/api.js';
+	import { isAdministrator } from '#lib/shelves/form.js';
+	import Icon from '#lib/bookview/Icon.svelte';
 
 	let {
 		scope,
@@ -22,7 +26,8 @@
 		fetchBooks = listBooks,
 		bookErrorMessage,
 		bookActions,
-		refreshKey = 0
+		refreshKey = 0,
+		selectionEnabled = false
 	}: {
 		scope: BookFilters;
 		showHeading?: boolean;
@@ -31,6 +36,8 @@
 		bookErrorMessage?: (cause: unknown, more: boolean) => string;
 		bookActions?: Snippet<[Book]>;
 		refreshKey?: number;
+		/** Offers multi-select and bulk move/delete controls when the viewer is an administrator. */
+		selectionEnabled?: boolean;
 	} = $props();
 	const filtersKey = 'pandalibrary.books.filters';
 	const viewKey = 'pandalibrary.books.view';
@@ -51,6 +58,12 @@
 	let mode = $state<'grid' | 'list'>('grid');
 	let reloadVersion = $state(0);
 	let requestVersion = 0;
+	let canManageBooks = $state(false);
+	let selecting = $state(false);
+	let selectedIDs = $state<number[]>([]);
+	let bulkNotice = $state('');
+	let bulkAlert = $state(false);
+	const selectedBooks = $derived(books.filter((book) => selectedIDs.includes(book.id)));
 	const selectedAuthor = $derived(page.url.searchParams.get('author_id') ?? '');
 	const selectedSeries = $derived(page.url.searchParams.get('series_id') ?? '');
 	const selectedTag = $derived(page.url.searchParams.get('tag_id') ?? '');
@@ -68,8 +81,17 @@
 
 	onMount(() => {
 		if (filterable) void loadFilterOptions();
+		if (selectionEnabled) void loadSelectionAccess();
 		void restoreSettings();
 	});
+
+	async function loadSelectionAccess() {
+		try {
+			canManageBooks = isAdministrator(await getSessionViewer());
+		} catch (cause) {
+			console.error('Could not determine whether bulk book actions are available', cause);
+		}
+	}
 
 	async function restoreSettings() {
 		try {
@@ -165,6 +187,7 @@
 			const result = await fetch(effectiveFilters, effectiveSort);
 			if (request !== requestVersion) return;
 			books = result.items;
+			selectedIDs = selectedIDs.filter((id) => result.items.some((book) => book.id === id));
 			nextCursor = result.next_cursor;
 		} catch (cause) {
 			if (request !== requestVersion) return;
@@ -199,6 +222,7 @@
 	}
 
 	async function changeQuery(key: 'author_id' | 'series_id' | 'tag_id' | 'sort', value: string) {
+		clearBulkFeedback();
 		const params = setCatalogFilter(
 			new URLSearchParams(page.url.searchParams.toString()),
 			key,
@@ -214,6 +238,7 @@
 	}
 
 	async function clearFilters() {
+		clearBulkFeedback();
 		const params = new URLSearchParams(page.url.searchParams.toString());
 		for (const key of [...settingKeys, 'cursor']) params.delete(key);
 		const query = params.toString();
@@ -222,6 +247,40 @@
 		} catch {
 			error = m['catalog.error.navigation']();
 		}
+	}
+
+	function clearBulkFeedback() {
+		bulkNotice = '';
+		bulkAlert = false;
+	}
+
+	function toggleSelectionMode() {
+		selecting = !selecting;
+		if (!selecting) selectedIDs = [];
+		clearBulkFeedback();
+	}
+
+	function toggleBook(bookID: number, selected: boolean) {
+		selectedIDs = selected
+			? [...new Set([...selectedIDs, bookID])]
+			: selectedIDs.filter((id) => id !== bookID);
+		clearBulkFeedback();
+	}
+
+	function finishBulk(action: 'move' | 'delete', outcome: BulkBookOutcome) {
+		const succeeded = new Set(outcome.succeeded);
+		selectedIDs = selectedIDs.filter((id) => !succeeded.has(id));
+		bulkAlert = outcome.failed.length > 0;
+		if (bulkAlert) {
+			bulkNotice = action === 'move'
+				? m['catalog.selection.move_partial']({ moved: outcome.succeeded.length, failed: outcome.failed.length })
+				: m['catalog.selection.delete_partial']({ deleted: outcome.succeeded.length, failed: outcome.failed.length });
+		} else {
+			bulkNotice = action === 'move'
+				? m['catalog.selection.move_success']({ count: outcome.succeeded.length })
+				: m['catalog.selection.delete_success']({ count: outcome.succeeded.length });
+		}
+		reloadVersion += 1;
 	}
 </script>
 
@@ -301,8 +360,34 @@
 					disabled={!selectedAuthor && !selectedSeries && !selectedTag && sort === 'title'}
 				/>
 			{/if}
+			{#if canManageBooks}
+				<button
+					type="button"
+					class={iconControlClass}
+					aria-label={selecting ? m['catalog.books.exit_multi_select']() : m['catalog.books.multi_select']()}
+					title={selecting ? m['catalog.books.exit_multi_select']() : m['catalog.books.multi_select']()}
+					aria-pressed={selecting}
+					onclick={toggleSelectionMode}
+				>
+					<Icon name="check" class={controlIconClass} />
+				</button>
+				{#if selecting && selectedBooks.length > 0}
+					<BulkBookActions
+						selected={selectedBooks}
+						currentLibraryId={scope.library_id}
+						disabled={loading || loadingMore}
+						onfinished={finishBulk}
+					/>
+				{/if}
+			{/if}
 		</div>
 	</div>
+
+	{#if bulkNotice}
+		<p class={bulkAlert
+			? 'rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800'
+			: 'rounded-md bg-emerald-50 p-3 text-sm text-emerald-900'} role={bulkAlert ? 'alert' : 'status'}>{bulkNotice}</p>
+	{/if}
 
 	{#if optionsLoading}
 		<p class="text-sm text-slate-600" role="status">{m['catalog.books.loading_filters']()}</p>
@@ -326,7 +411,15 @@
 		<ul class={mode === 'grid' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${bookDisplay.size}px; --book-cover-spacing: ${bookDisplay.spacing}px`}>
 			{#each books as book (book.id)}
 				{#snippet actions()}{@render bookActions?.(book)}{/snippet}
-				<BookCard {book} {mode} actions={bookActions ? actions : undefined} />
+				<BookCard
+					{book}
+					{mode}
+					actions={bookActions ? actions : undefined}
+					selectable={canManageBooks && selecting}
+					selected={selectedIDs.includes(book.id)}
+					selectionLabel={m['catalog.books.select']({ title: book.title })}
+					onselect={(selected) => toggleBook(book.id, selected)}
+				/>
 			{/each}
 		</ul>
 		{#if moreError}
