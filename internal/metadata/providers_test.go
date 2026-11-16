@@ -181,6 +181,108 @@ func TestProviderFallbackQuery(t *testing.T) {
 	}
 }
 
+func TestMainlandProviderFixtures(t *testing.T) {
+	t.Run("crossref", func(t *testing.T) {
+		p := testAdapter(t, "crossref", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/works" || r.URL.Query().Get("filter") != "isbn:9781234567897" {
+				t.Errorf("Crossref request = %s", r.URL)
+			}
+			_, _ = w.Write(fixture(t, "crossref"))
+		})
+		result, err := p.Search(context.Background(), Query{ISBN: "9781234567897"})
+		if err != nil || len(result) != 1 {
+			t.Fatalf("Crossref search = %+v, %v", result, err)
+		}
+		c := result[0]
+		if c.Provider != "crossref" || c.Reference != "10.1234/test.book" || c.Title != "Test Library" ||
+			c.Subtitle == nil || *c.Subtitle != "A fixture" || c.Publisher == nil || *c.Publisher != "Test Press" ||
+			c.PublishedDate == nil || *c.PublishedDate != "2024-02-29" || len(c.Authors) != 2 || c.Authors[0].Role != "author" ||
+			!reflect.DeepEqual(c.Identifiers, []Identifier{{Scheme: "isbn13", Value: "9781234567897"}, {Scheme: "doi", Value: "10.1234/test.book"}}) {
+			t.Fatalf("Crossref normalization = %+v", c)
+		}
+	})
+
+	t.Run("openbd", func(t *testing.T) {
+		p := testAdapter(t, "openbd", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/get" || r.URL.Query().Get("isbn") != "9781234567897" {
+				t.Errorf("OpenBD request = %s", r.URL)
+			}
+			_, _ = w.Write(fixture(t, "openbd"))
+		})
+		result, err := p.Search(context.Background(), Query{ISBN: "9781234567897"})
+		if err != nil || len(result) != 1 {
+			t.Fatalf("OpenBD search = %+v, %v", result, err)
+		}
+		c := result[0]
+		if c.Provider != "openbd" || c.Reference != "9781234567897" || c.Title != "Test Library" ||
+			c.Publisher == nil || *c.Publisher != "Test Press" || c.PublishedDate == nil || *c.PublishedDate != "2024-02" ||
+			c.Series == nil || c.Series.Name != "Library Series" || c.CoverURL == nil || len(c.Authors) != 1 || c.Authors[0].Name != "Test Author" {
+			t.Fatalf("OpenBD normalization = %+v", c)
+		}
+	})
+
+	t.Run("douban", func(t *testing.T) {
+		data, err := os.ReadFile(filepath.Join("testdata", "douban.html"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := testAdapter(t, "douban", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/isbn/9781234567897/" && r.URL.Path != "/subject/1234567/" {
+				t.Errorf("Douban request = %s", r.URL)
+			}
+			_, _ = w.Write(data)
+		})
+		result, err := p.Search(context.Background(), Query{ISBN: "9781234567897"})
+		if err != nil || len(result) != 1 {
+			t.Fatalf("Douban search = %+v, %v", result, err)
+		}
+		c := result[0]
+		if c.Provider != "douban" || c.Reference != "1234567" || c.Title != "Test Library" ||
+			c.Subtitle == nil || *c.Subtitle != "A fixture" || c.Publisher == nil || *c.Publisher != "Test Press" ||
+			c.PublishedDate == nil || *c.PublishedDate != "2024-02-29" || c.PageCount == nil || *c.PageCount != 321 ||
+			c.Series == nil || c.Series.Name != "Library Series" || c.Rating == nil || *c.Rating != 4.55 ||
+			c.RatingCount == nil || *c.RatingCount != 3991 || len(c.Authors) != 2 || c.Authors[1].Role != "translator" {
+			t.Fatalf("Douban normalization = %+v", c)
+		}
+		got, err := p.Get(context.Background(), "1234567")
+		if err != nil || got.Reference != "1234567" {
+			t.Fatalf("Douban get = %+v, %v", got, err)
+		}
+	})
+
+	t.Run("douban-mobile", func(t *testing.T) {
+		data, err := os.ReadFile(filepath.Join("testdata", "douban-mobile.html"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := testAdapter(t, "douban", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write(data)
+		})
+		result, err := p.Search(context.Background(), Query{ISBN: "9787530221532"})
+		if err != nil || len(result) != 1 {
+			t.Fatalf("Douban mobile search = %+v, %v", result, err)
+		}
+		c := result[0]
+		if c.Reference != "35481711" || c.Title != "活着" || c.Publisher == nil || *c.Publisher != "北京十月文艺出版社" ||
+			c.PublishedDate == nil || *c.PublishedDate != "2021-07" || c.Rating == nil || *c.Rating != 4.7 ||
+			c.RatingCount == nil || *c.RatingCount != 3379 || len(c.Authors) != 1 || c.Authors[0].Name != "余华" ||
+			!reflect.DeepEqual(c.Identifiers, []Identifier{{Scheme: "isbn13", Value: "9787530221532"}, {Scheme: "douban", Value: "35481711"}}) {
+			t.Fatalf("Douban mobile normalization = %+v", c)
+		}
+	})
+
+	t.Run("douban-json-search", func(t *testing.T) {
+		data, err := os.ReadFile(filepath.Join("testdata", "douban-search.html"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids, err := parseDoubanSearch(data)
+		if err != nil || !reflect.DeepEqual(ids, []string{"35481711", "4913064", "27064488"}) {
+			t.Fatalf("Douban JSON search = %v, %v", ids, err)
+		}
+	})
+}
+
 func TestProviderFailuresAreBoundedAndRedacted(t *testing.T) {
 	for _, name := range []string{"openlibrary", "googlebooks", "neodb", "hardcover"} {
 		for _, test := range []struct {

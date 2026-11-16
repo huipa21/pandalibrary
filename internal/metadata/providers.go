@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	nethtml "golang.org/x/net/html"
 )
 
 const (
@@ -49,9 +51,9 @@ func newAdapter(name string, base *string, token string) (Provider, error) {
 
 func (p *adapter) Name() string { return p.name }
 
-func (p *adapter) request(ctx context.Context, path string, values url.Values, body any, dest any) error {
+func (p *adapter) fetch(ctx context.Context, path string, values url.Values, body any, accept string) ([]byte, error) {
 	if (p.name == "neodb" || p.name == "hardcover") && p.token == "" {
-		return failure("credentials_required")
+		return nil, failure("credentials_required")
 	}
 	u := *p.base
 	u.Path = path
@@ -67,16 +69,16 @@ func (p *adapter) request(ctx context.Context, path string, values url.Values, b
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			return failure("invalid_request")
+			return nil, failure("invalid_request")
 		}
 		reader = bytes.NewReader(data)
 		method = http.MethodPost
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), reader)
 	if err != nil {
-		return failure("invalid_request")
+		return nil, failure("invalid_request")
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", accept)
 	req.Header.Set("User-Agent", userAgent)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -87,28 +89,36 @@ func (p *adapter) request(ctx context.Context, path string, values url.Values, b
 	res, err := p.client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return nil, ctx.Err()
 		}
-		return failure("network_error")
+		return nil, failure("network_error")
 	}
 	defer res.Body.Close()
 	switch res.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound:
-		return ErrNotFound
+		return nil, ErrNotFound
 	case http.StatusTooManyRequests:
-		return failure("rate_limited")
+		return nil, failure("rate_limited")
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return failure("authentication_failed")
+		return nil, failure("authentication_failed")
 	default:
-		return failure("upstream_error")
+		return nil, failure("upstream_error")
 	}
 	data, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes+1))
 	if err != nil {
-		return failure("response_read_failed")
+		return nil, failure("response_read_failed")
 	}
 	if len(data) > maxResponseBytes {
-		return failure("response_too_large")
+		return nil, failure("response_too_large")
+	}
+	return data, nil
+}
+
+func (p *adapter) request(ctx context.Context, path string, values url.Values, body any, dest any) error {
+	data, err := p.fetch(ctx, path, values, body, "application/json")
+	if err != nil {
+		return err
 	}
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) || json.Unmarshal(data, dest) != nil {
 		return failure("invalid_response")
@@ -126,6 +136,12 @@ func (p *adapter) Search(ctx context.Context, q Query) ([]Candidate, error) {
 		return p.neoDB(ctx, q, "")
 	case "hardcover":
 		return p.hardcover(ctx, q, "")
+	case "crossref":
+		return p.crossref(ctx, q, "")
+	case "openbd":
+		return p.openBD(ctx, q, "")
+	case "douban":
+		return p.douban(ctx, q, "")
 	default:
 		return nil, ErrInvalid
 	}
@@ -133,10 +149,21 @@ func (p *adapter) Search(ctx context.Context, q Query) ([]Candidate, error) {
 
 var safeReference = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 var openReference = regexp.MustCompile(`^/(works|books)/OL[0-9]+[WM]$`)
+var crossrefReference = regexp.MustCompile(`^10\.[0-9]{4,9}/[!-~]{1,200}$`)
+
+func validProviderReference(name, ref string) bool {
+	switch name {
+	case "openlibrary":
+		return openReference.MatchString(ref)
+	case "crossref":
+		return crossrefReference.MatchString(ref)
+	default:
+		return safeReference.MatchString(ref)
+	}
+}
 
 func (p *adapter) Get(ctx context.Context, ref string) (*Candidate, error) {
-	if (p.name == "openlibrary" && !openReference.MatchString(ref)) ||
-		(p.name != "openlibrary" && !safeReference.MatchString(ref)) {
+	if !validProviderReference(p.name, ref) {
 		return nil, ErrInvalid
 	}
 	var result []Candidate
@@ -150,6 +177,12 @@ func (p *adapter) Get(ctx context.Context, ref string) (*Candidate, error) {
 		result, err = p.neoDB(ctx, Query{}, ref)
 	case "hardcover":
 		result, err = p.hardcover(ctx, Query{}, ref)
+	case "crossref":
+		result, err = p.crossref(ctx, Query{}, ref)
+	case "openbd":
+		result, err = p.openBD(ctx, Query{}, ref)
+	case "douban":
+		result, err = p.douban(ctx, Query{}, ref)
 	default:
 		return nil, ErrInvalid
 	}
@@ -221,12 +254,16 @@ func isbnIdentifiers(values []string) []Identifier {
 }
 
 func date(value string) *string {
-	for _, layout := range []string{"2006-01-02", "2006-01", "2006", "January 2, 2006", "Jan 2, 2006"} {
+	for _, layout := range []string{"2006-01-02", "2006-1-2", "2006-01", "2006-1", "200601", "2006", "January 2, 2006", "Jan 2, 2006"} {
 		if parsed, err := time.Parse(layout, value); err == nil {
-			if layout == "2006" || layout == "2006-01" {
-				return text(parsed.Format(layout))
+			switch layout {
+			case "2006":
+				return text(parsed.Format("2006"))
+			case "2006-01", "2006-1", "200601":
+				return text(parsed.Format("2006-01"))
+			default:
+				return text(parsed.Format("2006-01-02"))
 			}
-			return text(parsed.Format("2006-01-02"))
 		}
 	}
 	return nil
@@ -256,7 +293,9 @@ func finish(name string, candidates []Candidate) ([]Candidate, error) {
 		c.Tags = unique(c.Tags)
 		c.Genres = unique(c.Genres)
 		c.Moods = unique(c.Moods)
-		c.Identifiers = append(c.Identifiers, Identifier{Scheme: name, Value: c.Reference})
+		if scheme := providerIdentifierScheme(name); scheme != "" {
+			c.Identifiers = append(c.Identifiers, Identifier{Scheme: scheme, Value: c.Reference})
+		}
 		if c.CoverURL != nil && strings.HasPrefix(*c.CoverURL, "http://") && name != "neodb" {
 			c.CoverURL = text("https://" + strings.TrimPrefix(*c.CoverURL, "http://"))
 		}
@@ -265,6 +304,620 @@ func finish(name string, candidates []Candidate) ([]Candidate, error) {
 		candidates = []Candidate{}
 	}
 	return candidates, nil
+}
+
+// providerIdentifierScheme maps provider references to catalog identifier schemes.
+// OpenBD references are ISBNs and are already present in the candidate identifiers.
+func providerIdentifierScheme(name string) string {
+	switch name {
+	case "crossref":
+		return "doi"
+	case "openbd":
+		return ""
+	default:
+		return name
+	}
+}
+
+type crossrefPerson struct {
+	Given   string `json:"given"`
+	Family  string `json:"family"`
+	Name    string `json:"name"`
+	Literal string `json:"literal"`
+}
+
+func (p crossrefPerson) display() string {
+	if value := strings.TrimSpace(p.Name); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(p.Literal); value != "" {
+		return value
+	}
+	return strings.TrimSpace(strings.Join([]string{p.Given, p.Family}, " "))
+}
+
+type crossrefDate struct {
+	DateParts [][]int `json:"date-parts"`
+}
+
+type crossrefWork struct {
+	Type            string           `json:"type"`
+	Title           []string         `json:"title"`
+	Subtitle        []string         `json:"subtitle"`
+	Author          []crossrefPerson `json:"author"`
+	Editor          []crossrefPerson `json:"editor"`
+	Translator      []crossrefPerson `json:"translator"`
+	Publisher       string           `json:"publisher"`
+	Issued          crossrefDate     `json:"issued"`
+	PublishedPrint  crossrefDate     `json:"published-print"`
+	PublishedOnline crossrefDate     `json:"published-online"`
+	Language        string           `json:"language"`
+	ISBN            []string         `json:"ISBN"`
+	DOI             string           `json:"DOI"`
+	Subject         []string         `json:"subject"`
+}
+
+var crossrefBookTypes = map[string]bool{
+	"book": true, "monograph": true, "edited-book": true, "reference-book": true,
+}
+
+func crossrefPeople(values []crossrefPerson, role string) []Person {
+	names := make([]string, 0, len(values))
+	for _, value := range values {
+		if name := value.display(); name != "" {
+			names = append(names, name)
+		}
+	}
+	return people(names, role)
+}
+
+func crossrefDateValue(value crossrefDate) string {
+	if len(value.DateParts) == 0 || len(value.DateParts[0]) == 0 {
+		return ""
+	}
+	parts := value.DateParts[0]
+	year := parts[0]
+	if year < 1 {
+		return ""
+	}
+	result := fmt.Sprintf("%04d", year)
+	if len(parts) > 1 && parts[1] >= 1 && parts[1] <= 12 {
+		result += fmt.Sprintf("-%02d", parts[1])
+		if len(parts) > 2 && parts[2] >= 1 && parts[2] <= 31 {
+			result += fmt.Sprintf("-%02d", parts[2])
+		}
+	}
+	if parsed := date(result); parsed != nil {
+		return *parsed
+	}
+	return ""
+}
+
+func crossrefPublished(work crossrefWork) *string {
+	for _, value := range []crossrefDate{work.PublishedPrint, work.PublishedOnline, work.Issued} {
+		if result := crossrefDateValue(value); result != "" {
+			return text(result)
+		}
+	}
+	return nil
+}
+
+func (p *adapter) crossrefCandidates(works []crossrefWork) ([]Candidate, error) {
+	result := []Candidate{}
+	for _, work := range works {
+		if work.Type != "" && !crossrefBookTypes[work.Type] {
+			continue
+		}
+		if work.DOI == "" || len(work.Title) == 0 || strings.TrimSpace(work.Title[0]) == "" {
+			continue
+		}
+		c := Candidate{
+			Reference: work.DOI, Title: work.Title[0], Subtitle: text(first(work.Subtitle)),
+			Publisher: text(work.Publisher), PublishedDate: crossrefPublished(work),
+			Language: text(work.Language), Tags: unique(work.Subject),
+		}
+		c.Authors = append(c.Authors, crossrefPeople(work.Author, "author")...)
+		c.Authors = append(c.Authors, crossrefPeople(work.Editor, "editor")...)
+		c.Authors = append(c.Authors, crossrefPeople(work.Translator, "translator")...)
+		c.Identifiers = isbnIdentifiers(work.ISBN)
+		result = append(result, c)
+	}
+	return finish(p.name, result)
+}
+
+func (p *adapter) crossref(ctx context.Context, q Query, ref string) ([]Candidate, error) {
+	if ref != "" {
+		var response struct {
+			Message crossrefWork `json:"message"`
+		}
+		if err := p.request(ctx, "/works/"+ref, nil, nil, &response); err != nil {
+			return nil, err
+		}
+		if response.Message.DOI == "" {
+			return nil, failure("invalid_response")
+		}
+		return p.crossrefCandidates([]crossrefWork{response.Message})
+	}
+	values := url.Values{"rows": {"10"}}
+	if q.ISBN != "" {
+		values.Set("filter", "isbn:"+q.ISBN)
+	} else {
+		query := strings.TrimSpace(strings.Join([]string{q.Title, q.Author, q.Language}, " "))
+		if query == "" {
+			return []Candidate{}, nil
+		}
+		values.Set("query.bibliographic", query)
+	}
+	var response struct {
+		Message struct {
+			Total *int64         `json:"total-results"`
+			Items []crossrefWork `json:"items"`
+		} `json:"message"`
+	}
+	if err := p.request(ctx, "/works", values, nil, &response); err != nil {
+		return nil, err
+	}
+	if response.Message.Total == nil && response.Message.Items == nil {
+		return nil, failure("invalid_response")
+	}
+	return p.crossrefCandidates(response.Message.Items)
+}
+
+type openBDBook struct {
+	Summary struct {
+		ISBN      string `json:"isbn"`
+		Title     string `json:"title"`
+		Series    string `json:"series"`
+		Publisher string `json:"publisher"`
+		Pubdate   string `json:"pubdate"`
+		Cover     string `json:"cover"`
+		Author    string `json:"author"`
+	} `json:"summary"`
+	Onix struct {
+		DescriptiveDetail struct {
+			Contributor []struct {
+				PersonName struct {
+					Content string `json:"content"`
+				} `json:"PersonName"`
+			} `json:"Contributor"`
+		} `json:"DescriptiveDetail"`
+	} `json:"onix"`
+}
+
+func (p *adapter) openBD(ctx context.Context, q Query, ref string) ([]Candidate, error) {
+	isbn := ref
+	if isbn == "" {
+		isbn = q.ISBN
+	}
+	if isbn == "" {
+		return []Candidate{}, nil
+	}
+	var books []*openBDBook
+	if err := p.request(ctx, "/v1/get", url.Values{"isbn": {isbn}}, nil, &books); err != nil {
+		return nil, err
+	}
+	result := []Candidate{}
+	for _, book := range books {
+		if book == nil {
+			continue
+		}
+		summary := book.Summary
+		title := strings.TrimSpace(summary.Title)
+		if title == "" {
+			continue
+		}
+		reference := normalizeISBN(summary.ISBN)
+		if reference == "" {
+			reference = normalizeISBN(isbn)
+		}
+		c := Candidate{
+			Reference: reference, Title: title, Publisher: text(summary.Publisher),
+			PublishedDate: date(summary.Pubdate), CoverURL: text(summary.Cover),
+			Identifiers: isbnIdentifiers([]string{summary.ISBN, isbn}),
+		}
+		for _, contributor := range book.Onix.DescriptiveDetail.Contributor {
+			if name := strings.TrimSpace(contributor.PersonName.Content); name != "" {
+				c.Authors = append(c.Authors, Person{Name: name, Role: "author"})
+			}
+		}
+		if len(c.Authors) == 0 {
+			c.Authors = people([]string{summary.Author}, "author")
+		}
+		if name := strings.TrimSpace(summary.Series); name != "" {
+			c.Series = &Series{Name: name}
+		}
+		result = append(result, c)
+	}
+	return finish(p.name, result)
+}
+
+type doubanLD struct {
+	Type   string          `json:"@type"`
+	Name   string          `json:"name"`
+	ISBN   string          `json:"isbn"`
+	URL    string          `json:"url"`
+	SameAs string          `json:"sameAs"`
+	Author json.RawMessage `json:"author"`
+}
+
+var doubanSubject = regexp.MustCompile(`(?i)(?:book|m)\.douban\.com/(?:book/)?subject/([0-9]{1,20})/?`)
+
+func doubanTitle(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimSuffix(value, " - 图书")
+	return strings.TrimSpace(value)
+}
+
+func doubanAuthors(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var list []struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(raw, &list) == nil {
+		result := make([]string, 0, len(list))
+		for _, item := range list {
+			if name := strings.TrimSpace(item.Name); name != "" {
+				result = append(result, name)
+			}
+		}
+		return result
+	}
+	var one struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(raw, &one) == nil && strings.TrimSpace(one.Name) != "" {
+		return []string{strings.TrimSpace(one.Name)}
+	}
+	var value string
+	if json.Unmarshal(raw, &value) == nil && strings.TrimSpace(value) != "" {
+		return []string{strings.TrimSpace(value)}
+	}
+	return nil
+}
+
+func htmlAttr(node *nethtml.Node, key string) string {
+	for _, attr := range node.Attr {
+		if strings.EqualFold(attr.Key, key) {
+			return attr.Val
+		}
+	}
+	return ""
+}
+
+func htmlClass(node *nethtml.Node, class string) bool {
+	for _, value := range strings.Fields(htmlAttr(node, "class")) {
+		if value == class {
+			return true
+		}
+	}
+	return false
+}
+
+func htmlFind(node *nethtml.Node, match func(*nethtml.Node) bool) *nethtml.Node {
+	if node == nil {
+		return nil
+	}
+	if match(node) {
+		return node
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if found := htmlFind(child, match); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func htmlText(node *nethtml.Node) string {
+	if node == nil {
+		return ""
+	}
+	var builder strings.Builder
+	var walk func(*nethtml.Node)
+	walk = func(current *nethtml.Node) {
+		if current.Type == nethtml.TextNode {
+			builder.WriteString(current.Data)
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+	return strings.Join(strings.Fields(builder.String()), " ")
+}
+
+func htmlLines(node *nethtml.Node) []string {
+	if node == nil {
+		return nil
+	}
+	var lines []string
+	var builder strings.Builder
+	flush := func() {
+		if value := strings.TrimSpace(builder.String()); value != "" {
+			lines = append(lines, value)
+		}
+		builder.Reset()
+	}
+	var walk func(*nethtml.Node)
+	walk = func(current *nethtml.Node) {
+		if current.Type == nethtml.ElementNode && current.Data == "br" {
+			flush()
+			return
+		}
+		if current.Type == nethtml.TextNode {
+			builder.WriteString(current.Data)
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+	flush()
+	return lines
+}
+
+func leadingInt(value string) int64 {
+	value = strings.TrimSpace(value)
+	end := 0
+	for end < len(value) && value[end] >= '0' && value[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0
+	}
+	number, _ := strconv.ParseInt(value[:end], 10, 64)
+	return number
+}
+
+func splitNames(value string) []string {
+	return unique(strings.FieldsFunc(value, func(r rune) bool { return r == '/' || r == '、' }))
+}
+
+func parseDoubanSubject(data []byte, fallbackISBN string) (Candidate, error) {
+	doc, err := nethtml.Parse(bytes.NewReader(data))
+	if err != nil {
+		return Candidate{}, failure("invalid_response")
+	}
+	meta := map[string]string{}
+	var ld doubanLD
+	_ = htmlFind(doc, func(node *nethtml.Node) bool {
+		if node.Type != nethtml.ElementNode {
+			return false
+		}
+		switch node.Data {
+		case "meta":
+			key := strings.ToLower(htmlAttr(node, "property"))
+			if key == "" {
+				key = strings.ToLower(htmlAttr(node, "name"))
+			}
+			if key != "" {
+				meta[key] = htmlAttr(node, "content")
+			}
+			if itemprop := strings.ToLower(htmlAttr(node, "itemprop")); itemprop != "" {
+				meta["itemprop:"+itemprop] = htmlAttr(node, "content")
+			}
+		case "script":
+			if strings.EqualFold(htmlAttr(node, "type"), "application/ld+json") && ld.Name == "" {
+				_ = json.Unmarshal([]byte(htmlText(node)), &ld)
+			}
+		}
+		return false
+	})
+	reference := ""
+	for _, raw := range []string{ld.URL, ld.SameAs, meta["og:url"]} {
+		if match := doubanSubject.FindStringSubmatch(raw); match != nil {
+			reference = match[1]
+			break
+		}
+	}
+	if reference == "" {
+		page := htmlText(doc)
+		if strings.Contains(page, "条目不存在") || strings.Contains(page, "页面不存在") {
+			return Candidate{}, ErrNotFound
+		}
+		return Candidate{}, failure("invalid_response")
+	}
+	title := doubanTitle(ld.Name)
+	if node := htmlFind(doc, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && htmlClass(node, "sub-title")
+	}); node != nil {
+		title = doubanTitle(htmlText(node))
+	}
+	if title == "" {
+		title = doubanTitle(meta["og:title"])
+	}
+	if title == "" {
+		return Candidate{}, failure("invalid_response")
+	}
+	info := map[string]string{}
+	var authors, translators []string
+	if node := htmlFind(doc, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && htmlAttr(node, "id") == "info"
+	}); node != nil {
+		for _, line := range htmlLines(node) {
+			label, value, ok := strings.Cut(line, ":")
+			if !ok {
+				label, value, ok = strings.Cut(line, "：")
+			}
+			if !ok {
+				continue
+			}
+			label = strings.TrimSpace(label)
+			value = strings.TrimSpace(value)
+			switch label {
+			case "作者":
+				authors = append(authors, splitNames(value)...)
+			case "译者":
+				translators = append(translators, splitNames(value)...)
+			default:
+				info[label] = value
+			}
+		}
+	}
+	if node := htmlFind(doc, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && htmlClass(node, "sub-meta")
+	}); node != nil {
+		parts := []string{}
+		for _, part := range strings.Split(htmlText(node), "/") {
+			if part = strings.TrimSpace(part); part != "" {
+				parts = append(parts, part)
+			}
+		}
+		if len(parts) > 0 && strings.HasSuffix(parts[len(parts)-1], "出版") {
+			info["出版年"] = strings.TrimSpace(strings.TrimSuffix(parts[len(parts)-1], "出版"))
+			parts = parts[:len(parts)-1]
+		}
+		if len(parts) > 1 {
+			info["出版社"] = parts[len(parts)-1]
+			parts = parts[:len(parts)-1]
+		}
+		authors = append(authors, parts...)
+	}
+	authors = append(authors, doubanAuthors(ld.Author)...)
+	c := Candidate{
+		Reference: reference, Title: title, Subtitle: text(info["副标题"]),
+		Authors:     append(people(authors, "author"), people(translators, "translator")...),
+		Description: text(meta["og:description"]), Publisher: text(info["出版社"]),
+		PublishedDate: date(info["出版年"]), CoverURL: text(meta["og:image"]),
+	}
+	if count := leadingInt(info["页数"]); count > 0 {
+		c.PageCount = pages(count)
+	}
+	if series := strings.TrimSpace(info["丛书"]); series != "" {
+		c.Series = &Series{Name: series}
+	}
+	isbn := strings.TrimSpace(ld.ISBN)
+	if isbn == "" {
+		isbn = strings.TrimSpace(info["ISBN"])
+	}
+	if isbn == "" {
+		isbn = fallbackISBN
+	}
+	c.Identifiers = isbnIdentifiers([]string{isbn})
+	if node := htmlFind(doc, func(node *nethtml.Node) bool { return htmlClass(node, "rating_num") }); node != nil {
+		if value, err := strconv.ParseFloat(htmlText(node), 64); err == nil {
+			count := int64(0)
+			if votes := htmlFind(doc, func(node *nethtml.Node) bool { return htmlClass(node, "rating_people") }); votes != nil {
+				count = leadingInt(htmlText(votes))
+			}
+			c.Rating, c.RatingCount = rating(&value, 10, &count)
+		}
+	} else if value, err := strconv.ParseFloat(meta["itemprop:ratingvalue"], 64); err == nil {
+		count := leadingInt(meta["itemprop:reviewcount"])
+		c.Rating, c.RatingCount = rating(&value, 10, &count)
+	}
+	return c, nil
+}
+
+func parseDoubanSearch(data []byte) ([]string, error) {
+	doc, err := nethtml.Parse(bytes.NewReader(data))
+	if err != nil {
+		return nil, failure("invalid_response")
+	}
+	seen := map[string]bool{}
+	result := []string{}
+	add := func(raw string) {
+		if match := doubanSubject.FindStringSubmatch(raw); match != nil && !seen[match[1]] {
+			seen[match[1]] = true
+			result = append(result, match[1])
+		}
+	}
+	var walk func(*nethtml.Node)
+	walk = func(node *nethtml.Node) {
+		if node.Type == nethtml.ElementNode && node.Data == "a" && htmlClass(node, "nbg") {
+			href := htmlAttr(node, "href")
+			if parsed, err := url.Parse(href); err == nil {
+				if target := parsed.Query().Get("url"); target != "" {
+					href = target
+				}
+			}
+			add(href)
+		}
+		if node.Type == nethtml.ElementNode && node.Data == "script" {
+			text := htmlText(node)
+			if index := strings.Index(text, "window.__DATA__"); index >= 0 {
+				payload := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text[index+len("window.__DATA__"):]), "="))
+				var data struct {
+					Items []struct {
+						ID  int64  `json:"id"`
+						URL string `json:"url"`
+					} `json:"items"`
+				}
+				if json.NewDecoder(strings.NewReader(payload)).Decode(&data) == nil {
+					for _, item := range data.Items {
+						if item.ID > 0 {
+							add("https://book.douban.com/subject/" + strconv.FormatInt(item.ID, 10) + "/")
+						} else {
+							add(item.URL)
+						}
+					}
+				}
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(doc)
+	return result, nil
+}
+
+func (p *adapter) doubanSubject(ctx context.Context, reference string) (Candidate, error) {
+	data, err := p.fetch(ctx, "/subject/"+reference+"/", nil, nil, "text/html")
+	if err != nil {
+		return Candidate{}, err
+	}
+	return parseDoubanSubject(data, "")
+}
+
+func (p *adapter) douban(ctx context.Context, q Query, ref string) ([]Candidate, error) {
+	if ref != "" {
+		candidate, err := p.doubanSubject(ctx, ref)
+		if err != nil {
+			return nil, err
+		}
+		return finish(p.name, []Candidate{candidate})
+	}
+	if q.ISBN != "" {
+		data, err := p.fetch(ctx, "/isbn/"+q.ISBN+"/", nil, nil, "text/html")
+		if err != nil {
+			return nil, err
+		}
+		candidate, err := parseDoubanSubject(data, q.ISBN)
+		if err != nil {
+			return nil, err
+		}
+		return finish(p.name, []Candidate{candidate})
+	}
+	if strings.TrimSpace(q.Title) == "" {
+		return []Candidate{}, nil
+	}
+	query := strings.TrimSpace(strings.Join([]string{q.Title, q.Author}, " "))
+	data, err := p.fetch(ctx, "/subject_search", url.Values{"search_text": {query}, "cat": {"1001"}}, nil, "text/html")
+	if err != nil {
+		return nil, err
+	}
+	ids, err := parseDoubanSearch(data)
+	if err != nil {
+		return nil, err
+	}
+	result := []Candidate{}
+	for index, id := range ids {
+		if index >= 3 {
+			break
+		}
+		candidate, err := p.doubanSubject(ctx, id)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, candidate)
+	}
+	return finish(p.name, result)
 }
 
 type openDocument struct {

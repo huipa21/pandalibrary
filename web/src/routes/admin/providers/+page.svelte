@@ -64,6 +64,12 @@
 				return m['admin.providers.name.neodb']();
 			case 'hardcover':
 				return m['admin.providers.name.hardcover']();
+			case 'crossref':
+				return m['admin.providers.name.crossref']();
+			case 'openbd':
+				return m['admin.providers.name.openbd']();
+			case 'douban':
+				return m['admin.providers.name.douban']();
 			default:
 				return provider;
 		}

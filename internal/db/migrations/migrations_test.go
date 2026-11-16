@@ -711,7 +711,7 @@ func newTestRunner(t *testing.T, writer *sql.DB, path string, files fs.FS, optio
 	return runner
 }
 
-const embeddedLatest = 25
+const embeddedLatest = 26
 
 // embeddedPrefixFS returns the embedded migrations up to and including version max, with a matching sum.
 func embeddedPrefixFS(t *testing.T, max int) fstest.MapFS {

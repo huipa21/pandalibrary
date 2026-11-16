@@ -174,7 +174,10 @@ const PROVIDERS: Record<string, ProviderCapabilities> = {
 	openlibrary: { token: 'none', baseURL: false, defaultBaseURL: null },
 	googlebooks: { token: 'optional', baseURL: false, defaultBaseURL: null },
 	neodb: { token: 'required', baseURL: true, defaultBaseURL: 'https://neodb.social' },
-	hardcover: { token: 'required', baseURL: false, defaultBaseURL: null }
+	hardcover: { token: 'required', baseURL: false, defaultBaseURL: null },
+	crossref: { token: 'none', baseURL: false, defaultBaseURL: null },
+	openbd: { token: 'none', baseURL: false, defaultBaseURL: null },
+	douban: { token: 'none', baseURL: false, defaultBaseURL: null }
 };
 
 /** Documents M1's per-provider rules. Unknown providers get the most permissive token choice; the server decides. */

@@ -114,7 +114,7 @@ library through the assignment API.
 | **Users** | Search accounts by category; select numbered rows for single-account editing or bulk enable, disable, revoke and delete actions. Server CLI help is at the bottom |
 | **Hidden books** | Hide specific books from one reader. Hidden books disappear from that reader's lists, search and downloads |
 | **Uploads** | Upload books and view processing history, including failures and their reasons |
-| **Metadata providers** | Turn online sources on or off and set their priority. Open Library and Google Books are on by default; NeoDB and Hardcover need a token |
+| **Metadata providers** | Turn online sources on or off and set their priority. Open Library and Google Books are on by default; Crossref, OpenBD and Douban are available but off by default; NeoDB and Hardcover need a token |
 | **Dicts** | Manage the dictionary providers used by **Look up** (Merriam-Webster presets and custom APIs), their priority and the lookup cache; see [Dictionaries](#dictionaries) |
 | **Maintenance** | See scheduled jobs and run one now: database backup, cleanup, unused annotation images, orphaned file removal, database optimization and search index checks |
 | **Backup** | Create and download full database-and-media `.tar.gz` backups; stage a server-saved or uploaded backup for restoration on restart |

@@ -108,6 +108,10 @@ func admin(viewer catalog.Viewer) error {
 	return nil
 }
 
+func providerUsesToken(name string) bool {
+	return name == "googlebooks" || name == "neodb" || name == "hardcover"
+}
+
 func settings(row sqlc.MetadataProvider) ProviderSettings {
 	var base *string
 	if row.BaseUrl.Valid {
@@ -175,7 +179,7 @@ func (s *Service) UpdateProvider(ctx context.Context, viewer catalog.Viewer, nam
 			row.ApiToken = sql.NullString{}
 			if patch.APIToken.Value != nil {
 				token := strings.TrimSpace(*patch.APIToken.Value)
-				if token == "" || len(token) > 8192 || strings.ContainsAny(token, "\r\n\t\x00") || !utf8.ValidString(token) || name == "openlibrary" {
+				if token == "" || len(token) > 8192 || strings.ContainsAny(token, "\r\n\t\x00") || !utf8.ValidString(token) || !providerUsesToken(name) {
 					return ErrInvalid
 				}
 				row.ApiToken = sql.NullString{String: token, Valid: true}

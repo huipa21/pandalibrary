@@ -69,6 +69,33 @@ func TestURLAndAddressPolicy(t *testing.T) {
 	}
 }
 
+func TestDoubanMobileRedirectOrigin(t *testing.T) {
+	base, err := parseBase("douban", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := networkPolicy{provider: "douban", base: base}
+	for _, raw := range []string{
+		"https://book.douban.com/isbn/9787530221532/",
+		"https://m.douban.com/book/subject/35481711/",
+	} {
+		u, err := url.Parse(raw)
+		if err != nil || policy.validate(u) != nil {
+			t.Errorf("allowed Douban URL rejected: %s", raw)
+		}
+	}
+	for _, raw := range []string{
+		"https://m.douban.com.evil.test/book/subject/35481711/",
+		"https://www.douban.com/book/subject/35481711/",
+		"http://m.douban.com/book/subject/35481711/",
+	} {
+		u, err := url.Parse(raw)
+		if err == nil && policy.validate(u) == nil {
+			t.Errorf("unsafe Douban redirect accepted: %s", raw)
+		}
+	}
+}
+
 func TestResolvedPrivateAddressesAndDNSPinning(t *testing.T) {
 	base, _ := parseBase("openlibrary", nil)
 	var dialed atomic.Bool

@@ -19,6 +19,14 @@ var providerOrigins = map[string]string{
 	"googlebooks": "https://www.googleapis.com",
 	"neodb":       "https://neodb.social",
 	"hardcover":   "https://api.hardcover.app",
+	"crossref":    "https://api.crossref.org",
+	"openbd":      "https://api.openbd.jp",
+	"douban":      "https://book.douban.com",
+}
+
+// Some providers redirect a detail page to a separate mobile origin.
+var providerRedirectHosts = map[string][]string{
+	"douban": {"m.douban.com"},
 }
 
 var coverHosts = map[string][]string{
@@ -26,6 +34,11 @@ var coverHosts = map[string][]string{
 	"googlebooks": {"books.google.com", "books.googleusercontent.com"},
 	"neodb":       {"neodb.social", "neodb-cdn.b0.upaiyun.com"},
 	"hardcover":   {"assets.hardcover.app"},
+	"openbd":      {"cover.openbd.jp"},
+	"douban": {
+		"img1.doubanio.com", "img2.doubanio.com", "img3.doubanio.com", "img4.doubanio.com", "img5.doubanio.com",
+		"img6.doubanio.com", "img7.doubanio.com", "img8.doubanio.com", "img9.doubanio.com",
+	},
 }
 
 type networkPolicy struct {
@@ -88,6 +101,18 @@ func sameOrigin(a, b *url.URL) bool {
 	return a.Scheme == b.Scheme && strings.EqualFold(a.Host, b.Host)
 }
 
+func (p networkPolicy) allowedOrigin(u *url.URL) bool {
+	if sameOrigin(u, p.base) {
+		return true
+	}
+	for _, host := range providerRedirectHosts[p.provider] {
+		if u.Scheme == "https" && strings.EqualFold(u.Hostname(), host) {
+			return true
+		}
+	}
+	return false
+}
+
 func (p networkPolicy) validate(u *url.URL) error {
 	if u == nil || u.User != nil || u.Opaque != "" || u.Fragment != "" || u.Hostname() == "" ||
 		strings.ContainsAny(u.Host, "\\\r\n\t%") {
@@ -100,7 +125,7 @@ func (p networkPolicy) validate(u *url.URL) error {
 		return errUnsafeURL
 	}
 	if !p.cover {
-		if sameOrigin(u, p.base) {
+		if p.allowedOrigin(u) {
 			return nil
 		}
 		return errUnsafeURL
@@ -173,10 +198,10 @@ func (p networkPolicy) client() *http.Client {
 	return &http.Client{
 		Transport: &policyTransport{policy: p, transport: transport}, Timeout: 8 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 3 {
+			if len(via) >= 5 {
 				return errUnsafeURL
 			}
-			if !p.cover && !sameOrigin(req.URL, via[0].URL) {
+			if !p.cover && !p.allowedOrigin(req.URL) {
 				return errUnsafeURL
 			}
 			return p.validate(req.URL)
