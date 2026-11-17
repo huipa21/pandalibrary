@@ -1,9 +1,10 @@
 # Container deployment
 
-Build `localhost/pandalibrary:latest` from the repository root:
+Build `localhost/pandalibrary:latest` from the repository root. This is the
+build script's default tag:
 
 ```sh
-node scripts/build-container.mjs --tag localhost/pandalibrary:latest
+node scripts/build-container.mjs
 ```
 
 If the default package registries are slow or blocked, point the build at
@@ -12,7 +13,7 @@ reachable mirrors. Use registries you trust:
 ```sh
 NPM_CONFIG_REGISTRY=https://registry.npmmirror.com \
 GOPROXY=https://goproxy.cn,direct \
-  node scripts/build-container.mjs --tag localhost/pandalibrary:latest
+  node scripts/build-container.mjs
 ```
 
 The build script passes

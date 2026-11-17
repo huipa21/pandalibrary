@@ -104,7 +104,7 @@ test('selects a usable container engine or honors the explicit override', () => 
 });
 
 test('requires unambiguous wrapper options', () => {
-	assert.deepEqual(parseOptions([], 'container'), { output: 'pandalibrary:dev', release: '' });
+	assert.deepEqual(parseOptions([], 'container'), { output: 'localhost/pandalibrary:latest', release: '' });
 	assert.deepEqual(parseOptions(['--output', 'a path', '--release', 'v1'], 'binary'), {
 		output: 'a path', release: 'v1'
 	});

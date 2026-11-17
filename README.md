@@ -50,16 +50,18 @@ Build the image from a Git source checkout (Node.js and a working Docker or
 Podman installation are required). This example uses Docker to run the image:
 
 ```sh
-node scripts/build-container.mjs --tag pandalibrary:local
+node scripts/build-container.mjs
 docker volume create pandalibrary-data
 docker run -d --name pandalibrary --restart unless-stopped \
   -p 8080:8080 -v pandalibrary-data:/data \
   -e PANDA_BASE_URL=https://books.example.org \
-  pandalibrary:local
+  localhost/pandalibrary:latest
 ```
 
-The wrapper automatically selects a working container engine, preferring Docker
-when both Docker and Podman are available. Set `CONTAINER_ENGINE` to override
+The wrapper tags the image `localhost/pandalibrary:latest` by default, matching
+the Compose deployment. Pass `--tag` to use a different image name. The wrapper
+automatically selects a working container engine, preferring Docker when both
+Docker and Podman are available. Set `CONTAINER_ENGINE` to override
 the selection. It also passes the checked-out commit, its committer date, and
 the tracked/non-ignored untracked dirty state to the image build.
 For a tagged release, add `--release v1.0.0`; that local Git tag
@@ -75,7 +77,7 @@ the dirty state must be `true` or `false`:
 ```sh
 docker build --build-arg COMMIT="$PANDA_COMMIT" \
   --build-arg COMMIT_DATE="$PANDA_COMMIT_DATE" --build-arg DIRTY="$PANDA_DIRTY" \
-  -t pandalibrary:local .
+  -t localhost/pandalibrary:latest .
 ```
 
 An optional `--build-arg RELEASE="$PANDA_RELEASE"` adds the release label.
@@ -110,7 +112,7 @@ For container CLI operations, mount the same data volume and override the entryp
 
 ```sh
 docker run --rm -it -v pandalibrary-data:/data --entrypoint /pandalibrary \
-  pandalibrary:local user create --username admin --admin
+  localhost/pandalibrary:latest user create --username admin --admin
 ```
 
 ## Configuration and deployment

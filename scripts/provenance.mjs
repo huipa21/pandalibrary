@@ -61,7 +61,7 @@ export function parseOptions(args, kind) {
 		}
 		values.set(option, args[++index]);
 	}
-	const output = values.get(target) ?? (kind === 'container' ? 'pandalibrary:dev' : '');
+	const output = values.get(target) ?? (kind === 'container' ? 'localhost/pandalibrary:latest' : '');
 	if (!output) throw new Error(`${target} is required.`);
 	return { output, release: values.get('--release') ?? '' };
 }
