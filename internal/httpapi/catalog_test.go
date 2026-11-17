@@ -434,16 +434,19 @@ func TestCatalogHTTPFileAndCoverServing(t *testing.T) {
 		t.Fatalf("conditional file = %d %s", conditional.Code, conditional.Body.String())
 	}
 	partial := fixture.request(http.MethodGet, fileURL, nil, fixture.reader, map[string]string{"Range": "bytes=0-6"})
-	if partial.Code != http.StatusPartialContent || partial.Body.String() != string(fixture.data[:7]) {
-		t.Fatalf("range response = %d %q", partial.Code, partial.Body.String())
+	if partial.Code != http.StatusPartialContent || partial.Body.String() != string(fixture.data[:7]) ||
+		partial.Header().Get("Accept-Ranges") != "bytes" ||
+		partial.Header().Get("Content-Range") != fmt.Sprintf("bytes 0-6/%d", len(fixture.data)) ||
+		partial.Header().Get("Content-Length") != "7" {
+		t.Fatalf("range response = %d %v %q", partial.Code, partial.Header(), partial.Body.String())
 	}
 	invalidRange := fixture.request(http.MethodGet, fileURL, nil, fixture.reader, map[string]string{"Range": "bytes=9999-"})
 	if invalidRange.Code != http.StatusRequestedRangeNotSatisfiable {
 		t.Fatalf("invalid range = %d", invalidRange.Code)
 	}
 	head := fixture.request(http.MethodHead, fileURL, nil, fixture.reader, nil)
-	if head.Code != http.StatusOK || head.Body.Len() != 0 {
-		t.Fatalf("HEAD response = %d %q", head.Code, head.Body.String())
+	if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("Accept-Ranges") != "bytes" {
+		t.Fatalf("HEAD response = %d %v %q", head.Code, head.Header(), head.Body.String())
 	}
 	requireProblem(t, fixture.request(http.MethodGet, fileURL+"?v="+strings.Repeat("a", 64), nil, fixture.reader, nil), http.StatusNotFound)
 	requireProblem(t, fixture.request(http.MethodGet, fileURL+"?v=bad", nil, fixture.reader, nil), http.StatusBadRequest)

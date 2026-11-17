@@ -1,5 +1,6 @@
 import type { JsonValue } from '#lib/api/client.js';
 import type { BackgroundId } from './appearance.js';
+import type { ReaderSource } from './source.js';
 
 export const FORMATS = ['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz', 'pdf'] as const;
 export type ReaderFormat = (typeof FORMATS)[number];
@@ -56,7 +57,7 @@ export interface ReaderEvents {
 }
 
 export interface Reader {
-	open(blob: Blob): Promise<void>;
+	open(input: Blob | ReaderSource): Promise<void>;
 	goTo(target: ReaderLocator | number): Promise<void>;
 	previous(): Promise<void>;
 	next(): Promise<void>;

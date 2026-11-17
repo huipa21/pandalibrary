@@ -7,6 +7,8 @@ import { firstVisibleLine } from './foliate-bookmarks.js';
 import { FoliateDisplay } from './foliate-display.js';
 import { reflowLayout, reflowScale, reflowZoom } from './reflow-display.js';
 import { captureBookBlobs, isolateBookSections } from './safe-content.js';
+import { makeStreamedBook } from './streamed-book.js';
+import { isBlob, type ReaderSource } from './source.js';
 import type { ReaderSearchEngine, ReaderSearchResult } from './search.js';
 import {
 	isCfiLocator,
@@ -189,13 +191,24 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 		if (!this.isValidResolved(result)) throw new Error('Book contents destination could not be opened.');
 	}
 
-	async open(blob: Blob): Promise<void> {
+	async open(input: Blob | ReaderSource): Promise<void> {
 		const [{ makeBook, View }, { Overlayer }] = await Promise.all([
 			import('foliate-js/view.js'),
 			import('foliate-js/overlayer.js')
 		]);
-		const file = new File([blob], `book.${this.format}`, { type: MIME_TYPES[this.format] });
-		const { value: book, blobs } = await captureBookBlobs(() => makeBook(file));
+		let loaded: { value: FoliateBook; blobs: Map<string, Blob> };
+		try {
+			if (isBlob(input)) {
+				const file = new File([input], `book.${this.format}`, { type: MIME_TYPES[this.format] });
+				loaded = await captureBookBlobs(() => makeBook(file));
+			} else {
+				loaded = await captureBookBlobs(() => makeStreamedBook(input, this.format));
+			}
+		} catch (error) {
+			if (!isBlob(input)) input.close();
+			throw error;
+		}
+		const { value: book, blobs } = loaded;
 		if (!book.sections.length) throw new Error('The book contains no readable sections.');
 		this.book = book;
 		isolateBookSections(book, blobs, (error) => {

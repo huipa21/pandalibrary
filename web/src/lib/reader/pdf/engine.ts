@@ -3,6 +3,7 @@ import type { EventBus as PdfEventBus, PDFLinkService as PdfLinkService, PDFView
 import { fraction as clampFraction } from '../progress.js';
 import { isReaderSettings } from '../settings.js';
 import type { ReaderSearchEngine, ReaderSearchResult } from '../search.js';
+import { RANGE_CHUNK_SIZE, isBlob, type ReaderSource } from '../source.js';
 import {
 	isPdfLocator,
 	type NormalizedRect,
@@ -37,6 +38,7 @@ import './pdf.css';
 export { PdfBinaryDataFactory };
 
 type ViewerModule = typeof import('pdfjs-dist/web/pdf_viewer.mjs');
+type PdfjsModule = typeof import('pdfjs-dist');
 type PageView = { id: number; div: HTMLDivElement; viewport: { width: number; height: number }; pdfPage: PDFPageProxy | null; textLayer: { div: HTMLElement } | null };
 type Anchor = { clientX: number; clientY: number };
 
@@ -52,6 +54,35 @@ async function loadViewer(): Promise<{ pdfjs: typeof import('pdfjs-dist'); viewe
 	(globalThis as { pdfjsLib?: unknown }).pdfjsLib ??= pdfjs;
 	viewerModule ??= import('pdfjs-dist/web/pdf_viewer.mjs');
 	return { pdfjs, viewer: await viewerModule };
+}
+
+function createRangeTransport(pdfjs: PdfjsModule, source: ReaderSource) {
+	let rejectFailure!: (error: unknown) => void;
+	const failure = new Promise<never>((_, reject) => { rejectFailure = reject; });
+	class HttpRangeTransport extends pdfjs.PDFDataRangeTransport {
+		private stopped = false;
+
+		constructor() {
+			super(source.size, null, true, source.name);
+		}
+
+		requestDataRange(begin: number, end: number): void {
+			void source.read(begin, end - begin).then((chunk) => {
+				if (!this.stopped) this.onDataRange(begin, chunk);
+			}, (error) => {
+				if (this.stopped) return;
+				this.stopped = true;
+				rejectFailure(error);
+				this.onDataRange(begin, new Uint8Array(0));
+			});
+		}
+
+		abort(): void {
+			this.stopped = true;
+			source.close();
+		}
+	}
+	return { transport: new HttpRangeTransport(), failure };
 }
 
 function maxCanvasPixels(): number {
@@ -77,6 +108,7 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 	private searchEngine: PdfSearch | null = null;
 	private document: PDFDocumentProxy | null = null;
 	private loadingTask: PDFDocumentLoadingTask | null = null;
+	private source: ReaderSource | null = null;
 	private pdfjs: typeof import('pdfjs-dist') | null = null;
 	private disposed = false;
 	private settings: ReaderSettings | null = null;
@@ -155,26 +187,49 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		return () => { this.subscribers.delete(listener); };
 	}
 
-	async open(blob: Blob): Promise<void> {
-		const [{ pdfjs, viewer: module }, worker, data] = await Promise.all([
+	async open(input: Blob | ReaderSource): Promise<void> {
+		const [{ pdfjs, viewer: module }, worker] = await Promise.all([
 			loadViewer(),
-			import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-			blob.arrayBuffer()
+			import('pdfjs-dist/build/pdf.worker.min.mjs?url')
 		]);
 		if (this.disposed) return;
 		this.pdfjs = pdfjs;
 		pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+		let options: Record<string, unknown>;
+		let failure: Promise<never> | null = null;
+		if (isBlob(input)) {
+			options = { data: new Uint8Array(await input.arrayBuffer()) };
+		} else {
+			this.source = input;
+			const range = createRangeTransport(pdfjs, input);
+			failure = range.failure;
+			options = {
+				range: range.transport,
+				rangeChunkSize: RANGE_CHUNK_SIZE,
+				disableAutoFetch: true
+			};
+		}
 		const loadingTask = pdfjs.getDocument({
-			data: new Uint8Array(data),
+			...options,
 			BinaryDataFactory: PdfBinaryDataFactory,
 			useWorkerFetch: false,
 			verbosity: pdfjs.VerbosityLevel.ERRORS,
 			enableXfa: false
 		});
 		this.loadingTask = loadingTask;
-		const pdf = await loadingTask.promise;
+		let pdf: PDFDocumentProxy;
+		try {
+			pdf = failure ? await Promise.race([loadingTask.promise, failure]) : await loadingTask.promise;
+		} catch (error) {
+			await loadingTask.destroy().catch(() => {});
+			this.source?.close();
+			this.source = null;
+			throw error;
+		}
 		if (this.disposed) {
 			await loadingTask.destroy();
+			this.source?.close();
+			this.source = null;
 			return;
 		}
 		this.document = pdf;
@@ -447,6 +502,9 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		}
 		this.linkService?.setDocument(null);
 		await this.loadingTask?.destroy();
+		this.loadingTask = null;
+		this.source?.close();
+		this.source = null;
 		this.viewer = null;
 		this.document = null;
 		if (this.scroller === this.container) {
@@ -647,6 +705,16 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		this.paintReady.add(page);
 		const box = this.pageBox(page);
 		if (box) this.layers.paintPage(box);
+		this.prefetchPages(page);
+	}
+
+	/** Warm the next pages without letting pdf.js prefetch the whole file. */
+	private prefetchPages(page: number): void {
+		if (!this.source || !this.document || this.disposed) return;
+		const total = this.document.numPages;
+		for (const next of [page + 1, page + 2]) {
+			if (next <= total) void this.document.getPage(next).catch(() => {});
+		}
 	}
 
 	private textRendered(page: number): void {

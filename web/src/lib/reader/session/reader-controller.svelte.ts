@@ -7,13 +7,14 @@ import { ApiError, type JsonValue } from '#lib/api/client.js';
 import { getBook } from '#lib/catalog/api.js';
 import type { Book, BookFile } from '#lib/catalog/types.js';
 import { createReader, readerFormat } from '#lib/reader/index.js';
-import { deviceId, downloadBookFile, getBookState, getSettings, SyncError } from '#lib/reader/api.js';
+import { deviceId, getBookState, getSettings, SyncError, validatedBookFileUrl } from '#lib/reader/api.js';
 import { annotationForReader, deleteAnnotation, highlightColor, isMarkColor, makeHighlight, makeNote, type MarkColor } from '#lib/reader/annotations.js';
 import { bookmarkForPosition, deleteBookmark, makeBookmark, updateBookmarkLabel } from '#lib/reader/bookmarks.js';
 import { fraction, progressMutation, restorePosition } from '#lib/reader/progress.js';
 import { ReadingSessions, SessionWriter } from '#lib/reader/sessions.js';
 import { DEFAULT_SETTINGS, isReaderSettings, loadReaderSettings, mergeBookSettings } from '#lib/reader/settings.js';
-import type { Bookmark, Highlight, Note, Reader, ReaderFormat, ReaderSelection, ReaderSettings, Relocation } from '#lib/reader/types.js';
+import type { Bookmark, Highlight, Note, Reader, ReaderEvents, ReaderFormat, ReaderSelection, ReaderSettings, Relocation } from '#lib/reader/types.js';
+import { HttpRangeSource, isBlob, isReaderSourceError, type ReaderSource } from '#lib/reader/source.js';
 import {
 	currentAccount, DurableProgressWriter, offlineAvailable, offlineStatus, readerOpened, saveMutation, syncNow
 } from '#lib/sync/client.js';
@@ -322,9 +323,9 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				loadError = m['reader.error.unsupported']();
 				return;
 			}
-			const blob = offlineAvailable()
-				? await loadFile(currentAccount(), bookId, selectedFile, offline)
-				: await downloadBookFile(bookId, selectedFile);
+			const source: Blob | ReaderSource = offline
+				? await loadFile(currentAccount(), bookId, selectedFile, true)
+				: new HttpRangeSource(validatedBookFileUrl(bookId, selectedFile, globalThis.location?.origin ?? 'http://localhost'), selectedFile);
 			if (version !== requestVersion) return;
 			browserDeviceId = deviceId();
 			const loadedSettings = loadReaderSettings(storedSettings, selectedFormat, bookId);
@@ -348,7 +349,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
 			otherPageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id !== fileId);
 			progressWriter = new PeriodicProgressWriter(new DurableProgressWriter(reportPendingError));
-			loaded = { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId, annotationId, context: sourceContext(contextLocator, contextFraction, selectedFormat) };
+			loaded = { version, bookId, fileId, selectedFile, selectedFormat, source, state, bookmarkId, highlightId, annotationId, context: sourceContext(contextLocator, contextFraction, selectedFormat) };
 		} catch (cause) {
 			if (version !== requestVersion) return;
 			console.error('Could not open book', cause);
@@ -908,17 +909,17 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	let loaded: {
-		version: number; bookId: number; fileId: number; selectedFormat: ReaderFormat;
-		blob: Blob; state: Awaited<ReturnType<typeof getBookState>>;
+		version: number; bookId: number; fileId: number; selectedFile: BookFile; selectedFormat: ReaderFormat;
+		source: Blob | ReaderSource; state: Awaited<ReturnType<typeof getBookState>>;
 		bookmarkId: string | null; highlightId: string | null; annotationId: string | null;
 		context: ReturnType<typeof sourceContext>;
 	} | null = null;
 	async function attach(surface: HTMLElement): Promise<Reader> {
 		if (!loaded) throw new Error('The reader has not loaded.');
-		const { version, bookId, fileId, selectedFormat, blob, state, bookmarkId, highlightId, annotationId, context } = loaded;
+		const { version, bookId, fileId, selectedFile, selectedFormat, source, state, bookmarkId, highlightId, annotationId, context } = loaded;
 		opening = true;
 		try {
-			const currentReader = await createReader(selectedFormat, surface, {
+			const events: ReaderEvents = {
 				relocate: (next) => { if (version === requestVersion) relocate(next); },
 				selection: (next) => { if (version === requestVersion && (selectedFormat === 'pdf' || next)) selection = next; },
 				activity: () => { if (ready && !document.hidden) sessionClock?.activity(); },
@@ -927,13 +928,25 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 					console.error('Reader rendering failed', error);
 					if (version === requestVersion) actionError = m['reader.error.render']();
 				}
-			});
+			};
+			let currentReader = await createReader(selectedFormat, surface, events);
 			if (version !== requestVersion) {
 				await currentReader.destroy();
 				throw new Error('Reader opening was superseded.');
 			}
 			reader = currentReader;
-			await currentReader.open(blob);
+			try {
+				await currentReader.open(source);
+			} catch (error) {
+				if (isBlob(source) || !isReaderSourceError(error) || !offlineAvailable()) throw error;
+				await currentReader.destroy();
+				const cached = await loadFile(currentAccount(), bookId, selectedFile, true).catch(() => null);
+				if (!cached) throw error;
+				currentReader = await createReader(selectedFormat, surface, events);
+				reader = currentReader;
+				loaded.source = cached;
+				await currentReader.open(cached);
+			}
 			if (version !== requestVersion) throw new Error('Reader opening was superseded.');
 			await currentReader.applySettings(settings);
 			for (const highlight of highlights) {

@@ -51,7 +51,7 @@ const book: Book = {
 	id: 21, library_id: 1, title: 'PDF', sort_title: 'PDF', subtitle: null, description: null,
 	language: 'en', publisher: null, published_date: null, page_count: null, cover_url: null,
 	cover_source: null, authors: [], series: null, tags: [], identifiers: [], genres: [], moods: [], age_rating: null, content_rating: null, ratings: [], field_sources: [],
-	files: [{ id: 31, format: 'pdf', size_bytes: 0, download_url: '/file', original_filename: 'book.pdf', created_at: '' }],
+	files: [{ id: 31, format: 'pdf', size_bytes: 0, download_url: `/api/v1/books/21/files/31?v=${'a'.repeat(64)}`, original_filename: 'book.pdf', created_at: '' }],
 	created_at: '', updated_at: ''
 };
 const input: PageAnnotationInput = {
@@ -154,7 +154,7 @@ describe('reader controller PDF extensions', () => {
 		]]]);
 		vi.mocked(getSettings).mockImplementation(async () => stored.get(currentAccount()) ?? []);
 		vi.mocked(getBook).mockImplementation(async (id) => ({
-			...book, id, files: [{ ...book.files[0], format: 'epub' }]
+			...book, id, files: [{ ...book.files[0], format: 'epub', download_url: `/api/v1/books/${id}/files/31?v=${'a'.repeat(64)}` }]
 		}));
 		let release!: (outcome: 'applied') => void;
 		const first = new Promise<'applied'>((resolve) => { release = resolve; });
@@ -500,7 +500,7 @@ describe('reader controller PDF extensions', () => {
 	it('separates live current-file and other-file page annotations when opening files', async () => {
 		const row = { ...input, id: '019a501b-2c3d-7e4f-8a5b-6c7d8e9f0011', book_id: 21, book_file_id: 31, created_at: '', updated_at: '', deleted_at: null, rev: 1 };
 		const other = { ...row, id: 'other', book_file_id: 32 };
-		vi.mocked(getBook).mockResolvedValue({ ...book, files: [...book.files, { ...book.files[0], id: 32 }] });
+		vi.mocked(getBook).mockResolvedValue({ ...book, files: [...book.files, { ...book.files[0], id: 32, download_url: `/api/v1/books/21/files/32?v=${'a'.repeat(64)}` }] });
 		vi.mocked(getBookState).mockResolvedValue({ ...empty, page_annotations: [row, other, { ...row, id: 'deleted', deleted_at: 'today' }] });
 		let fileId = '31';
 		const controller = createReaderController(() => ({ ...params(), fileId }));

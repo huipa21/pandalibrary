@@ -14,6 +14,8 @@ declare module 'foliate-js/view.js' {
 	}
 
 	export interface FoliateSection {
+		id?: string;
+		size?: number;
 		load?(): string | Promise<string>;
 		unload?(): void;
 		createDocument?(): Document | Promise<Document>;
@@ -83,4 +85,74 @@ declare module 'foliate-js/epubcfi.js' {
 	export function fromRange(range: Range): string;
 	export function parse(cfi: string): unknown;
 	export function toRange(doc: Document, parts: unknown): Range;
+}
+
+declare module 'foliate-js/vendor/zip.js' {
+	export interface ZipEntry {
+		filename: string;
+		uncompressedSize: number;
+		getData<T>(writer: unknown): Promise<T>;
+	}
+
+	export class ZipReader {
+		constructor(reader: unknown);
+		getEntries(): Promise<ZipEntry[]>;
+		close(): Promise<void>;
+	}
+
+	export class BlobReader {
+		constructor(blob: unknown);
+	}
+
+	export class TextWriter {
+		constructor(encoding?: string);
+	}
+
+	export class BlobWriter {
+		constructor(type?: string);
+	}
+
+	export function configure(options: { useWebWorkers?: boolean }): void;
+}
+
+declare module 'foliate-js/vendor/fflate.js' {
+	export function unzlibSync(data: Uint8Array): Uint8Array;
+}
+
+declare module 'foliate-js/epub.js' {
+	import type { FoliateBook } from 'foliate-js/view.js';
+	export class EPUB {
+		constructor(loader: {
+			loadText(name: string): Promise<string | null>;
+			loadBlob(name: string, type?: string): Promise<Blob | null>;
+			getSize(name: string): number;
+		});
+		init(): Promise<FoliateBook>;
+	}
+}
+
+declare module 'foliate-js/comic-book.js' {
+	import type { FoliateBook } from 'foliate-js/view.js';
+	export function makeComicBook(
+		loader: unknown,
+		file: { name: string; type: string }
+	): Promise<FoliateBook>;
+}
+
+declare module 'foliate-js/fb2.js' {
+	import type { FoliateBook } from 'foliate-js/view.js';
+	export function makeFB2(blob: Blob): Promise<FoliateBook>;
+}
+
+declare module 'foliate-js/mobi.js' {
+	import type { FoliateBook } from 'foliate-js/view.js';
+	export interface MobiFile {
+		readonly size: number;
+		slice(start: number, end?: number): { arrayBuffer(): Promise<ArrayBuffer> };
+	}
+	export function isMOBI(file: MobiFile): Promise<boolean>;
+	export class MOBI {
+		constructor(options: { unzlib(data: Uint8Array): Uint8Array });
+		open(file: MobiFile): Promise<FoliateBook>;
+	}
 }

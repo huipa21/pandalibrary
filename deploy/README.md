@@ -99,13 +99,14 @@ The service has no published host port. Connect your existing Caddy container to
 the `pandalibrary-proxy` network created by Compose, using the same container
 engine, for example `podman network connect pandalibrary-proxy <caddy-container>`.
 Alternatively, add that network as an external network to Caddy's Compose
-configuration. On that network, configure Caddy with:
-
-```caddyfile
-books.example.org {
-    reverse_proxy pandalibrary:8080
-}
-```
+configuration. On that network, use the ready-to-copy site block in
+[`pandalibrary.caddy`](pandalibrary.caddy). It keeps
+`/api/v1/books/*/files/*` out of Caddy's `encode` middleware so the reader's
+`Range`/`If-Range` requests still receive `206 Partial Content`, and PDF/EPUB
+responses are never gzipped. Copy it to
+`/etc/caddy/conf.d/pandalibrary.caddy` and replace `books.example.org`; it
+assumes the main Caddyfile defines the `logs`, `hardening`, and `proxy_headers`
+snippets and imports `conf.d/*.caddy`.
 
 Replace the example domain and restrict network access to trusted containers.
 On a new installation, open `https://books.example.org/setup` and use the

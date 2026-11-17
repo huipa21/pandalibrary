@@ -1,0 +1,27 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  PandaLibrary — Caddy site block
+#  Copy to /etc/caddy/conf.d/pandalibrary.caddy, then reload Caddy.
+#  Replace books.example.org with the public hostname.
+# ═══════════════════════════════════════════════════════════════════════════
+books.example.org {
+	import logs pandalibrary
+	import hardening
+
+	# The reader fetches /api/v1/books/{id}/files/{fileID} with HTTP Range and
+	# If-Range. Caddy's encoder removes Content-Length and Accept-Ranges and
+	# changes ETags for encoded responses, which breaks 206 replies. Keep every
+	# book-file response out of encode so the upstream 206/headers pass through.
+	@compressible not path /api/v1/books/*/files/*
+	encode @compressible zstd gzip
+
+	reverse_proxy pandalibrary:8080 {
+		import proxy_headers
+
+		# Never ask the Go server to compress book responses. Caddy can still
+		# compress non-book responses through encode above.
+		header_up -Accept-Encoding
+		transport http {
+			compression off
+		}
+	}
+}

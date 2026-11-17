@@ -209,7 +209,11 @@ position is saved automatically and syncs across your devices.
 
 All supported formats share a full-screen reader with a compact toolbar, reading
 progress, sync status, close button and left sidebar. The app header and library
-sidebar are hidden while reading. The reader sidebar docks on wide screens and
+sidebar are hidden while reading. Online reading streams only the bytes it needs, so large PDFs can be opened
+without waiting for a full download. **Save for offline** still downloads the
+complete file for use without a connection.
+
+The reader sidebar docks on wide screens and
 overlays the book on smaller screens.
 
 In EPUB, MOBI, AZW3, FB2, FBZ and CBZ readers you can:

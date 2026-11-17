@@ -294,6 +294,17 @@ text that no longer fits moves to the next page rather than being clipped.
 Run the focused zoom/resize browser regressions with
 `pnpm --dir web exec playwright test src/lib/reader/views/reflow-display.e2e.ts`.
 
+Online reading uses HTTP Range requests instead of downloading a whole file.
+[source.ts](web/src/lib/reader/source.ts) fetches aligned 256 KiB chunks, dedupes
+concurrent reads, and keeps at most 32 MiB per open reader. PDFs use a custom
+`PDFDataRangeTransport` with `disableAutoFetch`, so a 400 MiB PDF is not copied
+into browser memory merely to open it. EPUB, FBZ and CBZ use a range-backed
+`BlobReader` with foliate's ZIP reader; MOBI/AZW3 use the same source for PDB
+record reads; FB2 still needs its complete XML before parsing. Explicit offline
+saves still download and store the full file. If a proxy ignores Range for a file
+larger than 32 MiB, the reader reports an error instead of silently downloading
+the whole book.
+
 ### Annotation image assets
 
 Session-authenticated `POST /api/v1/me/annotation-assets` accepts a raw PNG, JPEG
