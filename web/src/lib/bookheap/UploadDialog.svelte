@@ -406,50 +406,52 @@
 				<ul class="max-h-80 shrink-0 divide-y divide-slate-200 overflow-y-auto rounded-md border border-slate-200" aria-label={m['bh3.list_label']()}>
 					{#each queue.rows as row (row.id)}
 						{@const percent = uploadPercent(row)}
-						<li class={['flex items-center gap-3 px-3 py-2', row.status === 'done' ? 'bg-emerald-50' : '']} data-status={row.status}>
-							{#if row.status === 'done'}
-								<svg data-testid="bh3-success-mark" aria-hidden="true" viewBox="0 0 24 24" class="size-7 shrink-0 rounded-full bg-emerald-700 p-1 text-white" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6" /></svg>
-							{/if}
-							<div class="min-w-0 flex-1">
-								<p class="truncate text-sm font-medium" title={row.file.name}>{row.file.name}</p>
-								<p class="flex flex-wrap gap-x-2 text-xs text-slate-600">
+						<li class={['space-y-1.5 px-3 py-2.5', row.status === 'done' ? 'bg-emerald-50' : '']} data-status={row.status}>
+							<div class="flex min-w-0 items-start gap-2">
+								{#if row.status === 'done'}
+									<svg data-testid="bh3-success-mark" aria-hidden="true" viewBox="0 0 24 24" class="mt-0.5 size-6 shrink-0 rounded-full bg-emerald-700 p-1 text-white" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6" /></svg>
+								{/if}
+								<p class="min-w-0 flex-1 break-words text-sm font-medium leading-5" title={row.file.name}>{row.file.name}</p>
+							</div>
+							<div class="flex min-w-0 items-center gap-2">
+								<p class="flex min-w-0 flex-1 flex-wrap gap-x-2 text-xs text-slate-600">
 									<span>{formatBytes(row.file.size, getLocale())}</span>
 									{#if row.visibility}
 										<span>{row.visibility === 'public' ? m['bh.visibility.public']() : m['bh.visibility.private']()}</span>
 									{/if}
-									<span
-										class={row.status === 'error' ? 'text-red-700' : row.status === 'done' ? 'font-semibold text-emerald-800' : ''}
-										data-testid="bh3-row-status"
-									>
-										{#if row.status === 'error' && row.error === 'duplicate_book' && row.duplicateOf !== null && !queue.running}
-											<a class="underline underline-offset-2" href={`/books/${row.duplicateOf}`} onclick={finishClose}>{statusText(row)}</a>
-										{:else}
-											{statusText(row)}
-										{/if}
-									</span>
 								</p>
-								{#if row.status === 'uploading'}
-									<div
-										class="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200"
-										role="progressbar"
-										aria-label={m['bh3.progress_label']({ name: row.file.name })}
-										aria-valuemin={0}
-										aria-valuemax={100}
-										aria-valuenow={percent}
-									>
-										<div class="h-full bg-emerald-600 transition-[width]" style:width={`${percent}%`}></div>
-									</div>
-								{/if}
+								<button
+									type="button"
+									class="grid size-7 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+									aria-label={m['bh3.remove']({ name: row.file.name })}
+									disabled={row.status === 'uploading'}
+									onclick={() => queue.remove(row.id)}
+								>
+									<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15" /></svg>
+								</button>
 							</div>
-							<button
-								type="button"
-								class="grid size-7 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
-								aria-label={m['bh3.remove']({ name: row.file.name })}
-								disabled={row.status === 'uploading'}
-								onclick={() => queue.remove(row.id)}
+							<p
+								class={['break-words text-xs leading-5', row.status === 'error' ? 'text-red-700' : row.status === 'done' ? 'font-semibold text-emerald-800' : 'text-slate-600']}
+								data-testid="bh3-row-status"
 							>
-								<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15" /></svg>
-							</button>
+								{#if row.status === 'error' && row.error === 'duplicate_book' && row.duplicateOf !== null && !queue.running}
+									<a class="underline underline-offset-2" href={`/books/${row.duplicateOf}`} onclick={finishClose}>{statusText(row)}</a>
+								{:else}
+									{statusText(row)}
+								{/if}
+							</p>
+							{#if row.status === 'uploading'}
+								<div
+									class="h-1.5 overflow-hidden rounded-full bg-slate-200"
+									role="progressbar"
+									aria-label={m['bh3.progress_label']({ name: row.file.name })}
+									aria-valuemin={0}
+									aria-valuemax={100}
+									aria-valuenow={percent}
+								>
+									<div class="h-full bg-emerald-600 transition-[width]" style:width={`${percent}%`}></div>
+								</div>
+							{/if}
 						</li>
 					{/each}
 				</ul>
@@ -492,7 +494,7 @@
 					</div>
 					{#if hasResults}
 						<a
-							class="text-sm font-medium text-emerald-800 underline underline-offset-4 hover:text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+							class="hidden text-sm font-medium text-emerald-800 underline underline-offset-4 hover:text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 sm:inline"
 							href="/bookheap"
 							onclick={finishClose}
 						>{m['bh3.view_bookheap']()}</a>
@@ -507,16 +509,24 @@
 					{/if}
 					<button
 						type="button"
-						class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+						class="grid size-9 place-items-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+						title={m['bh3.close']()}
 						onclick={() => void requestClose()}
-					>{m['bh3.close']()}</button>
+					>
+						<svg aria-hidden="true" viewBox="0 0 20 20" class="size-5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15" /></svg>
+						<span class="sr-only">{m['bh3.close']()}</span>
+					</button>
 					<button
 						bind:this={uploadButton}
 						type="button"
-						class="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+						class="grid size-9 place-items-center rounded-md bg-emerald-700 text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
 						aria-disabled={!canUpload}
+						title={queue.running ? m['bh3.uploading']() : m['bh3.upload']()}
 						onclick={startUpload}
-					>{queue.running ? m['bh3.uploading']() : m['bh3.upload']()}</button>
+					>
+						<svg aria-hidden="true" viewBox="0 0 20 20" class="size-5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V3m0 0L6 7m4-4l4 4M3 13v2a2 2 0 002 2h10a2 2 0 002-2v-2" /></svg>
+						<span class="sr-only">{queue.running ? m['bh3.uploading']() : m['bh3.upload']()}</span>
+					</button>
 				</div>
 			{/if}
 		</div>
