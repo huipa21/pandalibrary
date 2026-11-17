@@ -296,9 +296,11 @@ private collections of words, phrases, sentences and longer passages. A default
 wordbook is created automatically and always remains available.
 
 Select text in a text or PDF reader and choose **Add to wordbook** in the
-selection actions or reader toolbar. The toolbar action saves to your default
-wordbook; selection actions also let you choose another active wordbook. The
-entry type is suggested from the selection; change it when needed.
+selection actions or reader toolbar. Selection actions open an icon-only
+wordbook menu: the entry type is detected from the selection and can be
+changed, and choosing an active wordbook saves the text there. Destination
+wordbooks are ordered by last use, then by how often you use them. The reader
+toolbar action saves directly to your default wordbook.
 Every entry keeps the source book, file and reading position so **Read in context**
 can reopen the original passage. Collecting requires a server connection; failures
 are shown rather than reported as saved.

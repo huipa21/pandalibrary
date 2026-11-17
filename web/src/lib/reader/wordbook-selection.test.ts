@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { captureWordbookSelection, pdfWordbookSelection, selectionKind, wordbookEntry } from './wordbook-selection.js';
+import { describe, expect, it, vi } from 'vitest';
+import {
+	captureWordbookSelection, orderWordbookDestinations, pdfWordbookSelection, readWordbookUsage,
+	recordWordbookUsage, selectionKind, wordbookEntry, writeWordbookUsage
+} from './wordbook-selection.js';
 import type { ReaderSelection } from './types.js';
+import type { Wordbook } from '#lib/wordbooks/api.js';
 
 describe('wordbook selection capture', () => {
 	it.each([
@@ -53,5 +57,41 @@ describe('wordbook selection capture', () => {
 		expect(captureWordbookSelection(null)).toBeNull();
 		expect(captureWordbookSelection({ text: ' \n', fraction: 0, locator: { type: 'pdf', page: 1 } })).toBeNull();
 		expect(pdfWordbookSelection(null, 1)).toBeNull();
+	});
+});
+
+describe('wordbook destination ordering', () => {
+	const book = (id: number, is_default = false): Wordbook => ({
+		id, name: `Book ${id}`, description: '', entry_count: 0, book_count: 0,
+		is_default, archived: false, created_at: '', updated_at: ''
+	});
+
+	it('puts the last used destination first, then the most frequently used', () => {
+		const books = [book(1, true), book(2), book(3), book(4)];
+		const usage = { lastDestination: 3, destinationCounts: { '2': 5, '3': 2, '4': 1 } };
+		expect(orderWordbookDestinations(books, usage).map((item) => item.id)).toEqual([3, 2, 4, 1]);
+	});
+
+	it('keeps the default-first server order when there is no history', () => {
+		const books = [book(1, true), book(2), book(3)];
+		expect(orderWordbookDestinations(books, { destinationCounts: {} }).map((item) => item.id)).toEqual([1, 2, 3]);
+	});
+
+	it('records the last destination and its frequency in restricted storage safely', () => {
+		const values = new Map<string, string>();
+		vi.stubGlobal('localStorage', {
+			getItem: (key: string) => values.get(key) ?? null,
+			setItem: (key: string, value: string) => values.set(key, value)
+		});
+		expect(readWordbookUsage()).toEqual({ destinationCounts: {} });
+		let usage = recordWordbookUsage(readWordbookUsage(), 4);
+		usage = recordWordbookUsage(usage, 2);
+		usage = recordWordbookUsage(usage, 4);
+		writeWordbookUsage(usage);
+		expect(readWordbookUsage()).toEqual({ lastDestination: 4, destinationCounts: { '4': 2, '2': 1 } });
+		vi.stubGlobal('localStorage', { getItem() { throw new Error('SecurityError'); }, setItem() { throw new Error('QuotaExceededError'); } });
+		expect(readWordbookUsage()).toEqual({ destinationCounts: {} });
+		expect(() => writeWordbookUsage(usage)).not.toThrow();
+		vi.unstubAllGlobals();
 	});
 });

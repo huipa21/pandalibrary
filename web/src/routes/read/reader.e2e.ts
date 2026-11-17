@@ -167,7 +167,7 @@ async function bookFrame(page: Page, text?: string): Promise<Frame> {
 }
 
 for (const format of ['epub', 'pdf'] as const) {
-	test(`wordbook ${format} selection overrides destination/type and main toolbar collects default only after persistence`, async ({ page }) => {
+	test(`wordbook ${format} selection menu auto-detects type and collects into a chosen destination`, async ({ page }) => {
 		await setupReader(page, format, format === 'epub' ? epubFixture() : pdfFixture());
 		const attempts: Record<string, unknown>[] = [];
 		let failing = true;
@@ -210,24 +210,25 @@ for (const format of ['epub', 'pdf'] as const) {
 			await expect(page.getByTestId('selection-wordbook-add')).toBeVisible();
 		};
 		await select();
-		await expect(page.getByTestId('wordbook-destination').locator('option', { hasText: 'Study' })).toHaveCount(1);
-		await expect(page.getByTestId('wordbook-destination').locator('option', { hasText: 'Archived' })).toHaveCount(0);
-		await page.getByTestId('wordbook-kind').selectOption('passage');
-		await page.getByTestId('wordbook-destination').selectOption('9');
-		await expect(page.getByTestId('wordbook-kind')).toHaveValue('passage');
 		await page.getByTestId('selection-wordbook-add').click();
+		await expect(page.getByTestId('wordbook-destination-9')).toContainText('Study');
+		await expect(page.getByTestId('wordbook-destination-10')).toHaveCount(0);
+		await expect(page.getByTestId(`wordbook-kind-${format === 'epub' ? 'sentence' : 'phrase'}`)).toHaveAttribute('aria-checked', 'true');
+		await page.getByTestId('wordbook-kind-passage').click();
+		await expect(page.getByTestId('wordbook-kind-passage')).toHaveAttribute('aria-checked', 'true');
+		await page.getByTestId('wordbook-destination-9').click();
 		await expect.poll(() => attempts.length).toBe(1);
 		await expect(page.getByRole('alert').filter({ hasText: 'could not be saved' })).toBeVisible();
 		await expect(page.getByTestId('selection-wordbook-add')).toBeVisible();
-		await expect(page.getByTestId('wordbook-kind')).toHaveValue('passage');
-		await expect(page.getByTestId('wordbook-destination')).toHaveValue('9');
+		await expect(page.getByTestId('wordbook-kind-passage')).toHaveAttribute('aria-checked', 'true');
+		await expect(page.getByTestId('wordbook-destination-9')).toBeVisible();
 		expect(attempts[0]).toMatchObject({
 			kind: 'passage', wordbook_id: 9,
 			source: { book_id: 21, book_file_id: 31, book_title: 'Fixture Book', locator: { type: format === 'epub' ? 'cfi' : 'pdf' } }
 		});
 		expect(attempts[0]).not.toHaveProperty('note');
 		failing = false;
-		await page.getByTestId('selection-wordbook-add').click();
+		await page.getByTestId('wordbook-destination-9').click();
 		await expect.poll(() => attempts.length).toBe(2);
 		await expect(page.getByTestId('selection-wordbook-add')).toBeDisabled();
 		await expect(page.getByRole('status').filter({ hasText: 'Added to' })).toHaveCount(0);
@@ -236,8 +237,6 @@ for (const format of ['epub', 'pdf'] as const) {
 		await expect(page.getByRole('status').filter({ hasText: 'Added to' })).toBeVisible();
 		await expect(page.getByRole('alert').filter({ hasText: 'dictionary lookup failed' })).toBeVisible();
 		await select();
-		await page.getByTestId('wordbook-destination').selectOption('9');
-		await page.getByTestId('wordbook-kind').selectOption('word');
 		await page.getByTestId('reader-wordbook-add').click();
 		await expect.poll(() => attempts.length).toBe(3);
 		expect(attempts[2]).not.toHaveProperty('wordbook_id');

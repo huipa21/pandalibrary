@@ -87,7 +87,6 @@
 	use:roving
 	use:floatAt={{ anchor, bounds }}
 	class="pv8-floating pv8-toolbar"
-	class:pv8-wordbook={!!wordbook}
 	class:pv8-hidden={hidden}
 	role="toolbar"
 	tabindex="-1"
