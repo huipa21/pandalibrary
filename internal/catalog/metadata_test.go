@@ -47,6 +47,26 @@ func TestApplyMetadataRequiresTrustedProvenance(t *testing.T) {
 	}
 }
 
+func TestApplyMetadataAcceptsDoubanProvenance(t *testing.T) {
+	f := newCatalogFixture(t)
+	ctx := context.Background()
+	admin := Viewer{UserID: 1, IsAdmin: true}
+	trusted := MetadataSource{Provider: "douban", Reference: "30442272"}
+	book, err := f.service.ApplyMetadata(ctx, admin, 101, bookPatch(t, `{"title":"雅思词汇真经"}`),
+		map[string]MetadataSource{"title": trusted}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if book.Title != "雅思词汇真经" {
+		t.Fatalf("title = %q", book.Title)
+	}
+	for _, source := range book.FieldSources {
+		if source.Field == "title" && (source.Source != "douban" || source.SourceRef == nil || *source.SourceRef != trusted.Reference) {
+			t.Fatalf("douban source = %+v", source)
+		}
+	}
+}
+
 func TestApplyMetadataExtendedFieldsRecordProvenance(t *testing.T) {
 	f := newCatalogFixture(t)
 	ctx := context.Background()
