@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import { ApiError, api, type JsonValue } from '#lib/api/client.js';
 import type { BookFile } from '#lib/catalog/types.js';
 import type { BookState, Setting } from './types.js';
@@ -96,7 +97,8 @@ export function deviceId(): string {
 	const key = 'pandalibrary.reader.device-id';
 	const current = localStorage.getItem(key);
 	if (current && current.length <= 128) return current;
-	const id = crypto.randomUUID();
+	// crypto.randomUUID() is unavailable on insecure origins such as a LAN HTTP address.
+	const id = uuidv4();
 	localStorage.setItem(key, id);
 	return id;
 }

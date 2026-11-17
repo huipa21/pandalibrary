@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from '#lib/api/client.js';
 import type { BookFile } from '#lib/catalog/types.js';
-import { downloadBookFile, getBookState, pushMutation, SyncError, type Mutation } from './api.js';
+import { deviceId, downloadBookFile, getBookState, pushMutation, SyncError, type Mutation } from './api.js';
 
 const hash = 'a'.repeat(64);
 const file: BookFile = {
@@ -20,7 +20,10 @@ const mutation: Mutation = {
 	updated_at: 100
 };
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
+});
 
 describe('reader API', () => {
 	it('normalizes missing annotation collections from an older server', async () => {
@@ -46,6 +49,26 @@ describe('reader API', () => {
 				.rejects.toMatchObject({ name: 'InvalidFileUrlError' });
 		}
 		expect(fetcher).toHaveBeenCalledOnce();
+	});
+
+	it('creates and reuses a device id without crypto.randomUUID on insecure origins', () => {
+		const store = new Map<string, string>();
+		vi.stubGlobal('localStorage', {
+			getItem: vi.fn((key: string) => store.get(key) ?? null),
+			setItem: vi.fn((key: string, value: string) => { store.set(key, value); })
+		});
+		const getRandomValues = vi.fn((bytes: Uint8Array) => {
+			bytes.fill(0x2a);
+			return bytes;
+		});
+		vi.stubGlobal('crypto', { getRandomValues });
+
+		const id = deviceId();
+		expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+		expect(store.get('pandalibrary.reader.device-id')).toBe(id);
+		expect(getRandomValues).toHaveBeenCalledOnce();
+		expect(deviceId()).toBe(id);
+		expect(getRandomValues).toHaveBeenCalledOnce();
 	});
 
 	it('surfaces file HTTP failures', async () => {

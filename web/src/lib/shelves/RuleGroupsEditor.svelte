@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { v4 as uuidv4 } from 'uuid';
 	import * as m from '#lib/paraglide/messages.js';
 	import { translate } from '#lib/paging/translate.js';
 	import { isIDField, RULE_FIELDS, RULE_FORMATS, RULE_STATUSES } from './rules.js';
@@ -11,7 +12,7 @@
 
 	function addGroup() {
 		groups = [...groups, {
-			id: crypto.randomUUID(), name: '',
+			id: uuidv4(), name: '',
 			rules: { match: 'all', conditions: [{ field: 'title', op: 'contains', value: '' }] }
 		}];
 	}

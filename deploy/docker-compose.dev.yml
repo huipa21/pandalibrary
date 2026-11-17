@@ -11,6 +11,7 @@ services:
       PANDA_BASE_URL: ${PANDA_DEV_BASE_URL:-http://localhost:8080}
       PANDA_TRUSTED_PROXIES: ""
     ports:
-      - "${PANDA_DEV_BIND:-127.0.0.1}:${PANDA_DEV_PORT:-8080}:8080"
+      #- "${PANDA_DEV_BIND:-127.0.0.1}:${PANDA_DEV_PORT:-8080}:8080"
+      - "${PANDA_DEV_BIND:-0.0.0.0}:${PANDA_DEV_PORT:-8080}:8080"
     volumes:
       - ./data:/data
