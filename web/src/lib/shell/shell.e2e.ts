@@ -344,13 +344,13 @@ test('administrators see the Admin entry with localized Chinese navigation', asy
 	await authenticate(page, 'admin', 'zh');
 	await page.goto('/');
 	const sidebar = page.getByRole('navigation', { name: '主导航' });
-	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText(['仪表盘', '全部图书', /^收藏/, /^书堆/, '批注']);
+	await expect(sidebar.getByRole('region', { name: '主页' }).getByRole('link')).toHaveText([/仪表盘/, /书堆/, /收藏/, /批注/]);
 	await expect(sidebar.locator('a[href="/bookmarks"]')).toHaveCount(0);
 	await expect(sidebar.getByRole('link', { name: /^书堆/ })).toHaveAttribute('href', '/bookheap');
-	await expect(sidebar.getByRole('link', { name: '管理', exact: true })).toHaveAttribute('href', '/admin');
+	await expect(sidebar.getByRole('link', { name: '管理面板', exact: true })).toHaveAttribute('href', '/admin');
 	await sidebar.getByRole('button', { name: '书库操作' }).click();
 	await expect(sidebar.getByRole('menuitem', { name: '新建书库' })).toBeVisible();
-	await expect(sidebar.getByRole('menuitem', { name: '管理书库' })).toBeVisible();
+	await expect(sidebar.getByRole('menuitem', { name: '全部书库' })).toBeVisible();
 	await expect(sidebar.getByRole('link', { name: '仪表盘' })).toHaveAttribute('aria-current', 'page');
 });
 

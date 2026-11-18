@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
 	import { adminErrorKey } from '#lib/admin/form.js';
@@ -15,16 +14,6 @@
 	let access = $state<Access>('loading');
 	let failure = $state<unknown>(null);
 	let check = 0;
-
-	const sections = [
-		{ href: '/admin/users', label: m['admin.tabs.users'] },
-		{ href: '/admin/hidden-books', label: m['admin.tabs.hidden_books'] },
-		{ href: '/admin/imports', label: m['admin.tabs.imports'] },
-		{ href: '/admin/providers', label: m['admin.tabs.providers'] },
-		{ href: '/admin/dictionaries', label: m['admin.tabs.dictionaries'] },
-		{ href: '/admin/maintenance', label: m['admin.tabs.maintenance'] },
-		{ href: '/admin/backup', label: m['admin.tabs.backup'] }
-	];
 
 	onMount(() => {
 		void checkAccess();
@@ -45,11 +34,6 @@
 			access = 'error';
 		}
 	}
-
-	function isCurrent(href: string): boolean {
-		const path = page.url.pathname.replace(/\/+$/, '') || '/';
-		return href === '/admin' ? path === '/admin' : path === href || path.startsWith(`${href}/`);
-	}
 </script>
 
 {#if access === 'loading'}
@@ -63,20 +47,5 @@
 		<a class={`rounded-sm underline underline-offset-4 ${focusRing}`} href="/">{m['admin.back_home']()}</a>
 	</section>
 {:else}
-	<div class="space-y-8">
-		<nav aria-label={m['admin.tabs.label']()} class="overflow-x-auto border-b border-slate-200">
-			<ul class="flex min-w-max gap-1 text-sm">
-				{#each sections as section (section.href)}
-					<li>
-						<a
-							class={`-mb-px block rounded-t-md border-b-2 px-3 py-2 ${focusRing} ${isCurrent(section.href) ? 'border-slate-900 font-medium text-slate-950' : 'border-transparent text-slate-600 hover:text-slate-950'}`}
-							href={section.href}
-							aria-current={isCurrent(section.href) ? 'page' : undefined}
-						>{section.label()}</a>
-					</li>
-				{/each}
-			</ul>
-		</nav>
-		{@render children()}
-	</div>
+	{@render children()}
 {/if}

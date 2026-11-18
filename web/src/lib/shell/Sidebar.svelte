@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import * as m from '#lib/paraglide/messages.js';
-	import { homeNavigationFor, isActive, navigationFor, otherNavigationFor, type NavigationItem } from '#lib/nav.js';
+	import { adminNavigationFor, homeNavigationFor, isActive, isAdminRoute, navigationFor, otherNavigationFor, type NavigationItem } from '#lib/nav.js';
 	import BookheapCount from '#lib/bookheap/BookheapCount.svelte';
 	import AnnotationsCount from '#lib/notes/AnnotationsCount.svelte';
 	import FavoritesCount from '#lib/shelves/FavoritesCount.svelte';
@@ -23,6 +23,7 @@
 	}
 
 	let { role, pathname, shelves, footer, account }: Props = $props();
+	const adminMode = $derived(role === 'admin' && isAdminRoute(pathname));
 
 	function configureDashboard(event: MouseEvent & { currentTarget: HTMLButtonElement }) {
 		requestDashboardConfigure(event.currentTarget);
@@ -63,24 +64,38 @@
 {/snippet}
 
 <div class="flex min-h-0 flex-1 flex-col">
-	<nav aria-label={m['auth.navigation.label']()} class="shell-scroll min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-3 py-4">
-		<section class="shell-section" aria-labelledby="sidebar-home-heading">
-			<h2 id="sidebar-home-heading" class="shell-heading">{m['ux1.nav.home_heading']()}</h2>
-			{@render links(homeNavigationFor(role))}
-		</section>
-		{#if shelves}
-			{@render shelves()}
-		{:else}
-			<SidebarShelves {pathname} {role} />
+	<nav aria-label={adminMode ? m['admin.tabs.label']() : m['auth.navigation.label']()} class="flex min-h-0 flex-1 flex-col px-3 py-4">
+		<div class="shell-scroll min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain">
+			{#if adminMode}
+				{@render links(adminNavigationFor(role))}
+			{:else}
+				<section class="shell-section" aria-labelledby="sidebar-home-heading">
+					<h2 id="sidebar-home-heading" class="shell-heading">{m['ux1.nav.home_heading']()}</h2>
+					{@render links(homeNavigationFor(role))}
+				</section>
+				{#if shelves}
+					{@render shelves()}
+				{:else}
+					<SidebarShelves {pathname} {role} />
+				{/if}
+				<section class="shell-section" aria-labelledby="sidebar-statistics-heading">
+					<h2 id="sidebar-statistics-heading" class="shell-heading">{m['organize.statistics']()}</h2>
+					{@render links(navigationFor(role))}
+				</section>
+				<section class="shell-section" aria-labelledby="sidebar-others-heading">
+					<h2 id="sidebar-others-heading" class="shell-heading">{m['ux1.nav.others_heading']()}</h2>
+					{@render links(otherNavigationFor(role))}
+				</section>
+			{/if}
+		</div>
+		{#if role === 'admin'}
+			<div class="mt-3 shrink-0 border-t pt-2" data-slot="sidebar-admin">
+				<a class="shell-link" href={adminMode ? '/' : '/admin'}>
+					<Icon name={adminMode ? 'arrow-left' : 'users'} class="size-4.5 shrink-0" />
+					<span>{adminMode ? m['admin.exit_nav']() : m['admin.nav']()}</span>
+				</a>
+			</div>
 		{/if}
-		<section class="shell-section" aria-labelledby="sidebar-statistics-heading">
-			<h2 id="sidebar-statistics-heading" class="shell-heading">{m['organize.statistics']()}</h2>
-			{@render links(navigationFor(role))}
-		</section>
-		<section class="shell-section" aria-labelledby="sidebar-others-heading">
-			<h2 id="sidebar-others-heading" class="shell-heading">{m['ux1.nav.others_heading']()}</h2>
-			{@render links(otherNavigationFor(role))}
-		</section>
 	</nav>
 	{@render account?.()}
 	<footer class="shell-sidebar-footer shrink-0 border-t px-6 py-3 text-xs" data-slot="sidebar-footer">

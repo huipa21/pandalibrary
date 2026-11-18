@@ -185,18 +185,16 @@ for (const width of [1280, 390]) {
 	}
 }
 
-test('Admin navigation omits libraries while the sidebar retains library actions', async ({ page }) => {
+test('Admin navigation replaces the sidebar menu and omits libraries', async ({ page }) => {
 	const { unexpected } = await mockLibraries(page);
 	await page.route('**/api/v1/admin/users?*', (route) =>
 		route.fulfill({ json: { items: [], next_cursor: null } }));
 	await page.goto('/admin/users');
-	const tabs = page.getByRole('navigation', { name: 'Administration sections' });
-	await expect(tabs.getByRole('link', { name: 'Users', exact: true })).toHaveAttribute('aria-current', 'page');
-	await expect(tabs.locator('a[href^="/admin/libraries"]')).toHaveCount(0);
-	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await sidebar.getByRole('button', { name: 'Library actions', exact: true }).click();
-	await expect(sidebar.getByRole('menuitem', { name: 'New Library', exact: true })).toHaveAttribute('type', 'button');
-	await expect(sidebar.getByRole('menuitem', { name: 'All Libraries', exact: true })).toHaveAttribute('href', '/libraries');
+	const adminNav = page.getByRole('navigation', { name: 'Administration sections' });
+	await expect(adminNav.getByRole('link', { name: 'Users', exact: true })).toHaveAttribute('aria-current', 'page');
+	await expect(adminNav.locator('a[href^="/admin/libraries"]')).toHaveCount(0);
+	await expect(adminNav.getByRole('link', { name: 'Exit Admin', exact: true })).toHaveAttribute('href', '/');
+	await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
 	expect(unexpected).toEqual([]);
 });
 
@@ -218,7 +216,10 @@ test('library actions offer a creation dialog and all-library management without
 	await expect(sidebar.getByRole('menuitem', { name: 'Edit Library', exact: true })).toHaveCount(0);
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: 'Account menu', exact: true }).click();
-	await expect(page.getByRole('menuitem', { name: 'Admin', exact: true })).toHaveAttribute('href', '/admin');
+	await expect(page.getByRole('menuitem', { name: 'Admin', exact: true })).toHaveCount(0);
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('navigation', { name: 'Main navigation' })
+		.getByRole('link', { name: 'Admin Panel', exact: true })).toHaveAttribute('href', '/admin');
 	expect(unexpected).toEqual([]);
 });
 

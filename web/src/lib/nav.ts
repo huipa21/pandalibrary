@@ -53,6 +53,25 @@ export function otherNavigationFor(role: string | null | undefined): readonly Na
 	return otherNavigation.filter((item) => item.role === undefined || item.role === role);
 }
 
+/** Administrator-only destinations, shown in the sidebar while browsing the admin area. */
+export const adminNavigation: readonly NavigationItem[] = [
+	{ id: 'admin-users', href: '/admin/users', label: m['admin.tabs.users'], icon: 'users' },
+	{ id: 'admin-hidden-books', href: '/admin/hidden-books', label: m['admin.tabs.hidden_books'], icon: 'eye-off' },
+	{ id: 'admin-imports', href: '/admin/imports', label: m['admin.tabs.imports'], icon: 'upload' },
+	{ id: 'admin-providers', href: '/admin/providers', label: m['admin.tabs.providers'], icon: 'globe' },
+	{ id: 'admin-dictionaries', href: '/admin/dictionaries', label: m['admin.tabs.dictionaries'], icon: 'book-open' },
+	{ id: 'admin-maintenance', href: '/admin/maintenance', label: m['admin.tabs.maintenance'], icon: 'sliders' },
+	{ id: 'admin-backup', href: '/admin/backup', label: m['admin.tabs.backup'], icon: 'download' }
+];
+
+export function adminNavigationFor(role: string | null | undefined): readonly NavigationItem[] {
+	return role === 'admin' ? adminNavigation : [];
+}
+
+export function isAdminRoute(pathname: string): boolean {
+	return pathname === '/admin' || pathname.startsWith('/admin/');
+}
+
 function withinSection(pathname: string, section: string): boolean {
 	return pathname === section || pathname.startsWith(`${section}/`);
 }

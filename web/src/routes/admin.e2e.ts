@@ -34,19 +34,42 @@ test('hides the admin area from readers and blocks direct navigation', async ({ 
 	await authenticate(page, 'user');
 	await page.goto('/');
 	await expect(page.getByRole('navigation').first()).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Admin Panel', exact: true })).toHaveCount(0);
 	await page.goto('/admin');
 	await expect(page.getByText('Only administrators can open this area.')).toBeVisible();
+	await expect(page.getByRole('navigation', { name: 'Administration sections' })).toHaveCount(0);
+});
+
+test('Admin Panel opens the admin sidebar and Exit Admin restores the normal menu', async ({ page }) => {
+	await authenticate(page);
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Account menu', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Admin Panel', exact: true })).toHaveCount(0);
+	await page.keyboard.press('Escape');
+
+	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
+	const adminPanel = sidebar.getByRole('link', { name: 'Admin Panel', exact: true });
+	await expect(adminPanel).toHaveAttribute('href', '/admin');
+	await adminPanel.click();
+	await expect(page).toHaveURL('/admin/users');
+	const adminNav = page.getByRole('navigation', { name: 'Administration sections' });
+	await expect(adminNav.getByRole('link', { name: 'Users', exact: true })).toHaveAttribute('aria-current', 'page');
+	await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
+	await adminNav.getByRole('link', { name: 'Exit Admin', exact: true }).click();
+	await expect(page).toHaveURL('/');
+	await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
 	await expect(page.getByRole('navigation', { name: 'Administration sections' })).toHaveCount(0);
 });
 
 test('administrators reach the admin area in Chinese', async ({ page }) => {
 	await authenticate(page, 'admin', 'zh');
 	await page.goto('/');
-	await page.getByRole('link', { name: '管理', exact: true }).click();
+	await page.getByRole('link', { name: '管理面板', exact: true }).click();
 	await expect(page).toHaveURL('/admin/users');
 	await expect(page.getByRole('heading', { level: 1, name: '用户', exact: true })).toBeVisible();
-	await expect(page.getByRole('navigation', { name: '管理分区' })).toBeVisible();
+	const adminNav = page.getByRole('navigation', { name: '管理分区' });
+	await expect(adminNav.getByRole('link', { name: '用户', exact: true })).toHaveAttribute('aria-current', 'page');
+	await expect(adminNav.getByRole('link', { name: '退出管理', exact: true })).toHaveAttribute('href', '/');
 	await expect(page.getByText('pandalibrary user create --username <name>')).toBeVisible();
 });
 
