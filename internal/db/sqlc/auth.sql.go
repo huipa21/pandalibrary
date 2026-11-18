@@ -93,14 +93,15 @@ func (q *Queries) AuthCreateSession(ctx context.Context, arg AuthCreateSessionPa
 }
 
 const authCreateUser = `-- name: AuthCreateUser :one
-INSERT INTO users (username, display_name, password_hash, role, locale, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at
+INSERT INTO users (username, display_name, email, password_hash, role, locale, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at
 `
 
 type AuthCreateUserParams struct {
 	Username     string
 	DisplayName  string
+	Email        string
 	PasswordHash string
 	Role         string
 	Locale       string
@@ -112,6 +113,7 @@ func (q *Queries) AuthCreateUser(ctx context.Context, arg AuthCreateUserParams) 
 	row := q.db.QueryRowContext(ctx, authCreateUser,
 		arg.Username,
 		arg.DisplayName,
+		arg.Email,
 		arg.PasswordHash,
 		arg.Role,
 		arg.Locale,
@@ -123,6 +125,7 @@ func (q *Queries) AuthCreateUser(ctx context.Context, arg AuthCreateUserParams) 
 		&i.ID,
 		&i.Username,
 		&i.DisplayName,
+		&i.Email,
 		&i.PasswordHash,
 		&i.Role,
 		&i.Locale,
@@ -256,7 +259,7 @@ func (q *Queries) AuthGetSession(ctx context.Context, tokenHash []byte) (AuthGet
 }
 
 const authGetUserByID = `-- name: AuthGetUserByID :one
-SELECT id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at
+SELECT id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at
 FROM users
 WHERE id = ?
 `
@@ -268,6 +271,7 @@ func (q *Queries) AuthGetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.ID,
 		&i.Username,
 		&i.DisplayName,
+		&i.Email,
 		&i.PasswordHash,
 		&i.Role,
 		&i.Locale,
@@ -279,7 +283,7 @@ func (q *Queries) AuthGetUserByID(ctx context.Context, id int64) (User, error) {
 }
 
 const authGetUserByUsername = `-- name: AuthGetUserByUsername :one
-SELECT id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at
+SELECT id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at
 FROM users
 WHERE username = ? COLLATE NOCASE
 `
@@ -291,6 +295,7 @@ func (q *Queries) AuthGetUserByUsername(ctx context.Context, username string) (U
 		&i.ID,
 		&i.Username,
 		&i.DisplayName,
+		&i.Email,
 		&i.PasswordHash,
 		&i.Role,
 		&i.Locale,

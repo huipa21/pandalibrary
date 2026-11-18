@@ -70,6 +70,7 @@ test('administrators reach the admin area in Chinese', async ({ page }) => {
 	const adminNav = page.getByRole('navigation', { name: '管理分区' });
 	await expect(adminNav.getByRole('link', { name: '用户', exact: true })).toHaveAttribute('aria-current', 'page');
 	await expect(adminNav.getByRole('link', { name: '退出管理', exact: true })).toHaveAttribute('href', '/');
+	await page.getByRole('button', { name: '用户账号', exact: true }).click();
 	await expect(page.getByText('pandalibrary user create --username <name>')).toBeVisible();
 });
 
@@ -101,6 +102,10 @@ test('Users searches all pages and exposes selection-aware actions above numbere
 	await expect(tabs.getByRole('link', { name: 'Overview', exact: true })).toHaveCount(0);
 	await expect(tabs.getByRole('link', { name: 'Uploads', exact: true })).toBeVisible();
 	await expect(tabs.getByRole('link', { name: 'Backup', exact: true })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'User accounts', exact: true })).toHaveCount(0);
+	await expect(page.getByText('pandalibrary user create --username <name>')).toHaveCount(0);
+	await page.getByRole('button', { name: 'User accounts', exact: true }).click();
 	await expect(page.getByText('pandalibrary user create --username <name>')).toBeVisible();
 	await expect(page.getByRole('toolbar')).toHaveCount(0);
 	const alpha = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'alpha', exact: true }) });
@@ -124,13 +129,13 @@ test('Users searches all pages and exposes selection-aware actions above numbere
 	await page.getByRole('checkbox', { name: 'Select all loaded users' }).uncheck();
 	await expect(page.getByRole('toolbar')).toHaveCount(0);
 	const search = page.getByRole('search', { name: 'Search accounts' });
-	await search.getByLabel('Category').selectOption('display_name');
+	await expect(search.getByLabel('Category')).toHaveCount(0);
 	await search.getByRole('searchbox').fill('Beta');
 	await search.getByRole('button', { name: 'Search accounts' }).click();
 	await expect(alpha).toHaveCount(0);
 	await expect(beta.getByRole('cell').first()).toHaveText('1');
 	expect(queries.at(-1)?.get('q')).toBe('Beta');
-	expect(queries.at(-1)?.get('category')).toBe('display_name');
+	expect(queries.at(-1)?.has('category')).toBe(false);
 	expect(queries.at(-1)?.has('cursor')).toBe(false);
 	await page.getByRole('checkbox', { name: 'Select beta', exact: true }).check();
 	await search.getByRole('searchbox').fill('Not found');

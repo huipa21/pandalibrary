@@ -21,6 +21,7 @@ type AdminUser struct {
 	ID          int64     `json:"id"`
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
+	Email       string    `json:"email"`
 	Role        string    `json:"role"`
 	Locale      string    `json:"locale"`
 	Disabled    bool      `json:"disabled"`
@@ -32,6 +33,7 @@ type AdminUser struct {
 type AdminUserPatch struct {
 	Username    *string `json:"username"`
 	DisplayName *string `json:"display_name"`
+	Email       *string `json:"email"`
 	Role        *string `json:"role"`
 	Locale      *string `json:"locale"`
 	Disabled    *bool   `json:"disabled"`
@@ -39,7 +41,7 @@ type AdminUserPatch struct {
 
 func adminUser(user sqlc.User) AdminUser {
 	return AdminUser{
-		ID: user.ID, Username: user.Username, DisplayName: user.DisplayName,
+		ID: user.ID, Username: user.Username, DisplayName: user.DisplayName, Email: user.Email,
 		Role: user.Role, Locale: user.Locale, Disabled: user.Disabled != 0,
 		CreatedAt: time.UnixMilli(user.CreatedAt).UTC(), UpdatedAt: time.UnixMilli(user.UpdatedAt).UTC(),
 	}
@@ -146,12 +148,15 @@ func (s *Service) AdminUpdateUser(ctx context.Context, token string, id int64, p
 		if err != nil {
 			return err
 		}
-		input := CreateUserInput{Username: user.Username, DisplayName: user.DisplayName, Role: user.Role, Locale: user.Locale}
+		input := CreateUserInput{Username: user.Username, DisplayName: user.DisplayName, Email: user.Email, Role: user.Role, Locale: user.Locale}
 		if patch.Username != nil {
 			input.Username = *patch.Username
 		}
 		if patch.DisplayName != nil {
 			input.DisplayName = *patch.DisplayName
+		}
+		if patch.Email != nil {
+			input.Email = *patch.Email
 		}
 		if patch.Role != nil {
 			if *patch.Role == "" {
@@ -182,7 +187,7 @@ func (s *Service) AdminUpdateUser(ctx context.Context, token string, id int64, p
 			}
 		}
 		updated, err = queries.AdminUpdateUser(ctx, sqlc.AdminUpdateUserParams{
-			Username: input.Username, DisplayName: input.DisplayName, Role: input.Role,
+			Username: input.Username, DisplayName: input.DisplayName, Email: input.Email, Role: input.Role,
 			Locale: input.Locale, Disabled: disabled, UpdatedAt: s.now().UnixMilli(), ID: id,
 		})
 		if err != nil {
@@ -276,7 +281,7 @@ func (s *Service) createUser(ctx context.Context, queries *sqlc.Queries, input C
 		return sqlc.User{}, ErrFirstUserMustAdmin
 	}
 	user, err := queries.AuthCreateUser(ctx, sqlc.AuthCreateUserParams{
-		Username: input.Username, DisplayName: input.DisplayName, PasswordHash: hash,
+		Username: input.Username, DisplayName: input.DisplayName, Email: input.Email, PasswordHash: hash,
 		Role: input.Role, Locale: input.Locale, CreatedAt: s.now().UnixMilli(), UpdatedAt: s.now().UnixMilli(),
 	})
 	if err != nil {

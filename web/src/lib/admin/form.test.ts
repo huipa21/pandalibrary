@@ -80,16 +80,22 @@ describe('provider patches', () => {
 
 	describe('account drafts', () => {
 		const user: User = {
-			id: 7, username: 'reader', display_name: 'Reader', role: 'user', locale: 'en',
+			id: 7, username: 'reader', display_name: 'Reader', email: 'reader@example.com', role: 'user', locale: 'en',
 			disabled: false, created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z'
 		};
-		const draft = { username: 'reader', displayName: 'Reader', password: 'twelve bytes!', role: 'user', locale: 'en' };
+		const draft = { username: 'reader', displayName: 'Reader', email: 'reader@example.com', password: 'twelve bytes!', role: 'user', locale: 'en' };
 
 		it('validates character lengths using the server password limits', () => {
 			expect(validateUserDraft({ ...draft, password: '1234567' }, true)).toMatchObject({ error: 'password_too_short' });
 			expect(validateUserDraft({ ...draft, password: '书'.repeat(8) }, true).ok).toBe(true);
 			expect(validateUserDraft({ ...draft, password: 'x'.repeat(33) }, true)).toMatchObject({ error: 'password_too_long' });
 			expect(validateUserDraft({ ...draft, password: 'x'.repeat(32) }, true).ok).toBe(true);
+		});
+
+		it('accepts blank or valid email addresses and rejects malformed ones', () => {
+			expect(validateUserDraft({ ...draft, email: '' }, true).ok).toBe(true);
+			expect(validateUserDraft({ ...draft, email: ' reader@example.com ' }, true)).toMatchObject({ ok: true, draft: { email: 'reader@example.com' } });
+			expect(validateUserDraft({ ...draft, email: 'not-an-email' }, true)).toMatchObject({ field: 'email', error: 'email_invalid' });
 		});
 
 		it('only sends changed account fields and can clear a display name', () => {
@@ -272,6 +278,7 @@ describe('admin error keys', () => {
 			'username_too_long',
 			'username_invalid',
 			'display_name_too_long',
+			'email_invalid',
 			'password_required',
 			'password_too_short',
 			'password_too_long',

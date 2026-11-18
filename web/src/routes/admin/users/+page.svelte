@@ -4,14 +4,18 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
 	import PagerFooter from '#lib/admin/PagerFooter.svelte';
+	import CreateUserDialog from '#lib/admin/CreateUserDialog.svelte';
 	import UserForm from '#lib/admin/UserForm.svelte';
-	import { createUser, deleteUser, listAdminUsers, resetUserPassword, revokeUserCredentials, updateUser, type UserSearchCategory } from '#lib/admin/api.js';
+	import { deleteUser, listAdminUsers, resetUserPassword, revokeUserCredentials, updateUser } from '#lib/admin/api.js';
 	import { adminErrorKey, userPatch, type UserFormDraft } from '#lib/admin/form.js';
 	import { formatTimestamp } from '#lib/admin/jobs.js';
 	import type { User } from '#lib/admin/types.js';
-	import { inputClass, panelClass, primaryButton, smallDangerButton, smallSecondaryButton } from '#lib/admin/ui.js';
+	import { panelClass, smallDangerButton, smallSecondaryButton } from '#lib/admin/ui.js';
+	import Icon from '#lib/bookview/Icon.svelte';
+	import { controlIconClass, primaryIconControlClass } from '#lib/catalog/filter-styles.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { translate } from '#lib/paging/translate.js';
+	import SearchField from '#lib/search/SearchField.svelte';
 	import { currentAccount, deactivateOffline } from '#lib/sync/client.js';
 	import { withSessionLock } from '#lib/sync/engine.js';
 
@@ -23,7 +27,7 @@
 	let notice = $state('');
 	let actionError = $state('');
 	let query = $state('');
-	let category = $state<UserSearchCategory>('all');
+	let showHelp = $state(false);
 	let selectedIDs = $state<number[]>([]);
 	const selected = $derived(users.items.filter((user) => selectedIDs.includes(user.id)));
 	const single = $derived(selected.length === 1 ? selected[0] : null);
@@ -38,27 +42,19 @@
 		event.preventDefault();
 		if (busy) return;
 		const q = query.trim();
-		const field = category;
 		selectedIDs = [];
-		void users.reset((cursor, signal) => listAdminUsers({ cursor, signal, q, category: field }));
+		void users.reset((cursor, signal) => listAdminUsers({ cursor, signal, q }));
 	}
 
 	function select(id: number, checked: boolean) {
 		selectedIDs = checked ? [...selectedIDs, id] : selectedIDs.filter((value) => value !== id);
 	}
 
-	async function create(input: UserFormDraft): Promise<string | null> {
+	async function created() {
 		notice = '';
 		actionError = '';
-		try {
-			await createUser(input.username, input.displayName, input.password, input.role, input.locale);
-			creating = false;
-			notice = m['admin.users.form.success_create']();
-			await users.reload();
-			return null;
-		} catch (cause) {
-			return translate(adminErrorKey(cause, 'create'));
-		}
+		notice = m['admin.users.form.success_create']();
+		await users.reload();
 	}
 
 	async function save(input: UserFormDraft): Promise<string | null> {
@@ -161,21 +157,58 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="users-heading">
-	<header class="flex flex-wrap items-start justify-end gap-3">
-		<h1 id="users-heading" class="sr-only">{m['admin.users.heading']()}</h1>
-		<button type="button" class={primaryButton} disabled={formOpen || actionInProgress} onclick={() => (creating = true)}>
-			{m['admin.users.create_label']()}
+	<h1 id="users-heading" class="sr-only">{m['admin.users.heading']()}</h1>
+	<header class="flex flex-wrap items-center gap-2">
+		<form role="search" aria-label={m['admin.users.search']()} class="flex min-w-0 w-full max-w-xs sm:max-w-sm" onsubmit={search}>
+			<SearchField
+				id="admin-users-search"
+				name="q"
+				class="min-w-0 flex-1"
+				label={m['admin.users.search']()}
+				buttonLabel={m['admin.users.search']()}
+				placeholder={m['admin.users.selector.search_placeholder']()}
+				bind:value={query}
+				disabled={busy}
+			/>
+		</form>
+		<button
+			type="button"
+			class="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 app-focus-ring"
+			aria-label={m['admin.accounts.heading']()}
+			title={m['admin.accounts.heading']()}
+			aria-expanded={showHelp}
+			aria-controls="users-help"
+			onclick={() => (showHelp = !showHelp)}
+		>
+			<Icon name="info" class={controlIconClass} />
+		</button>
+		<button
+			type="button"
+			class={`${primaryIconControlClass} ml-auto`}
+			aria-label={m['admin.users.create_label']()}
+			title={m['admin.users.create_label']()}
+			disabled={formOpen || actionInProgress}
+			onclick={() => (creating = true)}
+		>
+			<Icon name="plus" class={controlIconClass} />
 		</button>
 	</header>
+	{#if showHelp}
+		<div id="users-help" class="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+			<p>{m['admin.accounts.cli']()}</p>
+			<ul class="list-disc space-y-1 pl-6">
+				<li><code class="rounded bg-slate-100 px-1">pandalibrary user create --username &lt;name&gt;</code></li>
+				<li><code class="rounded bg-slate-100 px-1">pandalibrary user reset-password --username &lt;name&gt;</code></li>
+			</ul>
+			<p>{m['admin.accounts.ids']()}</p>
+		</div>
+	{/if}
 	{#if notice}<p class="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800" role="status">{notice}</p>{/if}
 	{#if actionError}<AdminAlert message={actionError} />{/if}
 
-	{#if creating}
-		<section class={panelClass} aria-labelledby="create-heading">
-			<h2 id="create-heading" class="text-xl font-semibold">{m['admin.users.form.create_title']()}</h2>
-			<UserForm mode="create" onsubmit={create} oncancel={() => (creating = false)} />
-		</section>
-	{:else if editingUser}
+	<CreateUserDialog open={creating} onclose={() => (creating = false)} oncreated={created} />
+
+	{#if editingUser}
 		<section class={panelClass} aria-labelledby="edit-heading">
 			<h2 id="edit-heading" class="text-xl font-semibold">{m['admin.users.form.edit_title']()}</h2>
 			{#key editingUser.id}<UserForm mode="edit" user={editingUser} onsubmit={save} oncancel={() => (editingUser = null)} />{/key}
@@ -187,25 +220,7 @@
 		</section>
 	{/if}
 
-	<section class={panelClass} aria-labelledby="list-heading" aria-busy={users.status === 'loading'}>
-		<h2 id="list-heading" class="text-xl font-semibold">{m['admin.users.heading']()}</h2>
-		<form role="search" aria-label={m['admin.users.search']()} class="flex flex-wrap items-end gap-2" onsubmit={search}>
-			<label class="space-y-1">
-				<span class="block text-sm font-medium">{m['admin.users.search_category']()}</span>
-				<select class={inputClass} bind:value={category} disabled={busy}>
-					<option value="all">{m['admin.users.search_all']()}</option>
-					<option value="username">{m['admin.users.username_label']()}</option>
-					<option value="display_name">{m['admin.users.display_name_label']()}</option>
-					<option value="role">{m['admin.users.role_label']()}</option>
-					<option value="locale">{m['admin.users.locale_label']()}</option>
-				</select>
-			</label>
-			<label class="min-w-48 flex-1 space-y-1">
-				<span class="sr-only">{m['admin.users.search']()}</span>
-				<input type="search" class={`${inputClass} w-full`} bind:value={query} disabled={busy} placeholder={m['admin.users.selector.search_placeholder']()} />
-			</label>
-			<button class={primaryButton} type="submit" disabled={busy}>{m['admin.users.search']()}</button>
-		</form>
+	<section class={panelClass} aria-busy={users.status === 'loading'}>
 		{#if selected.length > 0}
 			<div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label={m['admin.users.actions']()}>
 				<span class="text-sm">{m['admin.users.selected_count']({ count: selected.length })}</span>
@@ -238,7 +253,7 @@
 						<th scope="col" class="py-2 pr-4">{m['admin.users.username_label']()}</th>
 						<th scope="col" class="py-2 pr-4">{m['admin.users.display_name_label']()}</th>
 						<th scope="col" class="py-2 pr-4">{m['admin.users.role_label']()}</th>
-						<th scope="col" class="py-2 pr-4">{m['admin.users.locale_label']()}</th>
+						<th scope="col" class="py-2 pr-4">{m['admin.users.email_label']()}</th>
 						<th scope="col" class="py-2 pr-4">{m['ux8.status']()}</th>
 						<th scope="col" class="py-2 pr-4">{m['admin.users.created_label']()}</th>
 						<th scope="col" class="py-2 pr-4">{m['admin.users.updated_label']()}</th>
@@ -254,7 +269,7 @@
 								<td class="py-2 pr-4 font-mono">{user.username}</td>
 								<td class="py-2 pr-4">{user.display_name || '—'}</td>
 								<td class="py-2 pr-4">{user.role === 'admin' ? m['admin.users.role_admin']() : m['admin.users.role_user']()}</td>
-								<td class="py-2 pr-4">{user.locale === 'zh' ? m['admin.users.locale_zh']() : m['admin.users.locale_en']()}</td>
+								<td class="py-2 pr-4">{user.email || '—'}</td>
 								<td class="py-2 pr-4">{user.disabled ? m['admin.users.status_disabled']() : m['admin.users.status_enabled']()}</td>
 								<td class="py-2 pr-4">{formatTimestamp(user.created_at)}</td>
 								<td class="py-2 pr-4">{formatTimestamp(user.updated_at)}</td>
@@ -265,14 +280,5 @@
 			</div>
 			<PagerFooter pager={users} loadMoreLabel={m['admin.users.load_more']()} />
 		{/if}
-	</section>
-	<section class={panelClass} aria-labelledby="admin-accounts-heading">
-		<h2 id="admin-accounts-heading" class="text-xl font-semibold">{m['admin.accounts.heading']()}</h2>
-		<p class="text-slate-700">{m['admin.accounts.cli']()}</p>
-		<ul class="list-disc space-y-1 pl-6 text-sm text-slate-700">
-			<li><code class="rounded bg-slate-100 px-1">pandalibrary user create --username &lt;name&gt;</code></li>
-			<li><code class="rounded bg-slate-100 px-1">pandalibrary user reset-password --username &lt;name&gt;</code></li>
-		</ul>
-		<p class="text-sm text-slate-600">{m['admin.accounts.ids']()}</p>
 	</section>
 </section>

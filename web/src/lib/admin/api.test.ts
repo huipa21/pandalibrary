@@ -124,9 +124,9 @@ describe('library and access requests', () => {
 			await listAdminUsers({ cursor: 'next', limit: 25 });
 			expect(request.mock.calls[0][0]).toBe('/admin/users?limit=25&cursor=next');
 			request.mockResolvedValue({ user: { id: 7 } });
-			await createUser('reader', 'Reader', 'a long password', 'user', 'zh');
+			await createUser({ username: 'reader', displayName: 'Reader', email: 'reader@example.com', password: 'a long password', role: 'user' });
 			expect(request).toHaveBeenLastCalledWith('/admin/users', {
-				method: 'POST', body: { username: 'reader', display_name: 'Reader', password: 'a long password', role: 'user', locale: 'zh' }
+				method: 'POST', body: { username: 'reader', display_name: 'Reader', email: 'reader@example.com', password: 'a long password', role: 'user' }
 			});
 			await updateUser(7, { display_name: '', disabled: false });
 			expect(request).toHaveBeenLastCalledWith('/admin/users/7', { method: 'PATCH', body: { display_name: '', disabled: false } });

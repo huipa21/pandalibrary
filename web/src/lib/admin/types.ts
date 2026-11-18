@@ -7,6 +7,7 @@ export interface User {
 	readonly id: number;
 	readonly username: string;
 	readonly display_name: string;
+	readonly email?: string;
 	readonly role: 'admin' | 'user';
 	readonly locale: 'en' | 'zh';
 	readonly disabled: boolean;
@@ -18,6 +19,7 @@ export interface User {
 export interface UserPatch {
 	readonly username?: string;
 	readonly display_name?: string;
+	readonly email?: string;
 	readonly role?: string;
 	readonly locale?: string;
 	readonly disabled?: boolean;

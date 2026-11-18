@@ -76,7 +76,7 @@ func TestAdminUsersCRUDAndPagination(t *testing.T) {
 		if err := json.Unmarshal(raw, &fields); err != nil {
 			t.Fatal(err)
 		}
-		if len(fields) != 8 {
+		if len(fields) != 9 {
 			t.Fatalf("unsafe DTO: %s", raw)
 		}
 		names = append(names, page.Items[0].Username)

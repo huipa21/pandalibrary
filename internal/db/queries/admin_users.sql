@@ -16,7 +16,7 @@ SELECT count(*) FROM users WHERE role = 'admin' AND disabled = 0;
 
 -- name: AdminUpdateUser :one
 UPDATE users
-SET username = ?, display_name = ?, role = ?, locale = ?, disabled = ?, updated_at = ?
+SET username = ?, display_name = ?, email = ?, role = ?, locale = ?, disabled = ?, updated_at = ?
 WHERE id = ?
 RETURNING *;
 

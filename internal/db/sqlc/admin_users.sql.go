@@ -30,7 +30,7 @@ func (q *Queries) AdminDeleteUser(ctx context.Context, id int64) error {
 }
 
 const adminListUsers = `-- name: AdminListUsers :many
-SELECT id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at FROM users
+SELECT id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at FROM users
 WHERE (CAST(?1 AS INTEGER) = 0
    OR username > ?2 COLLATE NOCASE
    OR (username = ?2 COLLATE NOCASE AND id > ?1))
@@ -70,6 +70,7 @@ func (q *Queries) AdminListUsers(ctx context.Context, arg AdminListUsersParams) 
 			&i.ID,
 			&i.Username,
 			&i.DisplayName,
+			&i.Email,
 			&i.PasswordHash,
 			&i.Role,
 			&i.Locale,
@@ -101,14 +102,15 @@ func (q *Queries) AdminRevokeAppPasswords(ctx context.Context, userID int64) err
 
 const adminUpdateUser = `-- name: AdminUpdateUser :one
 UPDATE users
-SET username = ?, display_name = ?, role = ?, locale = ?, disabled = ?, updated_at = ?
+SET username = ?, display_name = ?, email = ?, role = ?, locale = ?, disabled = ?, updated_at = ?
 WHERE id = ?
-RETURNING id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at
+RETURNING id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at
 `
 
 type AdminUpdateUserParams struct {
 	Username    string
 	DisplayName string
+	Email       string
 	Role        string
 	Locale      string
 	Disabled    int64
@@ -120,6 +122,7 @@ func (q *Queries) AdminUpdateUser(ctx context.Context, arg AdminUpdateUserParams
 	row := q.db.QueryRowContext(ctx, adminUpdateUser,
 		arg.Username,
 		arg.DisplayName,
+		arg.Email,
 		arg.Role,
 		arg.Locale,
 		arg.Disabled,
@@ -131,6 +134,7 @@ func (q *Queries) AdminUpdateUser(ctx context.Context, arg AdminUpdateUserParams
 		&i.ID,
 		&i.Username,
 		&i.DisplayName,
+		&i.Email,
 		&i.PasswordHash,
 		&i.Role,
 		&i.Locale,

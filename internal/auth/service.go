@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/mail"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +52,7 @@ type User struct {
 type CreateUserInput struct {
 	Username    string
 	DisplayName string
+	Email       string
 	Password    string
 	Role        string
 	Locale      string
@@ -175,7 +177,7 @@ func (s *Service) CreateInitialAdmin(ctx context.Context, token string, input Cr
 			return ErrSetupComplete
 		}
 		created, err = queries.AuthCreateUser(ctx, sqlc.AuthCreateUserParams{
-			Username: input.Username, DisplayName: input.DisplayName, PasswordHash: passwordHash,
+			Username: input.Username, DisplayName: input.DisplayName, Email: input.Email, PasswordHash: passwordHash,
 			Role: "admin", Locale: input.Locale, CreatedAt: s.now().UnixMilli(), UpdatedAt: s.now().UnixMilli(),
 		})
 		if err != nil {
@@ -390,6 +392,37 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 	return nil
 }
 
+// ChangePassword verifies the current password and replaces it without signing the user out.
+func (s *Service) ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) error {
+	user, err := sqlc.New(s.reader).AuthGetUserByID(ctx, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrUserNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("find user for password change: %w", err)
+	}
+	valid, err := s.passwords.verify(ctx, currentPassword, user.PasswordHash)
+	if err != nil {
+		return fmt.Errorf("verify current password: %w", err)
+	}
+	if !valid {
+		return ErrInvalidCredentials
+	}
+	if err := validatePassword(newPassword); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidUser, err)
+	}
+	hash, err := s.passwords.hash(ctx, newPassword)
+	if err != nil {
+		return err
+	}
+	if err := sqlc.New(s.writer).AuthUpdatePassword(ctx, sqlc.AuthUpdatePasswordParams{
+		PasswordHash: hash, UpdatedAt: s.now().UnixMilli(), ID: userID,
+	}); err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	return nil
+}
+
 // UpdateProfile updates only the current user's display name and locale.
 func (s *Service) UpdateProfile(ctx context.Context, userID int64, displayName, locale string) error {
 	displayName = strings.TrimSpace(displayName)
@@ -531,6 +564,16 @@ func normalizeAccountFields(input CreateUserInput) (CreateUserInput, error) {
 	}
 	if !utf8.ValidString(input.DisplayName) || len(input.DisplayName) > 128 {
 		return CreateUserInput{}, fmt.Errorf("%w: display name must be at most 128 UTF-8 bytes", ErrInvalidUser)
+	}
+	input.Email = strings.TrimSpace(input.Email)
+	if !utf8.ValidString(input.Email) || len(input.Email) > 254 || strings.ContainsRune(input.Email, 0) {
+		return CreateUserInput{}, fmt.Errorf("%w: email must be at most 254 UTF-8 bytes", ErrInvalidUser)
+	}
+	if input.Email != "" {
+		address, err := mail.ParseAddress(input.Email)
+		if err != nil || address.Address != input.Email {
+			return CreateUserInput{}, fmt.Errorf("%w: email must be a valid address", ErrInvalidUser)
+		}
 	}
 	if input.Role == "" {
 		input.Role = "user"

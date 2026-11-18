@@ -2,19 +2,19 @@
 SELECT count(*) FROM users;
 
 -- name: AuthGetUserByUsername :one
-SELECT id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at
+SELECT id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at
 FROM users
 WHERE username = ? COLLATE NOCASE;
 
 -- name: AuthGetUserByID :one
-SELECT id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at
+SELECT id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at
 FROM users
 WHERE id = ?;
 
 -- name: AuthCreateUser :one
-INSERT INTO users (username, display_name, password_hash, role, locale, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at;
+INSERT INTO users (username, display_name, email, password_hash, role, locale, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at;
 
 -- name: AuthUpdatePassword :exec
 UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?;

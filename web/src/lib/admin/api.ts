@@ -53,11 +53,25 @@ export async function listAdminUsers(options: UserRequestOptions = {}): Promise<
 	return api.request(buildAdminUsersPath(options), { signal: options.signal });
 }
 
-export async function createUser(username: string, displayName: string, password: string, role: string, locale: string): Promise<User> {
+export interface CreateUserInput {
+	username: string;
+	displayName: string;
+	email: string;
+	password: string;
+	role: string;
+}
+
+export async function createUser(input: CreateUserInput): Promise<User> {
 	return (
 		await api.request<{ user: User }>('/admin/users', {
 			method: 'POST',
-			body: { username, display_name: displayName, password, role, locale }
+			body: {
+				username: input.username,
+				display_name: input.displayName,
+				email: input.email,
+				password: input.password,
+				role: input.role
+			}
 		})
 	).user;
 }
@@ -66,6 +80,7 @@ export async function updateUser(id: number, patch: UserPatch): Promise<User> {
 	const body: { [key: string]: JsonValue } = {};
 	if (patch.username !== undefined) body.username = patch.username;
 	if (patch.display_name !== undefined) body.display_name = patch.display_name;
+	if (patch.email !== undefined) body.email = patch.email;
 	if (patch.role !== undefined) body.role = patch.role;
 	if (patch.locale !== undefined) body.locale = patch.locale;
 	if (patch.disabled !== undefined) body.disabled = patch.disabled;

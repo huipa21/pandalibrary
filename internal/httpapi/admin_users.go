@@ -91,6 +91,7 @@ func (h *adminUsersHTTP) get(w http.ResponseWriter, r *http.Request) {
 type adminCreateUserRequest struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
 	Password    string `json:"password"`
 	Role        string `json:"role"`
 	Locale      string `json:"locale"`
@@ -102,8 +103,8 @@ func (h *adminUsersHTTP) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := h.service.AdminCreateUser(r.Context(), adminSessionToken(r), auth.CreateUserInput{
-		Username: request.Username, DisplayName: request.DisplayName, Password: request.Password,
-		Role: request.Role, Locale: request.Locale,
+		Username: request.Username, DisplayName: request.DisplayName, Email: request.Email,
+		Password: request.Password, Role: request.Role, Locale: request.Locale,
 	})
 	h.respond(w, r, http.StatusCreated, map[string]auth.AdminUser{"user": user}, err)
 }

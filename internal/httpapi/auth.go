@@ -162,6 +162,23 @@ func AuthMount(service *auth.Service, logger *slog.Logger) Mount {
 					viewer.Locale = request.Locale
 					writeAuthJSON(w, logger, http.StatusOK, map[string]auth.User{"user": viewer})
 				})
+				secured.With(cookieProtection).Post("/me/password", func(w http.ResponseWriter, r *http.Request) {
+					var request passwordChangeRequest
+					if !decodeAuthJSON(w, r, logger, &request) {
+						return
+					}
+					viewer, _ := ViewerFromRequest(r)
+					err := service.ChangePassword(r.Context(), viewer.ID, request.CurrentPassword, request.NewPassword)
+					if errors.Is(err, auth.ErrInvalidCredentials) {
+						WriteProblem(w, logger, http.StatusBadRequest, "The current password is incorrect.")
+						return
+					}
+					if err != nil {
+						writeAuthError(w, r, logger, err, false)
+						return
+					}
+					writeAuthJSON(w, logger, http.StatusOK, map[string]bool{"changed": true})
+				})
 				secured.Get("/me/app-passwords", func(w http.ResponseWriter, r *http.Request) {
 					viewer, _ := ViewerFromRequest(r)
 					passwords, err := service.ListAppPasswords(r.Context(), viewer.ID)
@@ -219,6 +236,11 @@ type setupRequest struct {
 type profileRequest struct {
 	DisplayName string `json:"display_name"`
 	Locale      string `json:"locale"`
+}
+
+type passwordChangeRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
 }
 
 type appPasswordRequest struct {

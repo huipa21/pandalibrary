@@ -29,6 +29,12 @@
 	let kind = $state<'opds' | 'kosync'>('opds');
 	let label = $state('');
 	let newSecret = $state('');
+	let currentPassword = $state('');
+	let newPassword = $state('');
+	let confirmPassword = $state('');
+	let passwordBusy = $state(false);
+	let passwordError = $state('');
+	let passwordNotice = $state('');
 	let error = $state('');
 	let notice = $state('');
 	let busy = $state(false);
@@ -69,6 +75,41 @@
 			error = m['auth.profile.failure']();
 		} finally {
 			busy = false;
+		}
+	}
+
+	async function changePassword(event: SubmitEvent) {
+		event.preventDefault();
+		passwordError = '';
+		passwordNotice = '';
+		if (Array.from(newPassword).length < 8) {
+			passwordError = m['auth.password.too_short']();
+			return;
+		}
+		if (Array.from(newPassword).length > 32) {
+			passwordError = m['auth.password.too_long']();
+			return;
+		}
+		if (newPassword !== confirmPassword) {
+			passwordError = m['ux8.password_mismatch']();
+			return;
+		}
+		passwordBusy = true;
+		try {
+			await api.request<{ changed: boolean }, { current_password: string; new_password: string }>(
+				'/me/password',
+				{ method: 'POST', body: { current_password: currentPassword, new_password: newPassword } }
+			);
+			currentPassword = '';
+			newPassword = '';
+			confirmPassword = '';
+			passwordNotice = m['auth.password.changed']();
+		} catch (cause) {
+			passwordError = cause instanceof ApiError && cause.status === 400
+				? m['auth.password.current_incorrect']()
+				: m['auth.password.failure']();
+		} finally {
+			passwordBusy = false;
 		}
 	}
 
@@ -143,6 +184,32 @@
 			</button>
 		</form>
 	{/if}
+
+	<form class="max-w-xl space-y-4" onsubmit={changePassword}>
+		<h2 class="text-xl font-semibold">{m['auth.password.title']()}</h2>
+		{#if passwordError}<p class="text-sm text-red-700" role="alert">{passwordError}</p>{/if}
+		{#if passwordNotice}<p class="text-sm text-green-700" role="status">{passwordNotice}</p>{/if}
+		<div class="grid gap-3 sm:grid-cols-2">
+			<label class="block space-y-2 text-sm font-medium sm:col-span-2" for="current-password">
+				<span>{m['auth.password.current']()}</span>
+				<input id="current-password" class="w-full rounded-md border border-slate-300 px-3 py-2" type="password"
+					autocomplete="current-password" bind:value={currentPassword} disabled={passwordBusy} />
+			</label>
+			<label class="block space-y-2 text-sm font-medium" for="new-password">
+				<span>{m['auth.password.new']()}</span>
+				<input id="new-password" class="w-full rounded-md border border-slate-300 px-3 py-2" type="password"
+					autocomplete="new-password" bind:value={newPassword} disabled={passwordBusy} />
+			</label>
+			<label class="block space-y-2 text-sm font-medium" for="confirm-new-password">
+				<span>{m['auth.password.confirm']()}</span>
+				<input id="confirm-new-password" class="w-full rounded-md border border-slate-300 px-3 py-2" type="password"
+					autocomplete="new-password" bind:value={confirmPassword} disabled={passwordBusy} />
+			</label>
+		</div>
+		<button class="button-primary rounded-md px-4 py-2 font-medium disabled:opacity-60" disabled={passwordBusy}>
+			{m['auth.password.save']()}
+		</button>
+	</form>
 
 	<StorageSettings />
 

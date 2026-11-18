@@ -14,6 +14,7 @@ import type {
 const encoder = new TextEncoder();
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/;
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const MAX_LIBRARY_NAME_BYTES = 1024;
 export const MAX_LIBRARY_SLUG_LENGTH = 128;
@@ -21,6 +22,7 @@ export const MAX_PROVIDER_PRIORITY = 10000;
 export const MAX_PROVIDER_TOKEN_BYTES = 8192;
 export const MAX_USERNAME_BYTES = 64;
 export const MAX_DISPLAY_NAME_BYTES = 128;
+export const MAX_EMAIL_LENGTH = 254;
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 32;
 
@@ -37,6 +39,7 @@ export type UserFieldError =
 	| 'username_too_long'
 	| 'username_invalid'
 	| 'display_name_too_long'
+	| 'email_invalid'
 	| 'password_required'
 	| 'password_too_short'
 	| 'password_too_long'
@@ -47,6 +50,7 @@ export type UserFieldError =
 export interface UserFormDraft {
 	username: string;
 	displayName: string;
+	email?: string;
 	password: string;
 	role: string;
 	locale: string;
@@ -54,7 +58,31 @@ export interface UserFormDraft {
 
 export type UserFormResult =
 	| { readonly ok: true; readonly draft: UserFormDraft }
-	| { readonly ok: false; readonly field: 'username' | 'display_name' | 'password' | 'role' | 'locale' | 'form'; readonly error: UserFieldError };
+	| { readonly ok: false; readonly field: 'username' | 'display_name' | 'email' | 'password' | 'role' | 'locale' | 'form'; readonly error: UserFieldError };
+
+
+/** Generates a temporary password using the platform CSPRNG when available. */
+export function generatePassword(length: number = 16): string {
+	const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+	const limit = 256 - (256 % alphabet.length);
+	const result: string[] = [];
+	const cryptoAPI = globalThis.crypto;
+	if (cryptoAPI?.getRandomValues) {
+		while (result.length < length) {
+			const bytes = new Uint8Array(Math.max(length * 2, 16));
+			cryptoAPI.getRandomValues(bytes);
+			for (const byte of bytes) {
+				if (byte < limit) result.push(alphabet[byte % alphabet.length]);
+				if (result.length === length) break;
+			}
+		}
+		return result.join('');
+	}
+	for (let index = 0; index < length; index += 1) {
+		result.push(alphabet[Math.floor(Math.random() * alphabet.length)]);
+	}
+	return result.join('');
+}
 
 /** Mirrors UX7's user field rules so obvious mistakes are reported before submitting. */
 export function validateUserDraft(draft: Partial<UserFormDraft>, requirePassword: boolean = false): UserFormResult {
@@ -66,6 +94,11 @@ export function validateUserDraft(draft: Partial<UserFormDraft>, requirePassword
 	const displayName = (draft.displayName ?? '').trim();
 	if (encoder.encode(displayName).length > MAX_DISPLAY_NAME_BYTES) {
 		return { ok: false, field: 'display_name', error: 'display_name_too_long' };
+	}
+
+	const email = (draft.email ?? '').trim();
+	if (email.length > MAX_EMAIL_LENGTH || CONTROL_CHARACTERS.test(email) || (email !== '' && !EMAIL.test(email))) {
+		return { ok: false, field: 'email', error: 'email_invalid' };
 	}
 
 	const password = draft.password ?? '';
@@ -89,6 +122,7 @@ export function validateUserDraft(draft: Partial<UserFormDraft>, requirePassword
 		draft: {
 			username,
 			displayName,
+			email,
 			password,
 			role,
 			locale
@@ -99,12 +133,13 @@ export function validateUserDraft(draft: Partial<UserFormDraft>, requirePassword
 /** Builds a PATCH containing only changed fields. */
 export function userPatch(user: User, draft: Partial<UserFormDraft>):
 	| { readonly ok: true; readonly patch: UserPatch }
-	| { readonly ok: false; readonly field: 'username' | 'display_name' | 'password' | 'role' | 'locale' | 'form'; readonly error: UserFieldError } {
+	| { readonly ok: false; readonly field: 'username' | 'display_name' | 'email' | 'password' | 'role' | 'locale' | 'form'; readonly error: UserFieldError } {
 	const result = validateUserDraft(draft, false);
 	if (!result.ok) return result;
-	const patch: { username?: string; display_name?: string; role?: string; locale?: string } = {};
+	const patch: { username?: string; display_name?: string; email?: string; role?: string; locale?: string } = {};
 	if (result.draft.username !== user.username) patch.username = result.draft.username;
 	if (result.draft.displayName !== user.display_name) patch.display_name = result.draft.displayName;
+	if (result.draft.email !== (user.email ?? '')) patch.email = result.draft.email;
 	if (result.draft.role !== user.role) patch.role = result.draft.role;
 	if (result.draft.locale !== user.locale) patch.locale = result.draft.locale;
 	if (Object.keys(patch).length === 0) return { ok: false, field: 'form', error: 'no_changes' };
