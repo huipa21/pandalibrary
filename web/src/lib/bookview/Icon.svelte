@@ -13,7 +13,7 @@
 		| 'text-cursor' | 'insert'
 		| 'highlighter' | 'underline' | 'strikethrough' | 'message' | 'bookmark-plus'
 		| 'type' | 'pen' | 'image' | 'undo' | 'check' | 'move'
-		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe' | 'maximize' | 'upload'
+		| 'list-tree' | 'bookmark' | 'chevrons-left' | 'lock' | 'globe' | 'maximize' | 'minimize' | 'upload'
 		| 'home' | 'inbox' | 'chart' | 'clock' | 'users' | 'sliders';
 </script>
 
@@ -158,6 +158,8 @@
 		<path d="m11 17-5-5 5-5m7 10-5-5 5-5" />
 	{:else if name === 'maximize'}
 		<path d="M15 3h6v6m0-6-7 7M9 21H3v-6m0 6 7-7" />
+	{:else if name === 'minimize'}
+		<path d="M3 3l6 6m0-6v6H3M21 21l-6-6m0 6v-6h6" />
 	{:else if name === 'home'}
 		<path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9" />
 	{:else if name === 'inbox'}
