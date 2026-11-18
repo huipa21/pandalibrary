@@ -16,6 +16,15 @@ export interface Relocation {
 	fraction: number;
 	locator: ReaderLocator;
 	chapter?: string;
+	/** Per-section page numbers, reported only by paginated renderers. */
+	page?: number;
+	pageCount?: number;
+}
+
+/** Per-section page numbers within the section that holds the reading position. */
+export interface PagePosition {
+	page: number;
+	pageCount: number;
 }
 
 export interface ReaderSelection extends Relocation {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FoliateBook, FoliateRenderer } from 'foliate-js/view.js';
-import { FoliateDisplay } from './foliate-display.js';
+import { FoliateDisplay, forwardContinuousScrolling, pagePosition } from './foliate-display.js';
 import { DEFAULT_SETTINGS } from './settings.js';
 
 class Element extends EventTarget {
@@ -16,6 +16,7 @@ class Element extends EventTarget {
 	addEventListener = super.addEventListener;
 	remove = vi.fn();
 	setAttribute = vi.fn();
+	removeAttribute = vi.fn();
 	getBoundingClientRect(): DOMRect { return new DOMRect(10, 20, 720, 600); }
 }
 
@@ -103,5 +104,109 @@ describe('Foliate pagination measurements', () => {
 		expect(container.getBoundingClientRect).toBe(containerMeasurement);
 		expect(page.getBoundingClientRect).toBe(restoredRotationMeasurement);
 		expect(Object.hasOwn(top, 'getBoundingClientRect')).toBe(false);
+	});
+});
+
+describe('Foliate page metadata', () => {
+	it('maps paginator fractions and sizes to per-section page numbers', () => {
+		expect(pagePosition({ fraction: 0, size: 1 / 4 })).toEqual({ page: 1, pageCount: 4 });
+		expect(pagePosition({ fraction: 1 / 4, size: 1 / 4 })).toEqual({ page: 2, pageCount: 4 });
+		expect(pagePosition({ fraction: 1, size: 1 / 4 })).toEqual({ page: 4, pageCount: 4 });
+		expect(pagePosition({ fraction: 1 / 2, size: 1 / 2 })).toEqual({ page: 2, pageCount: 2 });
+		expect(pagePosition({ fraction: 0, size: 1 })).toEqual({ page: 1, pageCount: 1 });
+	});
+
+	it('rejects details that are not pagination metadata', () => {
+		expect(pagePosition(null)).toBeNull();
+		expect(pagePosition(undefined)).toBeNull();
+		expect(pagePosition({ fraction: 0.4 })).toBeNull();
+		expect(pagePosition({ size: 0.5 })).toBeNull();
+		expect(pagePosition({ fraction: 0.4, size: 0 })).toBeNull();
+		expect(pagePosition({ fraction: 0.4, size: 1.5 })).toBeNull();
+		expect(pagePosition({ fraction: 0.4, size: Number.NaN })).toBeNull();
+		// Continuous scrolling reports the viewport's share of a section instead.
+		expect(pagePosition({ fraction: 0.4, size: 0.63 })).toBeNull();
+	});
+
+	it('keeps the paginator detail only while paginated', async () => {
+		const { display, renderer } = setup();
+		await display.apply(DEFAULT_SETTINGS, '');
+		renderer.dispatchEvent(new CustomEvent('relocate', { detail: { reason: 'page', index: 0, fraction: 1 / 4, size: 1 / 4 } }));
+		expect(pagePosition(display.pagination)).toEqual({ page: 2, pageCount: 4 });
+		await display.apply({ ...DEFAULT_SETTINGS, flow: 'scrolled' }, '');
+		expect(display.pagination).toBeNull();
+		renderer.dispatchEvent(new CustomEvent('relocate', { detail: { reason: 'scroll', index: 0, fraction: 0.4, size: 0.63 } }));
+		expect(pagePosition(display.pagination)).toBeNull();
+	});
+});
+
+describe('Foliate page turn animation', () => {
+	it('slides paginated turns only while motion is allowed', async () => {
+		const { display, renderer } = setup();
+		vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
+		await display.apply(DEFAULT_SETTINGS, '');
+		expect(renderer.setAttribute).toHaveBeenCalledWith('animated', '');
+		await display.apply({ ...DEFAULT_SETTINGS, flow: 'scrolled' }, '');
+		expect(renderer.removeAttribute).toHaveBeenCalledWith('animated');
+		renderer.setAttribute.mockClear();
+		vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+		await display.apply(DEFAULT_SETTINGS, '');
+		expect(renderer.removeAttribute).toHaveBeenCalledWith('animated');
+		expect(renderer.setAttribute.mock.calls.filter(([name]) => name === 'animated')).toEqual([]);
+	});
+});
+
+describe('Continuous scroll forwarding', () => {
+	class ScrollDocument extends EventTarget {
+		selection = { rangeCount: 0, isCollapsed: true };
+		getSelection = () => this.selection;
+	}
+
+	const gesture = (type: string, x: number, y: number, count = 1) => Object.assign(
+		new Event(type, { cancelable: true }),
+		{ touches: { length: count }, changedTouches: [{ screenX: x, screenY: y }] }
+	);
+
+	const attach = () => {
+		const doc = new ScrollDocument();
+		const pane = { scrollTop: 0, scrollLeft: 0, clientHeight: 900 };
+		forwardContinuousScrolling(doc as unknown as Document, pane as unknown as HTMLElement);
+		return { doc, pane };
+	};
+
+	it('scrolls the pane with single-touch drags and wheels', () => {
+		const { doc, pane } = attach();
+		doc.dispatchEvent(gesture('touchstart', 0, 100));
+		const drag = gesture('touchmove', 0, 60);
+		doc.dispatchEvent(drag);
+		expect(drag.defaultPrevented).toBe(true);
+		expect(pane.scrollTop).toBe(40);
+		doc.dispatchEvent(gesture('touchend', 0, 60));
+		doc.dispatchEvent(gesture('touchstart', 100, 0));
+		doc.dispatchEvent(gesture('touchmove', 40, 0));
+		expect(pane.scrollLeft).toBe(60);
+		const wheel = Object.assign(new Event('wheel', { cancelable: true }),
+			{ deltaX: 0, deltaY: 120, deltaMode: 0, ctrlKey: false });
+		doc.dispatchEvent(wheel);
+		expect(wheel.defaultPrevented).toBe(true);
+		expect(pane.scrollTop).toBe(160);
+	});
+
+	it('leaves selections, multi-touch and ctrl+wheel to the document', () => {
+		const { doc, pane } = attach();
+		doc.selection = { rangeCount: 1, isCollapsed: false };
+		doc.dispatchEvent(gesture('touchstart', 0, 100));
+		const dragging = gesture('touchmove', 0, 60);
+		doc.dispatchEvent(dragging);
+		expect(dragging.defaultPrevented).toBe(false);
+		expect(pane.scrollTop).toBe(0);
+		doc.selection = { rangeCount: 0, isCollapsed: true };
+		doc.dispatchEvent(gesture('touchstart', 0, 100));
+		doc.dispatchEvent(gesture('touchmove', 0, 40, 2));
+		expect(pane.scrollTop).toBe(0);
+		const pinch = Object.assign(new Event('wheel', { cancelable: true }),
+			{ deltaX: 0, deltaY: 8, deltaMode: 0, ctrlKey: true });
+		doc.dispatchEvent(pinch);
+		expect(pinch.defaultPrevented).toBe(false);
 	});
 });

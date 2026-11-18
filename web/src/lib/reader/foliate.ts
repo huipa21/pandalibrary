@@ -4,7 +4,7 @@ import { resolveMarkColor } from './annotations.js';
 import { backgroundFor } from './appearance.js';
 import { fraction } from './progress.js';
 import { firstVisibleLine } from './foliate-bookmarks.js';
-import { FoliateDisplay } from './foliate-display.js';
+import { FoliateDisplay, pagePosition } from './foliate-display.js';
 import { reflowLayout, reflowScale, reflowZoom } from './reflow-display.js';
 import { captureBookBlobs, isolateBookSections } from './safe-content.js';
 import { makeStreamedBook } from './streamed-book.js';
@@ -230,9 +230,11 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 			const detail = (event as CustomEvent<FoliateLocation>).detail;
 			if (!detail.cfi || !isCfiLocator({ type: 'cfi', value: detail.cfi })) return;
 			this.visibleRange = detail.range ?? null;
+			const pages = pagePosition(this.display?.pagination);
 			this.location = {
 				fraction: fraction(detail.fraction ?? 0), locator: { type: 'cfi', value: detail.cfi },
-				...(detail.tocItem?.label ? { chapter: detail.tocItem.label } : {})
+				...(detail.tocItem?.label ? { chapter: detail.tocItem.label } : {}),
+				...(pages ?? {})
 			};
 			this.events.relocate(this.location);
 			this.notifySelectionGeometry();
