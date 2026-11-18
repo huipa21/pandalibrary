@@ -15,7 +15,6 @@
 	import { entityIcon } from '#lib/navigation-icons.js';
 	import LibraryCreateDialog from '#lib/libraries/LibraryCreateDialog.svelte';
 	import { bookDisplay } from '#lib/catalog/book-display.svelte.js';
-	import BookDisplayPresets from '#lib/catalog/BookDisplayPresets.svelte';
 
 	let libraries = $state<Library[]>([]);
 	let nextCursor = $state<string | null>(null);
@@ -107,7 +106,6 @@
 <section class="space-y-8" aria-labelledby="libraries-heading">
 	<header class="flex flex-wrap items-center justify-between gap-4">
 		<h1 id="libraries-heading" class="text-3xl font-semibold tracking-tight">{m['ux1.library.manage']()}</h1>
-		<BookDisplayPresets />
 	</header>
 	{#if error}
 		<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">

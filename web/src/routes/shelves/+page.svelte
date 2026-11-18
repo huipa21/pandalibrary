@@ -11,7 +11,6 @@
 	import EntityManagementCover from '#lib/EntityManagementCover.svelte';
 	import { entityIcon } from '#lib/navigation-icons.js';
 	import { bookDisplay } from '#lib/catalog/book-display.svelte.js';
-	import BookDisplayPresets from '#lib/catalog/BookDisplayPresets.svelte';
 
 	const pager = new CursorPager<Shelf>();
 	let created = $state<Shelf | null>(null);
@@ -38,7 +37,6 @@
 <section class="space-y-8" aria-labelledby="shelves-heading">
 	<header class="flex flex-wrap items-center justify-between gap-4">
 		<h1 id="shelves-heading" class="text-3xl font-semibold tracking-tight">{m['ux1.shelves.more']()}</h1>
-		<BookDisplayPresets />
 	</header>
 
 	{#if created}

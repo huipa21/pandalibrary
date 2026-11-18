@@ -357,6 +357,33 @@ test('shared display controls change cover width and spacing and persist indepen
 	expect(unexpected).toEqual([]);
 });
 
+test('library cover-size control cycles presets, persists, and stays out of other views', async ({ page }) => {
+	const { unexpected } = await mockLibraries(page);
+	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: [displayBook], next_cursor: null } }));
+	await page.goto('/library/1');
+	const main = page.getByRole('main');
+	const grid = main.locator('.book-grid-configurable');
+	const control = main.getByRole('button', { name: 'Cover size', exact: true });
+	await expect(control).toHaveCount(1);
+	await expect(grid.locator(':scope > li')).toHaveCSS('width', '208px');
+
+	await control.click();
+	await expect(control).toHaveAttribute('data-cover-preset', 'large');
+	await expect(grid.locator(':scope > li')).toHaveCSS('width', '240px');
+	await expect(grid).toHaveCSS('column-gap', '24px');
+	await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pandalibrary.book-display') ?? '{}')))
+		.toEqual({ size: 240, spacing: 24 });
+
+	await page.reload();
+	await expect(grid.locator(':scope > li')).toHaveCSS('width', '240px');
+	await expect(main.getByRole('button', { name: 'Cover size', exact: true })).toHaveCount(1);
+	await page.goto('/books');
+	await expect(page.getByRole('main').getByRole('button', { name: 'Cover size', exact: true })).toHaveCount(0);
+	await page.goto('/libraries');
+	await expect(page.getByRole('main').getByRole('button', { name: 'Cover size', exact: true })).toHaveCount(0);
+	expect(unexpected).toEqual([]);
+});
+
 test('library and collection controls are left-aligned without repeated headings', async ({ page }) => {
 	test.setTimeout(90_000);
 	const { unexpected } = await mockLibraries(page);

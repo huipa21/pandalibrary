@@ -6,7 +6,7 @@ export interface BookDisplayPreferences {
 const STORAGE_KEY = 'pandalibrary.book-display';
 const DEFAULT_PREFERENCES: BookDisplayPreferences = { size: 208, spacing: 20 };
 
-/** Quick presets shared by the dashboard, library, and collection cover views. */
+/** Ordered cover sizes cycled from the library display control. */
 export const BOOK_DISPLAY_PRESETS = [
 	{ id: 'small', size: 120, spacing: 8 },
 	{ id: 'medium', size: 160, spacing: 12 },
@@ -78,4 +78,12 @@ export function updateBookDisplay(update: Partial<BookDisplayPreferences>): void
 export function applyBookDisplayPreset(id: BookDisplayPresetId): void {
 	const preset = BOOK_DISPLAY_PRESETS.find((candidate) => candidate.id === id);
 	if (preset) updateBookDisplay({ size: preset.size, spacing: preset.spacing });
+}
+
+/** Returns the next preset in the cycle, including custom sizes set from Appearance. */
+export function nextBookDisplayPresetId(currentSize: number): BookDisplayPresetId {
+	const exact = BOOK_DISPLAY_PRESETS.findIndex((preset) => preset.size === currentSize);
+	if (exact >= 0) return BOOK_DISPLAY_PRESETS[(exact + 1) % BOOK_DISPLAY_PRESETS.length].id;
+	const larger = BOOK_DISPLAY_PRESETS.find((preset) => preset.size > currentSize);
+	return larger?.id ?? BOOK_DISPLAY_PRESETS[0].id;
 }

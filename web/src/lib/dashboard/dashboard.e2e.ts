@@ -490,33 +490,19 @@ test('renders cover-only tiles at the appearance width and spacing without clipp
 	expect(frameBox && scrollerBox && frameBox.y + frameBox.height <= scrollerBox.y + scrollerBox.height).toBe(true);
 });
 
-test('mobile cover-size presets resize dashboard rows and persist', async ({ page }) => {
+test('dashboard uses the remembered cover size without its own cover-size control', async ({ page }) => {
 	await page.setViewportSize({ width: 375, height: 812 });
 	const server = state();
 	await mockApi(page, server);
+	await page.addInitScript(() => {
+		localStorage.setItem('pandalibrary.book-display', JSON.stringify({ size: 160, spacing: 12 }));
+	});
 	await page.goto('/');
 	const continuing = page.locator('[data-dashboard-section="continue_reading"]');
 	await expect(continuing.getByRole('region')).toBeVisible();
-	const row = continuing.locator('.book-cover-row');
-	const presets = page.getByRole('group', { name: 'Cover size', exact: true });
-
-	for (const [name, size, spacing] of [
-		['Small', 120, 8],
-		['Medium', 160, 12],
-		['Big', 208, 20],
-		['Large', 240, 24]
-	] as const) {
-		await presets.getByRole('button', { name, exact: true }).click();
-		await expect(presets.getByRole('button', { name, exact: true })).toHaveAttribute('aria-pressed', 'true');
-		await expect(row).toHaveAttribute('style', new RegExp(`--book-cover-size:\\s*${size}px`));
-		await expect(row).toHaveCSS('gap', `${spacing}px`);
-	}
-
-	await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pandalibrary.book-display') ?? '{}')))
-		.toEqual({ size: 240, spacing: 24 });
-	await page.reload();
-	await expect(presets.getByRole('button', { name: 'Large', exact: true })).toHaveAttribute('aria-pressed', 'true');
-	await expect(row).toHaveAttribute('style', /--book-cover-size:\s*240px/);
+	await expect(page.getByRole('button', { name: 'Cover size', exact: true })).toHaveCount(0);
+	await expect(continuing.locator('.book-cover-row')).toHaveAttribute('style', /--book-cover-size:\s*160px/);
+	await expect(continuing.locator('.book-cover-row')).toHaveCSS('gap', '12px');
 });
 
 test('displays cover status without a status action in the dashboard scroller', async ({ page }) => {

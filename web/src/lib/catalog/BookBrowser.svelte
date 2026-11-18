@@ -30,7 +30,8 @@
 		bookErrorMessage,
 		bookActions,
 		refreshKey = 0,
-		selectionEnabled = false
+		selectionEnabled = false,
+		showCoverSize = false
 	}: {
 		scope: BookFilters;
 		showHeading?: boolean;
@@ -41,6 +42,8 @@
 		refreshKey?: number;
 		/** Offers multi-select and bulk move/delete controls when the viewer is an administrator. */
 		selectionEnabled?: boolean;
+		/** Shows the one-button cover-size cycle control. */
+		showCoverSize?: boolean;
 	} = $props();
 	const filtersKey = 'pandalibrary.books.filters';
 	const viewKey = 'pandalibrary.books.view';
@@ -362,7 +365,7 @@
 				</select>
 			</label>
 			<ViewToggle view={mode} onchange={(next) => (mode = next)} />
-			<BookDisplayPresets />
+			{#if showCoverSize}<BookDisplayPresets />{/if}
 			{#if filterable}
 				<ClearFiltersButton
 					label={m['catalog.books.clear_filters']()}
