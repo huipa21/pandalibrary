@@ -112,6 +112,25 @@ test('EPUB zoom magnifies the viewport separately from typography and all displa
 	})).toBe('1');
 });
 
+test('EPUB zoom reflows a narrow screen instead of overflowing sideways', async ({ page }) => {
+	await setup(page, 'epub', true);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.getByRole('button', { name: 'More view options', exact: true }).press('ArrowDown');
+	await page.getByRole('menuitem', { name: /^Zoom(?: |$)/, exact: true }).click();
+	await page.getByRole('menuitemradio', { name: 'Actual size', exact: true }).click();
+	const metrics = await (await visibleFrame(page)).locator('body').evaluate((body) => {
+		const iframe = body.ownerDocument.defaultView!.frameElement as HTMLIFrameElement;
+		const viewport = (iframe.getRootNode() as ShadowRoot).host.parentElement!;
+		return {
+			columnWidth: Number.parseFloat(body.ownerDocument.defaultView!.getComputedStyle(body.ownerDocument.documentElement).columnWidth),
+			clientWidth: viewport.clientWidth,
+			scrollWidth: viewport.scrollWidth
+		};
+	});
+	expect(metrics.columnWidth).toBeLessThan(500);
+	expect(metrics.scrollWidth, JSON.stringify(metrics)).toBeLessThanOrEqual(metrics.clientWidth + 1);
+});
+
 test('EPUB zoom and resize keep complete lines and consecutive page text visible', async ({ page }) => {
 	test.setTimeout(90_000);
 	await setup(page, 'epub', true);

@@ -1,5 +1,5 @@
 import type { FoliateBook, FoliateRenderer, FoliateResolved } from 'foliate-js/view.js';
-import { REFLOW_PAGE, reflowLayout, reflowScale, reflowZoom } from './reflow-display.js';
+import { REFLOW_PAGE, reflowLayout, reflowLogicalWidth, reflowScale, reflowZoom } from './reflow-display.js';
 import type { PagePosition, PdfLayout, ReaderSettings } from './types.js';
 
 type Overlay = { element: Element; redraw(): void };
@@ -376,16 +376,16 @@ export class FoliateDisplay {
 		this.scale = reflowScale(reflowZoom(this.settings, this.fixed), this.layout, width, height, this.fixed ? this.pageSize : REFLOW_PAGE);
 		this.onscale(this.scale);
 		const split = this.layout.startsWith('split');
+		const logicalWidth = reflowLogicalWidth(this.scale, this.layout, width);
 		if (this.continuous) {
 			Object.assign(this.pages.style, {
 				zoom: String(this.scale),
-				width: `${(this.fixed ? this.pageSize.width : REFLOW_PAGE.width) * (split ? 2 : 1) + (this.fixed && split ? 16 : 0)}px`,
+				width: `${this.fixed ? this.pageSize.width * (split ? 2 : 1) + (split ? 16 : 0) : logicalWidth}px`,
 				gridTemplateColumns: this.fixed && split ? 'repeat(2, 1fr)' : '1fr'
 			});
 		} else if (this.fixed) {
 			this.paginated.setAttribute('zoom', String(this.scale));
 		} else {
-			const logicalWidth = REFLOW_PAGE.width * (split ? 2 : 1);
 			Object.assign(this.native.style, {
 				zoom: String(this.scale), width: `${logicalWidth}px`,
 				height: `${Math.max(1, height / this.scale)}px`, margin: '0 auto'

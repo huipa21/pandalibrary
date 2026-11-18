@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REFLOW_PAGE, reflowLayout, reflowScale, reflowZoom, stepReflowZoom } from './reflow-display.js';
+import { REFLOW_PAGE, reflowLayout, reflowLogicalWidth, reflowScale, reflowZoom, stepReflowZoom } from './reflow-display.js';
 import { DEFAULT_SETTINGS, isReaderSettings, loadReaderSettings, mergeBookSettings } from './settings.js';
 import type { PdfLayout, Setting } from './types.js';
 
@@ -57,5 +57,12 @@ describe('non-PDF magnification', () => {
 		expect(stepReflowZoom(reflowScale('page-fit', 'single', REFLOW_PAGE.width / 2, REFLOW_PAGE.height / 2), 1)).toBe(0.6);
 		expect(stepReflowZoom(0.1, -1)).toBe(0.1);
 		expect(stepReflowZoom(5, 1)).toBe(5);
+	});
+
+	it('keeps the zoomed logical page within the viewport and caps line width on wide screens', () => {
+		expect(reflowLogicalWidth(1.5, 'single', 360)).toBe(240);
+		expect(reflowLogicalWidth(2, 'split', 360)).toBe(180);
+		expect(reflowLogicalWidth(1, 'single', 1600)).toBe(REFLOW_PAGE.width);
+		expect(reflowLogicalWidth(1, 'split', 1600)).toBe(REFLOW_PAGE.width * 2);
 	});
 });

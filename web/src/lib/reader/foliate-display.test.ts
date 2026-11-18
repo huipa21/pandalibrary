@@ -90,6 +90,17 @@ describe('Foliate pagination measurements', () => {
 		renderer.destroy();
 	});
 
+	it('reflows the paginated page into a narrow zoomed viewport instead of overflowing sideways', async () => {
+		const { display, renderer, host } = setup();
+		host.clientWidth = 360;
+		host.clientHeight = 640;
+		await display.apply({ ...DEFAULT_SETTINGS, reflowZoom: 1.5 }, '');
+		expect(renderer.style.width).toBe('240px');
+		expect(Number.parseFloat(String(renderer.style.height))).toBeCloseTo(640 / 1.5);
+		expect(Number.parseFloat(String(renderer.style.width)) * 1.5).toBeLessThanOrEqual(host.clientWidth);
+		renderer.destroy();
+	});
+
 	it('restores existing measurement overrides and removes inherited overrides on teardown', async () => {
 		const { display, renderer, load, container, page, top, containerMeasurement, pageMeasurement } = setup();
 		await display.apply({ ...DEFAULT_SETTINGS, reflowZoom: 2 }, '');

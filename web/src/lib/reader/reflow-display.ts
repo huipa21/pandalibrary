@@ -28,3 +28,9 @@ export function reflowScale(
 export function stepReflowZoom(scale: number, step: -1 | 1): number {
 	return Math.max(0.1, Math.min(5, Math.round((scale + step * 0.1) * 100) / 100));
 }
+
+/** Keep the zoomed logical page inside the viewport so text reflows instead of scrolling sideways. */
+export function reflowLogicalWidth(scale: number, layout: PdfLayout, width: number, page = REFLOW_PAGE): number {
+	const columns = layout.startsWith('split') ? 2 : 1;
+	return Math.max(1, Math.min(page.width * columns, Math.floor(Math.max(1, width) / scale)));
+}
