@@ -6,6 +6,16 @@ export interface BookDisplayPreferences {
 const STORAGE_KEY = 'pandalibrary.book-display';
 const DEFAULT_PREFERENCES: BookDisplayPreferences = { size: 208, spacing: 20 };
 
+/** Quick presets shared by the dashboard, library, and collection cover views. */
+export const BOOK_DISPLAY_PRESETS = [
+	{ id: 'small', size: 120, spacing: 8 },
+	{ id: 'medium', size: 160, spacing: 12 },
+	{ id: 'big', size: 208, spacing: 20 },
+	{ id: 'large', size: 240, spacing: 24 }
+] as const;
+
+export type BookDisplayPresetId = (typeof BOOK_DISPLAY_PRESETS)[number]['id'];
+
 export const bookDisplay = $state({ ...DEFAULT_PREFERENCES, error: false });
 
 function parsePreferences(value: unknown): BookDisplayPreferences {
@@ -63,4 +73,9 @@ export function updateBookDisplay(update: Partial<BookDisplayPreferences>): void
 		console.error('Could not save book display settings', error);
 		bookDisplay.error = true;
 	}
+}
+
+export function applyBookDisplayPreset(id: BookDisplayPresetId): void {
+	const preset = BOOK_DISPLAY_PRESETS.find((candidate) => candidate.id === id);
+	if (preset) updateBookDisplay({ size: preset.size, spacing: preset.spacing });
 }

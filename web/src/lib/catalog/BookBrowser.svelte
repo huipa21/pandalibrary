@@ -12,6 +12,7 @@
 	import BulkBookActions from './BulkBookActions.svelte';
 	import ClearFiltersButton from './ClearFiltersButton.svelte';
 	import ViewToggle from './ViewToggle.svelte';
+	import BookDisplayPresets from './BookDisplayPresets.svelte';
 	import { bookDisplay } from './book-display.svelte.js';
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import { BOOKHEAP_CHANGED_EVENT } from '#lib/bookheap/events.js';
@@ -361,6 +362,7 @@
 				</select>
 			</label>
 			<ViewToggle view={mode} onchange={(next) => (mode = next)} />
+			<BookDisplayPresets />
 			{#if filterable}
 				<ClearFiltersButton
 					label={m['catalog.books.clear_filters']()}

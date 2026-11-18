@@ -7,6 +7,7 @@
 	import { getShelf } from '#lib/shelves/api.js';
 	import { offlineStatus } from '#lib/sync/client.js';
 	import { filterControlClass } from '#lib/catalog/filter-styles.js';
+	import BookDisplayPresets from '#lib/catalog/BookDisplayPresets.svelte';
 	import { flip } from 'svelte/animate';
 	import { dashboardConfigure } from './configure.svelte.js';
 	import DashboardRow from './DashboardRow.svelte';
@@ -252,6 +253,10 @@
 
 <section class="space-y-6" aria-labelledby="dashboard-heading" data-dashboard>
 	<h1 id="dashboard-heading" class="sr-only">{m['ux1.dashboard.title']()}</h1>
+
+	{#if layout?.valid && layout.sections.length > 0}
+		<div class="flex justify-end"><BookDisplayPresets /></div>
+	{/if}
 
 	{#if notice}<p class="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900" role="status">{notice}</p>{/if}
 	{#if conflict}
