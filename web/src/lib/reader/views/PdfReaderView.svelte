@@ -280,11 +280,10 @@
 		const removeListeners = () => {
 			for (const type of events) window.removeEventListener(type, cancel, { capture: true });
 		};
-		const settle = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200;
 		const timer = setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => {
 			removeListeners();
 			if (version === insetVersion && engine === active) run(() => active.goToPage(page, offset));
-		})), settle);
+		})), 0);
 		return () => {
 			clearTimeout(timer);
 			removeListeners();
@@ -449,9 +448,6 @@
 <style>
 	.pv-title { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 400; }
 	.pv-divider { width: 1px; height: 20px; margin: 0 2px; background: var(--shell-border, #94a3b8); flex: none; }
-	@media (prefers-reduced-motion: no-preference) {
-		.pv-page-area { transition: left 150ms ease; }
-	}
 	[data-tool='hand'], [data-tool='hand'] :global(*) { cursor: grab; user-select: none; }
 	:global(.pv-panning), :global(.pv-panning *) { cursor: grabbing !important; }
 	[data-tool='insert'], [data-tool='insert'] :global(*) { cursor: crosshair; user-select: none; }

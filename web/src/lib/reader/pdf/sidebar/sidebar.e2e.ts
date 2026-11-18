@@ -95,6 +95,21 @@ test('docked mode pushes the page, keeps the current page, and survives a reload
 	await expect(page.getByRole('tabpanel')).toHaveCount(0);
 });
 
+test('docked sidebar collapses and expands without an animated gutter', async ({ page }) => {
+	await setup(page, 1280);
+	const area = page.locator('.pv-page-area');
+	expect(await area.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe('0s');
+	await tab(page, 'Pages').click();
+	await expect(tabpanel(page, 'Pages')).toBeVisible();
+	await expect.poll(() => surfaceX(page)).toBe(344);
+	await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click();
+	await expect(tabpanel(page, 'Pages')).toHaveCount(0);
+	expect(await surfaceX(page)).toBe(44);
+	await tab(page, 'Pages').click();
+	await expect(tabpanel(page, 'Pages')).toBeVisible();
+	expect(await surfaceX(page)).toBe(344);
+});
+
 test('overlay mode floats over the page and collapses on Escape and on a page click', async ({ page }) => {
 	await setup(page, 800);
 	const before = await surfaceX(page);

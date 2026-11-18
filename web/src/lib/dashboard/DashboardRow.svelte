@@ -6,8 +6,10 @@
 	import { rememberBrowseContext } from '#lib/bookview/browse-context.js';
 	import { rememberOriginScroll } from '#lib/bookview/book-origin.js';
 	import { BOOK_STATE_CHANGED_EVENT } from '#lib/bookview/events.js';
+	import { BOOKHEAP_CHANGED_EVENT } from '#lib/bookheap/events.js';
 	import BookCard from '#lib/catalog/BookCard.svelte';
 	import { bookDisplay } from '#lib/catalog/book-display.svelte.js';
+	import { BOOKS_CHANGED_EVENT } from '#lib/catalog/events.js';
 	import type { Book } from '#lib/catalog/types.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
 	import { getShelf, listShelfBooks } from '#lib/shelves/api.js';
@@ -59,8 +61,12 @@
 		};
 		const reconnect = () => { if (started) void load(); };
 		const visible = () => { if (!document.hidden) refreshShelf(); };
+		// Newly added books belong to recently-added and shelf feeds; refresh immediately while visible.
+		const refreshBooks = () => { if (started && navigator.onLine) void load(); };
 		window.addEventListener('pandalibrary-shelves-changed', refreshShelf);
 		window.addEventListener(BOOK_STATE_CHANGED_EVENT, refreshBookState);
+		window.addEventListener(BOOKS_CHANGED_EVENT, refreshBooks);
+		window.addEventListener(BOOKHEAP_CHANGED_EVENT, refreshBooks);
 		window.addEventListener('online', reconnect);
 		document.addEventListener('visibilitychange', visible);
 		return () => {
@@ -69,6 +75,8 @@
 			pager.dispose();
 			window.removeEventListener('pandalibrary-shelves-changed', refreshShelf);
 			window.removeEventListener(BOOK_STATE_CHANGED_EVENT, refreshBookState);
+			window.removeEventListener(BOOKS_CHANGED_EVENT, refreshBooks);
+			window.removeEventListener(BOOKHEAP_CHANGED_EVENT, refreshBooks);
 			window.removeEventListener('online', reconnect);
 			document.removeEventListener('visibilitychange', visible);
 		};
