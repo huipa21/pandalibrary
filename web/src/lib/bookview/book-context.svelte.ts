@@ -8,7 +8,7 @@ import { getSessionViewer } from '#lib/shelves/api.js';
 import { isAdministrator } from '#lib/shelves/form.js';
 import { currentAccount, offlineAvailable } from '#lib/sync/client.js';
 import { downloadedBooks, OfflineStorageError } from '#lib/sync/db.js';
-import { loadBook as loadOfflineBook, loadCover } from '#lib/sync/library.js';
+import { cachedBookForDisplay, loadBook as loadOfflineBook, loadCover } from '#lib/sync/library.js';
 import { BOOK_STATE_CHANGED_EVENT as BOOK_STATE_CHANGED } from './events.js';
 
 const SHELVES_CHANGED = 'pandalibrary-shelves-changed';
@@ -109,6 +109,28 @@ export class BookContext {
 			this.loading = false;
 			return;
 		}
+
+		let cached: { book: Book; cover: Blob | null } | null = null;
+		if (offlineAvailable() && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+			try {
+				cached = await cachedBookForDisplay(currentAccount(), parsedID);
+			} catch (cause) {
+				if (request !== this.#requestVersion) return;
+				console.warn('Could not read the cached book details', cause);
+			}
+			if (request !== this.#requestVersion) return;
+			if (cached) {
+				const objectUrl = cached.cover ? URL.createObjectURL(cached.cover) : null;
+				this.#revokeCover();
+				this.#objectUrl = objectUrl;
+				this.book = cached.book;
+				this.offline = false;
+				this.coverSource = objectUrl ?? cached.book.cover_url;
+				this.coverError = '';
+				this.loading = false;
+			}
+		}
+
 		try {
 			const loaded = offlineAvailable()
 				? await loadOfflineBook(currentAccount(), parsedID)
@@ -118,11 +140,14 @@ export class BookContext {
 			let objectUrl: string | null = null;
 			let coverError = '';
 			let savedFileIds: number[] = [];
+			const reuseCachedCover = cached?.cover !== null && cached?.cover !== undefined &&
+				loaded.book.cover_url === cached.book.cover_url &&
+				loaded.book.updated_at === cached.book.updated_at && this.#objectUrl !== null;
 			if (offlineAvailable()) {
 				const stored = (await downloadedBooks(currentAccount())).find((item) => item.book.id === parsedID);
 				if (request !== this.#requestVersion) return;
 				savedFileIds = stored?.fileIds ?? [];
-				if (loaded.book.cover_url) {
+				if (!reuseCachedCover && loaded.book.cover_url) {
 					try {
 						const cover = await loadCover(currentAccount(), loaded.book, loaded.offline);
 						if (request !== this.#requestVersion) return;
@@ -139,11 +164,13 @@ export class BookContext {
 			} else {
 				coverSource = loaded.book.cover_url;
 			}
-			this.#revokeCover();
-			this.#objectUrl = objectUrl;
+			if (!reuseCachedCover) {
+				this.#revokeCover();
+				this.#objectUrl = objectUrl;
+				this.coverSource = coverSource;
+			}
 			this.book = loaded.book;
 			this.offline = loaded.offline;
-			this.coverSource = coverSource;
 			this.coverError = coverError;
 			this.savedFileIds = savedFileIds;
 			if (loaded.offline) {

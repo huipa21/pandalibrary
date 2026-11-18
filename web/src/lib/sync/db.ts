@@ -2,6 +2,7 @@ import { withBookDefaults } from '#lib/catalog/book-defaults.js';
 import type { Book, BookFile } from '#lib/catalog/types.js';
 import type { JsonValue } from '#lib/api/client.js';
 import type {
+	CachedBookDetail,
 	CursorState,
 	DownloadedBook,
 	MutationResult,
@@ -9,6 +10,7 @@ import type {
 	OutboxEntry,
 	PullResponse,
 	StoredBook,
+	StoredBookDetail,
 	StoredFile,
 	StoredRow,
 	SyncMutation
@@ -18,6 +20,8 @@ import { SYNC_SCHEMA } from './types.js';
 const DATABASE = 'pandalibrary-offline';
 const VERSION = 1;
 const ACTIVE = 'active-viewer';
+const DETAIL_PREFIX = 'book-detail:';
+const MAX_CACHED_DETAILS = 120;
 
 interface Metadata<T> {
 	key: string;
@@ -46,15 +50,25 @@ function openDatabase(): Promise<IDBDatabase> {
 		const request = indexedDB.open(DATABASE, VERSION);
 		request.onupgradeneeded = () => {
 			const database = request.result;
-			database.createObjectStore('meta', { keyPath: 'key' });
-			database.createObjectStore('books', { keyPath: ['account', 'bookId'] })
-				.createIndex('account', 'account');
-			database.createObjectStore('files', { keyPath: ['account', 'bookId', 'fileId'] })
-				.createIndex('book', ['account', 'bookId']);
-			database.createObjectStore('outbox', { keyPath: 'sequence', autoIncrement: true })
-				.createIndex('account', 'account');
-			database.createObjectStore('rows', { keyPath: ['account', 'entity', 'key'] })
-				.createIndex('account', 'account');
+			if (!database.objectStoreNames.contains('meta')) {
+				database.createObjectStore('meta', { keyPath: 'key' });
+			}
+			if (!database.objectStoreNames.contains('books')) {
+				database.createObjectStore('books', { keyPath: ['account', 'bookId'] })
+					.createIndex('account', 'account');
+			}
+			if (!database.objectStoreNames.contains('files')) {
+				database.createObjectStore('files', { keyPath: ['account', 'bookId', 'fileId'] })
+					.createIndex('book', ['account', 'bookId']);
+			}
+			if (!database.objectStoreNames.contains('outbox')) {
+				database.createObjectStore('outbox', { keyPath: 'sequence', autoIncrement: true })
+					.createIndex('account', 'account');
+			}
+			if (!database.objectStoreNames.contains('rows')) {
+				database.createObjectStore('rows', { keyPath: ['account', 'entity', 'key'] })
+					.createIndex('account', 'account');
+			}
 		};
 		request.onsuccess = () => resolve(request.result);
 		request.onerror = () => reject(request.error ?? new OfflineStorageError('Could not open offline storage.'));
@@ -105,6 +119,10 @@ async function requireAccount(tx: IDBTransaction, account: number): Promise<void
 
 function cursorKey(account: number): string {
 	return `cursor:${account}`;
+}
+
+function detailKey(account: number, bookId: number): string {
+	return `${DETAIL_PREFIX}${account}:${bookId}`;
 }
 
 export async function activeViewer(): Promise<OfflineViewer | null> {
@@ -372,6 +390,71 @@ export async function persistPull(
 	});
 }
 
+export async function cachedBookDetail(account: number, bookId: number): Promise<CachedBookDetail | null> {
+	return transaction(['meta'], 'readonly', async (tx) => {
+		await requireAccount(tx, account);
+		const entry = await result<Metadata<StoredBookDetail> | undefined>(
+			tx.objectStore('meta').get(detailKey(account, bookId))
+		);
+		if (!entry) return null;
+		return {
+			book: withBookDefaults(entry.value.book),
+			cover: entry.value.cover instanceof Blob ? entry.value.cover : null,
+			cachedAt: entry.value.cachedAt
+		};
+	});
+}
+
+export async function saveBookDetail(account: number, book: Book, cover?: Blob | null): Promise<void> {
+	await transaction(['meta'], 'readwrite', async (tx) => {
+		await requireAccount(tx, account);
+		const store = tx.objectStore('meta');
+		const key = detailKey(account, book.id);
+		const previous = await result<Metadata<StoredBookDetail> | undefined>(store.get(key));
+		await result(store.put({
+			key,
+			value: {
+				account, bookId: book.id, book,
+				cover: cover === undefined ? previous?.value.cover ?? null : cover,
+				cachedAt: Date.now()
+			}
+		} satisfies Metadata<StoredBookDetail>));
+		const entries = (await result<Metadata<StoredBookDetail>[]>(store.getAll()))
+			.filter((entry) => entry.key.startsWith(`${DETAIL_PREFIX}${account}:`))
+			.map((entry) => entry.value);
+		if (entries.length <= MAX_CACHED_DETAILS) return;
+		for (const entry of entries.sort((left, right) => right.cachedAt - left.cachedAt).slice(MAX_CACHED_DETAILS)) {
+			await result(store.delete(detailKey(account, entry.bookId)));
+		}
+	});
+}
+
+export async function saveBookCover(account: number, bookId: number, cover: Blob): Promise<void> {
+	await transaction(['meta'], 'readwrite', async (tx) => {
+		await requireAccount(tx, account);
+		const store = tx.objectStore('meta');
+		const key = detailKey(account, bookId);
+		const previous = await result<Metadata<StoredBookDetail> | undefined>(store.get(key));
+		if (!previous) return;
+		await result(store.put({ key, value: { ...previous.value, cover } } satisfies Metadata<StoredBookDetail>));
+	});
+}
+
+export async function removeBookDetail(account: number, bookId: number): Promise<void> {
+	await transaction(['meta'], 'readwrite', async (tx) => {
+		await requireAccount(tx, account);
+		await result(tx.objectStore('meta').delete(detailKey(account, bookId)));
+	});
+}
+
+async function removeBookDetails(tx: IDBTransaction, account: number): Promise<void> {
+	const store = tx.objectStore('meta');
+	const entries = await result<Metadata<StoredBookDetail>[]>(store.getAll());
+	for (const entry of entries) {
+		if (entry.key.startsWith(`${DETAIL_PREFIX}${account}:`)) await result(store.delete(entry.key));
+	}
+}
+
 export async function saveDownload(
 	account: number,
 	book: Book,
@@ -431,6 +514,7 @@ export async function removeBook(account: number, bookId: number): Promise<void>
 	await transaction(['meta', 'books', 'files'], 'readwrite', async (tx) => {
 		await requireAccount(tx, account);
 		await result(tx.objectStore('books').delete([account, bookId]));
+		await result(tx.objectStore('meta').delete(detailKey(account, bookId)));
 		await deleteMatching(tx.objectStore('files').index('book'), [account, bookId]);
 	});
 }
@@ -444,5 +528,6 @@ export async function removeAllBooks(account: number): Promise<void> {
 			await result(books.delete([account, book.bookId]));
 			await deleteMatching(tx.objectStore('files').index('book'), [account, book.bookId]);
 		}
+		await removeBookDetails(tx, account);
 	});
 }

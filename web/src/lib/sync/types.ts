@@ -69,6 +69,20 @@ export interface StoredBook {
 	cover: Blob | null;
 }
 
+export interface StoredBookDetail {
+	account: number;
+	bookId: number;
+	book: Book;
+	cover: Blob | null;
+	cachedAt: number;
+}
+
+export interface CachedBookDetail {
+	book: Book;
+	cover: Blob | null;
+	cachedAt: number;
+}
+
 export interface StoredFile {
 	account: number;
 	bookId: number;

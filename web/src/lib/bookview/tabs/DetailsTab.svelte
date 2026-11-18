@@ -19,7 +19,7 @@
 	import RelatedBooks from '../details/RelatedBooks.svelte';
 	import ReviewsCard from '../details/ReviewsCard.svelte';
 	import { createBookShelves } from '../details/book-shelves.svelte.js';
-	import { loadDetailsState, loadRelated, type DetailsState, type RelatedBooks as RelatedBookLists } from '../details/details-data.js';
+	import { loadCachedDetailsState, loadDetailsState, loadRelated, type DetailsState, type RelatedBooks as RelatedBookLists } from '../details/details-data.js';
 	import ShelfPopover from '../quickview/ShelfPopover.svelte';
 
 	const context = getBookContext();
@@ -58,9 +58,18 @@
 		}
 		detailsLoading = true;
 		detailsError = '';
+		let fresh = false;
+		if (!isOffline) {
+			void loadCachedDetailsState(id).then((cached) => {
+				if (controller.signal.aborted || fresh || !cached) return;
+				details = cached;
+				detailsLoading = false;
+			});
+		}
 		void loadDetailsState(id, controller.signal, isOffline).then(
 			(state) => {
 				if (controller.signal.aborted) return;
+				fresh = true;
 				details = state;
 				detailsLoading = false;
 			},

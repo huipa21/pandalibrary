@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 	getSessionViewer: vi.fn(),
 	offlineAvailable: vi.fn(() => false),
 	downloadedBooks: vi.fn(async () => [] as { book: { id: number }; fileIds: number[] }[]),
+	cachedBookForDisplay: vi.fn(async (): Promise<{ book: Book; cover: Blob | null } | null> => null),
 	loadOfflineBook: vi.fn(),
 	loadCover: vi.fn()
 }));
@@ -19,7 +20,11 @@ vi.mock('#lib/sync/db.js', () => ({
 	downloadedBooks: mocks.downloadedBooks,
 	OfflineStorageError: class OfflineStorageError extends Error {}
 }));
-vi.mock('#lib/sync/library.js', () => ({ loadBook: mocks.loadOfflineBook, loadCover: mocks.loadCover }));
+vi.mock('#lib/sync/library.js', () => ({
+	cachedBookForDisplay: mocks.cachedBookForDisplay,
+	loadBook: mocks.loadOfflineBook,
+	loadCover: mocks.loadCover
+}));
 
 const { BookContext } = await import('./book-context.svelte.js');
 const { OfflineStorageError } = await import('#lib/sync/db.js');
@@ -38,6 +43,7 @@ beforeEach(() => {
 	mocks.getBook.mockImplementation(async (id: number) => makeBook(id, `/api/v1/books/${id}/cover`));
 	mocks.getSessionViewer.mockResolvedValue({ id: 1, username: 'admin', display_name: 'Admin', role: 'admin' });
 	mocks.offlineAvailable.mockReturnValue(false);
+	mocks.cachedBookForDisplay.mockResolvedValue(null);
 	mocks.downloadedBooks.mockResolvedValue([]);
 });
 
@@ -99,6 +105,28 @@ describe('BookContext', () => {
 		mocks.getBook.mockRejectedValueOnce(new TypeError('offline'));
 		await context.reload();
 		expect(context.error).toBe(m['catalog.error.connection']());
+	});
+
+	it('shows a cached book before the online copy arrives', async () => {
+		mocks.offlineAvailable.mockReturnValue(true);
+		const network = deferred<{ book: Book; offline: boolean }>();
+		mocks.cachedBookForDisplay.mockResolvedValue({
+			book: makeBook(9, '/api/v1/books/9/cover'), cover: new Blob(['cover'])
+		});
+		mocks.loadOfflineBook.mockReturnValue(network.promise);
+		vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:cached');
+		const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+		const context = new BookContext();
+		const pending = context.load('9');
+		await vi.waitFor(() => expect(context.book?.id).toBe(9));
+		expect(context.loading).toBe(false);
+		expect(context.coverSource).toBe('blob:cached');
+		network.resolve({ book: makeBook(9, '/api/v1/books/9/cover'), offline: false });
+		await pending;
+		expect(mocks.loadCover).not.toHaveBeenCalled();
+		expect(context.coverSource).toBe('blob:cached');
+		context.destroy();
+		expect(revoke).toHaveBeenCalledWith('blob:cached');
 	});
 
 	it('loads offline books with object URL covers and revokes them', async () => {

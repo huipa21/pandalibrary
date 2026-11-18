@@ -23,6 +23,21 @@ async function loadReaderBookState(bookId: number, offline: boolean): Promise<Bo
 	return (await readerState(currentAccount(), bookId, { state, settings: [] })).state;
 }
 
+/** Shows the last synchronized reading state immediately while the online copy refreshes. */
+export async function loadCachedDetailsState(bookId: number): Promise<DetailsState | null> {
+	if (!Number.isSafeInteger(bookId) || bookId < 1 || !offlineAvailable()) return null;
+	try {
+		const state = (await readerState(currentAccount(), bookId)).state;
+		return {
+			userBook: userBookFromState(state.user_book),
+			progress: state.progress
+		};
+	} catch (cause) {
+		console.warn('Could not read the cached book reading details', cause);
+		return null;
+	}
+}
+
 export async function loadDetailsState(
 	bookId: number,
 	signal?: AbortSignal,

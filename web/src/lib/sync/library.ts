@@ -3,9 +3,21 @@ import { getBook } from '#lib/catalog/api.js';
 import type { Book, BookFile } from '#lib/catalog/types.js';
 import { downloadBookFile, getBookState, getSettings, validatedBookFileUrl } from '#lib/reader/api.js';
 import type { BookState, Setting } from '#lib/reader/types.js';
-import { downloadedBooks, downloadedFile, OfflineStorageError, removeBook, saveDownload } from './db.js';
+import {
+	cachedBookDetail,
+	downloadedBooks,
+	downloadedFile,
+	OfflineStorageError,
+	removeBook,
+	saveBookCover,
+	saveBookDetail,
+	saveDownload
+} from './db.js';
 import { synchronize } from './engine.js';
 import { readerState } from './state.js';
+
+/** Covers are a convenience cache; avoid filling offline storage with unusually large images. */
+const MAX_CACHED_COVER_BYTES = 2 * 1024 * 1024;
 
 function isOffline(): boolean {
 	return typeof navigator !== 'undefined' && !navigator.onLine;
@@ -21,6 +33,15 @@ async function evictOnDenial(account: number, bookId: number, error: unknown): P
 	}
 }
 
+async function cacheBookDetail(account: number, book: Book): Promise<void> {
+	try {
+		await saveBookDetail(account, book);
+	} catch (error) {
+		// A full or unavailable cache must never make an online catalog request fail.
+		console.warn('Could not cache the book details', error);
+	}
+}
+
 export async function cachedBook(account: number, bookId: number): Promise<Book> {
 	const cached = (await downloadedBooks(account)).find((item) => item.book.id === bookId);
 	if (!cached || cached.fileIds.length === 0) {
@@ -29,13 +50,24 @@ export async function cachedBook(account: number, bookId: number): Promise<Book>
 	return { ...cached.book, files: cached.book.files.filter((file) => cached.fileIds.includes(file.id)) };
 }
 
+/** Returns a previously viewed book for an instant first paint while the network copy refreshes. */
+export async function cachedBookForDisplay(
+	account: number,
+	bookId: number
+): Promise<{ book: Book; cover: Blob | null } | null> {
+	const cached = await cachedBookDetail(account, bookId);
+	return cached ? { book: cached.book, cover: cached.cover } : null;
+}
+
 export async function loadBook(
 	account: number,
 	bookId: number
 ): Promise<{ book: Book; offline: boolean }> {
 	if (isOffline()) return { book: await cachedBook(account, bookId), offline: true };
 	try {
-		return { book: await getBook(bookId), offline: false };
+		const book = await getBook(bookId);
+		await cacheBookDetail(account, book);
+		return { book, offline: false };
 	} catch (error) {
 		await evictOnDenial(account, bookId, error);
 		if (networkFailure(error)) return { book: await cachedBook(account, bookId), offline: true };
@@ -106,7 +138,15 @@ export async function loadCover(account: number, book: Book, offline: boolean): 
 	try {
 		const response = await fetch(url.href, { credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
 		if (!response.ok) throw new ApiError(response.status, response.statusText, await response.text());
-		return await response.blob();
+		const blob = await response.blob();
+		if (blob.size <= MAX_CACHED_COVER_BYTES) {
+			try {
+				await saveBookCover(account, book.id, blob);
+			} catch (error) {
+				console.warn('Could not cache the book cover', error);
+			}
+		}
+		return blob;
 	} catch (error) {
 		await evictOnDenial(account, book.id, error);
 		if (networkFailure(error)) {

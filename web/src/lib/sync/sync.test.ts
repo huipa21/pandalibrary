@@ -4,12 +4,14 @@ import { ApiError, api } from '#lib/api/client.js';
 import * as catalog from '#lib/catalog/api.js';
 import type { Book } from '#lib/catalog/types.js';
 import {
-	activeViewer, AccountChangedError, cursorState, discardMutation, downloadedBooks, downloadedFile,
-	enqueue, outbox, persistPull, recordResults, removeAllBooks, removeBook,
-	retryFailed, rows, saveDownload, setActiveViewer
+	activeViewer, AccountChangedError, cachedBookDetail, cursorState, discardMutation, downloadedBooks,
+	downloadedFile, enqueue, outbox, persistPull, recordResults, removeAllBooks, removeBook,
+	retryFailed, rows, saveBookCover, saveBookDetail, saveDownload, setActiveViewer
 } from './db.js';
 import { parsePullResponse, parsePushResponse, synchronize, type SyncTransport } from './engine.js';
-import { cachedBook, loadBook, loadFile, loadReaderState, downloadForOffline } from './library.js';
+import {
+	cachedBook, cachedBookForDisplay, loadBook, loadFile, loadReaderState, downloadForOffline
+} from './library.js';
 import { readerState } from './state.js';
 import type { OfflineViewer, PullResponse, SyncMutation } from './types.js';
 import type { PageAnnotation } from '#lib/reader/types.js';
@@ -36,7 +38,7 @@ const pageAnnotation: PageAnnotation = {
 
 async function setLegacyCursor(cursor: number, pulledAt: number): Promise<void> {
 	const database = await new Promise<IDBDatabase>((resolve, reject) => {
-		const request = indexedDB.open('pandalibrary-offline', 1);
+		const request = indexedDB.open('pandalibrary-offline');
 		request.onsuccess = () => resolve(request.result);
 		request.onerror = () => reject(request.error);
 	});
@@ -681,6 +683,18 @@ describe('account-scoped explicit downloads', () => {
 		await removeAllBooks(1);
 		expect(await downloadedBooks(1)).toEqual([]);
 		expect(await outbox(1)).toHaveLength(1);
+	});
+
+	it('caches visited book details per account for an instant first paint', async () => {
+		vi.spyOn(catalog, 'getBook').mockResolvedValue(book);
+		await loadBook(1, 21);
+		expect(await cachedBookForDisplay(1, 21)).toMatchObject({
+			book: { id: 21, title: 'Offline book' }, cover: null
+		});
+		await saveBookCover(1, 21, new Blob(['cover'], { type: 'image/jpeg' }));
+		expect(await cachedBookDetail(1, 21)).toMatchObject({ cover: expect.any(Blob) });
+		await setActiveViewer({ ...viewer, id: 2 });
+		expect(await cachedBookDetail(2, 21)).toBeNull();
 	});
 
 	it('opens only explicitly stored, matching hash-versioned files while offline', async () => {

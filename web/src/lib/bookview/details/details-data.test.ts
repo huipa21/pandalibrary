@@ -16,7 +16,7 @@ import type { Book } from '#lib/catalog/types.js';
 import type { BookState, Note, Progress } from '#lib/reader/types.js';
 import { offlineAvailable } from '#lib/sync/client.js';
 import { readerState } from '#lib/sync/state.js';
-import { loadDetailsState, loadRelated } from './details-data.js';
+import { loadCachedDetailsState, loadDetailsState, loadRelated } from './details-data.js';
 
 const stamp = '2026-11-07T10:00:00Z';
 const emptyState: BookState = {
@@ -61,6 +61,29 @@ afterEach(() => {
 });
 
 describe('details state', () => {
+
+	it('returns the synchronized state immediately for a cached first paint', async () => {
+		vi.mocked(offlineAvailable).mockReturnValue(true);
+		const local: BookState = {
+			...emptyState,
+			user_book: {
+				status: 'reading', rating: 8, started_at: Date.parse(stamp), finished_at: null,
+				updated_at: stamp, rev: 2
+			},
+			progress
+		};
+		vi.mocked(readerState).mockResolvedValue({ state: local, settings: [] });
+		await expect(loadCachedDetailsState(21)).resolves.toEqual({
+			userBook: expect.objectContaining({ status: 'reading', rating: 8 }),
+			progress
+		});
+		expect(readerState).toHaveBeenCalledWith(4, 21);
+		expect(fetchMock).not.toHaveBeenCalled();
+		await expect(loadCachedDetailsState(0)).resolves.toBeNull();
+		vi.mocked(offlineAvailable).mockReturnValue(false);
+		await expect(loadCachedDetailsState(21)).resolves.toBeNull();
+	});
+
 	it('loads only the reader book state and never exposes private comments', async () => {
 		const state: BookState = { ...emptyState, progress, notes: [note('private')] };
 		fetchMock.mockImplementation(async () => json(state));
