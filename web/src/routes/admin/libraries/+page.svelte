@@ -194,10 +194,7 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="libraries-heading">
-	<header class="space-y-2">
-		<h1 id="libraries-heading" class="text-3xl font-semibold tracking-tight">{m['admin.libraries.title']()}</h1>
-		<p class="text-slate-600">{m['admin.libraries.description']()}</p>
-	</header>
+	<h1 id="libraries-heading" class="sr-only">{m['admin.libraries.title']()}</h1>
 
 	<section class={panelClass} aria-labelledby="create-library-heading">
 		<h2 id="create-library-heading" class="text-xl font-semibold">{m['admin.libraries.create_heading']()}</h2>

@@ -97,10 +97,7 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="backup-heading">
-	<header class="space-y-2">
-		<h1 id="backup-heading" class="text-3xl font-semibold tracking-tight">{m['admin.tabs.backup']()}</h1>
-		<p class="text-slate-600">{m['admin.backup.description']()}</p>
-	</header>
+	<h1 id="backup-heading" class="sr-only">{m['admin.tabs.backup']()}</h1>
 	<p class={warningBox}>{m['admin.backup.warning']()}</p>
 	{#if notice}<p class="text-sm text-green-700" role="status">{notice}</p>{/if}
 	{#if error}<AdminAlert message={error} />{/if}

@@ -201,11 +201,8 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="maintenance-heading">
-	<header class="space-y-2">
-		<h1 id="maintenance-heading" class="text-3xl font-semibold tracking-tight">{m['admin.maintenance.title']()}</h1>
-		<p class="text-slate-600">{m['admin.maintenance.description']()}</p>
-		<p class="text-sm text-slate-500">{m['admin.maintenance.restart_note']()}</p>
-	</header>
+	<h1 id="maintenance-heading" class="sr-only">{m['admin.maintenance.title']()}</h1>
+	<p class="text-sm text-slate-500">{m['admin.maintenance.restart_note']()}</p>
 
 	{#if status === 'error'}
 		<AdminAlert message={translate(adminErrorKey(loadError, 'load'))} error={loadError} onretry={load} />

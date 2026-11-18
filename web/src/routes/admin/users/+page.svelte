@@ -161,11 +161,8 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="users-heading">
-	<header class="flex flex-wrap items-start justify-between gap-3">
-		<div class="space-y-2">
-			<h1 id="users-heading" class="text-3xl font-semibold tracking-tight">{m['admin.users.heading']()}</h1>
-			<p class="text-slate-600">{m['admin.overview.users']()}</p>
-		</div>
+	<header class="flex flex-wrap items-start justify-end gap-3">
+		<h1 id="users-heading" class="sr-only">{m['admin.users.heading']()}</h1>
 		<button type="button" class={primaryButton} disabled={formOpen || actionInProgress} onclick={() => (creating = true)}>
 			{m['admin.users.create_label']()}
 		</button>

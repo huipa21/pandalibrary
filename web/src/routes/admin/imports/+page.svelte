@@ -159,10 +159,7 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="imports-heading">
-	<header class="space-y-2">
-		<h1 id="imports-heading" class="text-3xl font-semibold tracking-tight">{m['admin.imports.title']()}</h1>
-		<p class="text-slate-600">{m['admin.imports.description']()}</p>
-	</header>
+	<h1 id="imports-heading" class="sr-only">{m['admin.imports.title']()}</h1>
 
 	<section class={panelClass} aria-labelledby="upload-heading">
 		<h2 id="upload-heading" class="text-xl font-semibold">{m['admin.imports.upload_heading']()}</h2>

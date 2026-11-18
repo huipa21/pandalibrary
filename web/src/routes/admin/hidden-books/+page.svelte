@@ -86,10 +86,7 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="hidden-heading">
-	<header class="space-y-2">
-		<h1 id="hidden-heading" class="text-3xl font-semibold tracking-tight">{m['admin.hidden.title']()}</h1>
-		<p class="text-slate-600">{m['admin.hidden.description']()}</p>
-	</header>
+	<h1 id="hidden-heading" class="sr-only">{m['admin.hidden.title']()}</h1>
 
 	<section class={panelClass} aria-labelledby="hidden-user-heading">
 		<h2 id="hidden-user-heading" class="text-xl font-semibold">{m['admin.hidden.user_heading']()}</h2>

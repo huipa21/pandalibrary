@@ -86,14 +86,14 @@ test('menu destinations keep accessible titles without repeated visible introduc
 		{ path: '/read', heading: 'Choose a book to read', description: 'Choose an available format to open it in your browser.' },
 		{ path: '/search', heading: 'Search', description: 'Find books by title, author, series, tag, or other details.' },
 		{ path: '/stats', heading: 'Reading stats', description: 'See how much you read each day, which books you finished, and your reading streaks.' },
-		{ path: '/admin', heading: 'Users' },
+		{ path: '/admin', heading: 'Users', description: 'Create accounts, manage profiles, and control access for readers.' },
 		{ path: '/settings', heading: 'Account settings', description: 'Manage your profile and device passwords.' }
 	];
 	for (const destination of destinations) {
 		await page.goto(destination.path);
 		const main = page.getByRole('main');
 		const heading = main.getByRole('heading', { name: destination.heading, level: 1, exact: true });
-		if (['/admin', '/libraries'].includes(destination.path)) await expect(heading).toBeVisible();
+		if (destination.path === '/libraries') await expect(heading).toBeVisible();
 		else await expect(heading).toHaveClass('sr-only');
 		if (destination.description) await expect(main.getByText(destination.description, { exact: true })).toHaveCount(0);
 		if (destination.path === '/settings') {

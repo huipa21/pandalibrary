@@ -89,7 +89,7 @@
 			{/if}
 		</div>
 		{#if role === 'admin'}
-			<div class="mt-3 shrink-0 border-t pt-2" data-slot="sidebar-admin">
+			<div class="mt-3 shrink-0" data-slot="sidebar-admin">
 				<a class="shell-link" href={adminMode ? '/' : '/admin'}>
 					<Icon name={adminMode ? 'arrow-left' : 'users'} class="size-4.5 shrink-0" />
 					<span>{adminMode ? m['admin.exit_nav']() : m['admin.nav']()}</span>

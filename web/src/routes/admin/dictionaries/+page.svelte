@@ -408,10 +408,7 @@
 {/snippet}
 
 <section class="space-y-8" aria-labelledby="dictionaries-heading">
-	<header class="space-y-2">
-		<h1 id="dictionaries-heading" class="text-3xl font-semibold tracking-tight">{m['admin.dictionaries.title']()}</h1>
-		<p class="text-slate-600">{m['admin.dictionaries.description']()}</p>
-	</header>
+	<h1 id="dictionaries-heading" class="sr-only">{m['admin.dictionaries.title']()}</h1>
 
 	{#if status === 'error'}
 		<AdminAlert message={translate(adminErrorKey(loadError, 'load'))} error={loadError} onretry={load} />

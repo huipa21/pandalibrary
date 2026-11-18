@@ -438,7 +438,7 @@ test('real sidebar shelves, automatic rule changes, favorites and bilingual resp
 		for (const route of ['/books', `/books/${book.id}`, '/shelves', '/notes', '/admin/users']) {
 			await page.goto(`${locale === 'zh' ? '/zh' : ''}${route}`);
 			const heading = page.getByRole('main').getByRole('heading', { level: 1 });
-			if (route === `/books/${book.id}` || route === '/notes' || route === '/admin/users') {
+			if (route === `/books/${book.id}` || route === '/notes') {
 				await expect(heading).toBeVisible();
 			} else {
 				await expect(heading).toHaveClass('sr-only');

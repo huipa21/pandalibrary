@@ -66,7 +66,7 @@ test('administrators reach the admin area in Chinese', async ({ page }) => {
 	await page.goto('/');
 	await page.getByRole('link', { name: '管理面板', exact: true }).click();
 	await expect(page).toHaveURL('/admin/users');
-	await expect(page.getByRole('heading', { level: 1, name: '用户', exact: true })).toBeVisible();
+	await expect(page.getByRole('heading', { level: 1, name: '用户', exact: true })).toHaveClass('sr-only');
 	const adminNav = page.getByRole('navigation', { name: '管理分区' });
 	await expect(adminNav.getByRole('link', { name: '用户', exact: true })).toHaveAttribute('aria-current', 'page');
 	await expect(adminNav.getByRole('link', { name: '退出管理', exact: true })).toHaveAttribute('href', '/');

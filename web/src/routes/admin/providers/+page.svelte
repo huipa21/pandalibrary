@@ -130,10 +130,7 @@
 </svelte:head>
 
 <section class="space-y-8" aria-labelledby="providers-heading">
-	<header class="space-y-2">
-		<h1 id="providers-heading" class="text-3xl font-semibold tracking-tight">{m['admin.providers.title']()}</h1>
-		<p class="text-slate-600">{m['admin.providers.description']()}</p>
-	</header>
+	<h1 id="providers-heading" class="sr-only">{m['admin.providers.title']()}</h1>
 
 	{#if status === 'error'}
 		<AdminAlert message={translate(adminErrorKey(loadError, 'load'))} error={loadError} onretry={load} />
