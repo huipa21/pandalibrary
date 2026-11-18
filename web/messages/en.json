@@ -981,6 +981,8 @@
 	"reader.position": "Reading position",
 	"reader.surface": "Book content",
 	"reader.keyboard_hint": "Use the left and right arrow keys to turn pages.",
+	"reader.mode.enter": "Reading mode",
+	"reader.mode.exit": "Exit reading mode",
 	"reader.settings.title": "Reader settings",
 	"reader.settings.scope": "These settings are saved for this book.",
 	"reader.settings.font": "Font",

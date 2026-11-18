@@ -293,6 +293,24 @@ describe('Foliate element-boundary selections', () => {
 	}
 });
 
+describe('Foliate relocation page numbers', () => {
+	it('reports per-section page numbers only while the paginator publishes them', async () => {
+		const { reader, view, events } = await openEngine();
+		const display = { pagination: { fraction: 1 / 4, size: 1 / 4 } as { fraction?: number; size?: number } | null };
+		Object.assign(reader as unknown as { display: unknown }, { display });
+		const relocate = () => view.dispatchEvent(new CustomEvent('relocate', {
+			detail: { cfi: 'epubcfi(/6/2!/4/2)', fraction: 0.2, range: null }
+		}));
+		relocate();
+		expect(events.relocate).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, pageCount: 4 }));
+		display.pagination = { fraction: 0.4, size: 0.63 };
+		relocate();
+		const continuous = vi.mocked(events.relocate).mock.lastCall![0];
+		expect(continuous).not.toHaveProperty('page');
+		expect(continuous).not.toHaveProperty('pageCount');
+	});
+});
+
 describe('foliate appearance styles', () => {
 	for (const preset of BACKGROUNDS) {
 		it(`applies ${preset.id} colours and tone without overriding links`, () => {

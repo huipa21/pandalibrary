@@ -25,6 +25,8 @@
 	import ReaderNotifications from '#lib/reader/frame/ReaderNotifications.svelte';
 	import ReaderCloseButton from '#lib/reader/frame/ReaderCloseButton.svelte';
 	import ReaderStatusDot from '#lib/reader/frame/ReaderStatusDot.svelte';
+	import ReaderModeButton from '#lib/reader/frame/ReaderModeButton.svelte';
+	import { readReaderMode, storeReaderMode } from '#lib/reader/frame/reader-mode.js';
 	import ReaderSidebar from '#lib/reader/frame/ReaderSidebar.svelte';
 	import ReaderToolbar from '#lib/reader/toolbar/ReaderToolbar.svelte';
 	import ProgressLabel from '#lib/reader/toolbar/ProgressLabel.svelte';
@@ -53,11 +55,12 @@
 	let insertMode = $state<InsertType | null>(null);
 	let insertMenuOpen = $state(false);
 	let offline = $state(false);
+	let readingMode = $state(false);
 	const tabs: readonly SidebarTab[] = untrack(() => controller.format === 'cbz'
 		? ['toc', 'annotations', 'bookmarks']
 		: ['toc', 'annotations', 'bookmarks', 'search']);
 	const sidebar = createSidebarState({ tabs });
-	const sidebarInset = $derived(RAIL_WIDTH + (sidebar.open && sidebar.docked ? PANEL_WIDTH : 0));
+	const sidebarInset = $derived(readingMode ? 0 : RAIL_WIDTH + (sidebar.open && sidebar.docked ? PANEL_WIDTH : 0));
 	const background = $derived(backgroundFor(controller.settings));
 	const progressPercent = $derived(Math.round((controller.location?.fraction ?? 0) * 100));
 	const currentBookmarks = $derived.by(() => {
@@ -91,6 +94,7 @@
 		});
 	});
 	onMount(() => {
+		readingMode = readReaderMode();
 		const connectionChanged = () => { offline = !navigator.onLine; };
 		connectionChanged();
 		window.addEventListener('online', connectionChanged);
@@ -145,6 +149,14 @@
 		noteTrigger = surface ?? null;
 		createdCommentMark = highlightId;
 		draft = { id: uuidv7(), highlightId, body: '', original: '', editing: false };
+	}
+	function toggleReadingMode() {
+		readingMode = !readingMode;
+		storeReaderMode(readingMode);
+		if (!readingMode) return;
+		sidebar.collapse();
+		insertMode = null;
+		clearSelection();
 	}
 	function clearSelection() {
 		engine?.clearSelection();
@@ -262,7 +274,8 @@
 			<ReaderToolbar>
 				{#snippet left()}
 					<button class="pv4-button" aria-label={m['reader.previous']()} title={m['reader.previous']()} disabled={!controller.ready} onclick={() => navigate(() => controller.turnPage('previous'))}><Icon name="chevron-left" /></button>
-					<ProgressLabel fraction={controller.location?.fraction ?? 0} />
+					<ProgressLabel fraction={controller.location?.fraction ?? 0}
+						page={controller.location?.page} pageCount={controller.location?.pageCount} />
 					<button class="pv4-button" aria-label={m['reader.next']()} title={m['reader.next']()} disabled={!controller.ready} onclick={() => navigate(() => controller.turnPage('next'))}><Icon name="chevron-right" /></button>
 				{/snippet}
 				{#snippet status()}<ReaderStatusDot warning={controller.settingsWarning} onretry={() => controller.retryWrites()} />{/snippet}
@@ -292,16 +305,18 @@
 					<RotateMenu onrotate={rotate} disabled={!engine} />
 				{/snippet}
 				{#snippet right()}
-					<WordbookAction {controller}
-						capture={() => engine?.getSelectionBounds() || document.activeElement?.closest('.pv8-toolbar') ? controller.selection : null}
-						onadded={clearSelection} />
-					<InsertMenu bind:open={insertMenuOpen} disabled={!controller.ready || controller.busy} {offline}
-						onselect={(type) => { insertMode = type; clearSelection(); }} />
-					{#if controller.format === 'cbz'}
-						<button class="pv4-button" aria-label={m['reader.annotations.add_page']()} title={m['reader.annotations.add_page']()}
-							disabled={!controller.ready || controller.busy} onclick={() => void controller.addHighlight(null)}>
-							<Icon name="highlighter" />
-						</button>
+					{#if !readingMode}
+						<WordbookAction {controller}
+							capture={() => engine?.getSelectionBounds() || document.activeElement?.closest('.pv8-toolbar') ? controller.selection : null}
+							onadded={clearSelection} />
+						<InsertMenu bind:open={insertMenuOpen} disabled={!controller.ready || controller.busy} {offline}
+							onselect={(type) => { insertMode = type; clearSelection(); }} />
+						{#if controller.format === 'cbz'}
+							<button class="pv4-button" aria-label={m['reader.annotations.add_page']()} title={m['reader.annotations.add_page']()}
+								disabled={!controller.ready || controller.busy} onclick={() => void controller.addHighlight(null)}>
+								<Icon name="highlighter" />
+							</button>
+						{/if}
 					{/if}
 					<button class="pv4-button" data-testid="reflow-bookmark-toggle"
 						aria-label={m['rp8.add_page']()} aria-pressed={currentBookmarks.length > 0}
@@ -310,6 +325,7 @@
 						onpointerdown={(event) => event.preventDefault()} onclick={() => void toggleBookmark()}>
 						<Icon name="bookmark" />
 					</button>
+					<ReaderModeButton mode={readingMode} ontoggle={toggleReadingMode} />
 					<span class="reader-divider" aria-hidden="true"></span>
 					<ReaderCloseButton closing={controller.closing} onclose={() => controller.close()} />
 				{/snippet}
@@ -320,11 +336,13 @@
 			<div bind:this={surface} id="reader-surface" role="region" aria-label={m['reader.surface']()} tabindex="0"
 				data-background={background.id} data-tone={background.tone}
 				class="min-h-0 flex-1 overflow-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-500"></div>
-			<div class="reader-position flex items-center gap-3 px-4 py-2">
-				<label for="reader-position" class="sr-only">{m['reader.position']()}</label>
-				<input id="reader-position" class="min-w-0 flex-1 accent-emerald-700" type="range" min="0" max="1000" value={Math.round((controller.location?.fraction ?? 0) * 1000)} aria-valuetext={`${progressPercent}%`} disabled={!controller.ready} onchange={(event) => navigate(() => controller.goToFraction(Number(event.currentTarget.value) / 1000))} />
-				<p class="sr-only">{m['reader.keyboard_hint']()}</p>
-			</div>
+			{#if !readingMode}
+				<div class="reader-position flex items-center gap-3 px-4 py-2">
+					<label for="reader-position" class="sr-only">{m['reader.position']()}</label>
+					<input id="reader-position" class="min-w-0 flex-1 accent-emerald-700" type="range" min="0" max="1000" value={Math.round((controller.location?.fraction ?? 0) * 1000)} aria-valuetext={`${progressPercent}%`} disabled={!controller.ready} onchange={(event) => navigate(() => controller.goToFraction(Number(event.currentTarget.value) / 1000))} />
+					<p class="sr-only">{m['reader.keyboard_hint']()}</p>
+				</div>
+			{/if}
 		</div>
 		{#if engine && surface && controller.format !== 'cbz'}
 			<ReflowSelectionToolbar {engine} {controller} {surface} cancomment={canOpenNote}
@@ -333,7 +351,7 @@
 		{#if engine && surface}
 			<ReflowInsertLayer {engine} {controller} {surface} bind:mode={insertMode} announce={(message) => announcement = message} />
 		{/if}
-		<ReaderSidebar {sidebar} {tabs} count={annotationList.count}>
+		<ReaderSidebar {sidebar} {tabs} count={annotationList.count} hidden={readingMode}>
 			{#snippet children(tab)}
 				{#if controller.file && controller.format}
 				<div class="reader-panel text-sm" class:reader-annotations-panel={tab === 'annotations'} class:p-4={tab !== 'annotations'}>

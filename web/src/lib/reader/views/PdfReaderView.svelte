@@ -6,6 +6,8 @@
 	import ReaderFrame from '#lib/reader/frame/ReaderFrame.svelte';
 	import ReaderCloseButton from '#lib/reader/frame/ReaderCloseButton.svelte';
 	import ReaderStatusDot from '#lib/reader/frame/ReaderStatusDot.svelte';
+	import ReaderModeButton from '#lib/reader/frame/ReaderModeButton.svelte';
+	import { readReaderMode, storeReaderMode } from '#lib/reader/frame/reader-mode.js';
 	import ReaderToolbar from '#lib/reader/toolbar/ReaderToolbar.svelte';
 	import PageCounter from '#lib/reader/toolbar/PageCounter.svelte';
 	import ProgressLabel from '#lib/reader/toolbar/ProgressLabel.svelte';
@@ -59,11 +61,12 @@
 	// The "Saved" status of view-state autosaves is not shown; explicit saves still report.
 	let autosavedMessage = $state('');
 	let bookmarking = $state(false);
+	let readingMode = $state(false);
 
 	const page = $derived(view?.page ?? (controller.location?.locator.type === 'pdf' ? controller.location.locator.page : 1));
 	const background = $derived(backgroundFor(controller.settings));
 	const savedMessage = $derived(controller.savedMessage === autosavedMessage ? '' : controller.savedMessage);
-	const sidebarInset = $derived(RAIL_WIDTH + (sidebar.open && sidebar.docked ? PANEL_WIDTH : 0));
+	const sidebarInset = $derived(readingMode ? 0 : RAIL_WIDTH + (sidebar.open && sidebar.docked ? PANEL_WIDTH : 0));
 	const currentPageBookmark = $derived(pageBookmark(controller.bookmarks, controller.file?.id ?? -1, page));
 
 	setPdfReaderContext({
@@ -201,6 +204,14 @@
 		}
 	}
 
+	function toggleReadingMode() {
+		readingMode = !readingMode;
+		storeReaderMode(readingMode);
+		if (!readingMode) return;
+		sidebar.collapse();
+		if (tool !== 'select') setTool('select');
+	}
+
 	function setTool(next: PdfTool) {
 		if (next === tool) return;
 		if (next !== 'insert') {
@@ -290,6 +301,7 @@
 	}
 
 	onMount(() => {
+		readingMode = readReaderMode();
 		if (!surface) throw new Error('The reader surface is unavailable.');
 		boundBookId = controller.book?.id;
 		boundFileId = controller.file?.id;
@@ -378,10 +390,12 @@
 				<RotateMenu onrotate={(delta) => run(() => engine?.rotate(delta))} />
 			{/snippet}
 			{#snippet right()}
-				<WordbookAction {controller}
-					capture={() => engine ? pdfWordbookSelection(capturePdfSelection(document.getSelection(), engine), view?.pageCount ?? 1, document.getSelection()?.toString())
-						?? (document.activeElement?.closest('.pv8-toolbar') ? controller.captureForWordbook() : null) : null}
-					onadded={() => document.getSelection()?.removeAllRanges()} />
+				{#if !readingMode}
+					<WordbookAction {controller}
+						capture={() => engine ? pdfWordbookSelection(capturePdfSelection(document.getSelection(), engine), view?.pageCount ?? 1, document.getSelection()?.toString())
+							?? (document.activeElement?.closest('.pv8-toolbar') ? controller.captureForWordbook() : null) : null}
+						onadded={() => document.getSelection()?.removeAllRanges()} />
+				{/if}
 				<button
 					type="button" class="pv4-button" data-testid="pdf-bookmark-toggle"
 					aria-label={m['rp8.add_page']()} aria-pressed={!!currentPageBookmark}
@@ -389,14 +403,17 @@
 					disabled={bookmarking || controller.busy || !controller.ready || !engine || !view}
 					onpointerdown={(event) => event.preventDefault()} onclick={togglePageBookmark}
 				><Icon name="bookmark" /></button>
-				<ToolToggle tool={tool === 'hand' ? 'hand' : 'select'} ontoggle={() => setTool(tool === 'hand' ? 'select' : 'hand')} />
-				<InsertMenu bind:open={insertMenuOpen} disabled={!engine} offline={!$offlineStatus.online} onselect={startInsert} />
+				{#if !readingMode}
+					<ToolToggle tool={tool === 'hand' ? 'hand' : 'select'} ontoggle={() => setTool(tool === 'hand' ? 'select' : 'hand')} />
+					<InsertMenu bind:open={insertMenuOpen} disabled={!engine} offline={!$offlineStatus.online} onselect={startInsert} />
+				{/if}
+				<ReaderModeButton mode={readingMode} ontoggle={toggleReadingMode} />
 				<span class="pv-divider" aria-hidden="true"></span>
 				<ReaderCloseButton closing={controller.closing} onclose={() => controller.close()} />
 			{/snippet}
 		</ReaderToolbar>
 	{/snippet}
-	<ReaderSidebar ready={!!engine} />
+	<ReaderSidebar ready={!!engine} hidden={readingMode} />
 	<div class="pv-page-area absolute inset-y-0 right-0" style:left="{sidebarInset}px">
 		<!-- svelte-ignore a11y_no_noninteractive_tabindex: the book surface must be keyboard-scrollable -->
 		<div

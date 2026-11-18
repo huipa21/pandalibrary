@@ -127,6 +127,26 @@
 .pv8-toast button { border: 0; background: none; color: #6ee7b7; font: inherit; font-weight: 600; cursor: pointer; }
 .pv8-toast button:focus-visible { outline: 2px solid #6ee7b7; outline-offset: 2px; }
 
+/* Docked on narrow or coarse-pointer layouts, where the native selection bar covers the viewport top layer. */
+@media (max-width: 639px), (pointer: coarse) {
+	.pv8-toolbar {
+		right: 8px;
+		bottom: calc(8px + env(safe-area-inset-bottom));
+		left: 8px !important;
+		top: auto !important;
+		z-index: 95;
+		width: auto;
+		max-width: none;
+		justify-content: center;
+		justify-content: safe center;
+		overflow-x: auto;
+		padding-right: max(4px, env(safe-area-inset-right));
+		padding-left: max(4px, env(safe-area-inset-left));
+	}
+	/* The palette opens outside the toolbar box. */
+	.pv8-toolbar:has(.pv8-palette-popover) { overflow: visible; }
+}
+
 :root[data-theme='dark'] .pv8-floating { --pv-palette-bg: #22262a; color: #f5f6f7; box-shadow: 0 10px 24px rgb(0 0 0 / 35%), 0 0 0 1px rgb(255 255 255 / 12%); }
 :root[data-theme='dark'] .pv8-divider { background: rgb(255 255 255 / 15%); }
 :root[data-theme='dark'] .pv8-styles [aria-checked='true'] { color: #a7f3d0; }

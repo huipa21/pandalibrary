@@ -6,7 +6,7 @@
 	import SearchPanel from '../../SearchPanel.svelte';
 	import type { SidebarTab } from './sidebar-state.svelte.js';
 
-	let { ready }: { ready: boolean } = $props();
+	let { ready, hidden = false }: { ready: boolean; hidden?: boolean } = $props();
 	const ctx = getPdfReaderContext();
 	const controller = ctx.controller;
 	const loaders: Record<Exclude<SidebarTab, 'search'>, () => Promise<{ default: Component }>> = {
@@ -25,7 +25,7 @@
 	}
 </script>
 
-<Sidebar sidebar={ctx.sidebar} {count}>
+<Sidebar sidebar={ctx.sidebar} {count} {hidden}>
 	{#snippet children(tab)}
 		{#if ready}
 			{#if tab === 'search'}

@@ -1,8 +1,10 @@
 import type { FoliateBook, FoliateRenderer, FoliateResolved } from 'foliate-js/view.js';
 import { REFLOW_PAGE, reflowLayout, reflowScale, reflowZoom } from './reflow-display.js';
-import type { PdfLayout, ReaderSettings } from './types.js';
+import type { PagePosition, PdfLayout, ReaderSettings } from './types.js';
 
 type Overlay = { element: Element; redraw(): void };
+/** Raw pagination detail, as dispatched by the renderer's relocate event. */
+export type PaginationDetail = { fraction?: number; size?: number };
 type NativeRenderer = FoliateRenderer & {
 	open(book: FoliateBook): void;
 	goTo(target: FoliateResolved | Promise<FoliateResolved>): Promise<void>;
@@ -11,6 +13,74 @@ type NativeRenderer = FoliateRenderer & {
 	destroy(): void;
 };
 type Page = { index: number; frame: HTMLIFrameElement; ready: Promise<void>; doc?: Document; overlayer?: Overlay };
+
+/**
+ * Upstream paginators report `fraction = (page - 1) / (pages - 2)` and
+ * `size = 1 / (pages - 2)`, because the outermost columns only hold the
+ * neighbouring sections. Continuous scrolling reports viewport proportions
+ * instead, so a detail that does not invert to whole columns is not pagination.
+ */
+export function pagePosition(detail: PaginationDetail | null | undefined): PagePosition | null {
+	const fraction = detail?.fraction;
+	const size = detail?.size;
+	if (typeof fraction !== 'number' || typeof size !== 'number') return null;
+	if (!Number.isFinite(fraction) || !Number.isFinite(size) || size <= 0 || size > 1) return null;
+	const pageCount = Math.round(1 / size);
+	if (pageCount < 1 || Math.abs(pageCount * size - 1) > 1e-6) return null;
+	const page = Math.round(fraction / size) + 1;
+	return { page: Math.min(pageCount, Math.max(1, page)), pageCount };
+}
+
+/** Animation is decorative; keep page turns still when the platform asks for less motion. */
+function motionAllowed(): boolean {
+	return typeof matchMedia !== 'function' || !matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Continuous pages are separate documents, so their gestures never reach the
+ * scrolling pane. Forward single-touch drags and wheels to it, and leave
+ * pinch zoom, selections and links to the document.
+ */
+export function forwardContinuousScrolling(doc: Document, pane: HTMLElement): void {
+	let previous: { x: number; y: number } | null = null;
+	let claimed = false;
+	const pinched = () => (globalThis.visualViewport?.scale ?? 1) > 1;
+	doc.addEventListener('touchstart', (event) => {
+		const touch = event.changedTouches[0];
+		previous = touch && event.touches.length < 2 && !pinched() ? { x: touch.screenX, y: touch.screenY } : null;
+		claimed = false;
+	}, { passive: true });
+	doc.addEventListener('touchmove', (event) => {
+		const touch = event.changedTouches[0];
+		const state = previous;
+		if (event.touches.length > 1 || pinched()) {
+			if (claimed) event.preventDefault();
+			previous = null;
+			claimed = false;
+			return;
+		}
+		if (!state || !touch) return;
+		const selection = doc.getSelection();
+		if (selection && selection.rangeCount > 0 && !selection.isCollapsed) return;
+		event.preventDefault();
+		claimed = true;
+		pane.scrollLeft += state.x - touch.screenX;
+		pane.scrollTop += state.y - touch.screenY;
+		previous = { x: touch.screenX, y: touch.screenY };
+	}, { passive: false });
+	doc.addEventListener('touchend', () => {
+		previous = null;
+		claimed = false;
+	}, { passive: true });
+	doc.addEventListener('wheel', (event) => {
+		// Trackpad pinch arrives as ctrl+wheel; leave it to the browser's zoom.
+		if (event.ctrlKey) return;
+		event.preventDefault();
+		const step = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? pane.clientHeight : 1;
+		pane.scrollLeft += event.deltaX * step;
+		pane.scrollTop += event.deltaY * step;
+	}, { passive: false });
+}
 
 /**
  * Foliate's fixed renderer has no continuous mode and its scrolled paginator
@@ -41,6 +111,7 @@ export class FoliateDisplay {
 	private current = 0;
 	private scale = 1;
 	private pageSize = { ...REFLOW_PAGE };
+	private pageDetail: PaginationDetail | null = null;
 	private disposed = false;
 	private scrollFrame = 0;
 
@@ -110,9 +181,24 @@ export class FoliateDisplay {
 			for (const page of this.frames.values()) if (page.doc) this.stylePage(page);
 		};
 		this.native.destroy = () => this.destroy();
+		const dispatch = this.native.dispatchEvent.bind(this.native);
+		// The view re-emits relocate synchronously and drops the paginator's
+		// per-section `size`, and listeners run in registration order, so keep the
+		// raw detail before it reaches them. Continuous relocates report viewport
+		// proportions instead of pagination and are ignored here.
+		this.native.dispatchEvent = (event: Event) => {
+			if (event.type === 'relocate' && !this.continuous) {
+				const { fraction, size } = (event as CustomEvent<PaginationDetail>).detail ?? {};
+				this.pageDetail = { fraction, size };
+			}
+			return dispatch(event);
+		};
 	}
 
 	private get continuous() { return this.layout.endsWith('continuous'); }
+
+	/** Raw pagination detail of the last paginated relocate, for per-section page numbers. */
+	get pagination(): PaginationDetail | null { return this.pageDetail; }
 
 	async apply(settings: ReaderSettings, styles: string): Promise<void> {
 		const previousLayout = this.layout;
@@ -131,6 +217,7 @@ export class FoliateDisplay {
 			this.native.style.display = 'none';
 			if (this.paginated !== this.native) this.paginated.style.display = 'none';
 			this.pane.style.display = 'block';
+			this.pageDetail = null;
 			if (!this.frames.size) this.createPages();
 			for (const page of this.frames.values()) if (page.doc) this.stylePage(page);
 		} else {
@@ -144,10 +231,21 @@ export class FoliateDisplay {
 				this.original.setStyles?.(styles);
 			}
 		}
+		this.animatePageTurns();
 		this.resize();
 		if (previousLayout !== this.layout && previousContents.length) {
 			await this.native.goTo({ index: this.current });
 		}
+	}
+
+	/**
+	 * The upstream paginator slides columns only while it carries `animated`.
+	 * The fixed renderer has no such animation, and continuous scrolling is
+	 * driven by the pane, so neither should keep the attribute.
+	 */
+	private animatePageTurns(): void {
+		if (!this.continuous && !this.fixed && motionAllowed()) this.paginated.setAttribute('animated', '');
+		else this.paginated.removeAttribute('animated');
 	}
 
 	private createFixedRenderer(): void {
@@ -201,6 +299,7 @@ export class FoliateDisplay {
 					if (!doc || (!this.fixed && !doc.body)) { reject(new Error('The book section is unavailable.')); return; }
 					page.doc = doc;
 					this.stylePage(page);
+					forwardContinuousScrolling(doc, this.pane);
 					this.native.dispatchEvent(new CustomEvent('load', { detail: { doc, index } }));
 					if (!this.fixed) this.native.dispatchEvent(new CustomEvent('create-overlayer', { detail: {
 						doc, index, attach: (overlayer: Overlay) => {

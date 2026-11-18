@@ -7,11 +7,12 @@
 	import '../toolbar/toolbar.css';
 	import '../pdf/sidebar/sidebar.css';
 
-	let { sidebar, count, tabs = SIDEBAR_TABS, children }: {
+	let { sidebar, count, tabs = SIDEBAR_TABS, children, hidden = false }: {
 		sidebar: Omit<SidebarState, 'dispose'>;
 		count: number;
 		tabs?: readonly SidebarTab[];
 		children: Snippet<[SidebarTab]>;
+		hidden?: boolean;
 	} = $props();
 	let panel = $state<HTMLElement>();
 	let mounted = $state<SidebarTab | null>(null);
@@ -47,7 +48,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions: Escape from any focused control inside collapses the panel -->
-<div class="pv-sidebar" data-docked={sidebar.docked} {onkeydown}>
+<div class="pv-sidebar" data-docked={sidebar.docked} {hidden} {onkeydown}>
 	<SidebarRail tab={sidebar.tab} open={sidebar.open} {count} {tabs} onselect={select} />
 	<div bind:this={panel} id={PANEL_ID} class="pv-sidebar-panel" role="tabpanel"
 		aria-labelledby={tabId(sidebar.tab)} tabindex="-1" hidden={!sidebar.open}>

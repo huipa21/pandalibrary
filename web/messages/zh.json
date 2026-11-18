@@ -981,6 +981,8 @@
 	"reader.position": "阅读位置",
 	"reader.surface": "图书内容",
 	"reader.keyboard_hint": "使用左右方向键翻页。",
+	"reader.mode.enter": "阅读模式",
+	"reader.mode.exit": "退出阅读模式",
 	"reader.settings.title": "阅读设置",
 	"reader.settings.scope": "这些设置将针对本书保存。",
 	"reader.settings.font": "字体",
