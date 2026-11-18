@@ -983,7 +983,7 @@ test('positions the status badge menu at viewport edges and supports keyboard se
 test.describe('touch devices', () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-	test('keeps info available, hides read, and allows tapping through to details', async ({ page }) => {
+	test('keeps info and read available, and allows tapping through to details', async ({ page }) => {
 		await mockApi(page, mockState());
 		await page.goto('/books');
 		const generated = card(page, 'Generated Book');
@@ -995,11 +995,15 @@ test.describe('touch devices', () => {
 		const progress = generated.getByRole('progressbar', { name: '42% read' });
 		await expect(progress).toBeVisible();
 		await expect(generated.locator('.cover-progress-visibility')).toHaveCSS('opacity', '1');
-		const infoBox = await generated.getByRole('button', { name: 'Quick view: Generated Book' }).boundingBox();
+		const info = generated.getByRole('button', { name: 'Quick view: Generated Book' });
+		const read = generated.getByRole('button', { name: 'Read Generated Book' });
+		await expect(read).toBeVisible();
+		const infoBox = await info.boundingBox();
+		const readBox = await read.boundingBox();
 		const progressBox = await progress.boundingBox();
+		expect(infoBox!.y + infoBox!.height).toBeLessThanOrEqual(readBox!.y);
 		expect(infoBox!.y + infoBox!.height).toBeLessThanOrEqual(progressBox!.y);
-		await expect(generated.locator('.read-button')).toBeHidden();
-		await generated.getByRole('button', { name: 'Quick view: Generated Book' }).tap();
+		await info.tap();
 		await expect(page.locator('html')).toHaveAttribute('data-quick-book', '2');
 		const listWidths = await page.evaluate(() => ({
 			viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth
@@ -1013,5 +1017,9 @@ test.describe('touch devices', () => {
 			viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth
 		}));
 		expect(widths.content).toBeLessThanOrEqual(widths.viewport);
+		await page.goBack();
+		await expect(card(page, 'Generated Book')).toBeVisible();
+		await card(page, 'Generated Book').getByRole('button', { name: 'Read Generated Book' }).tap();
+		await expect(page).toHaveURL(/\/read\/2\/201$/);
 	});
 });

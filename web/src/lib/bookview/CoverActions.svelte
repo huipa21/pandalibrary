@@ -82,7 +82,7 @@
 {/snippet}
 
 <div class={tile ? 'min-w-0 w-full' : 'w-20 shrink-0 sm:w-24'}>
-	<div class="cover-frame relative" class:tile class:book-tile-lift={tile} class:list-cover={variant === 'list'} class:has-progress={hasProgress}>
+	<div class="cover-frame relative" class:tile class:book-tile-lift={tile} class:list-cover={variant === 'list'} class:has-progress={hasProgress} class:has-read={readable}>
 		<a
 			class="block rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
 			href={`/books/${book.id}`}
@@ -113,7 +113,7 @@
 		<div class="cover-overlay rounded-lg">
 			<button
 				type="button"
-				class="cover-button inline-flex size-11 items-center justify-center rounded-full bg-emerald-700 text-white shadow-md hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+				class="info-button cover-button inline-flex size-11 items-center justify-center rounded-full bg-emerald-700 text-white shadow-md hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
 				aria-label={m['bv3.quick_view']({ title: book.title })}
 				onclick={info}
 			><Icon name="info" /></button>
@@ -141,6 +141,10 @@
 </div>
 
 <style>
+	.cover-frame {
+		container-type: inline-size;
+	}
+
 	.cover-overlay {
 		position: absolute;
 		inset: 0;
@@ -189,12 +193,13 @@
 	}
 
 	@media (hover: none) {
-		/* Keep the persistent quick-view button clear of the author. */
+		/* Stack persistent actions so they share the space reserved from the author. */
 		.cover-frame :global(.cover-footer) {
 			width: calc(78% - 2.5rem);
 		}
 
 		.cover-overlay {
+			flex-direction: column;
 			align-items: end;
 			justify-content: end;
 			padding: 0.5rem;
@@ -209,8 +214,11 @@
 			height: 2.5rem;
 		}
 
-		.read-button {
-			display: none;
+		/* A narrow cover fits one action; direct reading wins when available. */
+		@container (max-width: 7rem) {
+			.has-read .info-button {
+				display: none;
+			}
 		}
 	}
 
