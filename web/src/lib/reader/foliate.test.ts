@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as CFI from 'foliate-js/epubcfi.js';
 import { BACKGROUNDS, withBackground } from './appearance.js';
+import { READER_CONTENT_POINTER_EVENT } from './content-pointer.js';
 import { FoliateReader, foliateStyles } from './foliate.js';
 import { DEFAULT_SETTINGS } from './settings.js';
 import type { ReaderAnnotation, ReaderEvents } from './types.js';
@@ -103,6 +104,17 @@ async function openEngine(format: 'epub' | 'cbz' = 'epub') {
 afterEach(async () => {
 	await Promise.all(readers.splice(0).map((reader) => reader.destroy()));
 	vi.clearAllMocks();
+});
+
+describe('Foliate content pointer bridge', () => {
+	it('reports pointerdown inside the book frame to the embedding window', async () => {
+		const { doc, outer } = await openEngine();
+		const report = vi.fn();
+		outer.defaultView.addEventListener(READER_CONTENT_POINTER_EVENT, report);
+		doc.dispatchEvent(new Event('pointerdown'));
+		expect(report).toHaveBeenCalledTimes(1);
+		outer.defaultView.removeEventListener(READER_CONTENT_POINTER_EVENT, report);
+	});
 });
 
 describe('Foliate insertion anchors', () => {

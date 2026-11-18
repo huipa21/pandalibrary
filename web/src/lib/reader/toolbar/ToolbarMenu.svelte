@@ -2,6 +2,7 @@
 	import { getContext, setContext, tick, type Snippet } from 'svelte';
 	import Icon, { type IconName } from '#lib/bookview/Icon.svelte';
 	import { focusableWithin } from '#lib/shell/focus.js';
+	import { focusDismissAllowed, registerMenu } from './menu-dismiss.js';
 	import './toolbar.css';
 
 	interface Props {
@@ -17,8 +18,9 @@
 
 	let { label, triggerLabel, icon, text, open = $bindable(false), disabled = false, children, align = 'end' }: Props = $props();
 	const id = $props.id();
-	const nested = getContext<boolean>('pv4-menu') ?? false;
-	setContext('pv4-menu', true);
+	const depth = getContext<number>('pv4-menu') ?? 0;
+	const nested = depth > 0;
+	setContext('pv4-menu', depth + 1);
 	let root = $state<HTMLDivElement>();
 	let trigger = $state<HTMLButtonElement>();
 	let panel = $state<HTMLDivElement>();
@@ -105,18 +107,15 @@
 			position();
 			if (open && panel && !panel.contains(document.activeElement)) items()[0]?.focus();
 		});
-		const outside = (event: PointerEvent) => {
-			if (event.target instanceof Node && !root?.contains(event.target)) close();
-		};
+		const unregister = root && panel ? registerMenu({ depth, root, panel, close: () => close() }) : undefined;
 		const other = (event: Event) => {
 			if ((event as CustomEvent<string>).detail !== id && !nested) close();
 		};
-		document.addEventListener('pointerdown', outside);
 		window.addEventListener('pv4-menu-open', other);
 		window.addEventListener('resize', position);
 		document.addEventListener('scroll', position, true);
 		return () => {
-			document.removeEventListener('pointerdown', outside);
+			unregister?.();
 			window.removeEventListener('pv4-menu-open', other);
 			window.removeEventListener('resize', position);
 			document.removeEventListener('scroll', position, true);
@@ -125,6 +124,7 @@
 </script>
 
 <div bind:this={root} role="group" aria-label={label} onfocusout={(event) => {
+	if (!focusDismissAllowed()) return;
 	if (event.relatedTarget instanceof Node && !root?.contains(event.relatedTarget)) close();
 }}>
 	<button

@@ -7,6 +7,7 @@ import { firstVisibleLine } from './foliate-bookmarks.js';
 import { FoliateDisplay, pagePosition } from './foliate-display.js';
 import { reflowLayout, reflowScale, reflowZoom } from './reflow-display.js';
 import { captureBookBlobs, isolateBookSections } from './safe-content.js';
+import { READER_CONTENT_POINTER_EVENT } from './content-pointer.js';
 import { makeStreamedBook } from './streamed-book.js';
 import { isBlob, type ReaderSource } from './source.js';
 import type { ReaderSearchEngine, ReaderSearchResult } from './search.js';
@@ -276,6 +277,9 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 			this.container.ownerDocument?.defaultView?.addEventListener('resize', this.notifySelectionGeometry, {
 				signal: this.listeners.signal
 			});
+			doc.addEventListener('pointerdown', () => {
+				this.container.ownerDocument.defaultView?.dispatchEvent(new Event(READER_CONTENT_POINTER_EVENT));
+			}, { signal: this.listeners.signal, passive: true });
 			for (const name of ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const) {
 				doc.addEventListener(name, this.events.activity, { signal: this.listeners.signal, passive: true });
 			}

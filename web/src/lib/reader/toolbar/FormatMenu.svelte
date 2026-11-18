@@ -5,6 +5,7 @@
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { BACKGROUNDS, type BackgroundId } from '../appearance.js';
 	import type { ReaderSettings } from '../types.js';
+	import { focusDismissAllowed, registerMenu } from './menu-dismiss.js';
 	import './toolbar.css';
 
 	type Font = ReaderSettings['font'];
@@ -25,7 +26,8 @@
 
 	let { typography, label = m['rp2.format'](), icon, font, size, spacing, background, onfont, onsize, onspacing, onbackground, children }: Props = $props();
 	const id = $props.id();
-	const nested = getContext<boolean>('pv4-menu') ?? false;
+	const depth = getContext<number>('pv4-menu') ?? 0;
+	const nested = depth > 0;
 	const fonts: { value: Font; label: () => string }[] = [
 		{ value: 'serif', label: m['rp2.serif'] },
 		{ value: 'sans-serif', label: m['rp2.sans'] },
@@ -66,6 +68,7 @@
 	}
 
 	function onFocusOut(event: FocusEvent) {
+		if (!focusDismissAllowed()) return;
 		if (event.relatedTarget instanceof Node && !contains(event.relatedTarget)) close();
 	}
 
@@ -154,18 +157,15 @@
 		if (!open) return;
 		if (!nested) window.dispatchEvent(new CustomEvent('pv4-menu-open', { detail: id }));
 		void tick().then(position);
-		const outside = (event: PointerEvent) => {
-			if (event.target instanceof Node && !contains(event.target)) close();
-		};
+		const unregister = root && panel ? registerMenu({ depth, root, panel, close: () => close() }) : undefined;
 		const other = (event: Event) => {
 			if ((event as CustomEvent<string>).detail !== id && !nested) close();
 		};
-		document.addEventListener('pointerdown', outside);
 		window.addEventListener('pv4-menu-open', other);
 		window.addEventListener('resize', position);
 		document.addEventListener('scroll', position, true);
 		return () => {
-			document.removeEventListener('pointerdown', outside);
+			unregister?.();
 			window.removeEventListener('pv4-menu-open', other);
 			window.removeEventListener('resize', position);
 			document.removeEventListener('scroll', position, true);

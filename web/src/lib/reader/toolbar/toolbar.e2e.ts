@@ -163,6 +163,43 @@ test('zoom keyboard, radio checks, step buttons and pointer dismissal', async ({
 	}
 });
 
+test('outside pointer dismissal leaves a small touch margin and exits nested menus one level at a time', async ({ page }) => {
+	await mount(page);
+	const zoom = page.getByRole('button', { name: 'Zoom', exact: true });
+	await zoom.click();
+	const zoomMenu = page.getByRole('menu', { name: 'Zoom', exact: true });
+	const box = (await zoomMenu.boundingBox())!;
+	await page.mouse.click(box.x - 4, box.y + 20);
+	await expect(zoomMenu).toBeVisible();
+	await page.mouse.click(box.x - 20, box.y + 20);
+	await expect(zoomMenu).toHaveCount(0);
+
+	await page.setViewportSize({ width: 390, height: 844 });
+	const more = page.getByRole('button', { name: 'More view options', exact: true });
+	await more.click();
+	await page.getByRole('menuitem', { name: 'Page display', exact: true }).click();
+	const displayMenu = page.getByRole('menu', { name: 'Page display', exact: true });
+	await expect(page.getByRole('menu')).toHaveCount(2);
+	await page.mouse.click(360, 780);
+	await expect(displayMenu).toHaveCount(0);
+	await expect(page.getByRole('menu', { name: 'More view options', exact: true })).toBeVisible();
+	await page.mouse.click(360, 780);
+	await expect(page.getByRole('menu')).toHaveCount(0);
+});
+
+test('a tap inside the book frame dismisses only the deepest menu', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await mount(page);
+	await page.getByRole('button', { name: 'More view options', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Page display', exact: true }).click();
+	await expect(page.getByRole('menu')).toHaveCount(2);
+	await page.evaluate(() => window.dispatchEvent(new Event('reader-content-pointerdown')));
+	await expect(page.getByRole('menu', { name: 'Page display', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('menu', { name: 'More view options', exact: true })).toBeVisible();
+	await page.evaluate(() => window.dispatchEvent(new Event('reader-content-pointerdown')));
+	await expect(page.getByRole('menu')).toHaveCount(0);
+});
+
 test('four layouts, optional OCR, rotate and toggles follow props', async ({ page }) => {
 	await mount(page);
 	const display = page.getByRole('button', { name: 'Page display', exact: true });
