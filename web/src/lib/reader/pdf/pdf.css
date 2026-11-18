@@ -30,7 +30,8 @@
 }
 
 .reader-pdf .textLayer ::selection {
-	background: rgb(37 99 235 / 35%);
+	background: #bfdbfe;
+	color: #111827;
 }
 
 .reader-pdf .pv-layer,

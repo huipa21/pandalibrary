@@ -379,7 +379,7 @@ test('renders cloth covers at the measured size without overflowing', async ({ p
 		const style = getComputedStyle(node);
 		return { ratio: style.aspectRatio, radius: style.borderRadius, shadow: style.boxShadow };
 	})).toEqual({ ratio: geometry.ratio, radius: geometry.radius, shadow: geometry.shadow });
-	expect(await realCover.locator('img').evaluate((node) => getComputedStyle(node).objectFit)).toBe('cover');
+	expect(await realCover.locator('img').evaluate((node) => getComputedStyle(node).objectFit)).toBe('contain');
 
 	const appScreenshot = testInfo.outputPath('bc3-app-1440.png');
 	await page.screenshot({ path: appScreenshot });

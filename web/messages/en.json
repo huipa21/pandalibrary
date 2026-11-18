@@ -1631,6 +1631,8 @@
 	"admin.users.form.cancel": "Cancel",
 	"admin.users.form.password_label": "Password",
 	"admin.users.form.password_help": "8–32 characters.",
+	"admin.users.form.password_edit_help": "Leave blank to keep the current password. Generate a new password to reset it.",
+	"admin.users.form.username_locked": "Usernames cannot be changed.",
 	"admin.users.form.password_new": "New password",
 	"admin.users.form.success_create": "Account created.",
 	"admin.users.form.success_update": "Account updated.",

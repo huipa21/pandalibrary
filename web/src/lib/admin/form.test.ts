@@ -102,6 +102,11 @@ describe('provider patches', () => {
 			expect(userPatch(user, { ...draft, password: '', displayName: '' })).toEqual({ ok: true, patch: { display_name: '' } });
 			expect(userPatch(user, { ...draft, password: '' })).toMatchObject({ ok: false, error: 'no_changes' });
 		});
+
+		it('never sends a username change', () => {
+			expect(userPatch(user, { ...draft, username: 'renamed', password: '', displayName: 'Reader' })).toMatchObject({ ok: false, error: 'no_changes' });
+			expect(userPatch(user, { ...draft, username: 'renamed', password: '', displayName: 'Updated' })).toEqual({ ok: true, patch: { display_name: 'Updated' } });
+		});
 	});
 
 	it('removes a token with explicit null and requires disabling a credentialed provider', () => {

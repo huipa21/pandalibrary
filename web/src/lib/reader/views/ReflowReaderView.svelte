@@ -31,7 +31,6 @@
 	import ReaderToolbar from '#lib/reader/toolbar/ReaderToolbar.svelte';
 	import ProgressLabel from '#lib/reader/toolbar/ProgressLabel.svelte';
 	import Icon from '#lib/bookview/Icon.svelte';
-	import WordbookAction from '../toolbar/WordbookAction.svelte';
 	import { readerChrome } from '#lib/shell/reader-chrome.js';
 	import { FoliateReader } from '#lib/reader/foliate.js';
 	import type { FoliateTocItem } from 'foliate-js/view.js';
@@ -306,9 +305,6 @@
 				{/snippet}
 				{#snippet right()}
 					{#if !readingMode}
-						<WordbookAction {controller}
-							capture={() => engine?.getSelectionBounds() || document.activeElement?.closest('.pv8-toolbar') ? controller.selection : null}
-							onadded={clearSelection} />
 						<InsertMenu bind:open={insertMenuOpen} disabled={!controller.ready || controller.busy} {offline}
 							onselect={(type) => { insertMode = type; clearSelection(); }} />
 						{#if controller.format === 'cbz'}

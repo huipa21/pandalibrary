@@ -335,6 +335,7 @@ describe('foliate appearance styles', () => {
 			expect(styles).toContain('font-family: system-ui');
 			expect(styles).toContain('font-size: 130%');
 			expect(styles).toContain('line-height: 1.8');
+			expect(styles).toContain('::selection { background: #bfdbfe !important; color: #111827 !important; }');
 			expect(styles).not.toMatch(/\ba\s*[{,]/);
 		});
 	}

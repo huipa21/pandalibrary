@@ -1631,6 +1631,8 @@
 	"admin.users.form.cancel": "取消",
 	"admin.users.form.password_label": "密码",
 	"admin.users.form.password_help": "8–32 个字符。",
+	"admin.users.form.password_edit_help": "留空可保留当前密码。生成新密码将重置密码。",
+	"admin.users.form.username_locked": "用户名不可更改。",
 	"admin.users.form.password_new": "新密码",
 	"admin.users.form.success_create": "账号已创建。",
 	"admin.users.form.success_update": "账号已更新。",

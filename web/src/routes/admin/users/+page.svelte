@@ -4,9 +4,8 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
 	import PagerFooter from '#lib/admin/PagerFooter.svelte';
-	import CreateUserDialog from '#lib/admin/CreateUserDialog.svelte';
-	import UserForm from '#lib/admin/UserForm.svelte';
-	import { deleteUser, listAdminUsers, resetUserPassword, revokeUserCredentials, updateUser } from '#lib/admin/api.js';
+	import UserDialog from '#lib/admin/UserDialog.svelte';
+	import { createUser, deleteUser, listAdminUsers, resetUserPassword, revokeUserCredentials, updateUser } from '#lib/admin/api.js';
 	import { adminErrorKey, userPatch, type UserFormDraft } from '#lib/admin/form.js';
 	import { formatTimestamp } from '#lib/admin/jobs.js';
 	import type { User } from '#lib/admin/types.js';
@@ -22,7 +21,6 @@
 	const users = new CursorPager<User>();
 	let creating = $state(false);
 	let editingUser = $state<User | null>(null);
-	let resettingUser = $state<User | null>(null);
 	let actionInProgress = $state(false);
 	let notice = $state('');
 	let actionError = $state('');
@@ -32,8 +30,13 @@
 	const selected = $derived(users.items.filter((user) => selectedIDs.includes(user.id)));
 	const single = $derived(selected.length === 1 ? selected[0] : null);
 	const allSelected = $derived(users.items.length > 0 && selected.length === users.items.length);
-	const formOpen = $derived(creating || editingUser !== null || resettingUser !== null);
-	const busy = $derived(formOpen || actionInProgress);
+	const dialogOpen = $derived(creating || editingUser !== null);
+	const busy = $derived(dialogOpen || actionInProgress);
+	const bulkToggle = $derived(selected.length > 0 && selected.every((user) => user.disabled) ? 'enable' : 'disable');
+	const bulkToggleLabel = $derived(bulkToggle === 'enable' ? m['admin.users.enable']() : m['admin.users.disable']());
+	const bulkToggleDisabled = $derived(bulkToggle === 'enable'
+		? !selected.some((user) => user.disabled)
+		: !selected.some((user) => !user.disabled));
 
 	onMount(() => { void users.reset((cursor, signal) => listAdminUsers({ cursor, signal })); });
 	onDestroy(() => users.dispose());
@@ -50,56 +53,61 @@
 		selectedIDs = checked ? [...selectedIDs, id] : selectedIDs.filter((value) => value !== id);
 	}
 
-	async function created() {
-		notice = '';
-		actionError = '';
-		notice = m['admin.users.form.success_create']();
-		await users.reload();
-	}
-
-	async function save(input: UserFormDraft): Promise<string | null> {
-		const user = editingUser;
-		if (!user) return m['ux8.change_failed']();
-		const patch = userPatch(user, input);
-		if (!patch.ok) return translate(`admin.users.form.error.${patch.error}`);
+	async function createAccount(input: UserFormDraft): Promise<string | null> {
 		notice = '';
 		actionError = '';
 		try {
+			await createUser({
+				username: input.username,
+				displayName: input.displayName,
+				email: input.email ?? '',
+				password: input.password,
+				role: input.role
+			});
+			notice = m['admin.users.form.success_create']();
+			await users.reload();
+			return null;
+		} catch (cause) {
+			return translate(adminErrorKey(cause, 'create'));
+		}
+	}
+
+	async function updateAccount(input: UserFormDraft): Promise<string | null> {
+		const user = editingUser;
+		if (!user) return m['ux8.change_failed']();
+		const result = userPatch(user, input);
+		if (!result.ok && (result.error !== 'no_changes' || !input.password)) {
+			return translate(`admin.users.form.error.${result.error}`);
+		}
+		const patch = result.ok ? result.patch : {};
+		notice = '';
+		actionError = '';
+		let failing: 'reset' | 'update' = input.password ? 'reset' : 'update';
+		try {
 			const self = user.id === currentAccount();
-			await updateUser(user.id, patch.patch);
+			if (input.password) {
+				await withSessionLock(async () => {
+					await resetUserPassword(user.id, input.password);
+					if (self) await deactivateOffline();
+				});
+			}
+			failing = 'update';
+			if (Object.keys(patch).length > 0) await updateUser(user.id, patch);
+			if (self && input.password) {
+				window.location.assign('/login');
+				return null;
+			}
 			if (self) {
 				window.location.reload();
 				return null;
 			}
-			editingUser = null;
-			notice = m['admin.users.form.success_update']();
+			notice = input.password
+				? m['admin.users.form.success_password_reset']()
+				: m['admin.users.form.success_update']();
 			await users.reload();
 			return null;
 		} catch (cause) {
-			return translate(adminErrorKey(cause, 'update'));
-		}
-	}
-
-	async function resetPassword(input: UserFormDraft): Promise<string | null> {
-		const user = resettingUser;
-		if (!user) return m['ux8.change_failed']();
-		notice = '';
-		actionError = '';
-		try {
-			const self = user.id === currentAccount();
-			await withSessionLock(async () => {
-				await resetUserPassword(user.id, input.password);
-				if (self) await deactivateOffline();
-			});
-			if (self) {
-				window.location.assign('/login');
-				return null;
-			}
-			resettingUser = null;
-			notice = m['admin.users.form.success_password_reset']();
-			return null;
-		} catch (cause) {
-			return translate(adminErrorKey(cause, 'reset'));
+			return translate(adminErrorKey(cause, failing));
 		}
 	}
 
@@ -158,76 +166,67 @@
 
 <section class="space-y-8" aria-labelledby="users-heading">
 	<h1 id="users-heading" class="sr-only">{m['admin.users.heading']()}</h1>
-	<header class="flex flex-wrap items-center gap-2">
-		<form role="search" aria-label={m['admin.users.search']()} class="flex min-w-0 w-full max-w-xs sm:max-w-sm" onsubmit={search}>
-			<SearchField
-				id="admin-users-search"
-				name="q"
-				class="min-w-0 flex-1"
-				label={m['admin.users.search']()}
-				buttonLabel={m['admin.users.search']()}
-				placeholder={m['admin.users.selector.search_placeholder']()}
-				bind:value={query}
-				disabled={busy}
-			/>
-		</form>
-		<button
-			type="button"
-			class="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 app-focus-ring"
-			aria-label={m['admin.accounts.heading']()}
-			title={m['admin.accounts.heading']()}
-			aria-expanded={showHelp}
-			aria-controls="users-help"
-			onclick={() => (showHelp = !showHelp)}
-		>
-			<Icon name="info" class={controlIconClass} />
-		</button>
-		<button
-			type="button"
-			class={`${primaryIconControlClass} ml-auto`}
-			aria-label={m['admin.users.create_label']()}
-			title={m['admin.users.create_label']()}
-			disabled={formOpen || actionInProgress}
-			onclick={() => (creating = true)}
-		>
-			<Icon name="plus" class={controlIconClass} />
-		</button>
-	</header>
-	{#if showHelp}
-		<div id="users-help" class="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-			<p>{m['admin.accounts.cli']()}</p>
-			<ul class="list-disc space-y-1 pl-6">
-				<li><code class="rounded bg-slate-100 px-1">pandalibrary user create --username &lt;name&gt;</code></li>
-				<li><code class="rounded bg-slate-100 px-1">pandalibrary user reset-password --username &lt;name&gt;</code></li>
-			</ul>
-			<p>{m['admin.accounts.ids']()}</p>
-		</div>
-	{/if}
 	{#if notice}<p class="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-800" role="status">{notice}</p>{/if}
 	{#if actionError}<AdminAlert message={actionError} />{/if}
 
-	<CreateUserDialog open={creating} onclose={() => (creating = false)} oncreated={created} />
-
+	<UserDialog open={creating} mode="create" onclose={() => (creating = false)} onsave={createAccount} />
 	{#if editingUser}
-		<section class={panelClass} aria-labelledby="edit-heading">
-			<h2 id="edit-heading" class="text-xl font-semibold">{m['admin.users.form.edit_title']()}</h2>
-			{#key editingUser.id}<UserForm mode="edit" user={editingUser} onsubmit={save} oncancel={() => (editingUser = null)} />{/key}
-		</section>
-	{:else if resettingUser}
-		<section class={panelClass} aria-labelledby="reset-heading">
-			<h2 id="reset-heading" class="text-xl font-semibold">{m['admin.users.reset_password']()}</h2>
-			{#key resettingUser.id}<UserForm mode="reset-password" user={resettingUser} onsubmit={resetPassword} oncancel={() => (resettingUser = null)} />{/key}
-		</section>
+		<UserDialog open mode="edit" user={editingUser} onclose={() => (editingUser = null)} onsave={updateAccount} />
 	{/if}
 
 	<section class={panelClass} aria-busy={users.status === 'loading'}>
+		<div class="flex flex-wrap items-center gap-2">
+			<form role="search" aria-label={m['admin.users.search']()} class="flex min-w-0 w-full max-w-xs sm:max-w-sm" onsubmit={search}>
+				<SearchField
+					id="admin-users-search"
+					name="q"
+					class="min-w-0 flex-1"
+					label={m['admin.users.search']()}
+					buttonLabel={m['admin.users.search']()}
+					placeholder={m['admin.users.selector.search_placeholder']()}
+					bind:value={query}
+					disabled={busy}
+				/>
+			</form>
+			<div class="ml-auto flex items-center gap-2">
+				<button
+					type="button"
+					class="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 app-focus-ring"
+					aria-label={m['admin.accounts.heading']()}
+					title={m['admin.accounts.heading']()}
+					aria-expanded={showHelp}
+					aria-controls="users-help"
+					onclick={() => (showHelp = !showHelp)}
+				>
+					<Icon name="info" class={controlIconClass} />
+				</button>
+				<button
+					type="button"
+					class={primaryIconControlClass}
+					aria-label={m['admin.users.create_label']()}
+					title={m['admin.users.create_label']()}
+					disabled={busy}
+					onclick={() => (creating = true)}
+				>
+					<Icon name="plus" class={controlIconClass} />
+				</button>
+			</div>
+		</div>
+		{#if showHelp}
+			<div id="users-help" class="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+				<p>{m['admin.accounts.cli']()}</p>
+				<ul class="list-disc space-y-1 pl-6">
+					<li><code class="rounded bg-slate-100 px-1">pandalibrary user create --username &lt;name&gt;</code></li>
+					<li><code class="rounded bg-slate-100 px-1">pandalibrary user reset-password --username &lt;name&gt;</code></li>
+				</ul>
+				<p>{m['admin.accounts.ids']()}</p>
+			</div>
+		{/if}
 		{#if selected.length > 0}
 			<div class="flex flex-wrap items-center gap-2" role="toolbar" aria-label={m['admin.users.actions']()}>
 				<span class="text-sm">{m['admin.users.selected_count']({ count: selected.length })}</span>
 				<button type="button" class={smallSecondaryButton} disabled={busy || !single} onclick={() => (editingUser = single)}>{m['admin.users.edit']()}</button>
-				<button type="button" class={smallSecondaryButton} disabled={busy || !single} onclick={() => (resettingUser = single)}>{m['admin.users.reset_password']()}</button>
-				<button type="button" class={smallSecondaryButton} disabled={busy || !selected.some((user) => user.disabled)} onclick={() => bulk('enable')}>{m['admin.users.enable']()}</button>
-				<button type="button" class={smallSecondaryButton} disabled={busy || !selected.some((user) => !user.disabled)} onclick={() => bulk('disable')}>{m['admin.users.disable']()}</button>
+				<button type="button" class={smallSecondaryButton} disabled={busy || bulkToggleDisabled} onclick={() => bulk(bulkToggle)}>{bulkToggleLabel}</button>
 				<button type="button" class={smallDangerButton} disabled={busy} onclick={() => bulk('revoke')}>{m['ux8.revoke']()}</button>
 				<button type="button" class={smallDangerButton} disabled={busy} onclick={() => bulk('delete')}>{m['admin.users.delete']()}</button>
 			</div>

@@ -35,8 +35,6 @@
 	import { defaultPdfBookmarkLabel, pageBookmark } from '#lib/reader/pdf/sidebar/bookmarks/bookmarks-model.js';
 	import { toFraction } from '#lib/reader/pdf/progress.js';
 	import { capturePdfSelection } from '#lib/reader/pdf/marks/selection.js';
-	import WordbookAction from '../toolbar/WordbookAction.svelte';
-	import { pdfWordbookSelection } from '../wordbook-selection.js';
 	import ReaderNotifications from '../frame/ReaderNotifications.svelte';
 
 	const SAVE_DELAY = 1000;
@@ -390,12 +388,6 @@
 				<RotateMenu onrotate={(delta) => run(() => engine?.rotate(delta))} />
 			{/snippet}
 			{#snippet right()}
-				{#if !readingMode}
-					<WordbookAction {controller}
-						capture={() => engine ? pdfWordbookSelection(capturePdfSelection(document.getSelection(), engine), view?.pageCount ?? 1, document.getSelection()?.toString())
-							?? (document.activeElement?.closest('.pv8-toolbar') ? controller.captureForWordbook() : null) : null}
-						onadded={() => document.getSelection()?.removeAllRanges()} />
-				{/if}
 				<button
 					type="button" class="pv4-button" data-testid="pdf-bookmark-toggle"
 					aria-label={m['rp8.add_page']()} aria-pressed={!!currentPageBookmark}

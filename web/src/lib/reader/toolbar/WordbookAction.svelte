@@ -103,7 +103,7 @@
 		aria-expanded={classify ? open : undefined}
 		title={m['wordbooks.add']()} disabled={!controller.ready || controller.wordbookBusy}
 		onpointerdown={keep} onfocus={remember} {onkeydown} onclick={() => void activate()}>
-		<Icon name="bookmark-plus" />
+		<Icon name="notebook" />
 	</button>
 	{#if classify && open}
 		<div class="pv8-wordbook-menu" role="dialog" tabindex="-1" aria-label={m['wordbooks.add']()} {onkeydown}>

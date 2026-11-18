@@ -187,6 +187,7 @@ for (const format of ['epub', 'pdf'] as const) {
 			} });
 		});
 		await page.goto('/read/21/31');
+		await expect(page.getByTestId('reader-wordbook-add')).toHaveCount(0);
 		const select = async () => {
 			if (format === 'epub') {
 				const frame = await bookFrame(page, 'A passage worth highlighting.');
@@ -237,9 +238,10 @@ for (const format of ['epub', 'pdf'] as const) {
 		await expect(page.getByRole('status').filter({ hasText: 'Added to' })).toBeVisible();
 		await expect(page.getByRole('alert').filter({ hasText: 'dictionary lookup failed' })).toBeVisible();
 		await select();
-		await page.getByTestId('reader-wordbook-add').click();
+		await page.getByTestId('selection-wordbook-add').click();
+		await page.getByTestId('wordbook-destination-9').click();
 		await expect.poll(() => attempts.length).toBe(3);
-		expect(attempts[2]).not.toHaveProperty('wordbook_id');
+		expect(attempts[2]).toMatchObject({ wordbook_id: 9 });
 		expect(attempts[2].kind).toBe(format === 'epub' ? 'sentence' : 'phrase');
 		release!();
 		await expect(page.getByTestId('selection-wordbook-add')).toHaveCount(0);

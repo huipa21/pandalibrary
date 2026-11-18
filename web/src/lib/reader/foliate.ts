@@ -95,6 +95,7 @@ export function foliateStyles(settings: ReaderSettings): string {
 		html, body { background: ${background.page} !important; color: ${background.text} !important; }
 		body { font-family: ${fonts[settings.font]} !important; font-size: ${settings.size}% !important; }
 		p, li, blockquote, dd { line-height: ${settings.spacing} !important; }
+		::selection { background: #bfdbfe !important; color: #111827 !important; }
 	`;
 }
 

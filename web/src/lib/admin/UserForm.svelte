@@ -5,9 +5,11 @@
 	import { generatePassword, validateUserDraft, type UserFormDraft } from './form.js';
 	import { inputClass, primaryButton, secondaryButton } from './ui.js';
 	import type { User } from './types.js';
+	import Icon from '#lib/bookview/Icon.svelte';
+	import { controlIconClass, iconControlClass } from '#lib/catalog/filter-styles.js';
 
 	interface Props {
-		mode: 'create' | 'edit' | 'reset-password';
+		mode: 'create' | 'edit';
 		user?: User;
 		onsubmit: (input: UserFormDraft) => Promise<string | null>;
 		oncancel: () => void;
@@ -19,7 +21,6 @@
 	let displayName = $state(initial?.display_name ?? '');
 	let email = $state(initial?.email ?? '');
 	let password = $state('');
-	let confirmation = $state('');
 	let role = $state(initial?.role ?? 'user');
 	const locale = untrack(() => initial?.locale ?? 'en');
 	let busy = $state(false);
@@ -56,19 +57,11 @@
 			document.getElementById(`field-${result.field}`)?.focus();
 			return;
 		}
-		if (mode === 'reset-password' && password !== confirmation) {
-			errors.confirmation = m['ux8.password_mismatch']();
-			document.getElementById('field-confirmation')?.focus();
-			return;
-		}
 		busy = true;
 		try {
 			const error = await onsubmit(result.draft);
 			if (error) errors.form = error;
-			else {
-				password = '';
-				confirmation = '';
-			}
+			else password = '';
 		} catch (error) {
 			console.error('Account form submission failed', error);
 			errors.form = m['ux8.change_failed']();
@@ -79,82 +72,69 @@
 </script>
 
 <form onsubmit={handleSubmit} novalidate class="space-y-4">
-	{#if mode === 'reset-password' && user}
-		<p class="text-sm text-slate-700">{user.username} ({user.display_name || '—'})</p>
-	{:else}
-		<div class="grid gap-3 sm:grid-cols-2">
-			<div>
-				<label for="field-username" class="block text-sm font-medium text-slate-700">{m['admin.users.username_label']()}</label>
-				<input id="field-username" type="text" bind:value={username} class={`${inputClass} w-full`} disabled={busy}
-					autocomplete="username" aria-invalid={errors.username ? 'true' : 'false'}
-					aria-describedby={errors.username ? 'error-username' : undefined} />
-				{#if errors.username}<p id="error-username" class="mt-1 text-sm text-red-600">{errors.username}</p>{/if}
-			</div>
-			<div>
-				<label for="field-display_name" class="block text-sm font-medium text-slate-700">{m['admin.users.display_name_label']()}</label>
-				<input id="field-display_name" type="text" bind:value={displayName} class={`${inputClass} w-full`} disabled={busy}
-					aria-invalid={errors.display_name ? 'true' : 'false'}
-					aria-describedby={errors.display_name ? 'error-display_name' : undefined} />
-				{#if errors.display_name}<p id="error-display_name" class="mt-1 text-sm text-red-600">{errors.display_name}</p>{/if}
-			</div>
-			<div>
-				<label for="field-email" class="block text-sm font-medium text-slate-700">{m['admin.users.email_label']()}</label>
-				<input id="field-email" type="email" bind:value={email} class={`${inputClass} w-full`} disabled={busy}
-					autocomplete="email" aria-invalid={errors.email ? 'true' : 'false'}
-					aria-describedby={errors.email ? 'error-email' : undefined} />
-				{#if errors.email}<p id="error-email" class="mt-1 text-sm text-red-600">{errors.email}</p>{/if}
-			</div>
-			<div>
-				<label for="field-role" class="block text-sm font-medium text-slate-700">{m['admin.users.role_label']()}</label>
-				<select id="field-role" bind:value={role} class={`${inputClass} w-full`} disabled={busy}>
-					<option value="user">{m['admin.users.role_user']()}</option>
-					<option value="admin">{m['admin.users.role_admin']()}</option>
-				</select>
-				{#if errors.role}<p class="mt-1 text-sm text-red-600">{errors.role}</p>{/if}
-			</div>
-		</div>
-	{/if}
-	{#if mode !== 'edit'}
+	<div class="grid gap-3 sm:grid-cols-2">
 		<div>
-			<label for="field-password" class="block text-sm font-medium text-slate-700">
-				{mode === 'reset-password' ? m['admin.users.form.password_new']() : m['admin.users.form.password_label']()}
-			</label>
-			{#if mode === 'create'}
-				<div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-					<input id="field-password" type="text" bind:value={password} class={`${inputClass} w-full font-mono`} readonly
-						autocomplete="new-password" spellcheck="false" aria-invalid={errors.password ? 'true' : 'false'}
-						aria-describedby={errors.password ? 'error-password' : 'hint-password'} />
-					<button type="button" class={secondaryButton} disabled={busy} onclick={copyPassword}>
-						{copied ? m['admin.users.form.password_copied']() : m['admin.users.form.password_copy']()}
-					</button>
-					<button type="button" class={secondaryButton} disabled={busy} onclick={regenerate}>{m['admin.users.form.password_regenerate']()}</button>
-				</div>
-				<p id="hint-password" class="mt-1 text-sm text-slate-600">{m['admin.users.form.password_generated_help']()}</p>
-			{:else}
-				<input id="field-password" type="password" bind:value={password} class={`${inputClass} w-full`} disabled={busy}
-					autocomplete="new-password" aria-invalid={errors.password ? 'true' : 'false'}
-					aria-describedby={errors.password ? 'error-password' : 'hint-password'} />
-				<p id="hint-password" class="mt-1 text-sm text-slate-600">{m['admin.users.form.password_help']()}</p>
-			{/if}
-			{#if errors.password}<p id="error-password" class="mt-1 text-sm text-red-600">{errors.password}</p>{/if}
+			<label for="field-username" class="block text-sm font-medium text-slate-700">{m['admin.users.username_label']()}</label>
+			<input id="field-username" type="text" bind:value={username} class={`${inputClass} w-full`} disabled={busy || mode === 'edit'}
+				autocomplete="username" aria-invalid={errors.username ? 'true' : 'false'}
+				aria-describedby={errors.username ? 'error-username' : mode === 'edit' ? 'hint-username' : undefined} />
+			{#if errors.username}<p id="error-username" class="mt-1 text-sm text-red-600">{errors.username}</p>{/if}
+			{#if mode === 'edit'}<p id="hint-username" class="mt-1 text-sm text-slate-600">{m['admin.users.form.username_locked']()}</p>{/if}
 		</div>
-		{#if mode === 'reset-password'}
-			<div>
-				<label for="field-confirmation" class="block text-sm font-medium text-slate-700">{m['ux8.confirm_password']()}</label>
-				<input id="field-confirmation" type="password" bind:value={confirmation} class={`${inputClass} w-full`} disabled={busy}
-					autocomplete="new-password" aria-invalid={errors.confirmation ? 'true' : 'false'}
-					aria-describedby={errors.confirmation ? 'error-confirmation' : undefined} />
-				{#if errors.confirmation}<p id="error-confirmation" class="mt-1 text-sm text-red-600">{errors.confirmation}</p>{/if}
-				<p class="mt-1 text-sm text-slate-600">{m['ux8.reset_effect']()}</p>
-			</div>
-		{/if}
-	{/if}
+		<div>
+			<label for="field-display_name" class="block text-sm font-medium text-slate-700">{m['admin.users.display_name_label']()}</label>
+			<input id="field-display_name" type="text" bind:value={displayName} class={`${inputClass} w-full`} disabled={busy}
+				aria-invalid={errors.display_name ? 'true' : 'false'}
+				aria-describedby={errors.display_name ? 'error-display_name' : undefined} />
+			{#if errors.display_name}<p id="error-display_name" class="mt-1 text-sm text-red-600">{errors.display_name}</p>{/if}
+		</div>
+		<div>
+			<label for="field-email" class="block text-sm font-medium text-slate-700">{m['admin.users.email_label']()}</label>
+			<input id="field-email" type="email" bind:value={email} class={`${inputClass} w-full`} disabled={busy}
+				autocomplete="email" aria-invalid={errors.email ? 'true' : 'false'}
+				aria-describedby={errors.email ? 'error-email' : undefined} />
+			{#if errors.email}<p id="error-email" class="mt-1 text-sm text-red-600">{errors.email}</p>{/if}
+		</div>
+		<div>
+			<label for="field-role" class="block text-sm font-medium text-slate-700">{m['admin.users.role_label']()}</label>
+			<select id="field-role" bind:value={role} class={`${inputClass} w-full`} disabled={busy}>
+				<option value="user">{m['admin.users.role_user']()}</option>
+				<option value="admin">{m['admin.users.role_admin']()}</option>
+			</select>
+			{#if errors.role}<p class="mt-1 text-sm text-red-600">{errors.role}</p>{/if}
+		</div>
+	</div>
+	<div>
+		<label for="field-password" class="block text-sm font-medium text-slate-700">
+			{mode === 'create' ? m['admin.users.form.password_label']() : m['admin.users.form.password_new']()}
+		</label>
+		<div class="flex gap-2">
+			<input id="field-password" type="text" bind:value={password} class={`${inputClass} min-w-0 flex-1 font-mono`} readonly
+				autocomplete="new-password" spellcheck="false" aria-invalid={errors.password ? 'true' : 'false'}
+				aria-describedby={errors.password ? 'error-password' : 'hint-password'} />
+			<button type="button" class={iconControlClass} disabled={busy || !password}
+				aria-label={copied ? m['admin.users.form.password_copied']() : m['admin.users.form.password_copy']()}
+				title={copied ? m['admin.users.form.password_copied']() : m['admin.users.form.password_copy']()}
+				onclick={copyPassword}>
+				<Icon name="copy" class={controlIconClass} />
+			</button>
+			<button type="button" class={iconControlClass} disabled={busy}
+				aria-label={m['admin.users.form.password_regenerate']()} title={m['admin.users.form.password_regenerate']()}
+				onclick={regenerate}>
+				<Icon name="refresh" class={controlIconClass} />
+			</button>
+		</div>
+		<p id="hint-password" class="mt-1 text-sm text-slate-600">
+			{mode === 'create' ? m['admin.users.form.password_generated_help']() : m['admin.users.form.password_edit_help']()}
+		</p>
+		{#if errors.password}<p id="error-password" class="mt-1 text-sm text-red-600">{errors.password}</p>{/if}
+	</div>
 	{#if errors.form}<p class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{errors.form}</p>{/if}
 	<div class="flex gap-2">
 		<button type="submit" class={primaryButton} disabled={busy}>
 			{mode === 'create' ? m['admin.users.form.submit_create']() : m['admin.users.form.submit_save']()}
 		</button>
 		<button type="button" class={secondaryButton} disabled={busy}
-			onclick={() => { password = ''; confirmation = ''; oncancel(); }}>{m['admin.users.form.cancel']()}</button>
+			onclick={() => { password = ''; oncancel(); }}>{m['admin.users.form.cancel']()}</button>
 	</div>
 </form>

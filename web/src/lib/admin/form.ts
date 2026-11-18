@@ -136,8 +136,7 @@ export function userPatch(user: User, draft: Partial<UserFormDraft>):
 	| { readonly ok: false; readonly field: 'username' | 'display_name' | 'email' | 'password' | 'role' | 'locale' | 'form'; readonly error: UserFieldError } {
 	const result = validateUserDraft(draft, false);
 	if (!result.ok) return result;
-	const patch: { username?: string; display_name?: string; email?: string; role?: string; locale?: string } = {};
-	if (result.draft.username !== user.username) patch.username = result.draft.username;
+	const patch: { display_name?: string; email?: string; role?: string; locale?: string } = {};
 	if (result.draft.displayName !== user.display_name) patch.display_name = result.draft.displayName;
 	if (result.draft.email !== (user.email ?? '')) patch.email = result.draft.email;
 	if (result.draft.role !== user.role) patch.role = result.draft.role;

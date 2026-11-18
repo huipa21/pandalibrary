@@ -17,7 +17,6 @@ export interface User {
 
 /** Omitted fields are unchanged. */
 export interface UserPatch {
-	readonly username?: string;
 	readonly display_name?: string;
 	readonly email?: string;
 	readonly role?: string;

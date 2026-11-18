@@ -45,7 +45,7 @@
 	style:--cover-author={cloth.author}
 >
 	{#if coverUrl && !failed}
-		<img class="h-full w-full bg-slate-100 object-cover" src={coverUrl} alt={title} {loading} onerror={() => (failed = true)} />
+		<img class="h-full w-full bg-slate-100 object-contain" src={coverUrl} alt={title} {loading} onerror={() => (failed = true)} />
 		{#if centeredTitle}
 			<div class="cover-plate centered-plate">
 				<span class:cover-title-small={size === 'xs' || size === 'sm'} class="cover-title text-center font-serif font-bold" data-title-scale={scale}>{shortTitle}</span>

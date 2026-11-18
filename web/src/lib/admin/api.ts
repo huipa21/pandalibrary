@@ -78,7 +78,6 @@ export async function createUser(input: CreateUserInput): Promise<User> {
 
 export async function updateUser(id: number, patch: UserPatch): Promise<User> {
 	const body: { [key: string]: JsonValue } = {};
-	if (patch.username !== undefined) body.username = patch.username;
 	if (patch.display_name !== undefined) body.display_name = patch.display_name;
 	if (patch.email !== undefined) body.email = patch.email;
 	if (patch.role !== undefined) body.role = patch.role;

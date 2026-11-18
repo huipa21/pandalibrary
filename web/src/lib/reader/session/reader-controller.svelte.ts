@@ -74,7 +74,6 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	let otherPageAnnotations = $state<PageAnnotation[]>([]);
 	let location = $state<Relocation | null>(null);
 	let selection = $state<ReaderSelection | null>(null);
-	let wordbookCapture: (() => ReaderSelection | null) | null = null;
 	let reader: Reader | null = null;
 	let progressWriter: PeriodicProgressWriter | null = null;
 	const retiredProgressWriters = new Set<PeriodicProgressWriter>();
@@ -1060,8 +1059,6 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 		get wordbookError() { return wordbookError; },
 		get wordbookDestinations() { return wordbookDestinations; },
 		addToWordbook, loadWordbookDestinations,
-		setWordbookCapture: (capture: (() => ReaderSelection | null) | null) => { wordbookCapture = capture; },
-		captureForWordbook: () => wordbookCapture?.() ?? null,
 		get closing() { return closing; },
 		get busy() { return busy; },
 		get settings() { return settings; },

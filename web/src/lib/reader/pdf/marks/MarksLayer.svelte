@@ -308,7 +308,6 @@
 
 	onMount(() => {
 		const viewport = engine.viewport;
-		controller.setWordbookCapture(() => wordbookChosen);
 		bounds = clientRect(viewport);
 		const unregister = engine.pageLayers.register(textMarkPainter(() => marks, () => m['pv8.open_comment'](), () => engine.viewport));
 		engine.setSelectionCapture(scheduleCapture);
@@ -368,7 +367,6 @@
 			document.removeEventListener('pointerdown', ondocumentdown, true);
 			window.removeEventListener('resize', onresize);
 			engine.setSelectionCapture(null);
-			controller.setWordbookCapture(null);
 			unsubscribe();
 			unregister();
 			wiring?.dispose();
