@@ -112,6 +112,10 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	private rotationObserver: ResizeObserver | null = null;
 	private display: FoliateDisplay | null = null;
 	private displayScale = 1;
+	private reflowAnchor: { type: 'cfi'; value: string } | null = null;
+	private reflowGeneration = 0;
+	private settingsTask: Promise<void> = Promise.resolve();
+	private applyingSettings = false;
 	private rotationMeasurements = new Map<HTMLElement, PropertyDescriptor | undefined>();
 	private readonly listeners = new AbortController();
 	private searchGeneration = 0;
@@ -185,6 +189,7 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	}
 
 	async goToContents(href: string): Promise<void> {
+		this.clearReflowAnchor();
 		const view = this.requireView();
 		if (!this.isValidResolved(view.resolveNavigation(href))) throw new Error('Book contents destination is unavailable.');
 		this.lastLoadError = null;
@@ -231,6 +236,14 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 		view.addEventListener('relocate', (event) => {
 			const detail = (event as CustomEvent<FoliateLocation>).detail;
 			if (!detail.cfi || !isCfiLocator({ type: 'cfi', value: detail.cfi })) return;
+			const reason = (event as CustomEvent<FoliateLocation & { reason?: string }>).detail.reason;
+			// Native paging/continuous scrolling and links start a new reading
+			// position. Relocations caused by our own reflow must keep the
+			// stable anchor, even when the paginator reports them as `scroll`.
+			if (!this.applyingSettings && (reason === 'page' || reason === 'snap'
+				|| reason === 'scroll' || reason === 'selection' || reason === 'navigation')) {
+				this.clearReflowAnchor();
+			}
 			this.visibleRange = detail.range ?? null;
 			const pages = pagePosition(this.display?.pagination);
 			this.location = {
@@ -364,6 +377,7 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 
 	/** Rotate only the book viewport; orientation lasts for this reader session. */
 	rotate(delta: -90 | 90): void {
+		this.clearReflowAnchor();
 		this.requireView();
 		this.rotation = (this.rotation + delta + 360) % 360;
 		this.layoutRotation();
@@ -430,6 +444,7 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	}
 
 	async goTo(target: Relocation['locator'] | number): Promise<void> {
+		this.clearReflowAnchor();
 		const view = this.requireView();
 		this.lastLoadError = null;
 		if (typeof target === 'number') {
@@ -457,26 +472,58 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	}
 
 	async previous(): Promise<void> {
+		this.clearReflowAnchor();
 		this.lastLoadError = null;
 		await this.requireView().prev();
 		if (this.lastLoadError) throw this.lastLoadError;
 	}
 
 	async next(): Promise<void> {
+		this.clearReflowAnchor();
 		this.lastLoadError = null;
 		await this.requireView().next();
 		if (this.lastLoadError) throw this.lastLoadError;
 	}
 
-	async applySettings(settings: ReaderSettings): Promise<void> {
+	private clearReflowAnchor(): void {
+		this.reflowAnchor = null;
+		this.reflowGeneration += 1;
+	}
+
+	private async settleReflow(view: View): Promise<void> {
+		const docs = view.renderer.getContents?.().map((item) => item.doc) ?? [];
+		await Promise.all(docs.map((doc) => doc.fonts?.ready)).catch(() => {});
+		// Foliate restores its own anchor from a deferred font callback. Run
+		// after it so the saved locator becomes the paginator's new anchor.
+	}
+
+	applySettings(settings: ReaderSettings): Promise<void> {
+		const task = this.settingsTask.then(() => this.applySettingsNow(settings));
+		this.settingsTask = task.catch(() => {});
+		return task;
+	}
+
+	private async applySettingsNow(settings: ReaderSettings): Promise<void> {
 		const view = this.requireView();
 		const background = backgroundFor(settings);
 		this.container.style.backgroundColor = background.page;
 		this.container.style.backgroundImage = background.grain ?? 'none';
 		if (this.display) {
-			const locator = this.location?.locator;
-			await this.display.apply(settings, foliateStyles(settings));
-			if (locator && isCfiLocator(locator)) await view.goTo(locator.value);
+			const current = this.location?.locator;
+			// Keep the first position across a run of format changes. Re-reading
+			// the page start after each reflow otherwise walks backwards because
+			// the new page may begin before the previous anchor.
+			const locator = this.reflowAnchor ?? (current && isCfiLocator(current) ? current : null);
+			this.reflowAnchor = locator;
+			const generation = this.reflowGeneration;
+			this.applyingSettings = true;
+			try {
+				await this.display.apply(settings, foliateStyles(settings));
+				await this.settleReflow(view);
+				if (locator && generation === this.reflowGeneration) await view.goTo(locator.value);
+			} finally {
+				this.applyingSettings = false;
+			}
 			return;
 		}
 		const layout = reflowLayout(settings);
