@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount } from 'svelte';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { cancelConfirmation } from '#lib/shell/confirmation.js';
@@ -11,6 +12,7 @@
 	import ConfirmationDialog from '#lib/shell/ConfirmationDialog.svelte';
 	import { readerChrome } from '#lib/shell/reader-chrome.js';
 	import { initializeBookDisplay } from '#lib/catalog/book-display.svelte.js';
+	import { prefetchDashboardSettings } from '#lib/dashboard/storage.js';
 	import ShelfNavigation from '#lib/shelves/ShelfNavigation.svelte';
 	import { activateOffline, deactivateOffline, offlineStatus, rememberedViewer, syncNow } from '#lib/sync/client.js';
 	import { withSessionLock } from '#lib/sync/engine.js';
@@ -76,16 +78,13 @@
 	async function checkAuth() {
 		const path = page.url.pathname;
 		try {
-			const setup = await api.request<{ required: boolean }>('/setup');
-			if (setup.required) {
-				await deactivateOffline();
-				if (path !== '/setup') await goto('/setup');
-				return;
-			}
-
 			try {
+				// `/auth/me` is the common path. Only unauthenticated visitors need the
+				// setup probe, so avoid an extra round trip before every page load.
 				const response = await api.request<{ user: Viewer }>('/auth/me');
-				await activateOffline(response.user);
+				if (path === '/') prefetchDashboardSettings(response.user.id);
+				// The response was just verified, so activateOffline need not repeat it.
+				await activateOffline(response.user, false, true);
 				viewer = response.user;
 				if (!preserveDeviceLocale) await setLocale(response.user.locale, { reload: false });
 				updateDocumentLocale();
@@ -94,7 +93,12 @@
 				if (error instanceof ApiError && error.status === 401) {
 					clearLocalLanguageOverride();
 					await deactivateOffline();
-					if (path !== '/login') await goto('/login');
+					const setup = await api.request<{ required: boolean }>('/setup');
+					if (setup.required) {
+						if (path !== '/setup') await goto('/setup');
+					} else if (path !== '/login') {
+						await goto('/login');
+					}
 				} else {
 					throw error;
 				}
@@ -199,7 +203,7 @@
 	{#if authError}
 		<p class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">{authError}</p>
 	{:else if checkingAuth && !publicRoute}
-		<p class="text-slate-600" role="status">{m['auth.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['auth.loading']()}</p>
 	{:else}
 		{#if $readerChrome !== 'full' && viewer && (!$offlineStatus.available || !$offlineStatus.online || $offlineStatus.issues || $offlineStatus.error || $offlineStatus.pending)}
 			<div class="mb-6 flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">

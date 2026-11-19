@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import HeapDialog from '#lib/bookheap/HeapDialog.svelte';
@@ -130,7 +131,7 @@
 	<form onsubmit={submitMove} novalidate>
 		<p class="mt-3 text-sm text-slate-600">{m['catalog.selection.move_description']({ count })}</p>
 		{#if loading}
-			<p role="status" class="mt-3 text-sm text-slate-600">{m['catalog.loading']()}</p>
+			<p use:showLoadingAfterDelay role="status" class="mt-3 text-sm text-slate-600">{m['catalog.loading']()}</p>
 		{:else if !error && libraries.length === 0}
 			<p role="status" class="mt-3 text-sm text-slate-600">{m['catalog.selection.move_empty']()}</p>
 		{/if}

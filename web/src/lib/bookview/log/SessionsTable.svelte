@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -237,7 +238,7 @@
 		{#if exportNotice}<p class="text-sm text-slate-600" role="status">{exportNotice}</p>{/if}
 	</div>
 	{#if pager.status === 'idle' || pager.status === 'loading'}
-		<p class="px-5 pb-5 text-sm text-slate-500" role="status">{m['bv8.sessions_loading']()}</p>
+		<p use:showLoadingAfterDelay class="px-5 pb-5 text-sm text-slate-500" role="status">{m['bv8.sessions_loading']()}</p>
 	{:else if pager.status === 'error'}
 		<div class="flex flex-wrap items-center gap-3 px-5 pb-5 text-sm text-red-800" role="alert">
 			<p>{m['bv8.sessions_error']()}</p>

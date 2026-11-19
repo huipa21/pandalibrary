@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getBookState } from '#lib/reader/api.js';
@@ -115,7 +116,7 @@
 				<ProgressChart {summary} />
 			{/key}
 		{:else if loading && !error}
-			<p class="card p-6 text-slate-600" role="status">{m['bv8.loading']()}</p>
+			<p use:showLoadingAfterDelay class="card p-6 text-slate-600" role="status">{m['bv8.loading']()}</p>
 		{/if}
 	{/if}
 </section>

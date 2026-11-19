@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { page } from '$app/state';
@@ -86,7 +87,7 @@
 			<button class="mt-2 underline underline-offset-4 focus-visible:outline-2" onclick={() => void loadShelf(key, collectionLibraryID(page.url))}>{m['shelves.retry']()}</button>
 		</div>
 	{:else if !shelf}
-		<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 	{:else}
 		<h1 class="sr-only">{systemShelfTitle(key)}</h1>
 		{#if showingDetails || shelf.description}

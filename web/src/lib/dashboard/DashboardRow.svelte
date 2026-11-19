@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
@@ -186,7 +187,7 @@
 			<button class="font-medium underline focus-visible:outline-2" onclick={() => void load()}>{m['ux5.retry']()}</button>
 		</div>
 	{:else if !started || shelfState?.status === 'loading' || pager.status === 'idle' || pager.status === 'loading'}
-		<p class="text-sm text-slate-600" role="status">{m['ux5.feed_loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-sm text-slate-600" role="status">{m['ux5.feed_loading']()}</p>
 	{:else}
 		{#if pager.items.length}
 			<div class="min-w-0 overflow-x-auto pb-2" role="region" aria-label={m['ux5.cover_row']({ section: label })}>

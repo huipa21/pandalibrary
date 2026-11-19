@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
@@ -121,7 +122,7 @@
 				{#if notice}<p class="text-sm text-green-700" role="status">{notice}</p>{/if}
 				{#if error}<AdminAlert message={error} />{/if}
 				{#if hidden.status !== 'ready'}
-					<p class="text-slate-600" role="status">{m['admin.hidden.loading']()}</p>
+					<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.hidden.loading']()}</p>
 				{:else if hidden.empty}
 					<p class="text-slate-600">{m['admin.hidden.empty']()}</p>
 				{:else}

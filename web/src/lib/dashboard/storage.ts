@@ -24,6 +24,23 @@ function assertAccount(account: number): void {
 	if (currentAccount() !== account) throw new AccountChangedError();
 }
 
+let prefetched: { account: number; settings: Promise<Setting[]> } | null = null;
+
+/** Starts the dashboard settings request while the shell finishes activating the session. */
+export function prefetchDashboardSettings(account: number): void {
+	if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+	if (prefetched?.account === account) return;
+	prefetched = { account, settings: fetchSettings() };
+	// The shell may redirect to login before the dashboard consumes it.
+	void prefetched.settings.catch(() => undefined);
+}
+
+async function takeSettings(account: number): Promise<Setting[]> {
+	const pending = prefetched?.account === account ? prefetched.settings : null;
+	prefetched = null;
+	return pending ?? fetchSettings();
+}
+
 async function fetchSettings(): Promise<Setting[]> {
 	const response = await api.request<{ settings: Setting[] }>('/me/settings', { cache: 'no-store' });
 	if (!response || !Array.isArray(response.settings) || response.settings.some((setting) =>
@@ -40,7 +57,7 @@ export async function readDashboardLayout(account: number): Promise<DashboardLay
 	assertAccount(account);
 	if (!offlineAvailable()) {
 		if (!navigator.onLine) throw new OfflineStorageError('Offline storage is unavailable.');
-		const settings = await fetchSettings();
+		const settings = await takeSettings(account);
 		assertAccount(account);
 		return { layout: parseLayout(settings.find((item) => item.key === DASHBOARD_SETTING)), conflict: false };
 	}
@@ -50,7 +67,7 @@ export async function readDashboardLayout(account: number): Promise<DashboardLay
 		let onlineSettings: Setting[] | undefined;
 		if (navigator.onLine) {
 			try {
-				onlineSettings = await fetchSettings();
+				onlineSettings = await takeSettings(account);
 			} catch (error) {
 				if (!(error instanceof TypeError)) throw error;
 				console.warn('Could not reach dashboard settings; using synchronized offline data', error);

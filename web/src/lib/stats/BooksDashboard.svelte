@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
@@ -91,7 +92,7 @@
 	<h1 id="books-stats-heading" class="sr-only">{m['organize.books']()}</h1>
 
 	{#if status === 'loading'}
-		<p role="status" class="text-slate-600">{m['stats.catalog.loading']()}</p>
+		<p use:showLoadingAfterDelay role="status" class="text-slate-600">{m['stats.catalog.loading']()}</p>
 	{:else if status === 'error'}
 		<div class="space-y-2 rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">
 			<p>{translate(errorKind === 'invalid' ? 'stats.catalog.error.invalid' : statsErrorKey(error))}</p>

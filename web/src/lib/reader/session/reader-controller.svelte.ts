@@ -324,7 +324,12 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			}
 			const source: Blob | ReaderSource = offline
 				? await loadFile(currentAccount(), bookId, selectedFile, true)
-				: new HttpRangeSource(validatedBookFileUrl(bookId, selectedFile, globalThis.location?.origin ?? 'http://localhost'), selectedFile);
+				: new HttpRangeSource(
+					validatedBookFileUrl(bookId, selectedFile, globalThis.location?.origin ?? 'http://localhost'),
+					selectedFile,
+					fetch,
+					currentAccount()
+				);
 			if (version !== requestVersion) return;
 			browserDeviceId = deviceId();
 			const loadedSettings = loadReaderSettings(storedSettings, selectedFormat, bookId);

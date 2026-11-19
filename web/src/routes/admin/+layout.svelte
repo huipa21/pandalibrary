@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
@@ -37,7 +38,7 @@
 </script>
 
 {#if access === 'loading'}
-	<p class="text-slate-600" role="status">{m['admin.checking']()}</p>
+	<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.checking']()}</p>
 {:else if access === 'error'}
 	<AdminAlert message={translate(adminErrorKey(failure, 'load'))} error={failure} onretry={checkAccess} />
 {:else if access === 'forbidden'}

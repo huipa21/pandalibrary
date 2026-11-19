@@ -49,8 +49,10 @@ describe('HttpRangeSource', () => {
 		expect([...second]).toEqual([...first]);
 		expect(fetcher).toHaveBeenCalledTimes(1);
 		const init = fetcher.mock.calls[0][1]!;
-		expect(new Headers(init.headers).get('If-Range')).toBe(`"${'a'.repeat(64)}"`);
-		expect(init).toMatchObject({ credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
+		// The content-hash URL is the version guard; `If-Range` makes Chrome bypass
+		// its Range cache and refetch the whole visible range on every open.
+		expect(new Headers(init.headers).has('If-Range')).toBe(false);
+		expect(init).toMatchObject({ credentials: 'same-origin', redirect: 'error', cache: 'default' });
 
 		const crossing = await source.read(RANGE_CHUNK_SIZE - 3, 10);
 		expect([...crossing]).toEqual([...data.slice(RANGE_CHUNK_SIZE - 3, RANGE_CHUNK_SIZE + 7)]);

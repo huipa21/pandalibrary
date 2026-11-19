@@ -1,11 +1,11 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, tick, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
 	import Icon from '#lib/bookview/Icon.svelte';
 	import { SyncError } from '#lib/reader/api.js';
 	import { getShelf } from '#lib/shelves/api.js';
-	import { offlineStatus } from '#lib/sync/client.js';
 	import { filterControlClass } from '#lib/catalog/filter-styles.js';
 	import { flip } from 'svelte/animate';
 	import { dashboardConfigure } from './configure.svelte.js';
@@ -37,7 +37,6 @@
 	let configVersion = 0;
 	let metadataVersion = 0;
 	let mounted = true;
-	let deferredRefresh = false;
 	const availableBuiltins = $derived(BUILT_IN_SECTIONS.filter((id) => !draft.includes(id)));
 
 	$effect(() => {
@@ -48,43 +47,24 @@
 
 	onMount(() => {
 		void refreshLayout();
-		let wasSyncing = false;
-		const unsubscribe = offlineStatus.subscribe((status) => {
-			if (status.account !== account) return;
-			if (status.syncing) {
-				wasSyncing = true;
-			} else if (wasSyncing) {
-				wasSyncing = false;
-				refreshAfterSync();
-			}
-		});
-		const onSyncMessage = (event: MessageEvent<unknown>) => {
-			if (event.data === 'pandalibrary-sync-complete') refreshAfterSync();
-		};
 		const onShelvesChanged = () => {
 			if (configOpen) void refreshDraftShelfStates();
 		};
-		navigator.serviceWorker?.addEventListener('message', onSyncMessage);
+		const onSyncMessage = (event: MessageEvent<unknown>) => {
+			if (event.data === 'pandalibrary-sync-complete' && !saving && !configOpen) void refreshLayout(false);
+		};
 		window.addEventListener('pandalibrary-shelves-changed', onShelvesChanged);
+		navigator.serviceWorker?.addEventListener('message', onSyncMessage);
 		return () => {
 			mounted = false;
 			requestVersion += 1;
 			configVersion += 1;
 			metadataVersion += 1;
-			unsubscribe();
 			endDrag();
-			navigator.serviceWorker?.removeEventListener('message', onSyncMessage);
 			window.removeEventListener('pandalibrary-shelves-changed', onShelvesChanged);
+			navigator.serviceWorker?.removeEventListener('message', onSyncMessage);
 		};
 	});
-
-	function refreshAfterSync() {
-		if (saving || configOpen) {
-			deferredRefresh = true;
-		} else {
-			void refreshLayout(false);
-		}
-	}
 
 	async function refreshLayout(showLoading = true) {
 		const version = ++requestVersion;
@@ -159,10 +139,6 @@
 		configVersion += 1;
 		metadataVersion += 1;
 		if (dashboardConfigure.trigger?.isConnected) dashboardConfigure.trigger.focus();
-		if (deferredRefresh) {
-			deferredRefresh = false;
-			void refreshLayout(false);
-		}
 	}
 
 	function cancelConfiguration(event: Event) {
@@ -271,7 +247,7 @@
 	{/if}
 
 	{#if loading && !layout}
-		<p class="text-slate-600" role="status">{m['ux5.layout_loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['ux5.layout_loading']()}</p>
 	{:else if layout && !layout.valid}
 		<div class="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950" role="alert">
 			<p>{m['ux5.layout_invalid']()}</p>

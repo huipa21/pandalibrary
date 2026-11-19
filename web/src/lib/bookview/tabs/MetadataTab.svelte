@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, untrack } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
@@ -68,7 +69,7 @@
 <section class="metadata-tab" aria-labelledby="metadata-tab-heading">
 	<h2 id="metadata-tab-heading" class="sr-only">{m['bv4.tabs.metadata']()}</h2>
 	{#if !context.metadataAccessKnown}
-		<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 	{:else if context.offline}
 		<p class="notice" role="status">{m['metadata.tab.offline']()}</p>
 	{:else if !context.canEditMetadata || editor.forbidden}

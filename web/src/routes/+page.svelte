@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import Dashboard from '#lib/dashboard/Dashboard.svelte';
 	import { offlineStatus } from '#lib/sync/client.js';
@@ -9,5 +10,5 @@
 		<Dashboard account={$offlineStatus.account} />
 	{/key}
 {:else}
-	<p class="text-slate-600" role="status">{m['auth.loading']()}</p>
+	<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['auth.loading']()}</p>
 {/if}

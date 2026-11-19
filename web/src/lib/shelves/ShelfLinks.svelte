@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { translate } from '#lib/paging/translate.js';
@@ -63,7 +64,7 @@
 			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => { refreshVersion += 1; }}>{m['shelves.retry']()}</button>
 		</div>
 	{:else if loading}
-		<p class="text-sm text-slate-600" role="status">{m['shelves.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-sm text-slate-600" role="status">{m['shelves.loading']()}</p>
 	{:else}
 		<ul class="flex flex-wrap gap-2">
 			{#if unshelved}

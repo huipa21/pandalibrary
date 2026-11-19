@@ -32,7 +32,7 @@ it('uses self-hosted URLs and reuses a language-set worker until 60 seconds idle
 	await workers.recognize(new Blob(), 100, 200, ['eng', 'chi_sim'], 2, signal, status);
 	expect(engine.createWorker).toHaveBeenCalledOnce();
 	expect(engine.createWorker.mock.calls[0][2]).toMatchObject({
-		cacheMethod: 'none', workerBlobURL: false, gzip: true,
+		cacheMethod: 'write', cachePath: expect.stringMatching(/^\/_app\/immutable\/ocr\//), workerBlobURL: false, gzip: true,
 		workerPath: expect.stringMatching(/^https:\/\/library.test\/_app\/immutable\/ocr\/.+\/worker.min.js$/),
 		corePath: expect.stringMatching(/^https:\/\/library.test\/_app\/immutable\/ocr\//),
 		langPath: expect.stringMatching(/^https:\/\/library.test\/_app\/immutable\/ocr\//)
@@ -68,12 +68,11 @@ it('dispose cancels in-flight work and terminates idle workers', async () => {
 	expect(vi.getTimerCount()).toBe(0);
 });
 
-it('reports missing offline models before creating a worker', async () => {
-	vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+it('surfaces model download failures from worker initialization', async () => {
+	engine.createWorker.mockRejectedValueOnce(new Error('Could not load the eng OCR model (404)'));
 	const workers = new OcrWorkers();
 	await expect(workers.recognize(new Blob(), 100, 200, ['eng'], 1, new AbortController().signal, vi.fn()))
 		.rejects.toThrow('Could not load the eng OCR model (404)');
-	expect(engine.createWorker).not.toHaveBeenCalled();
 	await workers.dispose();
 });
 

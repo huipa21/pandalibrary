@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
 	import { catalogErrorMessage } from './errors.js';
@@ -63,7 +64,7 @@
 		<a class="underline underline-offset-4 focus-visible:outline-2" href={`/${kind}`}>{indexTitle}</a>
 	</div>
 {:else if loading}
-	<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
+	<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 {:else if entity}
 	<section class="space-y-8">
 		<header class="space-y-3">

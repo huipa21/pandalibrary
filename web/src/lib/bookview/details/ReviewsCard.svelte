@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { tick, untrack } from 'svelte';
 	import { ApiError } from '#lib/api/client.js';
@@ -228,7 +229,7 @@
 	{#if offline}
 		<p class="text-sm text-slate-500">{m['bd7.reviews_offline']()}</p>
 	{:else if status === 'loading'}
-		<p class="text-sm text-slate-500" role="status">{m['bd7.reviews_loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-sm text-slate-500" role="status">{m['bd7.reviews_loading']()}</p>
 	{:else if status === 'error'}
 		<div class="flex flex-wrap items-center gap-3 text-sm text-red-800" role="alert">
 			<span>{m['bd7.reviews_error']()}</span>

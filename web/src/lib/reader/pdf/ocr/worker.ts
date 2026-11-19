@@ -55,20 +55,15 @@ export class OcrWorkers {
 			onStatus({ state: 'loading', page });
 			const { createWorker, OEM } = await import('tesseract.js');
 			signal.throwIfAborted();
-			// Fetch first so missing/offline models reject before tesseract starts initialization.
-			await Promise.all(key.split('+').map(async (code) => {
-				const response = await fetch(new URL(`${base}${code}.traineddata.gz`, location.origin), { signal });
-				if (!response.ok) throw new Error(`Could not load the ${code} OCR model (${response.status}).`);
-				await response.arrayBuffer();
-			}));
-			signal.throwIfAborted();
 			let failed!: (error: unknown) => void;
 			const failure = new Promise<never>((_, reject) => { failed = reject; });
 			const creating = createWorker(key, OEM.LSTM_ONLY, {
 				workerPath: new URL(`${base}worker.min.js`, location.origin).href,
 				corePath: new URL(base, location.origin).href,
 				langPath: new URL(base, location.origin).href,
-				workerBlobURL: false, cacheMethod: 'none', gzip: true,
+				// The cache path includes the asset hash, so model upgrades invalidate it.
+				// Without this, every worker re-downloads 10-40 MB of traineddata.
+				workerBlobURL: false, cacheMethod: 'write', cachePath: base, gzip: true,
 				logger: (message) => (slot?.progress ?? progress)(message),
 				errorHandler: (error: unknown) => failed(new Error(`OCR worker initialization failed: ${String(error)}`))
 			});

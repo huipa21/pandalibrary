@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, type Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -403,7 +404,7 @@
 	{/if}
 
 	{#if optionsLoading}
-		<p class="text-sm text-slate-600" role="status">{m['catalog.books.loading_filters']()}</p>
+		<p use:showLoadingAfterDelay class="text-sm text-slate-600" role="status">{m['catalog.books.loading_filters']()}</p>
 	{:else if optionsError}
 		<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-red-800" role="alert">
 			<p>{optionsError}</p>
@@ -417,7 +418,7 @@
 			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => (reloadVersion += 1)}>{m['catalog.retry']()}</button>
 		</div>
 	{:else if loading}
-		<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 	{:else if books.length === 0}
 		<p class="card p-6 text-slate-600">{m['catalog.books.empty']()}</p>
 	{:else}

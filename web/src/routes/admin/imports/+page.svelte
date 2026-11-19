@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
@@ -166,7 +167,7 @@
 		{#if librariesStatus === 'error'}
 			<AdminAlert message={translate(adminErrorKey(librariesError, 'load_libraries'))} error={librariesError} onretry={loadLibraries} />
 		{:else if librariesStatus === 'loading'}
-			<p class="text-slate-600" role="status">{m['admin.libraries.loading']()}</p>
+			<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.libraries.loading']()}</p>
 		{:else if libraries.length === 0}
 			<p class="text-slate-600">
 				{m['admin.imports.no_libraries']()}
@@ -255,7 +256,7 @@
 		{#if history.status === 'error'}
 			<AdminAlert message={translate(adminErrorKey(history.error, 'load'))} error={history.error} onretry={() => history.retry()} />
 		{:else if history.status !== 'ready'}
-			<p class="text-slate-600" role="status">{m['admin.imports.loading']()}</p>
+			<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.imports.loading']()}</p>
 		{:else if history.empty}
 			<p class="card p-6 text-slate-600">{m['admin.imports.empty']()}</p>
 		{:else}

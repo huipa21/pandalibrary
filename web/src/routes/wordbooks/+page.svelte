@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import type { DictionaryEntry } from '#lib/dictionary/types.js';
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -242,7 +243,7 @@
 			{#if selected.archived}<span class="text-sm text-slate-600">{m['wordbooks.archived']()}</span>{/if}
 				{#if !selected.is_default}<button class="button" disabled={busy} onclick={archive}>{selected.archived ? m['wordbooks.unarchive']() : m['wordbooks.archive']()}</button>{/if}
 		</div>
-		{#if loading}<p role="status">{m['wordbooks.loading']()}</p>
+		{#if loading}<p use:showLoadingAfterDelay role="status">{m['wordbooks.loading']()}</p>
 		{:else if !sorted.length && !error}<p class="text-slate-600">{keyword || category !== 'wordbooks' ? m['wordbooks.no_matches']() : m['wordbooks.empty']()}</p>
 		{:else}
 			<ol data-view={view} aria-label={selected.name} class={view === 'cards' ? 'grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3' : 'divide-y divide-slate-200'}>
@@ -250,7 +251,7 @@
 			</ol>
 		{/if}
 	{:else if selectedId === null}
-		{#if loading}<p role="status">{m['wordbooks.loading']()}</p>{/if}
+		{#if loading}<p use:showLoadingAfterDelay role="status">{m['wordbooks.loading']()}</p>{/if}
 		<ul data-wordbooks data-view={view} class={view === 'cards' ? 'book-grid book-grid-configurable' : 'space-y-3'} style={`--book-cover-size: ${bookDisplay.size}px; --book-cover-spacing: ${bookDisplay.spacing}px`}>
 			{#each visibleBooks as book (book.id)}
 				<li class="min-w-0">

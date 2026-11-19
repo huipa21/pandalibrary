@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { deLocalizeHref } from '#lib/paraglide/runtime.js';
@@ -92,7 +93,7 @@
 				<button class="shell-text-button" onclick={() => { refreshVersion += 1; }}>{m['ux1.shelves.retry']()}</button>
 			</div>
 		{:else if loading}
-			<p class="mt-1 px-3 text-sm text-[color:var(--shell-muted)]" role="status">{m['catalog.loading']()}</p>
+			<p use:showLoadingAfterDelay class="mt-1 px-3 text-sm text-[color:var(--shell-muted)]" role="status">{m['catalog.loading']()}</p>
 		{:else if libraries.length}
 			<ul class="mt-1 space-y-0.5">
 				{#each visibleLibraries as library (library.id)}
@@ -131,7 +132,7 @@
 			<button class="shell-text-button" onclick={() => { refreshVersion += 1; }}>{m['ux1.shelves.retry']()}</button>
 		</div>
 	{:else if loading}
-		<p class="mt-1 px-3 text-sm text-[color:var(--shell-muted)]" role="status">{m['ux1.shelves.loading']()}</p>
+		<p use:showLoadingAfterDelay class="mt-1 px-3 text-sm text-[color:var(--shell-muted)]" role="status">{m['ux1.shelves.loading']()}</p>
 	{:else if shelves.length}
 		<ul class="mt-1 space-y-0.5">
 			{#each shelves as shelf (shelf.id)}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -59,7 +60,7 @@
 					{/if}
 				</div>
 			{:else if pager.status === 'loading' || pager.status === 'idle'}
-				<p class="text-slate-600" role="status">{m['search.loading']()}</p>
+				<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['search.loading']()}</p>
 			{:else if pager.empty}
 				<p class="card p-6 text-slate-600" role="status">{m['search.empty']({ query })}</p>
 			{:else}

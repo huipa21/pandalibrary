@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
@@ -60,7 +61,7 @@
 <div bind:this={root} class="space-y-2">
 	<p bind:this={label} id={labelId} tabindex="-1" class="sr-only focus:not-sr-only focus-visible:outline-2 focus-visible:outline-emerald-700">{m['bd5.shelves']()}</p>
 	{#if shelves.status === 'loading'}
-		<p class="text-sm text-slate-500" role="status">{m['shelves.book.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-sm text-slate-500" role="status">{m['shelves.book.loading']()}</p>
 	{:else if shelves.status === 'error'}
 		<div class="space-y-1 text-sm text-red-800" role="alert">
 			<p>{shelves.error}</p>

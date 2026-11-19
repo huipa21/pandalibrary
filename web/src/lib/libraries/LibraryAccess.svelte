@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
@@ -73,7 +74,7 @@
 	{#if access.status === 'error'}
 		<AdminAlert message={translate(adminErrorKey(access.error, 'load_access'))} error={access.error} onretry={() => access.retry()} />
 	{:else if access.status !== 'ready'}
-		<p class="text-slate-600" role="status">{m['admin.access.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.access.loading']()}</p>
 	{:else if access.empty}
 		<p class="text-slate-600">{m['admin.access.empty']()}</p>
 	{:else}

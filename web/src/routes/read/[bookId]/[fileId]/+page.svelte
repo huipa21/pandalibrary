@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, onDestroy } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 	import { page } from '$app/state';
@@ -24,7 +25,7 @@
 		<a class="ml-4 underline underline-offset-4 focus-visible:outline-2" href="/read">{m['reader.back_to_books']()}</a>
 	</div>
 {:else if !controller.book || !controller.file || !controller.format}
-	<p class="text-slate-600" role="status">{m['reader.loading']()}</p>
+	<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['reader.loading']()}</p>
 {:else if controller.format === 'pdf'}
 	<PdfReaderView {controller} />
 {:else}

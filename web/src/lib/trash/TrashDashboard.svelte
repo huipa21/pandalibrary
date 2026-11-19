@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
@@ -135,7 +136,7 @@
 					{/if}
 				</div>
 			{:else if trash.loading}
-				<p class="status" role="status">{m['trash.loading']()}</p>
+				<p use:showLoadingAfterDelay class="status" role="status">{m['trash.loading']()}</p>
 			{:else if trash.items.length === 0}
 				<p class="status" role="status">{trash.search || trash.filter ? m['trash.no_results']() : m['trash.empty']()}</p>
 			{:else}

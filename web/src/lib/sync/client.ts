@@ -116,7 +116,7 @@ function installListeners(): void {
 	}
 }
 
-export async function activateOffline(next: OfflineViewer, offline = false): Promise<void> {
+export async function activateOffline(next: OfflineViewer, offline = false, verified = false): Promise<void> {
 	viewer = next;
 	installListeners();
 	update({ account: next.id, online: !offline && connected(), error: false, errorDetail: undefined });
@@ -126,9 +126,11 @@ export async function activateOffline(next: OfflineViewer, offline = false): Pro
 			if (!active || active.id !== next.id) throw new AccountChangedError();
 		} else {
 			await withSessionLock(async () => {
-				const response = await api.request<{ user: OfflineViewer }>('/auth/me', { cache: 'no-store' });
-				if (response.user.id !== next.id) throw new AccountChangedError();
-				await setActiveViewer(response.user);
+				const user = verified
+					? next
+					: (await api.request<{ user: OfflineViewer }>('/auth/me', { cache: 'no-store' })).user;
+				if (user.id !== next.id) throw new AccountChangedError();
+				await setActiveViewer(user);
 				localStorage.removeItem(SIGNED_OUT);
 			});
 			channel?.postMessage(next.id);
@@ -339,12 +341,14 @@ export class DurableProgressWriter {
 		void write.catch(() => undefined);
 	}
 
-	async flush(_options: { keepalive?: boolean; signal?: AbortSignal } = {}): Promise<void> {
+	async flush(options: { keepalive?: boolean; signal?: AbortSignal; sync?: boolean } = {}): Promise<void> {
 		for (const [mutation, write] of this.writes) {
 			if (write === null) this.start(mutation);
 		}
 		await Promise.all([...this.writes.values()].filter((write): write is Promise<void> => write !== null));
-		if (connected() && available) {
+		// A close only needs durable local queueing. Waiting for the server round trip
+		// makes closing slow or fail on mobile networks; the scheduled sync drains it.
+		if (options.sync !== false && connected() && available) {
 			await syncNow(false, PUSH_ONLY);
 		}
 	}

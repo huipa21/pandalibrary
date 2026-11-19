@@ -14,6 +14,7 @@ it('waits for all progress and session writers before allowing close', async () 
 	await Promise.resolve();
 	expect(retired.size).toBe(0);
 	expect(closed).not.toHaveBeenCalled();
+	expect(progress.flush).toHaveBeenCalledWith({ keepalive: true, signal: expect.any(AbortSignal), sync: false });
 	expect(sessions.flush).toHaveBeenCalledWith({ keepalive: true, signal: expect.any(AbortSignal) });
 	finish();
 	await closing;

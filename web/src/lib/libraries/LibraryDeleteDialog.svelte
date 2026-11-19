@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import HeapDialog from '#lib/bookheap/HeapDialog.svelte';
 	import { deleteLibrary, listAllAdminLibraries } from '#lib/admin/api.js';
@@ -64,7 +65,7 @@
 	{onclose} initialFocus="#library-delete-cancel">
 	<p class="mt-4">{m['admin.libraries.delete_confirm']({ name: library?.name ?? '' })}</p>
 	{#if loading}
-		<p class="mt-4" role="status">{m['catalog.loading']()}</p>
+		<p use:showLoadingAfterDelay class="mt-4" role="status">{m['catalog.loading']()}</p>
 	{:else if loaded && targets.length === 0}
 		<p class={`mt-4 ${warningBox}`} role="alert">{m['admin.libraries.delete_last']()}</p>
 	{:else if loaded}

@@ -1,6 +1,6 @@
 import type { Mutation } from '#lib/reader/api.js';
 
-type FlushOptions = { keepalive?: boolean; signal?: AbortSignal };
+type FlushOptions = { keepalive?: boolean; signal?: AbortSignal; sync?: boolean };
 
 export interface InnerProgressWriter {
 	schedule(mutation: Mutation): void;

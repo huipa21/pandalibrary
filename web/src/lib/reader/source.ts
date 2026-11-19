@@ -1,4 +1,5 @@
 import type { BookFile } from '#lib/catalog/types.js';
+import { RangeCache } from '#lib/reader/range-cache.js';
 
 /** Bytes fetched per HTTP Range request. */
 export const RANGE_CHUNK_SIZE = 256 * 1024;
@@ -156,6 +157,7 @@ export class HttpRangeSource implements ReaderSource {
 	private readonly chunks = new Map<number, Uint8Array>();
 	private readonly inFlight = new Map<number, Promise<Uint8Array>>();
 	private readonly controller = new AbortController();
+	private readonly rangeCache: RangeCache | null;
 	private cachedBytes = 0;
 	private closed = false;
 	private fullFallback: Uint8Array | null = null;
@@ -164,8 +166,9 @@ export class HttpRangeSource implements ReaderSource {
 		private readonly url: URL,
 		file: BookFile,
 		private readonly fetcher: typeof fetch = fetch,
-		private readonly etag = url.searchParams.get('v') ?? ''
+		account: number | null = null
 	) {
+		this.rangeCache = account === null ? null : new RangeCache(account, url);
 		this.size = file.size_bytes;
 		this.name = sourceName(file);
 		this.type = contentType(file.format);
@@ -230,6 +233,11 @@ export class HttpRangeSource implements ReaderSource {
 	private async fetchChunk(index: number, signal?: AbortSignal): Promise<Uint8Array> {
 		if (this.closed) throw new ReaderSourceError('The book file was closed.');
 		if (this.fullFallback) return this.chunkFromFull(index);
+		const persisted = await this.rangeCache?.get(index);
+		if (persisted) {
+			this.remember(index, persisted);
+			return persisted;
+		}
 		const start = index * RANGE_CHUNK_SIZE;
 		if (start >= this.size) return new Uint8Array();
 		const end = Math.min(this.size, start + RANGE_CHUNK_SIZE) - 1;
@@ -238,13 +246,13 @@ export class HttpRangeSource implements ReaderSource {
 		try {
 			response = await this.fetcher(this.url.href, {
 				method: 'GET',
-				headers: {
-					Range: `bytes=${start}-${end}`,
-					...(this.etag ? { 'If-Range': `"${this.etag}"` } : {})
-				},
+				headers: { Range: `bytes=${start}-${end}` },
 				credentials: 'same-origin',
 				redirect: 'error',
-				cache: 'no-store',
+				// Book URLs are content-hash versioned and the server marks them immutable.
+				// Letting the browser cache ranges avoids re-downloading the same pages on
+				// every open; `no-store` forced a full re-fetch each time.
+				cache: 'default',
 				signal: requestSignal
 			});
 		} catch (error) {
@@ -272,6 +280,8 @@ export class HttpRangeSource implements ReaderSource {
 				throw new ReaderSourceError('The server returned an incomplete range for this book file.');
 			}
 			this.remember(index, data);
+			// Cache writes must not delay the page paint; the next open reads whatever completed.
+			void this.rangeCache?.put(index, data);
 			return data;
 		}
 		if (response.status === 403 || response.status === 404) {

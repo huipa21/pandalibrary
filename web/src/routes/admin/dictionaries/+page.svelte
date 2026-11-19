@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
@@ -413,7 +414,7 @@
 	{#if status === 'error'}
 		<AdminAlert message={translate(adminErrorKey(loadError, 'load'))} error={loadError} onretry={load} />
 	{:else if status === 'loading'}
-		<p class="text-slate-600" role="status">{m['admin.dictionaries.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.dictionaries.loading']()}</p>
 	{:else}
 		<section class="space-y-4" aria-labelledby="dictionary-builtin-heading">
 			<div class="space-y-1">

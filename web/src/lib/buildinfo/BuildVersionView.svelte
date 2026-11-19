@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { VersionState } from './version.js';
 
@@ -11,7 +12,7 @@
 			version: `${state.info.commit_date.slice(2, 10).replaceAll('-', '')}-${state.info.commit.slice(0, 7)}`
 		})}</p>
 	{:else if state.status === 'loading'}
-		<p role="status">{m['ux9.loading']()}</p>
+		<p use:showLoadingAfterDelay role="status">{m['ux9.loading']()}</p>
 	{:else}
 		<p role="status">{state.status === 'offline' ? m['ux9.offline']() : m['ux9.error']()}</p>
 		<button class="mt-1 underline focus-visible:outline-2 focus-visible:outline-offset-2" onclick={onretry}>

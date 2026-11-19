@@ -172,12 +172,12 @@ test('keys, edge paging lockout, tools, OCR preference and editable/menu guards'
 	await page.keyboard.press('i');
 	await expect(surface).toHaveAttribute('data-tool', 'select');
 	const ocr = page.getByRole('menuitemcheckbox', { name: 'Recognize text in scanned pages' });
-	await expect(ocr).toHaveAttribute('aria-checked', 'true');
+	await expect(ocr).toHaveAttribute('aria-checked', 'false');
 	await ocr.click();
-	expect(await page.evaluate(() => localStorage.getItem('pandalibrary.pdf-ocr'))).toBe('false');
+	expect(await page.evaluate(() => localStorage.getItem('pandalibrary.pdf-ocr'))).toBe('true');
 	await page.reload();
 	await page.getByRole('button', { name: 'Page display', exact: true }).click();
-	await expect(ocr).toHaveAttribute('aria-checked', 'false');
+	await expect(ocr).toHaveAttribute('aria-checked', 'true');
 });
 
 test('continuous scrolling updates fractional progress and X flushes and restores the offset', async ({ page }) => {

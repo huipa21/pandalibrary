@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -242,7 +243,7 @@
 	{#if notice}<p class="text-sm text-emerald-800" role="status" data-testid="bh4-notice">{notice}</p>{/if}
 
 	{#if list.status === 'loading' || list.status === 'idle'}
-		<p class="text-slate-600" role="status">{m['bh4.list.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['bh4.list.loading']()}</p>
 	{:else if list.status === 'error'}
 		<AdminAlert message={translate(heapErrorKey(list.error, 'load'))} error={list.error} onretry={() => list.retry()} />
 	{:else if list.empty && !filtered}

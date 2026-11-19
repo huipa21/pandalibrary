@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction, checkDraftGuards } from '#lib/shell/confirmation.js';
 	import { onMount, tick, untrack } from 'svelte';
 	import { v7 as uuidv7 } from 'uuid';
@@ -355,11 +356,11 @@
 					{#if engine}
 						<SearchPanel {engine} />
 					{:else}
-						<p role="status">{m['reader.loading']()}</p>
+						<p use:showLoadingAfterDelay role="status">{m['reader.loading']()}</p>
 					{/if}
 				{:else if tab === 'toc'}
 					{#if !engine}
-						<p role="status">{m['reader.loading']()}</p>
+						<p use:showLoadingAfterDelay role="status">{m['reader.loading']()}</p>
 					{:else if engine.contents.length}
 						{@render contents(engine.contents)}
 					{:else}

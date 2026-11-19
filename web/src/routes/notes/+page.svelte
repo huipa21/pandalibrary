@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -118,7 +119,7 @@
 					{/if}
 				</div>
 			{:else if search.status === 'loading'}
-				<p role="status" class="text-sm text-slate-600">{m['notes.loading']()}</p>
+				<p use:showLoadingAfterDelay role="status" class="text-sm text-slate-600">{m['notes.loading']()}</p>
 			{:else if search.status === 'ready' && search.results.length === 0}
 				<p role="status" class="text-sm text-slate-600">{m['notes.empty']({ query })}</p>
 			{:else if search.status === 'ready'}

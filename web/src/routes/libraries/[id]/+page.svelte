@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -90,7 +91,7 @@
 		<a href="/libraries" class="shell-icon-button" aria-label={m['bd1.back']()} title={m['bd1.back']()}><Icon name="arrow-left" /></a>
 	</header>
 	{#if loading}
-		<p role="status" class="text-slate-600">{m['catalog.loading']()}</p>
+		<p use:showLoadingAfterDelay role="status" class="text-slate-600">{m['catalog.loading']()}</p>
 	{:else if error}
 		<AdminAlert message={error} onretry={() => load(page.params.id ?? '')} />
 	{:else if library}

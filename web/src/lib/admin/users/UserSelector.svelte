@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, tick, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
@@ -174,7 +175,7 @@
 									onpointerdown={(event) => event.preventDefault()} onclick={() => choose(user)}>{userLabel(user)}</button>
 							{/each}
 						</div>
-						{#if users.status !== 'ready'}<p class="p-2 text-sm text-slate-600" role="status">{m['admin.users.selector.loading']()}</p>{/if}
+						{#if users.status !== 'ready'}<p use:showLoadingAfterDelay class="p-2 text-sm text-slate-600" role="status">{m['admin.users.selector.loading']()}</p>{/if}
 						{#if users.empty}<p class="p-2 text-sm text-slate-600" role="status">{m['admin.users.selector.empty']()}</p>{/if}
 						<PagerFooter pager={users} loadMoreLabel={m['admin.users.load_more']()} />
 					{/if}

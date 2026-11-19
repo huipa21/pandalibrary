@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { CursorPager } from '#lib/paging/CursorPager.svelte.js';
@@ -53,7 +54,7 @@
 				<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => pager.retry()}>{m['shelves.retry']()}</button>
 			</div>
 		{:else if pager.status !== 'ready'}
-			<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
+			<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 		{:else if pager.empty}
 			<div class="card space-y-2 p-6 text-slate-600">
 				<p>{m['shelves.empty']()}</p>

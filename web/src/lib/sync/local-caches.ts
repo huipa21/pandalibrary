@@ -1,6 +1,7 @@
 import { revokeAssetUrls } from '#lib/reader/assets/asset-cache.js';
 
 export const LOCAL_CACHE_DATABASES = ['pandalibrary-ocr', 'pandalibrary-assets'] as const;
+export const LOCAL_CACHE_STORAGE = ['pandalibrary-book-ranges-v1'] as const;
 
 export async function clearLocalCaches(): Promise<void> {
 	revokeAssetUrls();
@@ -14,4 +15,6 @@ export async function clearLocalCaches(): Promise<void> {
 			resolve();
 		};
 	})));
+	if (typeof caches === 'undefined') return;
+	await Promise.all(LOCAL_CACHE_STORAGE.map((name) => caches.delete(name)));
 }

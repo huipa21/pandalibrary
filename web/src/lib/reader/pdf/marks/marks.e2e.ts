@@ -576,6 +576,7 @@ async function scannedPage(page: Page) {
 
 test('scanned pages are recognized, marked with the recognized text, and the switch removes OCR text', async ({ page }) => {
 	test.slow();
+	await page.addInitScript(() => localStorage.setItem('pandalibrary.pdf-ocr', 'true'));
 	const pdf = await scannedPage(page);
 	const state = await setup(page, { pdf, waitFor: null });
 	const text = page.locator('.pv-ocr-text');

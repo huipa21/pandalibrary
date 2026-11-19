@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, untrack } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/state';
@@ -89,7 +90,7 @@
 		{#if context.book && context.bookId === routeBookID}
 			{@render children()}
 		{:else}
-			<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
+			<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 		{/if}
 	</div>
 {/if}

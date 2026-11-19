@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
@@ -135,7 +136,7 @@
 	{#if status === 'error'}
 		<AdminAlert message={translate(adminErrorKey(loadError, 'load'))} error={loadError} onretry={load} />
 	{:else if status === 'loading'}
-		<p class="text-slate-600" role="status">{m['admin.providers.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.providers.loading']()}</p>
 	{:else if rows.length === 0}
 		<p class="card p-6 text-slate-600">{m['admin.providers.empty']()}</p>
 	{:else}

@@ -1,5 +1,5 @@
 interface Writer {
-	flush(options: { keepalive: boolean; signal: AbortSignal }): Promise<void>;
+	flush(options: { keepalive: boolean; signal: AbortSignal; sync?: boolean }): Promise<void>;
 }
 
 export async function flushReaderWrites(
@@ -14,7 +14,8 @@ export async function flushReaderWrites(
 		await Promise.race([
 			Promise.all([
 				...writers.map(async (writer) => {
-					await writer.flush({ keepalive: true, signal: controller.signal });
+					// Progress is durable in IndexedDB; do not make closing wait for the push.
+					await writer.flush({ keepalive: true, signal: controller.signal, sync: false });
 					retired.delete(writer);
 				}),
 				sessions.flush({ keepalive: true, signal: controller.signal })

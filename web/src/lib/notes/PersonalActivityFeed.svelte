@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import AnnotationEntry from './AnnotationEntry.svelte';
@@ -72,7 +73,7 @@
 		{#if status === 'ready'}<span class="text-sm font-normal text-slate-600" role="status">{items.length}</span>{/if}
 	</h2>
 	{#if status === 'loading'}
-		<p role="status" class="text-slate-600">{m['notes.activity.loading']()}</p>
+		<p use:showLoadingAfterDelay role="status" class="text-slate-600">{m['notes.activity.loading']()}</p>
 	{:else if status === 'error'}
 		<div class="flex flex-wrap items-center gap-3" role="alert">
 			<p>{unavailable ? m['notes.activity.unavailable']() : m['notes.activity.error']()}</p>

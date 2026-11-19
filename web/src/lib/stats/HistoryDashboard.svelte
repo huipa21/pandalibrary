@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, onMount } from 'svelte';
 	import { api } from '#lib/api/client.js';
 	import BookCover from '#lib/bookview/BookCover.svelte';
@@ -209,7 +210,7 @@
 					{/if}
 				</div>
 			{:else if loading}
-				<p role="status" class="history-status">{m['stats.loading']()}</p>
+				<p use:showLoadingAfterDelay role="status" class="history-status">{m['stats.loading']()}</p>
 			{:else if summary && rows.length === 0}
 				<p role="status" class="history-status">{m['history.empty']({ year: requestedYear })}</p>
 			{:else if summary && months.length === 0}

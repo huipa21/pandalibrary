@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import type { Book } from '#lib/catalog/types.js';
@@ -142,7 +143,7 @@
 						<div class="h-4 w-1/2 animate-pulse rounded bg-slate-100 motion-reduce:animate-none"></div>
 					</div>
 				</div>
-				<p class="text-sm text-slate-600">{m['bv5.loading']()}</p>
+				<p use:showLoadingAfterDelay class="text-sm text-slate-600">{m['bv5.loading']()}</p>
 			</div>
 		{:else}
 			<div class="flex-1 space-y-3 px-5" role="alert">

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import * as m from '#lib/paraglide/messages.js';
 
 	let { pendingError = '', errors = [], message = '', loading = false, bookHref, onretry }: {
@@ -24,7 +25,7 @@
 		{/if}
 		{#each errors.filter(Boolean) as error}<p role="alert">{error}</p>{/each}
 		{#if message}<p role="status">{message}</p>{/if}
-		{#if loading}<p role="status">{m['reader.loading']()}</p>{/if}
+		{#if loading}<p use:showLoadingAfterDelay role="status">{m['reader.loading']()}</p>{/if}
 	</div>
 {/if}
 

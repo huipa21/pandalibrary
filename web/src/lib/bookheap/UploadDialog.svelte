@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { tick } from 'svelte';
 	import UploadDropzone from '#lib/upload/UploadDropzone.svelte';
 	import * as m from '#lib/paraglide/messages.js';
@@ -284,7 +285,7 @@
 				<p id="bh3-library-help" class="text-xs text-slate-600">{m['bh3.library_help']()}</p>
 				<div id="bh3-library-guidance">
 					{#if librariesLoading}
-						<p class="text-sm text-slate-600" role="status">{m['bh4.assign.loading']()}</p>
+						<p use:showLoadingAfterDelay class="text-sm text-slate-600" role="status">{m['bh4.assign.loading']()}</p>
 					{:else if targetsReady && libraries.length === 0}
 						<p class="text-sm text-slate-600">
 							{m['bh4.assign.no_libraries']()}

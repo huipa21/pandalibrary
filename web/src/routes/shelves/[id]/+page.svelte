@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -156,7 +157,7 @@
 		<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadShelf(page.params.id ?? '', collectionLibraryID(page.url))}>{m['shelves.retry']()}</button>
 	</div>
 {:else if loading}
-	<p class="text-slate-600" role="status">{m['shelves.loading']()}</p>
+	<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['shelves.loading']()}</p>
 {:else if shelf}
 	{#if managing}
 		<section class="card space-y-4 p-6" aria-labelledby="edit-shelf-heading">

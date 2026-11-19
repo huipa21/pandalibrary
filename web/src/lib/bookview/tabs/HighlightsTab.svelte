@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -237,7 +238,7 @@
 		<h1 id="highlights-heading" class="sr-only">{m['bv9.heading']({ title: book.title })}</h1>
 
 		{#if status === 'loading'}
-			<p class="text-slate-600" role="status">{m['bv9.loading']()}</p>
+			<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['bv9.loading']()}</p>
 		{:else if status === 'error'}
 			<div class="flex flex-wrap items-center gap-3 rounded-md border border-red-200 bg-red-50 p-4 text-red-800" role="alert">
 				<p>{m['bv9.error']()}</p>

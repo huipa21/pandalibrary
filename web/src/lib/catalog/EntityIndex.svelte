@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { catalogErrorMessage } from './errors.js';
@@ -75,7 +76,7 @@
 			<button class="underline underline-offset-4 focus-visible:outline-2" onclick={loadEntities}>{m['catalog.retry']()}</button>
 		</div>
 	{:else if loading}
-		<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 	{:else if entities.length === 0}
 		<p class="card p-6 text-slate-600">{m['catalog.entities.empty']()}</p>
 	{:else}

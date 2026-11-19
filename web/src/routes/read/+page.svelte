@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { listBooks } from '#lib/catalog/api.js';
@@ -80,7 +81,7 @@
 	<h1 class="sr-only">{m['reader.launch.title']()}</h1>
 	{#if offline}<p class="text-sm text-slate-600">{m['offline.only_downloaded']()}</p>{/if}
 	{#if loading}
-		<p role="status" class="text-slate-600">{m['reader.loading']()}</p>
+		<p use:showLoadingAfterDelay role="status" class="text-slate-600">{m['reader.loading']()}</p>
 	{:else}
 		{#if error}
 			<div role="alert" class="space-y-2 rounded-md border border-red-200 bg-red-50 p-4 text-red-800">

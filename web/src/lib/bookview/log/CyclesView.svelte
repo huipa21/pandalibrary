@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
@@ -209,7 +210,7 @@
 				</ol>
 			{/if}
 		{:else if loading && !error}
-			<p class="card p-6 text-slate-600" role="status">{m['bv8.cycles_loading']()}</p>
+			<p use:showLoadingAfterDelay class="card p-6 text-slate-600" role="status">{m['bv8.cycles_loading']()}</p>
 		{/if}
 	{/if}
 </section>

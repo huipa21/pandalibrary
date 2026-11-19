@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import * as m from '#lib/paraglide/messages.js';
@@ -56,7 +57,7 @@
 		<button class="underline underline-offset-4 focus-visible:outline-2" onclick={() => loadLibrary(page.params.id ?? '')}>{m['catalog.retry']()}</button>
 	</div>
 {:else if loading}
-	<p class="text-slate-600" role="status">{m['catalog.loading']()}</p>
+	<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['catalog.loading']()}</p>
 {:else if library}
 	<section>
 		<h1 class="sr-only">{library.name}</h1>

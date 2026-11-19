@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { translate } from '#lib/paging/translate.js';
@@ -131,7 +132,7 @@
 		{/if}
 
 		{#if targetsStatus === 'loading'}
-			<p class="mt-4 text-sm text-slate-600" role="status">{m['bh4.assign.loading']()}</p>
+			<p use:showLoadingAfterDelay class="mt-4 text-sm text-slate-600" role="status">{m['bh4.assign.loading']()}</p>
 		{:else if targetsStatus === 'error'}
 			<div class={`mt-4 flex flex-wrap items-center gap-3 ${errorBox}`} role="alert">
 				<p>{targetsError}</p>

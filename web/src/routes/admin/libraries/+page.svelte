@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -212,7 +213,7 @@
 	{#if notice}<p class="text-sm text-green-700" role="status">{notice}</p>{/if}
 
 	{#if linkedLoading}
-		<p class="text-slate-600" role="status">{m['admin.libraries.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.libraries.loading']()}</p>
 	{/if}
 	{#if linkedError}
 		<AdminAlert message={linkedError} onretry={openDeepLink} />
@@ -242,7 +243,7 @@
 		{#if libraries.status === 'error'}
 			<AdminAlert message={translate(adminErrorKey(libraries.error, 'load'))} error={libraries.error} onretry={() => libraries.retry()} />
 		{:else if libraries.status !== 'ready'}
-			<p class="text-slate-600" role="status">{m['admin.libraries.loading']()}</p>
+			<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.libraries.loading']()}</p>
 		{:else if libraries.empty}
 			<p class="card p-6 text-slate-600">{m['admin.libraries.empty']()}</p>
 		{:else}
@@ -327,7 +328,7 @@
 			{#if access.status === 'error'}
 				<AdminAlert message={translate(adminErrorKey(access.error, 'load_access'))} error={access.error} onretry={() => access.retry()} />
 			{:else if access.status !== 'ready'}
-				<p class="text-slate-600" role="status">{m['admin.access.loading']()}</p>
+				<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.access.loading']()}</p>
 			{:else if access.empty}
 				<p class="text-slate-600">{m['admin.access.empty']()}</p>
 			{:else}

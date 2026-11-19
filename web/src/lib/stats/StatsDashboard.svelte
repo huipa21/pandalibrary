@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
@@ -189,7 +190,7 @@
 	{/if}
 
 	{#if status === 'loading'}
-		<p class="text-slate-600" role="status">{m['stats.loading']()}</p>
+		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['stats.loading']()}</p>
 	{/if}
 
 	{#if data && summary && status !== 'error'}

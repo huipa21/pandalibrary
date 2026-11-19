@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import Icon from '#lib/bookview/Icon.svelte';
@@ -47,7 +48,9 @@
 	let previousTool = $state<'select' | 'hand'>('select');
 	let insertMenuOpen = $state(false);
 	const sidebar = createSidebarState();
-	let ocrEnabled = $state(true);
+	// Scanned-page OCR is opt-in: it downloads language models and competes with
+	// book downloads and synchronization on slow connections.
+	let ocrEnabled = $state(false);
 	let announcement = $state('');
 	let statuses = $state<Record<string, Snippet>>({});
 	let saving: Promise<void> | null = null;
@@ -304,7 +307,7 @@
 		boundFileId = controller.file?.id;
 		try {
 			tool = storedTool(localStorage.getItem(PDF_TOOL_KEY));
-			ocrEnabled = localStorage.getItem(OCR_KEY) !== 'false';
+			ocrEnabled = localStorage.getItem(OCR_KEY) === 'true';
 		} catch (error) {
 			console.error('Could not restore PDF tool preferences', error);
 			announcement = m['pv5.preference_error']();
@@ -440,7 +443,7 @@
 				</div>
 			{/if}
 			{#if controller.actionError}<p role="alert">{controller.actionError}</p>{/if}
-			{#if controller.opening}<p role="status">{m['reader.loading']()}</p>{/if}
+			{#if controller.opening}<p use:showLoadingAfterDelay role="status">{m['reader.loading']()}</p>{/if}
 		</div>
 	{/if}
 </ReaderFrame>

@@ -397,6 +397,7 @@ test('selection actions, comments, bookmarks, Highlights and export work on true
 	expect(markdown).toContain('**Strikeout**');
 	expect(markdown).toContain('PV11 comment: First PDF page text');
 
+	await page.addInitScript(() => localStorage.setItem('pandalibrary.pdf-ocr', 'true'));
 	await page.goto(`/read/${scan.book.id}/${scan.book.files[0].id}`);
 	await openedPdf(page);
 	await expect(page.locator('.pv-ocr-text')).toContainText('Scanned', { timeout: 90_000 });
@@ -591,6 +592,7 @@ test('a mixed PDF recognizes only the scanned page', async ({ page }) => {
 	test.setTimeout(120_000);
 	const library = await createLibrary(page);
 	const { book } = await upload(page, library, 'PV11 Mixed', mixedPdfFixture(await scannedFixtureImage(page)));
+	await page.addInitScript(() => localStorage.setItem('pandalibrary.pdf-ocr', 'true'));
 	await page.goto(`/read/${book.id}/${book.files[0].id}`);
 	await openedPdf(page, 1, 'True text page already has selectable content.');
 	await expect(page.locator('.reader-pdf-page[data-page="1"] .pv-ocr-text')).toHaveCount(0);
@@ -613,6 +615,7 @@ test('mobile OCR status preserves reader controls and its accessible failure mes
 	});
 	try {
 		await mobile.route('**/eng.traineddata.gz', (route) => route.fulfill({ status: 503, body: 'Unavailable' }));
+		await mobile.addInitScript(() => localStorage.setItem('pandalibrary.pdf-ocr', 'true'));
 		const reader = await mobile.newPage();
 		await reader.goto(`/read/${book.id}/${book.files[0].id}`);
 		await openedPdf(reader);

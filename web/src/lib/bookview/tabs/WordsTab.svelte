@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { wordbooks, type WordbookEntry } from '#lib/wordbooks/api.js';
@@ -39,7 +40,7 @@
 <section class="card min-w-0 p-4 sm:p-6" aria-labelledby="book-words-title">
 	<h1 id="book-words-title" class="mb-4 text-xl font-semibold">{m['bv4.words.title']()}</h1>
 	{#if status === 'loading'}
-		<p role="status" class="text-sm text-slate-600">{m['catalog.loading']()}</p>
+		<p use:showLoadingAfterDelay role="status" class="text-sm text-slate-600">{m['catalog.loading']()}</p>
 	{:else if status === 'error'}
 		<div role="alert" class="space-y-2 text-sm">
 			<p class="text-red-800">{m['bv4.words.error']()}</p>

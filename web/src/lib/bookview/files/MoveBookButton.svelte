@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onDestroy } from 'svelte';
 	import { ApiError } from '#lib/api/client.js';
 	import HeapDialog from '#lib/bookheap/HeapDialog.svelte';
@@ -80,7 +81,7 @@
 <HeapDialog {open} id={dialogId} title={m['bv7.move_book']()} {busy} onclose={close}>
 	<p class="mt-3 text-sm text-slate-600">{m['bv7.move_description']({ title: book.title })}</p>
 	{#if loading}
-		<p role="status" class="mt-3 text-sm text-slate-600">{m['catalog.loading']()}</p>
+		<p use:showLoadingAfterDelay role="status" class="mt-3 text-sm text-slate-600">{m['catalog.loading']()}</p>
 	{:else if !error && !libraries.length}
 		<p role="status" class="mt-3 text-sm text-slate-600">{m['bv7.move_empty']()}</p>
 	{/if}
