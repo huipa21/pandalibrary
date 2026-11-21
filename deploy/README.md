@@ -1,3 +1,22 @@
+# Dev hot-reload (no container rebuild)
+
+Run the backend and the Vite dev server together with `deploy/dev.sh`. State
+(pids, logs, compiled binary) lives in `deploy/.dev/`, which is git-ignored:
+
+```sh
+./deploy/dev.sh start      # build + start backend (127.0.0.1:8080) and Vite (0.0.0.0:5173)
+./deploy/dev.sh status
+./deploy/dev.sh logs       # follow both logs, or: logs backend | logs frontend
+./deploy/dev.sh restart-backend   # after Go edits
+./deploy/dev.sh stop
+```
+
+Frontend edits hot-reload through Vite, which proxies `/api`, `/opds`, and
+`/kosync` to the backend. Open `http://localhost:5173` from the Windows browser.
+Override defaults with environment variables: `PANDA_DEV_LISTEN`,
+`PANDA_DEV_BASE_URL`, `PANDA_DATA_DIR`, `PANDA_DEV_VITE_HOST`,
+`PANDA_DEV_VITE_PORT`, `PANDA_DEV_READY_TIMEOUT`.
+
 # Container deployment
 
 Build `localhost/pandalibrary:latest` from the repository root. This is the
