@@ -68,7 +68,7 @@ func newBookheapAssignHTTPFixture(t *testing.T) bookheapAssignHTTPFixture {
 	}
 	f.router, err = NewRouter(RouterOptions{Database: f.db.Reader, Ready: func() bool { return true }, Logger: logger, MaxBodyBytes: 2 << 20,
 		Assets: fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("test")}},
-		Mounts: []Mount{BookheapMount(service, authentication, logger), BookheapAssignMount(service, authentication, logger)}})
+		Mounts: []Mount{BookheapMount(service, catalogService, authentication, logger), BookheapAssignMount(service, authentication, logger)}})
 	if err != nil {
 		t.Fatal(err)
 	}

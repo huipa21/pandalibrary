@@ -20,12 +20,13 @@ type bookheapHTTP struct {
 }
 
 // BookheapMount exposes the admin-only bookheap API.
-func BookheapMount(service *bookheap.Service, authentication *auth.Service, logger *slog.Logger) Mount {
-	handler := &bookheapHTTP{service: service, catalog: &catalogHTTP{logger: logger}}
+func BookheapMount(service *bookheap.Service, catalogService *catalog.Service, authentication *auth.Service, logger *slog.Logger) Mount {
+	handler := &bookheapHTTP{service: service, catalog: &catalogHTTP{service: catalogService, logger: logger}}
 	return func(router chi.Router, cookieProtection Middleware) {
 		router.Group(func(admin chi.Router) {
 			admin.Use(SessionMiddleware(authentication, logger))
 			admin.Use(RequireRole("admin", logger))
+			admin.With(cookieProtection).Post("/api/v1/admin/bookheap/precheck", handler.catalog.withViewer(handler.precheck))
 			admin.With(cookieProtection).Post("/api/v1/admin/bookheap/files", handler.catalog.withViewer(handler.upload))
 			admin.Get("/api/v1/admin/bookheap/items", handler.catalog.withViewer(handler.list))
 			admin.Get("/api/v1/admin/bookheap/items/{id}", handler.catalog.withViewer(handler.get))
@@ -115,6 +116,30 @@ func (h *bookheapHTTP) upload(w http.ResponseWriter, r *http.Request, viewer cat
 		return
 	}
 	h.catalog.writeJSON(w, http.StatusCreated, map[string]bookheap.Item{"item": item})
+}
+
+func (h *bookheapHTTP) precheck(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	var body struct {
+		LibraryID int64    `json:"library_id"`
+		Hashes    []string `json:"hashes"`
+	}
+	if !h.catalog.decodeJSON(w, r, &body) {
+		return
+	}
+	if body.LibraryID < 1 {
+		WriteProblem(w, h.catalog.logger, http.StatusBadRequest, "The library ID is invalid.")
+		return
+	}
+	if _, err := h.catalog.service.GetLibrary(r.Context(), viewer, body.LibraryID); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	results, err := h.service.Precheck(r.Context(), viewer, body.LibraryID, body.Hashes)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.catalog.writeJSON(w, http.StatusOK, map[string][]bookheap.PrecheckMatch{"results": results})
 }
 
 func (h *bookheapHTTP) list(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {

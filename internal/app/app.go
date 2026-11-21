@@ -259,7 +259,7 @@ func newApplication(ctx context.Context, cfg config.Config, logger *slog.Logger)
 			httpapi.WordbookMount(wordbookService, authentication, logger),
 			httpapi.TrashMount(trash.NewService(databases.Writer), authentication, logger),
 			httpapi.ImportMount(importService, catalogService, authentication, logger),
-			httpapi.BookheapMount(bookheapService, authentication, logger),
+			httpapi.BookheapMount(bookheapService, catalogService, authentication, logger),
 			httpapi.BookheapAssignMount(bookheapService, authentication, logger),
 			httpapi.ShelfMount(catalogService, authentication, logger),
 			httpapi.ReviewMount(catalogService, authentication, logger),

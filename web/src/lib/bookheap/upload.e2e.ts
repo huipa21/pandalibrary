@@ -12,6 +12,7 @@ async function authenticate(page: Page, role = 'admin', locale = 'en') {
 	await page.route('**/api/v1/admin/libraries?*', (route) => route.fulfill({ json: { items: [
 		{ id: 2, name: 'Main', slug: 'main', created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z' }
 	], next_cursor: null } }));
+	await page.route('**/api/v1/admin/bookheap/precheck', (route) => route.fulfill({ json: { results: [] } }));
 	await page.route('**/api/v1/admin/bookheap/assign', (route) =>
 		route.fulfill({ status: 202, json: { results: route.request().postDataJSON().ids.map((id: number) => ({
 			id, ok: true, error: null, import_job_id: 42
@@ -63,15 +64,43 @@ async function mockUploads(page: Page) {
 	return { names, visibilities, release };
 }
 
-const book = (name: string) => ({ name, mimeType: 'application/octet-stream', buffer: Buffer.from('book') });
+const zip = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+function mobi() {
+	const buffer = Buffer.alloc(68);
+	buffer.write('BOOKMOBI', 60);
+	return buffer;
+}
+/** Minimal files with valid signatures so preflight accepts them; names keep hashes distinct. */
+function bookBytes(name: string): Buffer {
+	const extension = name.toLowerCase().slice(name.lastIndexOf('.'));
+	switch (extension) {
+		case '.epub':
+		case '.fbz':
+		case '.cbz':
+			return Buffer.concat([zip, Buffer.from(name)]);
+		case '.pdf':
+			return Buffer.from(`%PDF-${name}`);
+		case '.mobi':
+		case '.azw3':
+			return Buffer.concat([mobi(), Buffer.from(name)]);
+		case '.fb2':
+			return Buffer.from(`<FictionBook${name}`);
+		default:
+			return Buffer.from('book');
+	}
+}
+const book = (name: string) => ({ name, mimeType: 'application/octet-stream', buffer: bookBytes(name) });
 
 async function dropFiles(zone: Locator, files: string[], text?: string) {
-	const dataTransfer = await zone.page().evaluateHandle(({ files, text }) => {
+	const contents = files.map((name) => Array.from(bookBytes(name)));
+	const dataTransfer = await zone.page().evaluateHandle(({ files, contents, text }) => {
 		const transfer = new DataTransfer();
-		for (const name of files) transfer.items.add(new File(['book'], name, { lastModified: 1 }));
+		files.forEach((name, index) =>
+			transfer.items.add(new File([new Uint8Array(contents[index] ?? [])], name, { lastModified: 1 }))
+		);
 		if (text) transfer.items.add(text, 'text/uri-list');
 		return transfer;
-	}, { files, text });
+	}, { files, contents, text });
 	await zone.dispatchEvent('dragenter', { dataTransfer });
 	await expect(zone).toHaveAttribute('data-dragging', 'true');
 	await zone.dispatchEvent('dragover', { dataTransfer });
@@ -100,6 +129,28 @@ test('closing and reopening the upload dialog clears an active drag highlight', 
 	await transfer.dispose();
 });
 
+test('remembers the last used library when several are available', async ({ page }) => {
+	await authenticate(page);
+	await page.route('**/api/v1/admin/libraries?*', (route) => route.fulfill({ json: { items: [
+		{ id: 2, name: 'Main', slug: 'main', created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z' },
+		{ id: 3, name: 'Comics', slug: 'comics', created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z' }
+	], next_cursor: null } }));
+	await page.goto('/');
+	const trigger = page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true });
+	await trigger.click();
+	const dialog = page.getByRole('dialog', { name: 'Upload books' });
+	const library = dialog.getByLabel('Library (required)', { exact: true });
+	await expect(library).toHaveValue('');
+	await library.selectOption('3');
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await trigger.click();
+	await expect(library).toHaveValue('3');
+	await page.reload();
+	await trigger.click();
+	await expect(library).toHaveValue('3');
+});
+
 test('administrators upload many files from the header dialog with per-file results', async ({ page }) => {
 	await authenticate(page);
 	const uploads = await mockUploads(page);
@@ -121,31 +172,34 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(dialog.getByRole('button', { name: 'Clear' })).toBeDisabled();
 	const library = dialog.getByLabel('Library (required)', { exact: true });
 	await expect(library).toBeEnabled();
-	await expect(library).toHaveValue('');
+	await expect(library).toHaveValue('2');
 	const visibility = dialog.getByRole('switch', { name: 'Book visibility' });
 	await expect(visibility).toHaveAttribute('aria-checked', 'true');
+	await expect(visibility).toHaveAttribute('title', 'Public — all signed-in users');
+	await expect(visibility).not.toContainText('Public');
 	await expect(visibility).toHaveAccessibleDescription(/Public books are visible to all signed-in users/);
 	await visibility.click();
+	await expect(visibility).toHaveAttribute('aria-checked', 'false');
+	await expect(visibility).toHaveAttribute('title', 'Private — only you (the uploader)');
+	await expect(visibility).not.toContainText('Private');
 	const upload = dialog.getByRole('button', { name: /^(Upload|Uploading…)$/ });
 	await expect(upload).toBeDisabled();
-	await library.selectOption({ label: 'Main' });
 	await expect(dialog.getByTestId('bh3-file-input')).toHaveAttribute('accept', '.epub,.pdf,.mobi,.azw3,.fb2,.fbz,.cbz');
 
 	const zone = dialog.getByTestId('bh3-drop-zone');
 	await expect(zone).toContainText('Drag and drop book files here');
 	await dropFiles(zone, [], 'https://example.com/book');
 	await expect(dialog.getByRole('status')).toHaveText('Folders and items that are not files were ignored.');
-	await dropFiles(zone, ['Dune.epub', 'notes.txt']);
-	await expect(dialog.getByRole('status')).toHaveText('Not added, unsupported format: notes.txt');
 	await dialog.getByRole('button', { name: 'Dismiss notice' }).click();
 	await expect(dialog.getByRole('status')).toHaveCount(0);
+	await dropFiles(zone, ['Dune.epub']);
 
 	const chooser = page.waitForEvent('filechooser');
 	await dialog.getByRole('button', { name: 'Select files' }).click();
 	await (await chooser).setFiles([book('Copy.pdf'), book('Heap.mobi'), book('Flaky.cbz'), book('Gone.fb2')]);
 	const list = dialog.getByRole('list', { name: 'Files to upload' });
 	await expect(list.getByRole('listitem')).toHaveCount(5);
-	await expect(dialog.getByTestId('bh3-summary')).toHaveText('0 uploaded, 0 duplicate, 0 failed · 20 B total');
+	await expect(dialog.getByTestId('bh3-summary')).toHaveText('0 uploaded, 0 duplicate, 0 failed · 136 B total');
 
 	await dropFiles(zone, ['Dune.epub']);
 	await expect(list.getByRole('listitem')).toHaveCount(5);
@@ -204,6 +258,30 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(trigger).toBeFocused();
 });
 
+test('unsupported files are flagged on Upload and never sent', async ({ page }) => {
+	await authenticate(page);
+	let uploads = 0;
+	await page.route('**/api/v1/admin/bookheap/files', (route) => {
+		uploads += 1;
+		return route.fulfill({ status: 201, json: { item: heapItem(12, 'notes.txt', 'Notes') } });
+	});
+	await page.goto('/');
+	await page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Upload books' });
+	const library = dialog.getByLabel('Library (required)', { exact: true });
+	await expect(library).toHaveValue('2');
+	await dialog.getByTestId('bh3-file-input').setInputFiles(book('notes.txt'));
+	const list = dialog.getByRole('list', { name: 'Files to upload' });
+	await expect(list.getByRole('listitem')).toHaveCount(1);
+	await expect(dialog.getByRole('status')).toHaveCount(0);
+	const upload = dialog.getByRole('button', { name: 'Upload', exact: true });
+	await expect(upload).toBeEnabled();
+	await upload.click();
+	await expect(dialog.getByTestId('bh3-result')).toHaveText('0 uploaded, 0 duplicate, 1 failed');
+	await expect(list.getByTestId('bh3-row-status')).toHaveText('Unsupported or damaged file');
+	expect(uploads).toBe(0);
+});
+
 test('uploads assign optional shelves and retry assignment failures without re-uploading', async ({ page }) => {
 	await authenticate(page);
 	let uploads = 0;
@@ -254,7 +332,7 @@ test('uploads require a loaded library, omit optional shelves and default to pub
 	const loading = new Promise<void>((resolve) => (release = resolve));
 	await page.route('**/api/v1/admin/libraries?*', async (route) => {
 		await loading;
-		await route.fulfill({ json: { items: [{ id: 2, name: 'Main' }], next_cursor: null } });
+		await route.fulfill({ json: { items: [{ id: 2, name: 'Main' }, { id: 3, name: 'Comics' }], next_cursor: null } });
 	});
 	const multipart: string[] = [];
 	const assignments: unknown[] = [];
@@ -336,8 +414,8 @@ test('failed target reloads clear stale selections and provide retry and no-libr
 	state = 'ready';
 	await trigger.click();
 	await expect(library).toBeEnabled();
-	await expect(library).toHaveValue('');
-	await expect(upload).toBeDisabled();
+	await expect(library).toHaveValue('2');
+	await expect(upload).toBeEnabled();
 	uploads.release();
 });
 

@@ -25,8 +25,12 @@ There are four ways to add books:
 - **Upload to a library:** upload books on **Admin → Uploads**.
 - **Header upload:** the **Upload** button in the header opens the upload dialog.
   Choose a library (required), optionally select a collection, and choose
-  **Public** (the default) or **Private**. Every uploaded book is staged in the
-  Bookheap and automatically queued for import into the selected library and collection.
+  **Public** (the default) or **Private**. When you press **Upload**, the dialog
+  checks each file's name, format, size and SHA-256, then flags duplicates
+  already in the destination library or Bookheap, duplicates within the
+  selection, and files that cannot be sent. Flagged files stay in the list with
+  a reason and are not uploaded. Every accepted book is staged in the Bookheap
+  and automatically queued for import into the selected library and collection.
   Completed uploads have a green checkmark and a results summary. If library
   assignment fails after upload, retry it without uploading the file again,
   or assign it from the Bookheap. Retries keep the original library, collection and

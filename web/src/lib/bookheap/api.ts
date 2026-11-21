@@ -3,6 +3,42 @@ import type { HeapItem, HeapItemStatus, UploadVisibility } from './types.js';
 
 export const BOOKHEAP_FILES_PATH = '/api/v1/admin/bookheap/files';
 
+/** Matches `bookheap.PrecheckMatch`; at least one duplicate ID may be present. */
+export interface HeapPrecheckMatch {
+	readonly sha256: string;
+	readonly duplicate_of_book_id: number | null;
+	readonly duplicate_of_item_id: number | null;
+}
+
+function optionalPositiveId(value: unknown): number | null {
+	return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+/** Checks SHA-256 digests against the destination library and unassigned heap. */
+export async function precheckHeapFiles(
+	libraryId: number,
+	hashes: readonly string[],
+	signal?: AbortSignal
+): Promise<Map<string, HeapPrecheckMatch>> {
+	if (hashes.length === 0) return new Map();
+	const response = await api.request<{ results?: HeapPrecheckMatch[] }>('/admin/bookheap/precheck', {
+		method: 'POST',
+		body: { library_id: libraryId, hashes: [...hashes] },
+		signal
+	});
+	if (!Array.isArray(response.results)) throw new Error('Invalid preflight response');
+	const matches = new Map<string, HeapPrecheckMatch>();
+	for (const result of response.results) {
+		if (typeof result?.sha256 !== 'string') continue;
+		matches.set(result.sha256, {
+			sha256: result.sha256,
+			duplicate_of_book_id: optionalPositiveId(result.duplicate_of_book_id),
+			duplicate_of_item_id: optionalPositiveId(result.duplicate_of_item_id)
+		});
+	}
+	return matches;
+}
+
 /** Minimal XMLHttpRequest surface used by `uploadHeapFile`, so tests can supply a fake. */
 export interface UploadRequest {
 	open(method: string, url: string): void;

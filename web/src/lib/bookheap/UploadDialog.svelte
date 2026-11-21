@@ -12,6 +12,7 @@
 	import { inputClass } from '#lib/admin/ui.js';
 	import { heapErrorKey } from './results.js';
 	import { loadAssignTargets, shelfLabel } from './targets.js';
+	import { rememberLastUploadLibraryId, resolveUploadLibraryId } from './upload-library.js';
 	import {
 		UPLOAD_ACCEPT,
 		filesFromDataTransfer,
@@ -55,7 +56,7 @@
 	);
 	const canUpload = $derived(!queue.running && counts.pending > 0 && validLibrary);
 	/** Keep the action visible while a run is active, and before the first upload. */
-	const showUpload = $derived(counts.pending > 0 || counts.uploading > 0 || (!queue.running && finished === 0));
+	const showUpload = $derived(counts.pending > 0 || counts.checking > 0 || counts.uploading > 0 || (!queue.running && finished === 0));
 	const size = $derived(formatBytes(queue.totalBytes, getLocale()));
 	const limit = $derived(formatBytes(queue.maxBytes, getLocale()));
 	const announcement = $derived(
@@ -104,7 +105,13 @@
 			if (controller.signal.aborted) return;
 			libraries = result.libraries;
 			shelves = result.shelves;
-			if (!libraries.some((library) => library.id > 0 && library.id === queue.libraryId)) queue.libraryId = null;
+			const previousLibraryId = queue.libraryId;
+			const resolvedLibraryId = resolveUploadLibraryId(libraries, queue.libraryId);
+			if (resolvedLibraryId !== previousLibraryId) {
+				queue.libraryId = resolvedLibraryId;
+				queue.resetPreflight();
+			}
+			rememberLastUploadLibraryId(queue.libraryId);
 			queue.shelfIds = queue.shelfIds.filter((id) => shelves.some((shelf) => shelf.id === id)).slice(0, 1);
 			targetsReady = true;
 		} catch (cause) {
@@ -222,6 +229,8 @@
 		switch (row.status) {
 			case 'pending':
 				return m['bh3.status_pending']();
+			case 'checking':
+				return m['bh3.status_checking']({ percent: uploadPercent(row) });
 			case 'uploading':
 				if (row.item) return m['bh3.status_assigning']();
 				return m['bh3.status_uploading']({ percent: uploadPercent(row) });
@@ -282,7 +291,12 @@
 							aria-invalid={libraryValidation && !validLibrary ? 'true' : undefined}
 							aria-describedby="bh3-library-help bh3-library-guidance"
 							onchange={(event) => {
-								queue.libraryId = event.currentTarget.value ? Number(event.currentTarget.value) : null;
+								const libraryId = event.currentTarget.value ? Number(event.currentTarget.value) : null;
+								if (libraryId !== queue.libraryId) {
+									queue.libraryId = libraryId;
+									queue.resetPreflight();
+								}
+								rememberLastUploadLibraryId(queue.libraryId);
 								libraryValidation = false;
 							}}
 						>
@@ -317,12 +331,11 @@
 						aria-label={m['bh.visibility.label']()}
 						aria-describedby="bh-upload-visibility-help"
 						title={queue.visibility === 'public' ? m['bh.visibility.public']() : m['bh.visibility.private']()}
-						class="flex min-h-11 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+						class="grid size-11 shrink-0 place-items-center rounded-md border border-slate-300 bg-white text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
 						disabled={queue.running}
 						onclick={() => (queue.visibility = queue.visibility === 'public' ? 'private' : 'public')}
 					>
 						<Icon name={queue.visibility === 'public' ? 'eye' : 'eye-off'} class="size-5 shrink-0" />
-						<span>{queue.visibility === 'public' ? m['bh.visibility.public_short']() : m['bh.visibility.private_short']()}</span>
 					</button>
 				</div>
 				<p id="bh3-library-help" class="sr-only">{m['bh3.library_help']()}</p>
@@ -447,8 +460,8 @@
 										<span class="sr-only">{visibilityLabel(row)}</span>
 									</span>
 								{/if}
-								{#if row.status === 'pending' || row.status === 'uploading'}
-									<span class={['shrink-0 text-xs', row.status === 'uploading' ? 'text-slate-600' : 'text-slate-500']} data-testid="bh3-row-status">
+								{#if row.status === 'pending' || row.status === 'checking' || row.status === 'uploading'}
+									<span class={['shrink-0 text-xs', row.status === 'uploading' || row.status === 'checking' ? 'text-slate-600' : 'text-slate-500']} data-testid="bh3-row-status">
 										{statusText(row)}
 									</span>
 								{:else if row.status === 'error'}
@@ -473,11 +486,11 @@
 									</button>
 								{/if}
 							</div>
-							{#if row.status === 'uploading'}
+							{#if row.status === 'uploading' || row.status === 'checking'}
 								<div
 									class="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"
 									role="progressbar"
-									aria-label={m['bh3.progress_label']({ name: row.file.name })}
+									aria-label={row.status === 'checking' ? m['bh3.check_progress_label']({ name: row.file.name }) : m['bh3.progress_label']({ name: row.file.name })}
 									aria-valuemin={0}
 									aria-valuemax={100}
 									aria-valuenow={percent}
