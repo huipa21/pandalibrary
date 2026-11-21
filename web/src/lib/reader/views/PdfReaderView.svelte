@@ -394,6 +394,9 @@
 					onbackground={setBackground} />
 				<RotateMenu onrotate={(delta) => run(() => engine?.rotate(delta))} />
 			{/snippet}
+			{#snippet compact()}
+				<ReaderModeButton mode={readingMode} ontoggle={toggleReadingMode} compact />
+			{/snippet}
 			{#snippet right()}
 				<button
 					type="button" class="pv4-button" data-testid="pdf-bookmark-toggle"
@@ -406,7 +409,7 @@
 					<ToolToggle tool={tool === 'hand' ? 'hand' : 'select'} ontoggle={() => setTool(tool === 'hand' ? 'select' : 'hand')} />
 					<InsertMenu bind:open={insertMenuOpen} disabled={!engine} offline={!$offlineStatus.online} onselect={startInsert} />
 				{/if}
-				<ReaderModeButton mode={readingMode} ontoggle={toggleReadingMode} />
+				<span class="pv4-wide"><ReaderModeButton mode={readingMode} ontoggle={toggleReadingMode} /></span>
 				<span class="pv-divider" aria-hidden="true"></span>
 				<ReaderCloseButton closing={controller.closing} onclose={() => controller.close()} />
 			{/snippet}

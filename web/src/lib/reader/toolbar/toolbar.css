@@ -70,3 +70,5 @@
 :root[data-theme='dark'] .pv4-button[aria-pressed='true'] { color: #a7f3d0; }
 :root[data-theme='dark'] .pv4-separator { background: rgb(255 255 255 / 12%); }
 :root[data-theme='dark'] .pv4-progress, :root[data-theme='dark'] .pv4-hint { color: #a0a7af; }
+
+@media (max-width: 639px) { .pv4-wide { display: none; } }

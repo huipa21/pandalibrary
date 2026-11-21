@@ -3,8 +3,8 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import OverflowMenu from './OverflowMenu.svelte';
 	import './toolbar.css';
-	let { left, centre, right, overflow, status }: {
-		left: Snippet; centre?: Snippet; right: Snippet; overflow?: Snippet; status?: Snippet;
+	let { left, centre, right, overflow, compact, status }: {
+		left: Snippet; centre?: Snippet; right: Snippet; overflow?: Snippet; compact?: Snippet; status?: Snippet;
 	} = $props();
 	let toolbarWidth = $state(0);
 	let leftWidth = $state(0);
@@ -21,7 +21,9 @@
 	<div class="pv4-right" bind:clientWidth={rightWidth}>
 		{#if overflow}
 			<div class="pv4-collapsible">{@render overflow()}</div>
-			<div class="pv4-overflow"><OverflowMenu>{@render overflow()}</OverflowMenu></div>
+			<div class="pv4-overflow">
+				<OverflowMenu>{@render overflow()}{#if compact}<span class="pv4-divider" aria-hidden="true"></span>{@render compact()}{/if}</OverflowMenu>
+			</div>
 		{/if}
 		{@render right()}
 	</div>
