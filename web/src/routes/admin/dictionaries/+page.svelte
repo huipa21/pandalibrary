@@ -4,6 +4,8 @@
 	import { onDestroy, onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
+	import DictionaryProviderDialog from '#lib/admin/DictionaryProviderDialog.svelte';
+	import Icon from '#lib/bookview/Icon.svelte';
 	import {
 		clearDictionaryCache,
 		createDictionaryProvider,
@@ -18,23 +20,19 @@
 		buildDictionaryProviderPatch,
 		dictionaryFieldErrorKey,
 		dictionaryProviderDraft,
-		dictionaryProviderState,
 		type DictionaryFieldFailure,
-		type DictionaryProviderDraft,
-		type DictionaryProviderState
+		type DictionaryProviderDraft
 	} from '#lib/admin/form.js';
-	import { formatTimestamp } from '#lib/admin/jobs.js';
-	import type { DictionaryProvider, DictionaryProviderKind, DictionaryProviderPatch } from '#lib/admin/types.js';
+	import type { DictionaryProvider, DictionaryProviderPatch } from '#lib/admin/types.js';
+	import { controlIconClass, iconControlClass } from '#lib/catalog/filter-styles.js';
 	import {
 		dangerButton,
 		errorBox,
 		inputClass,
-		linkClass,
 		panelClass,
-		primaryButton,
-		secondaryButton
+		primaryButton
 	} from '#lib/admin/ui.js';
-	import type { DictionaryDirection, DictionaryStatus } from '#lib/dictionary/types.js';
+	import type { DictionaryDirection, DictionaryLanguage, DictionaryStatus } from '#lib/dictionary/types.js';
 	import { translate } from '#lib/paging/translate.js';
 
 	type TestState = { kind: 'idle' } | { kind: 'testing' } | { kind: 'ok'; status: DictionaryStatus } | { kind: 'error'; message: string };
@@ -45,24 +43,13 @@
 		busy: '' | 'save' | 'toggle' | 'remove_key' | 'delete';
 		error: string;
 		fieldError: FieldError | null;
-		saved: boolean;
 		test: TestState;
 	};
 
-	const presetOrder: DictionaryProviderKind[] = ['mw-collegiate', 'mw-thesaurus', 'custom'];
-	const features: Partial<Record<DictionaryProviderKind, () => string>> = {
-		'mw-collegiate': () => m['admin.dictionaries.features.mw_collegiate'](),
-		'mw-thesaurus': () => m['admin.dictionaries.features.mw_thesaurus']()
-	};
-	const stateLabel: Record<DictionaryProviderState, () => string> = {
-		enabled: () => m['admin.dictionaries.status.enabled'](),
-		needs_key: () => m['admin.dictionaries.status.needs_key'](),
-		disabled: () => m['admin.dictionaries.status.disabled']()
-	};
-	const stateClass: Record<DictionaryProviderState, string> = {
-		enabled: 'border-green-200 bg-green-50 text-green-800',
-		needs_key: 'border-amber-300 bg-amber-50 text-amber-900',
-		disabled: 'border-slate-200 bg-slate-100 text-slate-700'
+	const languageName: Record<DictionaryLanguage, () => string> = {
+		en: () => m['admin.dictionaries.language.en'](),
+		zh: () => m['admin.dictionaries.language.zh'](),
+		ja: () => m['admin.dictionaries.language.ja']()
 	};
 
 	let status = $state<'loading' | 'ready' | 'error'>('loading');
@@ -77,20 +64,35 @@
 	let addError = $state('');
 	let addFieldError = $state<FieldError | null>(null);
 	let added = $state(false);
+	let editingID = $state<number | null>(null);
 	let controller: AbortController | null = null;
 
-	const presets = $derived(
-		rows.filter((row) => row.provider.preset).sort((a, b) => presetOrder.indexOf(a.provider.kind) - presetOrder.indexOf(b.provider.kind))
+	const orderedRows = $derived(
+		[...rows].sort((a, b) => a.provider.priority - b.provider.priority || a.provider.id - b.provider.id)
 	);
-	const customs = $derived(
-		rows.filter((row) => !row.provider.preset).sort((a, b) => a.provider.priority - b.provider.priority || a.provider.id - b.provider.id)
-	);
+	const editingRow = $derived(rows.find((row) => row.provider.id === editingID) ?? null);
 
 	onMount(() => void load());
 	onDestroy(() => controller?.abort());
 
 	function toRow(provider: DictionaryProvider): Row {
-		return { provider, draft: dictionaryProviderDraft(provider), busy: '', error: '', fieldError: null, saved: false, test: { kind: 'idle' } };
+		return { provider, draft: dictionaryProviderDraft(provider), busy: '', error: '', fieldError: null, test: { kind: 'idle' } };
+	}
+
+	function providerEnabled(provider: DictionaryProvider): boolean {
+		return provider.enabled && (!provider.preset || provider.has_api_key);
+	}
+
+	function scopeText(provider: DictionaryProvider): string {
+		if (!provider.directions.length) {
+			return provider.preset ? m['admin.dictionaries.direction_en_en']() : m['admin.dictionaries.scope_unknown']();
+		}
+		return provider.directions
+			.map((direction) => m['admin.dictionaries.scope_pair']({
+				from: languageName[direction.from](),
+				to: languageName[direction.to]()
+			}))
+			.join(', ');
 	}
 
 	async function load() {
@@ -113,7 +115,6 @@
 	}
 
 	function edited(row: Row) {
-		row.saved = false;
 		row.error = '';
 		row.fieldError = null;
 	}
@@ -126,33 +127,33 @@
 		return { field: result.field, message: translate(dictionaryFieldErrorKey(result.error)) };
 	}
 
-	async function apply(row: Row, busy: Row['busy'], patch: DictionaryProviderPatch, keepDraft = false) {
+	async function apply(row: Row, busy: Row['busy'], patch: DictionaryProviderPatch, keepDraft = false): Promise<boolean> {
 		row.busy = busy;
 		try {
 			const updated = await updateDictionaryProvider(row.provider.id, patch);
 			const draft = row.draft;
 			row.provider = updated;
 			row.draft = keepDraft ? { ...draft, apiKey: '' } : dictionaryProviderDraft(updated);
-			row.saved = true;
 			if (patch.api_key !== undefined || patch.base_url !== undefined) row.test = { kind: 'idle' };
+			return true;
 		} catch (cause) {
 			// The draft is kept so the administrator can correct it; the key is never shown or logged.
 			row.error = translate(adminErrorKey(cause, 'save_dictionary'));
+			return false;
 		} finally {
 			row.busy = '';
 		}
 	}
 
-	async function save(row: Row, event: SubmitEvent) {
-		event.preventDefault();
-		if (row.busy) return;
+	async function save(row: Row): Promise<boolean> {
+		if (row.busy) return false;
 		edited(row);
 		const result = buildDictionaryProviderPatch(row.provider, row.draft);
 		if (!result.ok) {
 			row.fieldError = failure(result);
-			return;
+			return false;
 		}
-		await apply(row, 'save', result.patch);
+		return apply(row, 'save', result.patch);
 	}
 
 	async function toggle(row: Row) {
@@ -176,6 +177,7 @@
 		try {
 			await deleteDictionaryProvider(row.provider.id);
 			rows = rows.filter((candidate) => candidate.provider.id !== row.provider.id);
+			if (editingID === row.provider.id) editingID = null;
 		} catch (cause) {
 			row.error = translate(adminErrorKey(cause, 'delete_dictionary'));
 			row.busy = '';
@@ -192,6 +194,13 @@
 		} catch (cause) {
 			row.test = { kind: 'error', message: translate(adminErrorKey(cause, 'test_dictionary')) };
 		}
+	}
+
+	function edit(row: Row) {
+		row.error = '';
+		row.fieldError = null;
+		row.test = { kind: 'idle' };
+		editingID = row.provider.id;
 	}
 
 	function addEdited() {
@@ -252,255 +261,96 @@
 	<title>{m['admin.dictionaries.title']()} · {m['common.app_name']()}</title>
 </svelte:head>
 
-{#snippet directionList(directions: readonly DictionaryDirection[])}
-	<ul class="list-disc space-y-1 pl-5 text-sm text-slate-700">
-		{#each directions as direction (`${direction.from}-${direction.to}`)}
-			<li>{directionLabel(direction)}</li>
-		{/each}
-	</ul>
-{/snippet}
-
-{#snippet card(row: Row)}
-	{@const provider = row.provider}
-	{@const prefix = `dictionary-${provider.id}`}
-	{@const state = dictionaryProviderState(provider)}
-	{@const featureText = features[provider.kind]}
-	<form class={panelClass} aria-labelledby={`${prefix}-heading`} onsubmit={(event) => save(row, event)} novalidate data-testid={prefix}>
-		<div class="space-y-1">
-			<div class="flex flex-wrap items-center gap-2">
-				<h3 id={`${prefix}-heading`} class="text-lg font-semibold">{provider.name}</h3>
-				<span class={`rounded-full border px-2 py-0.5 text-xs font-medium ${stateClass[state]}`}>{stateLabel[state]()}</span>
-			</div>
-			{#if provider.preset}
-				<p class="text-sm text-slate-600">{m['admin.dictionaries.direction_en_en']()}</p>
-				{#if featureText}<p class="text-sm text-slate-700">{featureText()}</p>{/if}
-				{#if provider.signup_url}
-					<p class="text-sm">
-						<a class={linkClass} href={provider.signup_url} target="_blank" rel="noopener noreferrer">
-							{m['admin.dictionaries.signup']()}<span class="sr-only"> {m['admin.dictionaries.new_tab']()}</span>
-						</a>
-					</p>
-				{/if}
-			{:else}
-				<p class="break-all text-sm text-slate-600">{provider.base_url}</p>
-			{/if}
-			<p class="text-xs text-slate-500">{m['admin.dictionaries.updated']({ time: formatTimestamp(provider.updated_at) })}</p>
-		</div>
-
-		{#if !provider.preset}
-			<div class="space-y-1">
-				<h4 class="text-sm font-medium">{m['admin.dictionaries.directions']()}</h4>
-				{#if provider.directions.length}
-					{@render directionList(provider.directions)}
-				{:else}
-					<p class="text-sm text-slate-600">{m['admin.dictionaries.directions_none']()}</p>
-				{/if}
-			</div>
-
-			<div class="grid gap-1">
-				<label class="text-sm font-medium" for={`${prefix}-name`}>{m['admin.dictionaries.name']()}</label>
-				<input
-					id={`${prefix}-name`}
-					class={`${inputClass} sm:max-w-md`}
-					type="text"
-					autocomplete="off"
-					bind:value={row.draft.name}
-					oninput={() => edited(row)}
-					aria-invalid={fieldMessage(row, 'name') ? 'true' : undefined}
-					aria-describedby={fieldMessage(row, 'name') ? `${prefix}-name-error` : undefined}
-				/>
-				{#if fieldMessage(row, 'name')}<p id={`${prefix}-name-error`} class="text-sm text-red-700">{fieldMessage(row, 'name')}</p>{/if}
-			</div>
-
-			<div class="grid gap-1">
-				<label class="text-sm font-medium" for={`${prefix}-base-url`}>{m['admin.dictionaries.base_url']()}</label>
-				<input
-					id={`${prefix}-base-url`}
-					class={`${inputClass} sm:max-w-md`}
-					type="url"
-					autocomplete="off"
-					spellcheck="false"
-					bind:value={row.draft.baseURL}
-					oninput={() => edited(row)}
-					aria-invalid={fieldMessage(row, 'base_url') ? 'true' : undefined}
-					aria-describedby={`${prefix}-base-url-hint${fieldMessage(row, 'base_url') ? ` ${prefix}-base-url-error` : ''}`}
-				/>
-				<p id={`${prefix}-base-url-hint`} class="text-xs text-slate-500">{m['admin.dictionaries.base_url_hint']()}</p>
-				{#if fieldMessage(row, 'base_url')}<p id={`${prefix}-base-url-error`} class="text-sm text-red-700">{fieldMessage(row, 'base_url')}</p>{/if}
-			</div>
-		{/if}
-
-		<div class="grid gap-1">
-			<label class="text-sm font-medium" for={`${prefix}-api-key`}>{m['admin.dictionaries.api_key']()}</label>
-			<input
-				id={`${prefix}-api-key`}
-				class={`${inputClass} sm:max-w-md`}
-				type="password"
-				autocomplete="new-password"
-				spellcheck="false"
-				placeholder={provider.has_api_key ? m['admin.dictionaries.api_key_saved_placeholder']() : ''}
-				bind:value={row.draft.apiKey}
-				oninput={() => edited(row)}
-				aria-invalid={fieldMessage(row, 'api_key') ? 'true' : undefined}
-				aria-describedby={`${prefix}-api-key-hint${fieldMessage(row, 'api_key') ? ` ${prefix}-api-key-error` : ''}`}
-			/>
-			<p id={`${prefix}-api-key-hint`} class="text-xs text-slate-500">
-				{provider.preset ? m['admin.dictionaries.api_key_hint']() : m['admin.dictionaries.api_key_optional_hint']()}
-			</p>
-			{#if fieldMessage(row, 'api_key')}<p id={`${prefix}-api-key-error`} class="text-sm text-red-700">{fieldMessage(row, 'api_key')}</p>{/if}
-		</div>
-
-		<div class="grid gap-1">
-			<label class="text-sm font-medium" for={`${prefix}-priority`}>{m['admin.dictionaries.priority']()}</label>
-			<input
-				id={`${prefix}-priority`}
-				class={`${inputClass} sm:max-w-40`}
-				type="text"
-				inputmode="numeric"
-				autocomplete="off"
-				bind:value={row.draft.priority}
-				oninput={() => edited(row)}
-				aria-invalid={fieldMessage(row, 'priority') ? 'true' : undefined}
-				aria-describedby={`${prefix}-priority-hint${fieldMessage(row, 'priority') ? ` ${prefix}-priority-error` : ''}`}
-			/>
-			<p id={`${prefix}-priority-hint`} class="text-xs text-slate-500">{m['admin.dictionaries.priority_hint']()}</p>
-			{#if fieldMessage(row, 'priority')}<p id={`${prefix}-priority-error`} class="text-sm text-red-700">{fieldMessage(row, 'priority')}</p>{/if}
-		</div>
-
-		{#if fieldMessage(row, 'form')}<p class="text-sm text-slate-700" role="status">{fieldMessage(row, 'form')}</p>{/if}
-		{#if row.error}<p class={errorBox} role="alert">{row.error}</p>{/if}
-		{#if row.saved}<p class="text-sm text-green-700" role="status">{m['admin.dictionaries.saved']()}</p>{/if}
-
-		<div class="flex flex-wrap gap-2">
-			<button type="submit" class={primaryButton} disabled={!!row.busy}>
-				{row.busy === 'save' ? m['admin.dictionaries.saving']() : m['admin.dictionaries.save']()}
-			</button>
-			{#if provider.has_api_key || !provider.preset}
-				<button type="button" class={secondaryButton} disabled={!!row.busy} onclick={() => toggle(row)}>
-					{provider.enabled ? m['admin.dictionaries.disable']() : m['admin.dictionaries.enable']()}
-				</button>
-			{/if}
-			{#if provider.has_api_key}
-				<button type="button" class={secondaryButton} disabled={!!row.busy} onclick={() => removeKey(row)}>{m['admin.dictionaries.remove_key']()}</button>
-			{/if}
-			<button type="button" class={secondaryButton} disabled={!!row.busy || row.test.kind === 'testing'} onclick={() => runTest(row)}>
-				{row.test.kind === 'testing' ? m['admin.dictionaries.testing']() : m['admin.dictionaries.test']()}
-			</button>
-			{#if !provider.preset}
-				<button type="button" class={dangerButton} disabled={!!row.busy} onclick={() => remove(row)}>{m['admin.dictionaries.delete']()}</button>
-			{/if}
-		</div>
-
-		<div aria-live="polite">
-			{#if row.test.kind === 'error'}
-				<p class={errorBox} role="alert">{row.test.message}</p>
-			{:else if row.test.kind === 'ok'}
-				<div class="space-y-2">
-					<p class="text-sm text-green-700">{m['admin.dictionaries.test_ok']({ count: row.test.status.sources.length })}</p>
-					{#if row.test.status.directions.length === 0}
-						<p class="text-sm text-slate-600">{m['admin.dictionaries.test_no_directions']()}</p>
-					{:else}
-						{@render directionList(row.test.status.directions)}
-					{/if}
-				</div>
-			{/if}
-		</div>
-	</form>
-{/snippet}
-
-<section class="space-y-8" aria-labelledby="dictionaries-heading">
-	<h1 id="dictionaries-heading" class="sr-only">{m['admin.dictionaries.title']()}</h1>
-
+<section class="space-y-8" aria-label={m['admin.dictionaries.title']()}>
 	{#if status === 'error'}
 		<AdminAlert message={translate(adminErrorKey(loadError, 'load'))} error={loadError} onretry={load} />
 	{:else if status === 'loading'}
 		<p use:showLoadingAfterDelay class="text-slate-600" role="status">{m['admin.dictionaries.loading']()}</p>
 	{:else}
-		<section class="space-y-4" aria-labelledby="dictionary-builtin-heading">
-			<div class="space-y-1">
-				<h2 id="dictionary-builtin-heading" class="text-xl font-semibold">{m['admin.dictionaries.builtin_heading']()}</h2>
-				<p class="text-sm text-slate-600">{m['admin.dictionaries.builtin_description']()}</p>
-			</div>
-			<div class="space-y-6">
-				{#each presets as row (row.provider.id)}
-					{@render card(row)}
-				{/each}
-			</div>
-		</section>
-
-		<section class="space-y-4" aria-labelledby="dictionary-custom-heading">
-			<div class="space-y-1">
-				<h2 id="dictionary-custom-heading" class="text-xl font-semibold">{m['admin.dictionaries.custom_heading']()}</h2>
-				<p class="text-sm text-slate-600">{m['admin.dictionaries.custom_description']()}</p>
-			</div>
-			{#if customs.length === 0}
-				<p class="text-sm text-slate-600">{m['admin.dictionaries.custom_empty']()}</p>
-			{:else}
-				<div class="space-y-6">
-					{#each customs as row (row.provider.id)}
-						{@render card(row)}
-					{/each}
-				</div>
-			{/if}
-
-			<form class={panelClass} aria-labelledby="dictionary-add-heading" onsubmit={add} novalidate>
-				<h3 id="dictionary-add-heading" class="text-lg font-semibold">{m['admin.dictionaries.add_heading']()}</h3>
-				<div class="grid gap-1">
-					<label class="text-sm font-medium" for="dictionary-add-name">{m['admin.dictionaries.name']()}</label>
-					<input
-						id="dictionary-add-name"
-						class={`${inputClass} sm:max-w-md`}
-						type="text"
-						autocomplete="off"
-						bind:value={addDraft.name}
-						oninput={addEdited}
-						aria-invalid={addFieldMessage('name') ? 'true' : undefined}
-						aria-describedby={addFieldMessage('name') ? 'dictionary-add-name-error' : undefined}
-					/>
-					{#if addFieldMessage('name')}<p id="dictionary-add-name-error" class="text-sm text-red-700">{addFieldMessage('name')}</p>{/if}
-				</div>
-				<div class="grid gap-1">
-					<label class="text-sm font-medium" for="dictionary-add-base-url">{m['admin.dictionaries.base_url']()}</label>
-					<input
-						id="dictionary-add-base-url"
-						class={`${inputClass} sm:max-w-md`}
-						type="url"
-						autocomplete="off"
-						spellcheck="false"
-						placeholder="https://dict.example.com"
-						bind:value={addDraft.baseURL}
-						oninput={addEdited}
-						aria-invalid={addFieldMessage('base_url') ? 'true' : undefined}
-						aria-describedby={`dictionary-add-base-url-hint${addFieldMessage('base_url') ? ' dictionary-add-base-url-error' : ''}`}
-					/>
-					<p id="dictionary-add-base-url-hint" class="text-xs text-slate-500">{m['admin.dictionaries.base_url_hint']()}</p>
-					{#if addFieldMessage('base_url')}<p id="dictionary-add-base-url-error" class="text-sm text-red-700">{addFieldMessage('base_url')}</p>{/if}
-				</div>
-				<div class="grid gap-1">
-					<label class="text-sm font-medium" for="dictionary-add-api-key">{m['admin.dictionaries.api_key']()}</label>
-					<input
-						id="dictionary-add-api-key"
-						class={`${inputClass} sm:max-w-md`}
-						type="password"
-						autocomplete="new-password"
-						spellcheck="false"
-						bind:value={addDraft.apiKey}
-						oninput={addEdited}
-						aria-invalid={addFieldMessage('api_key') ? 'true' : undefined}
-						aria-describedby={`dictionary-add-api-key-hint${addFieldMessage('api_key') ? ' dictionary-add-api-key-error' : ''}`}
-					/>
-					<p id="dictionary-add-api-key-hint" class="text-xs text-slate-500">{m['admin.dictionaries.api_key_optional_hint']()}</p>
-					{#if addFieldMessage('api_key')}<p id="dictionary-add-api-key-error" class="text-sm text-red-700">{addFieldMessage('api_key')}</p>{/if}
-				</div>
-				{#if addError}<p class={errorBox} role="alert">{addError}</p>{/if}
-				{#if added}<p class="text-sm text-green-700" role="status">{m['admin.dictionaries.added']()}</p>{/if}
-				<div>
-					<button type="submit" class={primaryButton} disabled={adding}>
-						{adding ? m['admin.dictionaries.adding']() : m['admin.dictionaries.add']()}
+		<ul class="space-y-3" aria-label={m['admin.dictionaries.title']()}>
+			{#each orderedRows as row (row.provider.id)}
+				{@const provider = row.provider}
+				{@const enabled = providerEnabled(provider)}
+				<li class="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:p-5" data-testid={`dictionary-${provider.id}`}>
+					<div class="min-w-0 flex-1 space-y-1">
+						<div class="flex flex-wrap items-center gap-2">
+							<span class="font-semibold text-slate-950">{provider.name}</span>
+							<span class={`rounded-full border px-2 py-0.5 text-xs font-medium ${enabled ? 'border-green-200 bg-green-50 text-green-800' : 'border-slate-200 bg-slate-100 text-slate-700'}`}>
+								{enabled ? m['admin.dictionaries.status.enabled']() : m['admin.dictionaries.status.disabled']()}
+							</span>
+						</div>
+						<p class="text-sm text-slate-600">{scopeText(provider)}</p>
+					</div>
+					<button
+						type="button"
+						class={iconControlClass}
+						aria-label={m['admin.dictionaries.edit']({ name: provider.name })}
+						title={m['admin.dictionaries.edit']({ name: provider.name })}
+						onclick={() => edit(row)}
+					>
+						<Icon name="pencil" class={controlIconClass} />
 					</button>
-				</div>
-			</form>
-		</section>
+				</li>
+			{/each}
+		</ul>
+
+		<form class={panelClass} aria-labelledby="dictionary-add-heading" onsubmit={add} novalidate>
+			<h2 id="dictionary-add-heading" class="text-lg font-semibold">{m['admin.dictionaries.add_heading']()}</h2>
+			<div class="grid gap-1">
+				<label class="text-sm font-medium" for="dictionary-add-name">{m['admin.dictionaries.name']()}</label>
+				<input
+					id="dictionary-add-name"
+					class={`${inputClass} sm:max-w-md`}
+					type="text"
+					autocomplete="off"
+					bind:value={addDraft.name}
+					oninput={addEdited}
+					aria-invalid={addFieldMessage('name') ? 'true' : undefined}
+					aria-describedby={addFieldMessage('name') ? 'dictionary-add-name-error' : undefined}
+				/>
+				{#if addFieldMessage('name')}<p id="dictionary-add-name-error" class="text-sm text-red-700">{addFieldMessage('name')}</p>{/if}
+			</div>
+			<div class="grid gap-1">
+				<label class="text-sm font-medium" for="dictionary-add-base-url">{m['admin.dictionaries.base_url']()}</label>
+				<input
+					id="dictionary-add-base-url"
+					class={`${inputClass} sm:max-w-md`}
+					type="url"
+					autocomplete="off"
+					spellcheck="false"
+					placeholder="https://dict.example.com"
+					bind:value={addDraft.baseURL}
+					oninput={addEdited}
+					aria-invalid={addFieldMessage('base_url') ? 'true' : undefined}
+					aria-describedby={`dictionary-add-base-url-hint${addFieldMessage('base_url') ? ' dictionary-add-base-url-error' : ''}`}
+				/>
+				<p id="dictionary-add-base-url-hint" class="text-xs text-slate-500">{m['admin.dictionaries.base_url_hint']()}</p>
+				{#if addFieldMessage('base_url')}<p id="dictionary-add-base-url-error" class="text-sm text-red-700">{addFieldMessage('base_url')}</p>{/if}
+			</div>
+			<div class="grid gap-1">
+				<label class="text-sm font-medium" for="dictionary-add-api-key">{m['admin.dictionaries.api_key']()}</label>
+				<textarea
+					id="dictionary-add-api-key"
+					class={`${inputClass} min-h-24 sm:max-w-md`}
+					rows="3"
+					autocomplete="new-password"
+					spellcheck="false"
+					bind:value={addDraft.apiKey}
+					oninput={addEdited}
+					aria-invalid={addFieldMessage('api_key') ? 'true' : undefined}
+					aria-describedby={`dictionary-add-api-key-hint${addFieldMessage('api_key') ? ' dictionary-add-api-key-error' : ''}`}
+				></textarea>
+				<p id="dictionary-add-api-key-hint" class="text-xs text-slate-500">{m['admin.dictionaries.api_key_optional_hint']()}</p>
+				{#if addFieldMessage('api_key')}<p id="dictionary-add-api-key-error" class="text-sm text-red-700">{addFieldMessage('api_key')}</p>{/if}
+			</div>
+			{#if addError}<p class={errorBox} role="alert">{addError}</p>{/if}
+			{#if added}<p class="text-sm text-green-700" role="status">{m['admin.dictionaries.added']()}</p>{/if}
+			<div>
+				<button type="submit" class={primaryButton} disabled={adding}>
+					{adding ? m['admin.dictionaries.adding']() : m['admin.dictionaries.add']()}
+				</button>
+			</div>
+		</form>
 
 		<section class={panelClass} aria-labelledby="dictionary-cache-heading">
 			<div class="space-y-1">
@@ -520,3 +370,19 @@
 		</section>
 	{/if}
 </section>
+
+{#if editingRow}
+	{@const row = editingRow}
+	<DictionaryProviderDialog
+		open
+		{row}
+		scope={scopeText(row.provider)}
+		onclose={() => (editingID = null)}
+		onsave={() => save(row)}
+		ontoggle={() => toggle(row)}
+		onremovekey={() => void removeKey(row)}
+		ondelete={() => void remove(row)}
+		ontest={() => void runTest(row)}
+		onchange={() => edited(row)}
+	/>
+{/if}
