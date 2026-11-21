@@ -43,5 +43,7 @@ export default defineConfig({
 				reuseExistingServer: !process.env.CI
 			},
 	use: { baseURL: origin, actionTimeout: 10_000, navigationTimeout: 20_000 },
-	testMatch: '**/*.e2e.{ts,js}'
+	testMatch: '**/*.e2e.{ts,js}',
+	// OCR has its own config (models are large); run it with `pnpm test:e2e:ocr`.
+	testIgnore: ['**/pdf/ocr/ocr.e2e.ts']
 });
