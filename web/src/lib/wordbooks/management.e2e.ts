@@ -356,21 +356,17 @@ test('wordbook covers use book proportions, numeric badges and persistent displa
 	let bounds = await cover.boundingBox();
 	expect(bounds?.width).toBeCloseTo(208, 0);
 	expect(bounds!.height / bounds!.width).toBeCloseTo(1.5, 2);
-	await page.getByRole('button', { name: 'Display settings', exact: true }).click();
-	await expect(page.getByLabel('Show descriptions')).toHaveCount(0);
-	const size = page.getByRole('slider', { name: /Cover size/ });
-	await expect(size).toHaveValue('208');
-	await expect(page.getByRole('slider', { name: /Spacing/ })).toHaveValue('20');
-	await size.fill('180');
-	await page.getByRole('slider', { name: /Spacing/ }).fill('32');
-	await page.keyboard.press('Escape');
-	await page.reload();
+	// Cover width and spacing are shared device preferences, edited on /appearance.
+	await page.goto('/appearance');
+	await page.locator('#appearance-cover-size').fill('180');
+	await page.locator('#appearance-spacing').fill('32');
+	await page.goto('/wordbooks');
 	await expect(collection).toHaveCSS('gap', '32px');
 	bounds = await cover.boundingBox();
 	expect(bounds?.width).toBeCloseTo(180, 0);
-	await page.getByRole('button', { name: 'Display settings', exact: true }).click();
-	await expect(page.getByRole('slider', { name: /Cover size/ })).toHaveValue('180');
-	await expect(page.getByRole('slider', { name: /Spacing/ })).toHaveValue('32');
+	await page.goto('/appearance');
+	await expect(page.locator('#appearance-cover-size')).toHaveValue('180');
+	await expect(page.locator('#appearance-spacing')).toHaveValue('32');
 });
 
 test('wordbook modal traps focus, cancels without saving, restores focus and shows save failures in place', async ({ page }) => {

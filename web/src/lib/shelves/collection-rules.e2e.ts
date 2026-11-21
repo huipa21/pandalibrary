@@ -114,7 +114,6 @@ test('All Collections covers open settings while sidebar links still browse book
 	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Across libraries 0' }).click();
 	await expect(page).toHaveURL('/shelves/7');
 	await expect(main.getByLabel('Name', { exact: true })).toHaveCount(0);
-	await expect(main.getByRole('button', { name: 'Cover size', exact: true })).toBeVisible();
 	await expect.poll(() => server.bookURLs.length).toBeGreaterThan(0);
 });
 
@@ -263,18 +262,20 @@ test('creates a collection with optional automatic rules instead of exclusive me
 	await expect(dialog).not.toBeVisible();
 });
 
-test('built-in collections have separately persisted display settings', async ({ page }) => {
+test('cover display preferences come from the shared appearance settings', async ({ page }) => {
 	await mockCollection(page);
-	const main = page.getByRole('main');
-	await page.goto('/shelves/system/favorites');
-	await main.getByRole('button', { name: 'Cover size', exact: true }).click();
-	await main.getByRole('slider').first().focus();
+	await page.goto('/appearance');
+	const size = page.locator('#appearance-cover-size');
+	await size.focus();
 	await page.keyboard.press('End');
-	await expect(main.locator('output').first()).toHaveText('280px');
+	await expect(size).toHaveValue('280');
+	await expect(page.locator('label[for="appearance-cover-size"] output')).toHaveText('280px');
 	await page.reload();
-	await main.getByRole('button', { name: 'Cover size', exact: true }).click();
-	await expect(main.locator('output').first()).toHaveText('280px');
-	await page.goto('/shelves/system/unshelved');
-	await main.getByRole('button', { name: 'Cover size', exact: true }).click();
-	await expect(main.locator('output').first()).toHaveText('208px');
+	await expect(page.locator('#appearance-cover-size')).toHaveValue('280');
+	// Collections no longer carry their own cover controls; the shared preference applies to all.
+	for (const path of ['/shelves/system/favorites', '/shelves/system/unshelved']) {
+		await page.goto(path);
+		await expect(page.getByRole('main').getByRole('button', { name: 'Cover size', exact: true })).toHaveCount(0);
+	}
 });
+

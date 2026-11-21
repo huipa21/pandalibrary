@@ -86,6 +86,25 @@ async function mockLibraries(page: Page, role = 'admin', locale = 'en') {
 			timezone: url.searchParams.get('timezone'), daily: [], finished_per_month: [],
 			streaks: { current_days: 0, longest_days: 0 }, time_per_book: []
 		} });
+		if (path === '/stats/books') return route.fulfill({ json: {
+			timezone: url.searchParams.get('timezone'), total_books: 0,
+			added_over_time: [], publication_years: [], genres: [], languages: [], formats: [],
+			page_counts: [], top_authors: [], largest_books: [], most_pages: []
+		} });
+		if (path === '/stats/reading') return route.fulfill({ json: {
+			year: Number(url.searchParams.get('year')),
+			timezone: url.searchParams.get('timezone'),
+			daily: [], hours: [], books: { read: 0, read_and_reading: 0 }, completions: []
+		} });
+		if (path === '/stats/history') return route.fulfill({ json: {
+			year: Number(url.searchParams.get('year')),
+			timezone: url.searchParams.get('timezone'),
+			items: [], next_cursor: null,
+			summary: {
+				books: 0, active_seconds: 0, session_count: 0, active_days: 0, months: [],
+				records: { busiest_day: null, longest_session_seconds: 0, most_read_book: null }
+			}
+		} });
 		if (path === '/me/notes' || path === '/admin/bookheap/items') {
 			return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		}
@@ -132,10 +151,9 @@ test('Libraries and Collections use section headings while collection navigation
 	await expect(sidebar.getByRole('menuitem', { name: 'New collection', exact: true })).toBeVisible();
 	await expect(sidebar.getByRole('menuitem', { name: 'All Collections', exact: true })).toHaveAttribute('href', '/shelves');
 	await expect(sidebar.getByRole('menuitem', { name: 'Manage collection', exact: true })).toHaveCount(0);
-	await page.keyboard.press('Escape');
-	await collections.getByRole('link').click();
+	await sidebar.getByRole('menuitem', { name: 'All Collections', exact: true }).click();
 	await expect(page).toHaveURL('/shelves');
-	await expect(collections.getByRole('link')).toHaveAttribute('aria-current', 'page');
+	await expect(sidebar.getByRole('link', { name: /^Weekend reads/ })).not.toHaveAttribute('aria-current', 'page');
 	await sidebar.getByRole('link', { name: /^Fiction/ }).click();
 	await expect(page).toHaveURL('/library/1');
 	await expect(sidebar.getByRole('link', { name: /Weekend reads/ })).toBeVisible();
@@ -325,36 +343,27 @@ test('statistics menu links open distinct Books, Reading and History views', asy
 	expect(unexpected.filter((entry) => !entry.startsWith('GET /stats/'))).toEqual([]);
 });
 
-test('shared display controls change cover width and spacing and persist independently', async ({ page }) => {
+test('shared display controls change cover width and spacing and persist across views', async ({ page }) => {
 	const { unexpected } = await mockLibraries(page);
 	await page.route('**/api/v1/books?*', (route) => route.fulfill({ json: { items: [displayBook], next_cursor: null } }));
 	await page.route('**/api/v1/shelves/11/books?*', (route) => route.fulfill({ json: { items: [displayBook], next_cursor: null } }));
+	await page.goto('/appearance');
+	await setRange(page.locator('#appearance-cover-size'), 200);
+	await setRange(page.locator('#appearance-spacing'), 30);
 	await page.goto('/library/1');
 	const main = page.getByRole('main');
-	const settings = main.getByRole('button', { name: 'Cover size', exact: true });
 	const grid = main.locator('.book-grid-configurable');
 	await expect(grid.locator(':scope > li')).toHaveCount(1);
-	await settings.click();
-	const panel = main.getByRole('dialog', { name: 'Display settings', exact: true });
-	await setRange(panel.getByRole('slider', { name: /Cover size/ }), 200);
-	await setRange(panel.getByRole('slider', { name: /Spacing/ }), 30);
-	await expect(grid).toHaveCSS('column-gap', '30px');
 	await expect(grid.locator(':scope > li')).toHaveCSS('width', '200px');
-	await page.keyboard.press('Escape');
-	await expect(settings).toBeFocused();
+	await expect(grid).toHaveCSS('column-gap', '30px');
 	await page.reload();
 	await expect(grid.locator(':scope > li')).toHaveCSS('width', '200px');
 	await expect(grid).toHaveCSS('column-gap', '30px');
 	await page.goto('/shelves/11');
-	await expect(grid.locator(':scope > li')).toHaveCSS('width', '208px');
-	await settings.click();
-	await setRange(panel.getByRole('slider', { name: /Cover size/ }), 220);
-	await setRange(panel.getByRole('slider', { name: /Spacing/ }), 8);
-	await expect(grid.locator(':scope > li')).toHaveCSS('width', '220px');
-	await expect(grid).toHaveCSS('column-gap', '8px');
-	await page.goto('/library/1');
 	await expect(grid.locator(':scope > li')).toHaveCSS('width', '200px');
 	await expect(grid).toHaveCSS('column-gap', '30px');
+	await page.goto('/books');
+	await expect(grid.locator(':scope > li')).toHaveCSS('width', '200px');
 	expect(unexpected).toEqual([]);
 });
 
@@ -420,14 +429,16 @@ test('library and collection controls are left-aligned without repeated headings
 				const saved = sessionStorage.getItem('pandalibrary.browse-context');
 				return saved ? JSON.parse(saved).label : null;
 			})).toBe(destination.title);
+			// The cover-size preset only exists on library pages; collections share /appearance.
 			const settings = main.getByRole('button', { name: 'Cover size', exact: true });
+			const viewSwitch = main.getByRole('button', { name: 'Switch to list view', exact: true });
 			const controls = [
 				main.getByRole('combobox', { name: 'Author', exact: true }),
 				main.getByRole('combobox', { name: 'Series', exact: true }),
 				main.getByRole('combobox', { name: 'Tag', exact: true }),
 				main.getByRole('combobox', { name: 'Sort', exact: true }),
-				main.getByRole('button', { name: 'Switch to list view', exact: true }),
-				settings,
+				viewSwitch,
+				...(await settings.count() ? [settings] : []),
 				main.getByRole('button', { name: 'Clear filters', exact: true })
 			];
 			const gridBox = await grid.boundingBox();
@@ -450,22 +461,17 @@ test('library and collection controls are left-aligned without repeated headings
 			}
 			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 
-			await controls[4].click();
+			await viewSwitch.click();
 			await expect(main.getByRole('button', { name: 'Switch to grid view', exact: true })).toBeVisible();
 			await main.getByRole('button', { name: 'Switch to grid view', exact: true }).click();
-			await settings.click();
-			const panel = main.getByRole('dialog', { name: 'Display settings', exact: true });
-			await expect(panel).toBeVisible();
-			await expectPanelInViewport(page, panel);
-			if (width === 320 && destination.title === 'Favorites') {
-				await page.setViewportSize({ width: 375, height: 900 });
-				await expectPanelInViewport(page, panel);
-				await page.setViewportSize({ width: 320, height: 900 });
-				await expectPanelInViewport(page, panel);
+			if (await settings.count()) {
+				const before = await grid.evaluate((element) => getComputedStyle(element).getPropertyValue('--book-cover-size').trim());
+				await settings.click();
+				await expect(settings).toHaveAttribute('data-cover-preset', /^(?:small|medium|big|large)$/);
+				await expect.poll(() => grid.evaluate((element) => getComputedStyle(element).getPropertyValue('--book-cover-size').trim())).not.toBe(before);
+				await expect(grid.locator(':scope > li')).toHaveCount(1);
 			}
-			await expect(panel.getByRole('slider', { name: /Cover size/ })).toBeVisible();
-			await page.keyboard.press('Escape');
-			await expect(settings).toBeFocused();
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 		}
 	}
 	expect(unexpected).toEqual([]);
