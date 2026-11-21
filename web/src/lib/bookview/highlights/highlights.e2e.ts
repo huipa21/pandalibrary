@@ -367,10 +367,10 @@ test('review failures do not hide reader annotations and can be retried', async 
 		: route.fulfill({ json: { mine: null, items: [], next_cursor: null, total: 0 } }));
 	await open(page);
 	await expect(items(page)).toHaveCount(7);
-	await expect(page.getByRole('alert')).toContainText('Could not load your review');
+	await expect(page.getByRole('alert').filter({ hasText: 'Could not load your review' })).toBeVisible();
 	failed = false;
 	await page.getByRole('button', { name: 'Try again', exact: true }).click();
-	await expect(page.getByRole('alert')).toHaveCount(0);
+	await expect(page.getByRole('alert').filter({ hasText: 'Could not load your review' })).toHaveCount(0);
 	await expect(items(page)).toHaveCount(7);
 });
 

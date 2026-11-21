@@ -351,7 +351,9 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 				return group;
 			}, {
 				color: resolveMarkColor(annotation.color),
-				writingMode: doc?.defaultView?.getComputedStyle(doc.documentElement).writingMode
+				writingMode: doc?.documentElement
+					? doc.defaultView?.getComputedStyle(doc.documentElement).writingMode
+					: undefined
 			});
 		});
 		this.container.replaceChildren(view);

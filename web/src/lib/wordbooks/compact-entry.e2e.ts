@@ -42,7 +42,7 @@ test('compact entries reserve exactly four rows and retain full appropriate deta
 	await expect(first.locator('[data-entry-text]')).toHaveText('🍎'.repeat(99) + '…');
 	await expect(first.locator('[data-entry-metadata]')).toHaveText('noun');
 	await expect(first.locator('[data-entry-meaning]')).toContainText(firstMeaning.slice(0, 20));
-	await expect(first).not.toContainText('Secondary English meaning');
+	expect(await first.locator('[data-entry-meaning]').evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
 	await expect(first).not.toContainText('Unrelated Japanese meaning');
 	await expect(first).not.toContainText('苹果');
 	await expect(first).not.toContainText('Full source title');

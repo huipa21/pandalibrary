@@ -74,10 +74,15 @@ async function setup(page: Page, format: 'pdf' | 'epub', initialHighlights: Row[
 		if (path === '/api/v1/books/21/files/31' || path === '/api/v1/books/22/files/32') {
 			return route.fulfill({ contentType: 'application/octet-stream', body: bytes });
 		}
-		if (path === '/api/v1/me/books/21' || path === '/api/v1/me/books/22') return route.fulfill({ json: {
-			user_book: null, progress: state.progress, highlights: state.highlights, notes: state.notes,
-			bookmarks: state.bookmarks, page_annotations: state.pageAnnotations
-		} });
+		if (path === '/api/v1/me/books/21' || path === '/api/v1/me/books/22') {
+			// Reading progress is per book; one shared row made book 22 reopen at book 21's page.
+			const bookId = Number(path.split('/').at(-1));
+			const progress = state.progress && state.progress.book_id === bookId ? state.progress : null;
+			return route.fulfill({ json: {
+				user_book: null, progress, highlights: state.highlights, notes: state.notes,
+				bookmarks: state.bookmarks, page_annotations: state.pageAnnotations
+			} });
+		}
 		if (path === '/api/v1/me/settings') return route.fulfill({ json: { settings: state.settings } });
 		if (path === '/api/v1/sync/pull') {
 			const cursor = Number(url.searchParams.get('cursor') ?? 0);
@@ -121,7 +126,13 @@ async function setup(page: Page, format: 'pdf' | 'epub', initialHighlights: Row[
 async function bookFrame(page: Page): Promise<Frame> {
 	let frame: Frame | undefined;
 	await expect(async () => {
-		frame = page.frames().find((candidate) => candidate.url().startsWith('blob:'));
+		frame = undefined;
+		for (const candidate of page.frames().filter((item) => item.url().startsWith('blob:'))) {
+			if (await candidate.getByText('First section', { exact: true }).count()) {
+				frame = candidate;
+				break;
+			}
+		}
 		expect(frame).toBeDefined();
 		await expect(frame!.getByText('First section', { exact: true })).toBeVisible();
 	}).toPass({ timeout: 15_000 });

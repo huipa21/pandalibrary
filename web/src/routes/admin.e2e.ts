@@ -319,8 +319,8 @@ test('hides and unhides a book for a user', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Books hidden from user #5' })).toBeVisible();
 	await expect(page.getByRole('cell', { name: '30', exact: true })).toBeVisible();
 
-	await confirmInApp(page, () => page.getByLabel('Book ID').fill('41'));
-	await page.getByRole('button', { name: 'Hide book', exact: true }).click();
+	await page.getByLabel('Book ID').fill('41');
+	await confirmInApp(page, () => page.getByRole('button', { name: 'Hide book', exact: true }).click());
 	await expect(page.getByText('Book #41 is now hidden from user #5.')).toBeVisible();
 	await expect(page.getByRole('cell', { name: '41', exact: true })).toBeVisible();
 

@@ -54,6 +54,8 @@
 	let announcement = $state('');
 	let insertMode = $state<InsertType | null>(null);
 	let insertMenuOpen = $state(false);
+	// The wide and compact copies are both mounted, so they must not share one menu flag.
+	let compactInsertOpen = $state(false);
 	let offline = $state(false);
 	let readingMode = $state(false);
 	const tabs: readonly SidebarTab[] = untrack(() => controller.format === 'cbz'
@@ -304,15 +306,33 @@
 						onbackground={(id) => controller.applySettings(withBackground(controller.settings, id))} />
 					<RotateMenu onrotate={rotate} disabled={!engine} />
 				{/snippet}
-				{#snippet right()}
+				{#snippet compact()}
 					{#if !readingMode}
-						<InsertMenu bind:open={insertMenuOpen} disabled={!controller.ready || controller.busy} {offline}
+						<InsertMenu bind:open={compactInsertOpen} disabled={!controller.ready || controller.busy} {offline}
 							onselect={(type) => { insertMode = type; clearSelection(); }} />
 						{#if controller.format === 'cbz'}
-							<button class="pv4-button" aria-label={m['reader.annotations.add_page']()} title={m['reader.annotations.add_page']()}
+							<button type="button" role="menuitem" class="pv4-item" aria-label={m['reader.annotations.add_page']()}
 								disabled={!controller.ready || controller.busy} onclick={() => void controller.addHighlight(null)}>
 								<Icon name="highlighter" />
+								<span class="pv4-item-label">{m['reader.annotations.add_page']()}</span>
 							</button>
+						{/if}
+					{/if}
+					<ReaderModeButton mode={readingMode} ontoggle={toggleReadingMode} compact />
+				{/snippet}
+				{#snippet right()}
+					{#if !readingMode}
+						<span class="pv4-wide">
+							<InsertMenu bind:open={insertMenuOpen} disabled={!controller.ready || controller.busy} {offline}
+								onselect={(type) => { insertMode = type; clearSelection(); }} />
+						</span>
+						{#if controller.format === 'cbz'}
+							<span class="pv4-wide">
+								<button class="pv4-button" aria-label={m['reader.annotations.add_page']()} title={m['reader.annotations.add_page']()}
+									disabled={!controller.ready || controller.busy} onclick={() => void controller.addHighlight(null)}>
+									<Icon name="highlighter" />
+								</button>
+							</span>
 						{/if}
 					{/if}
 					<button class="pv4-button" data-testid="reflow-bookmark-toggle"
@@ -322,7 +342,7 @@
 						onpointerdown={(event) => event.preventDefault()} onclick={() => void toggleBookmark()}>
 						<Icon name="bookmark" />
 					</button>
-					<ReaderModeButton mode={readingMode} ontoggle={toggleReadingMode} />
+					<span class="pv4-wide"><ReaderModeButton mode={readingMode} ontoggle={toggleReadingMode} /></span>
 					<span class="reader-divider" aria-hidden="true"></span>
 					<ReaderCloseButton closing={controller.closing} onclose={() => controller.close()} />
 				{/snippet}

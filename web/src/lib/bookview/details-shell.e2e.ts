@@ -23,7 +23,7 @@ function makeBook(id: number) {
 		tags: [],
 		identifiers: [],
 		files: [{
-			id: id * 10, format: 'epub', size_bytes: 2048, original_filename: `Shell Book ${id}.epub`,
+			id: id * 10, format: 'epub', size_bytes: epubFixture().length, original_filename: `Shell Book ${id}.epub`,
 			created_at: '2026-11-07T00:00:00Z', download_url: `/api/v1/books/${id}/files/${id * 10}?v=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`
 		}],
 		field_sources: [],

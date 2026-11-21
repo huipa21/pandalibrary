@@ -755,7 +755,10 @@ test('EPUB shares PDF zoom, display and insertion menus on desktop and mobile', 
 
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expectReaderToolbarFits(page);
-	await expect(insert).toBeVisible();
+	await expect(insert).not.toBeVisible();
+	await page.getByRole('button', { name: 'More view options', exact: true }).press('ArrowDown');
+	await expect(page.getByRole('menuitem', { name: 'Insert text, drawing or image', exact: true })).toBeVisible();
+	await page.keyboard.press('Escape');
 	for (const label of ['Zoom', 'Page display', 'Format', 'Rotate']) {
 		await expect(page.getByRole('button', { name: label === 'Zoom' ? /^Zoom(?: |$)/ : label, exact: true })).not.toBeVisible();
 		await page.getByRole('button', { name: 'More view options', exact: true }).press('ArrowDown');
@@ -820,11 +823,14 @@ test('CBZ shares zoom, page display and insertion without exposing typography or
 	await page.keyboard.press('Escape');
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expectReaderToolbarFits(page);
-	await page.getByRole('button', { name: 'Insert text, drawing or image', exact: true }).click();
-	await expect(page.getByRole('menuitem')).toHaveText(['Text', 'Draw', 'Image']);
+	await page.getByRole('button', { name: 'More view options', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Insert text, drawing or image', exact: true }).click();
+	await expect(page.getByRole('menu', { name: 'Insert text, drawing or image' }).getByRole('menuitem')).toHaveText(['Text', 'Draw', 'Image']);
+	await page.keyboard.press('Escape');
 	await page.keyboard.press('Escape');
 	await page.getByRole('tab', { name: 'Annotations', exact: true }).click();
-	await page.getByRole('button', { name: 'Highlight current page', exact: true }).click();
+	await page.getByRole('button', { name: 'More view options', exact: true }).click();
+	await page.getByRole('menuitem', { name: 'Highlight current page', exact: true }).click();
 	await expect.poll(() => state.highlights.length).toBe(1);
 	await page.getByRole('button', { name: 'More view options', exact: true }).click();
 	await expect(page.getByRole('menuitem', { name: 'Size', exact: true })).toHaveCount(0);
@@ -850,9 +856,10 @@ test('Chinese EPUB header keeps localized view and Add menus usable on mobile', 
 	await page.goto('/read/21/31');
 	await expect(page.getByRole('button', { name: '下一页', exact: true })).toBeEnabled();
 	await expectReaderToolbarFits(page);
-	await page.getByRole('button', { name: '插入文字、绘图或图片', exact: true }).click();
-	await expect(page.getByRole('menuitem')).toHaveCount(3);
-	await expect(page.getByRole('menuitem')).toHaveText(['文字', '绘画', '图片']);
+	await page.getByRole('button', { name: '更多视图选项', exact: true }).click();
+	await page.getByRole('menuitem', { name: '插入文字、绘图或图片', exact: true }).click();
+	await expect(page.getByRole('menu', { name: '插入文字、绘图或图片' }).getByRole('menuitem')).toHaveText(['文字', '绘画', '图片']);
+	await page.keyboard.press('Escape');
 	await page.keyboard.press('Escape');
 	await page.getByRole('button', { name: '更多视图选项', exact: true }).click();
 	for (const label of ['缩放', '页面显示', '格式', '旋转']) {

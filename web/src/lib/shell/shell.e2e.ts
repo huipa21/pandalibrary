@@ -289,16 +289,17 @@ test('desktop sidebar lists HOME links, Library, and All Books across every libr
 	}
 	await expect(sidebar.getByRole('link', { name: 'Search', exact: true })).toHaveCount(0);
 
-	const shelves = sidebar.getByRole('region', { name: 'Library', exact: true });
-	await expect(shelves.getByRole('link', { name: /Weekend reads/ })).toHaveCount(0);
-	const shelfActions = shelves.getByRole('button', { name: 'Library actions' });
+	const libraries = sidebar.getByRole('region', { name: 'Libraries', exact: true });
+	const collections = sidebar.getByRole('region', { name: 'Collections', exact: true });
+	await expect(collections.getByRole('link', { name: /Weekend reads/ })).toHaveCount(0);
+	const shelfActions = libraries.getByRole('button', { name: 'Library actions' });
 	await expect(shelfActions).toBeVisible();
 	await shelfActions.click();
-	await expect(shelves.getByRole('menuitem', { name: 'New Library' })).toHaveCount(0);
-	await expect(shelves.getByRole('menuitem', { name: 'All Libraries' })).toBeVisible();
+	await expect(libraries.getByRole('menuitem', { name: 'New Library' })).toHaveCount(0);
+	await expect(libraries.getByRole('menuitem', { name: 'All Libraries' })).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(shelfActions).toBeFocused();
-	await expect(shelves.getByRole('link', { name: /Favorites/ })).toHaveCount(0);
+	await expect(collections.getByRole('link', { name: /Favorites/ })).toHaveCount(0);
 	await expect(page.locator('[data-slot="sidebar-footer"]')).toBeVisible();
 
 	await expect(page.getByRole('heading', { name: 'All Books', level: 1 })).toHaveClass('sr-only');

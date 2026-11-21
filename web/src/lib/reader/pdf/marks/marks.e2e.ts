@@ -141,7 +141,10 @@ test('copies the selection, keeps it, and is reachable by keyboard', async ({ pa
 	await page.keyboard.press('Tab');
 	await expect(selectionToolbar(page).getByRole('button', { name: 'Copy', exact: true })).toBeFocused();
 	await page.keyboard.press('ArrowRight');
+	await expect(selectionToolbar(page).getByRole('button', { name: 'Look up', exact: true })).toBeFocused();
+	await page.keyboard.press('ArrowRight');
 	await expect(selectionToolbar(page).getByRole('button', { name: 'Highlight', exact: true })).toBeFocused();
+	await page.keyboard.press('ArrowLeft');
 	await page.keyboard.press('ArrowLeft');
 	await page.keyboard.press('Enter');
 	await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('First PDF page text');

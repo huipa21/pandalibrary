@@ -81,6 +81,7 @@ test('filters and sorts with server cursors, then opens a hash-versioned downloa
 			{
 				id: 31,
 				format: 'epub',
+				original_filename: 'A Book.epub',
 				size_bytes: 4096,
 				download_url: '/api/v1/books/21/files/31?v=abc123'
 			}
@@ -148,7 +149,8 @@ test('filters and sorts with server cursors, then opens a hash-versioned downloa
 	await page.goto('/books/21');
 	await expect(page.getByRole('heading', { name: 'A Book' })).toBeVisible();
 	await page.getByRole('link', { name: 'Files', exact: true }).click();
-	await expect(page.getByRole('link', { name: 'Download' })).toHaveAttribute(
+	await page.getByRole('button', { name: 'Actions for A Book.epub', exact: true }).click();
+	await expect(page.getByRole('menuitem', { name: 'Download' })).toHaveAttribute(
 		'href',
 		'/api/v1/books/21/files/31?v=abc123'
 	);

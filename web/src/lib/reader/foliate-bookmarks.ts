@@ -20,7 +20,8 @@ export function firstVisibleLine(visible: Range): string {
 		if (visible.intersectsNode(node)) nodes.push(node);
 	}
 	const character = doc.createRange();
-	const vertical = doc.defaultView?.getComputedStyle(doc.documentElement).writingMode.startsWith('vertical');
+	const root = doc.documentElement;
+	const vertical = !!root && !!doc.defaultView?.getComputedStyle(root).writingMode.startsWith('vertical');
 	let line: number | undefined;
 	let text = '';
 	for (const node of nodes) {
