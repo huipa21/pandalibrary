@@ -303,7 +303,7 @@ test('a denied online file is revalidated and evicted rather than served from an
 	await download(page);
 	state.fileDenial = 403;
 	await page.goto('/read/21/31');
-	await expect(page.getByRole('alert')).toContainText('The reader request failed.');
+	await expect(page.getByText('The reader request failed. Please try again.')).toBeVisible();
 	expect(await databaseRows(page, 'files')).toEqual([]);
 	expect(await databaseRows(page, 'books')).toEqual([]);
 });

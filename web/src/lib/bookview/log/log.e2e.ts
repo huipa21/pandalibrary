@@ -252,7 +252,7 @@ test('does not insert an old optimistic row into a newly selected range', async 
 	await confirmInApp(page, () => first.click());
 	await page.getByRole('button', { name: 'Last 30 days' }).click();
 	await expect(page.getByText('Showing 25 of 27')).toBeVisible();
-	await expect(page.getByRole('alert')).toContainText('Please retry in its original range.');
+	await expect(page.getByRole('alert').filter({ hasText: 'Please retry in its original range.' })).toBeVisible();
 	await expect(page.getByRole('button', { name: label! })).toHaveCount(1);
 });
 

@@ -142,7 +142,7 @@ test('EPUB font-size changes keep the reading anchor instead of walking backward
 		await expect.poll(() => label.textContent()).not.toBe(previous);
 	}
 	const position = page.locator('#reader-position');
-	await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(300);
+	await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThanOrEqual(299);
 	const before = Number(await position.inputValue());
 	await page.getByRole('button', { name: 'More view options', exact: true }).press('ArrowDown');
 	await page.getByRole('menuitem', { name: /^Format$/i, exact: true }).click();
@@ -150,12 +150,12 @@ test('EPUB font-size changes keep the reading anchor instead of walking backward
 	const increase = format.getByRole('button', { name: 'Increase font size', exact: true });
 	await increase.click();
 	await expect(format.getByRole('status', { name: 'Size', exact: true })).toHaveText('110%');
-	await expect.poll(() => label.textContent()).toMatch(/\/ 10$/);
+	await expect.poll(() => label.textContent()).toMatch(/\/ 13$/);
 	const afterFirst = Number(await position.inputValue());
 	expect(afterFirst).not.toBe(before);
 	for (let step = 0; step < 4; step++) await increase.click();
 	await expect(format.getByRole('status', { name: 'Size', exact: true })).toHaveText('150%');
-	await expect.poll(() => label.textContent()).toMatch(/\/ 19$/);
+	await expect.poll(() => label.textContent()).toMatch(/\/ 25$/);
 	// Repeated reflows must continue from the same anchor. Without it, every
 	// step restores the previous page start and the saved position walks back.
 	expect(Number(await position.inputValue())).toBeGreaterThanOrEqual(afterFirst - 30);

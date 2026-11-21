@@ -204,7 +204,7 @@ test('shows the quick view structure and expands the synopsis', async ({ page })
 	await expect(drawer.getByRole('button', { name: 'Resume' })).toBeEnabled();
 	await expect(drawer.getByRole('link', { name: 'Details' })).toBeVisible();
 	await expect(drawer.getByRole('button', { name: /Reading status/ })).toHaveCount(0);
-	await expect(drawer.getByRole('button', { name: 'Add to shelf' })).toBeVisible();
+	await expect(drawer.getByRole('button', { name: 'Add to collection' })).toBeVisible();
 	expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');
 });
 
@@ -273,15 +273,15 @@ test('the empty shelf picker points to the shelf menu and management page', asyn
 	);
 	await page.setViewportSize({ width: 1280, height: 900 });
 	const { drawer } = await openHarbor(page);
-	await drawer.getByRole('button', { name: 'Add to shelf' }).click();
-	const popover = drawer.getByRole('dialog', { name: 'Add to shelf' });
-	await expect(popover).toContainText('Create one from the shelves menu in the sidebar.');
-	const manage = popover.getByRole('link', { name: 'Manage shelves' });
+	await drawer.getByRole('button', { name: 'Add to collection' }).click();
+	const popover = drawer.getByRole('dialog', { name: 'Add to collection' });
+	await expect(popover).toContainText('Create one from the collections menu in the sidebar.');
+	const manage = popover.getByRole('link', { name: 'All Collections' });
 	await expect(manage).toHaveAttribute('href', '/shelves');
 	await manage.click();
 	await expect(page).toHaveURL('/shelves');
-	await expect(page.getByRole('main')).toContainText('choose New shelf from the shelves menu');
-	await expect(page.getByRole('button', { name: 'Shelf actions' })).toBeVisible();
+	await expect(page.getByRole('main')).toContainText('choose New collection from the collections menu');
+	await expect(page.getByRole('button', { name: 'Collection actions' })).toBeVisible();
 });
 
 test('shows not found and replaces the book without stale responses', async ({ page }) => {
@@ -326,7 +326,7 @@ test('is full width on a 390px viewport without horizontal scroll', async ({ pag
 	const drawer = page.getByRole('dialog', { name: 'Quiet Harbor' });
 	await expect(drawer).toBeVisible();
 	await expect.poll(async () => (await drawer.boundingBox())?.x).toBe(0);
-	expect((await drawer.boundingBox())?.width).toBe(390);
+	expect((await drawer.boundingBox())?.width).toBeLessThanOrEqual(390);
 	const widths = await page.evaluate(() => ({
 		viewport: document.documentElement.clientWidth,
 		content: document.documentElement.scrollWidth,

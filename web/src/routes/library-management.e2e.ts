@@ -89,11 +89,11 @@ async function mockManagement(page: Page, role = 'admin') {
 		failDelete: (value: boolean) => { deleteFails = value; } };
 }
 
-async function expectSettingsLayout(container: ReturnType<Page['locator']>, heading: string) {
-	await expect(container).toContainClass('card space-y-4 p-6');
+async function expectSettingsLayout(container: ReturnType<Page['locator']>, heading: string, level = 1, panel = 'space-y-4 rounded-lg border border-slate-200 bg-white p-4 sm:p-6') {
+	await expect(container).toContainClass(panel);
 	const header = container.locator(':scope > header');
 	await expect(header).toContainClass('flex items-center justify-between gap-4');
-	await expect(header.getByRole('heading', { name: heading, level: 1, exact: true })).toContainClass('text-xl font-semibold');
+	await expect(header.getByRole('heading', { name: heading, level, exact: true })).toContainClass('text-xl font-semibold');
 	const back = header.getByRole('button', { name: 'Back', exact: true }).or(header.getByRole('link', { name: 'Back', exact: true }));
 	await expect(back).toContainClass('shell-icon-button');
 	await expect(back).toHaveAttribute('title', 'Back');
@@ -109,12 +109,12 @@ test('New Library is a keyboard-accessible modal with creation fields and a visi
 	await page.keyboard.press('ArrowDown');
 	await page.keyboard.press('Enter');
 	const dialog = page.getByRole('dialog', { name: 'New Library', exact: true });
-	await expectSettingsLayout(dialog.locator(':scope > section'), 'New Library');
-	await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
+	await expect(dialog).toContainClass('fixed inset-0 m-auto');
+	await expect(dialog.getByRole('heading', { name: 'New Library', level: 2, exact: true })).toBeVisible();
+	await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
 	await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused();
 	await expect(page).toHaveURL('/libraries');
 	await page.keyboard.press('Shift+Tab');
-	await expect(dialog.getByRole('button', { name: 'Back', exact: true })).toBeFocused();
 	await page.keyboard.press('Tab');
 	await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused();
 	await dialog.getByLabel('Name', { exact: true }).fill('Science');
@@ -159,7 +159,7 @@ test('library settings save fields and access search narrows paginated, scrollab
 	const server = await mockManagement(page);
 	await page.goto('/libraries/1');
 	const settings = page.getByRole('region', { name: 'Library settings', exact: true });
-	await expectSettingsLayout(settings, 'Library settings');
+	await expectSettingsLayout(settings, 'Library settings', 1, 'card space-y-4 p-6');
 	await expect(settings.getByRole('link', { name: 'Back', exact: true })).toHaveAttribute('href', '/libraries');
 	await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toHaveCount(1);
 	await expect(settings.getByLabel('Name', { exact: true })).toHaveValue('Fiction');
@@ -307,7 +307,7 @@ test('creation links open the library modal and dismiss without retaining the cr
 	await page.goto('/libraries?create=1');
 	const dialog = page.getByRole('dialog', { name: 'New Library', exact: true });
 	await expect(dialog.getByLabel('Name', { exact: true })).toBeFocused();
-	await dialog.getByRole('button', { name: 'Back', exact: true }).click();
+	await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 	await expect(dialog).toHaveCount(0);
 	await expect(page).toHaveURL('/libraries');
 	await page.reload();

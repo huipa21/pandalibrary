@@ -483,7 +483,7 @@ test('Favorites toggles once while busy, persists, and synchronizes Home and she
 	await expect(add).toBeEnabled();
 	await expect(add).toHaveAttribute('aria-pressed', 'false');
 	const home = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('region', { name: 'Home' });
-	const count = home.getByRole('link', { name: /^Favorites/ }).locator('[aria-hidden="true"]');
+	const count = home.getByRole('link', { name: /^Favorites/ }).locator('span[aria-hidden="true"]');
 	await expect(count).toHaveText('0');
 	const pending = Promise.withResolvers<void>();
 	state.shelfWriteWait = pending.promise;
@@ -786,7 +786,10 @@ test('shows a borderless hero status without duplicate format chips or review li
 			const stars = await hero.getByRole('radiogroup').boundingBox();
 			const statusIcon = await trigger.locator('[data-status-icon]').boundingBox();
 			if (!stars || !statusIcon) throw new Error('Missing hero rating or status icon.');
-			expect(Math.abs(stars.y + stars.height / 2 - statusIcon.y - statusIcon.height / 2)).toBeLessThanOrEqual(2);
+			// Below 768px the hero row wraps on purpose, so only wider viewports must stay on one line.
+			if (width >= 768) {
+				expect(Math.abs(stars.y + stars.height / 2 - statusIcon.y - statusIcon.height / 2)).toBeLessThanOrEqual(2);
+			}
 			const screenshot = testInfo.outputPath(`bd4-hero-${theme}-${width}.png`);
 			await hero.screenshot({ path: screenshot });
 			await testInfo.attach(`Hero ${theme} ${width}px`, { path: screenshot, contentType: 'image/png' });
@@ -1085,7 +1088,7 @@ test('keeps metadata sources but hides the admin edit control when offline', asy
 	await expect(page.getByText('Reading details are read-only while offline.')).toBeVisible();
 	await expect(page.getByRole('region', { name: 'Reviews', exact: true })).toContainText('Reviews are available when you\'re online.');
 	await expect(page.getByRole('button', { name: 'Write a review' })).toHaveCount(0);
-	await expect(page.getByRole('button', { name: 'Add to shelf' })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Add to collection' })).toHaveCount(0);
 	await expect(page.getByRole('button', { name: /^Remove from / })).toHaveCount(0);
 	const hero = page.locator('header').filter({ has: page.getByRole('heading', { name: book.title, exact: true }) });
 	const status = hero.getByLabel('Unread', { exact: true });

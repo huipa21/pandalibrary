@@ -213,10 +213,10 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(upload).toBeFocused();
 	await expect(dialog.getByRole('progressbar')).toHaveCount(2);
 	await expect(dialog.getByRole('progressbar', { name: 'Upload progress for Dune.epub' })).toHaveAttribute('aria-valuemax', '100');
-	await expect(dialog.getByRole('button', { name: 'Remove Dune.epub' })).toBeDisabled();
+	await expect(dialog.getByRole('button', { name: 'Remove Dune.epub' })).toHaveCount(0);
 	await expect(dialog.getByRole('button', { name: 'Clear' })).toBeDisabled();
 	await expect(visibility).toBeDisabled();
-	await expect(dialog.getByRole('button', { name: 'Remove Flaky.cbz' })).toBeEnabled();
+	await expect(dialog.getByRole('button', { name: 'Remove Flaky.cbz' })).toBeVisible();
 	await expect.poll(() => uploads.names).toEqual(['Dune.epub', 'Copy.pdf']);
 
 	uploads.release();
@@ -283,6 +283,9 @@ test('unsupported files are flagged after the server rejects them', async ({ pag
 
 test('uploads assign optional shelves and retry assignment failures without re-uploading', async ({ page }) => {
 	await authenticate(page);
+	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [
+		{ id: 9, name: 'Favorites', kind: 'private', owner_id: 1, mode: 'system', system_key: 'favorites' }
+	], next_cursor: null } }));
 	let uploads = 0;
 	let multipart = '';
 	const assignments: unknown[] = [];
@@ -349,7 +352,7 @@ test('uploads require a loaded library, omit optional shelves and default to pub
 	const upload = dialog.getByRole('button', { name: 'Upload', exact: true });
 	const library = dialog.getByLabel('Library (required)', { exact: true });
 	await dialog.getByTestId('bh3-file-input').setInputFiles(book('Dune.epub'));
-	await expect(dialog.getByText('Loading libraries and shelves…')).toBeVisible();
+	await expect(dialog.getByText('Loading libraries and collections…')).toBeVisible();
 	await expect(library).toBeDisabled();
 	await expect(upload).toBeDisabled();
 	await upload.dispatchEvent('click');

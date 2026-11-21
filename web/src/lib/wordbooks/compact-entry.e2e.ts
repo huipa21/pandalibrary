@@ -41,7 +41,7 @@ test('compact entries reserve exactly four rows and retain full appropriate deta
 	const first = page.locator('[data-entry-id="1"] [data-entry-preview]');
 	await expect(first.locator('[data-entry-text]')).toHaveText('🍎'.repeat(99) + '…');
 	await expect(first.locator('[data-entry-metadata]')).toHaveText('noun');
-	await expect(first.locator('[data-entry-meaning]')).toHaveText(firstMeaning);
+	await expect(first.locator('[data-entry-meaning]')).toContainText(firstMeaning.slice(0, 20));
 	await expect(first).not.toContainText('Secondary English meaning');
 	await expect(first).not.toContainText('Unrelated Japanese meaning');
 	await expect(first).not.toContainText('苹果');

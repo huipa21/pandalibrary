@@ -104,7 +104,7 @@ test('All Collections covers open settings while sidebar links still browse book
 	await expect(main.getByText('Manage book membership', { exact: true })).toHaveCount(0);
 	await expect(main.getByRole('heading', { name: 'Add books', exact: true })).toHaveCount(0);
 	await expect(main.getByRole('heading', { name: 'Automatic rules', exact: true })).toBeVisible();
-	await expect(main.getByRole('button', { name: 'Display settings', exact: true })).toHaveCount(0);
+	await expect(main.getByRole('button', { name: 'Cover size', exact: true })).toHaveCount(0);
 	await expect(main.getByRole('combobox', { name: 'Sort', exact: true })).toHaveCount(0);
 	await expect(main.getByLabel('Find a book to add')).toHaveCount(0);
 	expect(server.bookURLs).toHaveLength(0);
@@ -114,7 +114,7 @@ test('All Collections covers open settings while sidebar links still browse book
 	await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Across libraries 0' }).click();
 	await expect(page).toHaveURL('/shelves/7');
 	await expect(main.getByLabel('Name', { exact: true })).toHaveCount(0);
-	await expect(main.getByRole('button', { name: 'Display settings', exact: true })).toBeVisible();
+	await expect(main.getByRole('button', { name: 'Cover size', exact: true })).toBeVisible();
 	await expect.poll(() => server.bookURLs.length).toBeGreaterThan(0);
 });
 
@@ -267,14 +267,14 @@ test('built-in collections have separately persisted display settings', async ({
 	await mockCollection(page);
 	const main = page.getByRole('main');
 	await page.goto('/shelves/system/favorites');
-	await main.getByRole('button', { name: 'Display settings', exact: true }).click();
+	await main.getByRole('button', { name: 'Cover size', exact: true }).click();
 	await main.getByRole('slider').first().focus();
 	await page.keyboard.press('End');
 	await expect(main.locator('output').first()).toHaveText('280px');
 	await page.reload();
-	await main.getByRole('button', { name: 'Display settings', exact: true }).click();
+	await main.getByRole('button', { name: 'Cover size', exact: true }).click();
 	await expect(main.locator('output').first()).toHaveText('280px');
 	await page.goto('/shelves/system/unshelved');
-	await main.getByRole('button', { name: 'Display settings', exact: true }).click();
+	await main.getByRole('button', { name: 'Cover size', exact: true }).click();
 	await expect(main.locator('output').first()).toHaveText('208px');
 });

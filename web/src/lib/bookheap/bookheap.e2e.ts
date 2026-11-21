@@ -12,6 +12,7 @@ async function authenticate(page: Page, role = 'admin') {
 		route.fulfill({ json: { user: { id: 1, username: 'admin', display_name: 'Admin', role, locale: 'en' } } })
 	);
 	await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: { items: [
+		shelf(12, { name: 'Favorites', mode: 'system', system_key: 'favorites' }),
 		shelf(21, { name: 'Classics', kind: 'shared', owner_id: null }),
 		shelf(22, { name: 'Smart', kind: 'shared', owner_id: null, mode: 'automatic' }),
 		shelf(23, { name: 'Not mine', kind: 'private', owner_id: 2 })
@@ -174,7 +175,6 @@ test('Bookheap, All Books and shelf counters follow imports hidden by a ready fi
 	imported = true;
 	heap.finishImports();
 	await expect(page.getByTestId('bh4-nav-count')).toHaveAttribute('title', 'Total Bookheap items: 1', { timeout: 10_000 });
-	await expect(page.getByTestId('all-books-count').locator('[aria-hidden="true"]')).toHaveText('1');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	await expect(sidebar.getByRole('link', { name: /^Classics/ }).locator('.shell-count')).toHaveText('1');
 });
@@ -193,7 +193,7 @@ test('administrators see Bookheap in HOME, an empty heap, and a scan that refres
 
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
 	const home = sidebar.getByRole('region', { name: 'Home' }).getByRole('link');
-	await expect(home).toHaveText(['Dashboard', 'All Books', /^Bookheap/, /^Annotations/]);
+	await expect(home).toHaveText([/Dashboard/, /Bookheap/, /Favorites/, /Annotations/]);
 	await expect(sidebar.getByRole('link', { name: /^Bookheap/ })).toHaveAttribute('aria-current', 'page');
 	await expect(page).toHaveTitle(/^Bookheap ·/);
 	await expect(page.getByRole('heading', { level: 1, name: 'Bookheap' })).toBeVisible();
@@ -250,7 +250,7 @@ for (const view of ['grid', 'list'] as const) {
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByTestId('bh4-assign-count')).toHaveText('Files to assign: 51');
 		await expect(dialog.getByLabel('Library')).toBeFocused();
-		await expect(dialog.getByRole('checkbox')).toHaveCount(2);
+		await expect(dialog.getByRole('checkbox')).toHaveCount(3);
 		await expect(dialog.getByLabel('Favorites')).toBeVisible();
 		await dialog.getByRole('button', { name: 'Assign (51)' }).click();
 		await expect(dialog.getByText('Choose a library.')).toBeVisible();
@@ -477,9 +477,9 @@ test('storage failures are reported without blocking view changes', async ({ pag
 		};
 	});
 	await page.goto('/bookheap');
-	await expect(page.getByRole('alert')).toContainText('Could not load your saved view');
+	await expect(page.getByRole('main').getByRole('alert')).toContainText('Could not load your saved view');
 	await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
-	await expect(page.getByRole('alert')).toContainText('Could not save your view');
+	await expect(page.getByRole('main').getByRole('alert')).toContainText('Could not save your view');
 	await expect(page.getByRole('button', { name: 'Switch to grid view', exact: true })).toBeVisible();
 	await expect(page.getByTestId('bh4-row')).toHaveCount(1);
 	await expect(page.locator('[data-heap-tile]')).toHaveCount(0);
@@ -498,13 +498,13 @@ test('an unrecognized saved view uses grid and load errors remain retryable in e
 	});
 	await page.goto('/bookheap');
 	await expect(page.getByRole('button', { name: 'Switch to list view', exact: true })).toBeVisible();
-	await expect(page.getByRole('alert')).toBeVisible();
+	await expect(page.getByRole('main').getByRole('alert')).toBeVisible();
 	await page.getByRole('button', { name: 'Switch to list view', exact: true }).click();
-	await expect(page.getByRole('alert')).toBeVisible();
+	await expect(page.getByRole('main').getByRole('alert')).toBeVisible();
 	unavailable = false;
-	await page.getByRole('alert').getByRole('button', { name: 'Try again', exact: true }).click();
+	await page.getByRole('main').getByRole('alert').getByRole('button', { name: 'Try again', exact: true }).click();
 	await expect(page.getByTestId('bh4-row')).toHaveCount(1);
-	await expect(page.getByRole('alert')).toBeHidden();
+	await expect(page.getByRole('main').getByRole('alert')).toBeHidden();
 	await page.getByRole('button', { name: 'Switch to grid view', exact: true }).click();
 	await expect(page.locator('[data-heap-tile]')).toHaveCount(1);
 });
@@ -518,9 +518,9 @@ test('readers do not see Bookheap and are told the page is for administrators', 
 	});
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto('/bookheap');
-	await expect(page.getByRole('alert')).toContainText(/administrator/i);
+	await expect(page.getByRole('main').getByRole('alert')).toContainText(/administrator/i);
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	await expect(sidebar.getByRole('region', { name: 'Home' }).getByRole('link')).toHaveText(['Dashboard', 'All Books', /^Annotations/]);
+	await expect(sidebar.getByRole('region', { name: 'Home' }).getByRole('link')).toHaveText([/Dashboard/, /Favorites/, /Annotations/]);
 	await expect(page.getByTestId('bh4-row')).toHaveCount(0);
 	expect(requests).toEqual([]);
 });

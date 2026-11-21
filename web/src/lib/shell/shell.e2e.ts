@@ -113,8 +113,7 @@ test('Collections is a non-linked sidebar heading with the same font size as oth
 		[
 			'sidebar-home-heading',
 			'sidebar-libraries-heading',
-			'sidebar-shelves-heading',
-			'sidebar-browse-heading'
+			'sidebar-shelves-heading'
 		].map((id) => {
 			const heading = document.getElementById(id);
 			if (!heading) throw new Error(`Missing sidebar heading: ${id}`);
@@ -257,13 +256,13 @@ test('sidebar navigation keeps shell geometry stable between scrolling and non-s
 		const shortPage = await geometry();
 
 		const navigation = page.getByRole('navigation', { name: 'Main navigation' });
-		await navigation.getByRole('link', { name: 'Authors', exact: true }).click();
+		await page.goto('/authors');
 		await expect(page.getByRole('main').getByRole('link', { name: 'Writer 40', exact: true })).toBeAttached();
 		await expect.poll(scrolls).toBe(true);
 		expect(await geometry()).toEqual(shortPage);
 		await expectNoHorizontalOverflow(page);
 
-		await navigation.getByRole('link', { name: 'All Books' }).click();
+		await page.goto('/books');
 		await expect(page.getByTitle('A Book', { exact: true })).toBeVisible();
 		await expect.poll(scrolls).toBe(false);
 		expect(await geometry()).toEqual(shortPage);
@@ -280,13 +279,12 @@ test('desktop sidebar lists HOME links, Library, and All Books across every libr
 	await expect(sidebar).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeHidden();
 	const home = sidebar.getByRole('region', { name: 'Home' }).getByRole('link');
-	await expect(home).toHaveText(['Dashboard', 'All Books', /Favorites/, 'Annotations']);
+	await expect(home).toHaveText([/Dashboard/, /Favorites/, /Annotations/]);
 	await expect(home.filter({ hasText: 'Favorites' })).toHaveAttribute('href', '/shelves/system/favorites');
 	await expect(sidebar.locator('a[href="/bookmarks"]')).toHaveCount(0);
-	await expect(sidebar.getByRole('link', { name: 'All Books' })).toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0);
-	for (const name of ['Library', 'Authors', 'Series', 'Tags', 'Read', 'Stats']) {
+	for (const name of ['Books', 'Reading', 'History']) {
 		await expect(sidebar.getByRole('link', { name, exact: true })).toBeVisible();
 	}
 	await expect(sidebar.getByRole('link', { name: 'Search', exact: true })).toHaveCount(0);
@@ -431,10 +429,9 @@ test('mobile drawer toggles by keyboard, traps focus, closes on Escape and navig
 	await expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
 	await toggle.click();
-	await page.getByRole('dialog', { name: 'Sidebar' }).getByRole('link', { name: 'All Books' }).click();
-	await expect(page).toHaveURL('/books');
+	await page.getByRole('dialog', { name: 'Sidebar' }).getByRole('link', { name: 'Dashboard' }).click();
+	await expect(page).toHaveURL('/');
 	await expect(page.getByRole('dialog', { name: 'Sidebar' })).toBeHidden();
-	await expect(page.getByTitle('A Book', { exact: true })).toBeVisible();
 	await expectNoHorizontalOverflow(page);
 });
 
@@ -711,7 +708,7 @@ test('header brand uses the favicon and weight feedback without shifting', async
 		await expect(logo).toHaveCSS('transform', 'matrix(1.06, 0, 0, 1.06, 0, 0)');
 		await expect(brand).toHaveCSS('outline-style', 'solid');
 		await expect(brand).toHaveCSS('outline-width', '2px');
-		await expect(brand).toHaveCSS('outline-color', 'rgb(52, 211, 153)');
+		await expect(brand).toHaveCSS('outline-color', theme.active);
 		await expect(brand).toHaveCSS('outline-offset', '2px');
 		expect(await width()).toBe(originalWidth);
 	}

@@ -168,7 +168,7 @@ test('offline chips are read-only and the factory reloads on book changes', asyn
 	await expect(section.getByRole('link', { name: 'Owned shelf', exact: true })).toBeVisible();
 	await expect(section.getByRole('button', { name: /^Remove manual membership/ })).toHaveCount(0);
 	await section.getByRole('button', { name: 'Switch shelf book' }).click();
-	await expect(section).toContainText('Not on any shelf');
+	await expect(section).toContainText('Not in any collection');
 	await expect(section.locator('li[data-shelf-id]')).toHaveCount(0);
 });
 
@@ -190,7 +190,7 @@ test('removing the final chip focuses the label and shows the empty state', asyn
 	await expect(section.locator('li[data-shelf-id]')).toHaveCount(1);
 	await section.getByRole('link', { name: 'Owned shelf', exact: true }).hover();
 	await confirmInApp(page, () => section.getByRole('button', { name: 'Remove manual membership in Owned shelf', exact: true }).click());
-	await expect(section).toContainText('Not on any shelf');
+	await expect(section).toContainText('Not in any collection');
 	await expect(section.locator('p[tabindex="-1"]')).toBeFocused();
 });
 
@@ -210,7 +210,7 @@ test('downward picker is clamped near the viewport edge, including after resize'
 		element.style.display = 'flex';
 		element.style.justifyContent = 'flex-end';
 	});
-	await section.getByRole('button', { name: 'Add to shelf', exact: true }).click();
+	await section.getByRole('button', { name: 'Add to collection', exact: true }).click();
 	const dialog = section.getByRole('dialog');
 	await expect(dialog.getByRole('button', { name: /New shelf/ })).toBeVisible();
 	for (const width of [620, 400, 800]) {

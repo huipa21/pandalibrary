@@ -75,7 +75,7 @@ test('menu destinations keep accessible titles without repeated visible introduc
 		{ path: '/books', heading: 'All Books', description: 'Every book you can access, across all of your libraries.' },
 		{ path: '/bookheap', heading: 'Bookheap', description: 'Files waiting to be added to a library. Scan the server folder or upload files, then assign them to a library and shelves.' },
 		{ path: '/notes', heading: 'Annotations', description: 'Browse your reviews, comments and reader annotations.' },
-		{ path: '/shelves', heading: 'Collections', description: 'Organize books on your private shelves and browse shared shelves.' },
+		{ path: '/shelves', heading: 'All Collections', description: 'Organize books on your private shelves and browse shared shelves.' },
 		{ path: '/shelves/11', heading: 'Weekend reads' },
 		{ path: '/shelves/system/unshelved', heading: 'Uncollected' },
 		{ path: '/shelves/system/favorites', heading: 'Favorites' },
@@ -93,14 +93,17 @@ test('menu destinations keep accessible titles without repeated visible introduc
 		await page.goto(destination.path);
 		const main = page.getByRole('main');
 		const heading = main.getByRole('heading', { name: destination.heading, level: 1, exact: true });
-		if (destination.path === '/libraries') await expect(heading).toBeVisible();
+		if (destination.path === '/libraries' || destination.path === '/shelves') await expect(heading).toBeVisible();
 		else await expect(heading).toHaveClass('sr-only');
 		if (destination.description) await expect(main.getByText(destination.description, { exact: true })).toHaveCount(0);
 		if (destination.path === '/settings') {
 			await page.getByRole('button', { name: 'Account menu', exact: true }).click();
 			await expect(page.getByRole('menuitem', { name: 'Profile', exact: true }))
 				.toHaveAttribute('aria-current', 'page');
-		} else if (['/', '/bookheap', '/notes', '/shelves', '/shelves/11', '/shelves/system/favorites'].includes(destination.path)) {
+		} else if (destination.path === '/shelves') {
+			await expect(page.getByRole('navigation', { name: 'Main navigation' })
+				.getByRole('heading', { name: 'Collections', exact: true })).toBeVisible();
+		} else if (['/', '/bookheap', '/notes', '/shelves/11', '/shelves/system/favorites'].includes(destination.path)) {
 			await expect(page.getByRole('navigation', { name: 'Main navigation' }).locator(`a[href="${destination.path}"]`))
 				.toHaveAttribute('aria-current', 'page');
 		} else {
@@ -141,7 +144,7 @@ async function expectGreenFocus(control: Locator) {
 	const style = await control.evaluate((element) => {
 		const computed = getComputedStyle(element);
 		const probe = document.createElement('span');
-		probe.style.color = 'var(--color-shell-accent)';
+		probe.style.color = 'var(--shell-active)';
 		element.after(probe);
 		const green = getComputedStyle(probe).color;
 		probe.remove();

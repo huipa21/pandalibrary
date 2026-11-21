@@ -198,7 +198,7 @@ for (const width of [1440, 360]) {
 		state.failPushes(false);
 		await notifications.getByRole('button', { name: 'Retry unsaved changes' }).click();
 		await expect(notifications.getByRole('alert')).toHaveCount(0);
-		await expect(notifications).toContainText('Bookmark saved.');
+		await expect(notifications).toContainText('Saved.');
 		await expect(notifications).not.toContainText('waiting to sync');
 		expect(state.pushes.filter((mutation) => mutation.entity === 'bookmarks')).toHaveLength(1);
 	});
@@ -213,7 +213,7 @@ test('EPUB bookmark rejection remains an accessible error instead of a queued su
 	await toggle.click();
 	await expect(page.locator('.reader-notifications').getByRole('alert')).toContainText('A change could not be saved.');
 	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-	await expect(page.locator('.reader-notifications')).not.toContainText('Bookmark saved.');
+	await expect(page.locator('.reader-notifications')).not.toContainText('Saved.');
 	await page.getByRole('button', { name: 'Reader sync status' }).click();
 	await expect(page.locator('#reader-sync-status')).toContainText('Some changes were rejected or conflicted.');
 	await expect(page.locator('#reader-sync-status').getByRole('link', { name: 'Review changes' })).toBeVisible();
