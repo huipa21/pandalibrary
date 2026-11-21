@@ -109,7 +109,7 @@ const selectionToolbar = (page: Page) => page.getByRole('toolbar', { name: 'Sele
 const markToolbar = (page: Page) => page.getByRole('dialog', { name: 'Mark actions', exact: true });
 const highlightPushes = (state: { pushes: Push[] }) => state.pushes.filter((row) => row.entity === 'highlights' && row.op === 'upsert');
 
-test('the toolbar appears next to a mouse selection and stays inside a 360 px viewport', async ({ page }) => {
+test('the toolbar docks to the bottom of a 360 px viewport for a mouse selection', async ({ page }) => {
 	await page.setViewportSize({ width: 360, height: 740 });
 	await setup(page, { settings: { pdfZoom: 'page-width' } });
 	const span = page.locator('.reader-pdf-text span').filter({ hasText: 'First PDF page text' }).first();
@@ -123,7 +123,9 @@ test('the toolbar appears next to a mouse selection and stays inside a 360 px vi
 	const bar = (await toolbar.boundingBox())!;
 	expect(bar.x).toBeGreaterThanOrEqual(0);
 	expect(bar.x + bar.width).toBeLessThanOrEqual(360);
-	expect(Math.min(Math.abs(bar.y + bar.height - box.y), Math.abs(bar.y - box.y - box.height))).toBeLessThan(24);
+	// Narrow screens dock the toolbar to the bottom edge instead of floating above the selection.
+	expect(740 - (bar.y + bar.height)).toBeLessThanOrEqual(16);
+	expect(bar.y).toBeGreaterThan(box.y + box.height);
 	for (const name of ['Copy', 'Highlight', 'Highlight colors', 'Underline', 'Strikeout', 'Line colors', 'Comment', 'Bookmark']) {
 		await expect(toolbar.getByRole('button', { name, exact: true })).toBeVisible();
 	}
@@ -140,12 +142,12 @@ test('copies the selection, keeps it, and is reachable by keyboard', async ({ pa
 	await page.locator('#reader-surface').focus();
 	await page.keyboard.press('Tab');
 	await expect(selectionToolbar(page).getByRole('button', { name: 'Copy', exact: true })).toBeFocused();
-	await page.keyboard.press('ArrowRight');
-	await expect(selectionToolbar(page).getByRole('button', { name: 'Look up', exact: true })).toBeFocused();
-	await page.keyboard.press('ArrowRight');
-	await expect(selectionToolbar(page).getByRole('button', { name: 'Highlight', exact: true })).toBeFocused();
-	await page.keyboard.press('ArrowLeft');
-	await page.keyboard.press('ArrowLeft');
+	for (const name of ['Look up', 'Add to wordbook', 'Highlight']) {
+		await page.keyboard.press('ArrowRight');
+		await expect(selectionToolbar(page).getByRole('button', { name, exact: true })).toBeFocused();
+	}
+	for (let step = 0; step < 3; step += 1) await page.keyboard.press('ArrowLeft');
+	await expect(selectionToolbar(page).getByRole('button', { name: 'Copy', exact: true })).toBeFocused();
 	await page.keyboard.press('Enter');
 	await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('First PDF page text');
 	await expect.poll(() => page.evaluate(() => document.getSelection()?.toString())).toBe('First PDF page text');
