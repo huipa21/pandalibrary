@@ -145,8 +145,11 @@ test('saved view settings restore and Hand/Insert tools follow shortcuts', async
 
 	const insert = page.getByRole('button', { name: 'Insert text, drawing or image' });
 	await insert.click();
+	await expect(page.getByRole('menu', { name: 'Insert text, drawing or image' })).toBeVisible();
+	await expect(surface).toHaveAttribute('data-tool', 'hand');
+	await page.getByRole('menuitem', { name: 'Draw', exact: true }).click();
 	await expect(surface).toHaveAttribute('data-tool', 'insert');
-	await expect(insert).toHaveAttribute('aria-pressed', 'true');
+	await expect(insert).toHaveAttribute('aria-expanded', 'false');
 	await page.keyboard.press('Escape');
 	await expect(surface).toHaveAttribute('data-tool', 'hand');
 

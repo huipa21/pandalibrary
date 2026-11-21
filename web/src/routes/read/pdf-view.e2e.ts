@@ -160,10 +160,18 @@ test('keys, edge paging lockout, tools, OCR preference and editable/menu guards'
 	await surface.dispatchEvent('wheel', { deltaY: 100 });
 	await expect(counter).toHaveValue('2');
 	await surface.focus();
-	for (const [key, expected] of [['h', 'hand'], ['i', 'insert'], ['Escape', 'hand'], ['v', 'select']]) {
-		await page.keyboard.press(key);
-		await expect(surface).toHaveAttribute('data-tool', expected);
-	}
+	await page.keyboard.press('h');
+	await expect(surface).toHaveAttribute('data-tool', 'hand');
+	const insertMenu = page.getByRole('menu', { name: 'Insert text, drawing or image' });
+	await page.keyboard.press('i');
+	await expect(insertMenu).toBeVisible();
+	await expect(surface).toHaveAttribute('data-tool', 'hand');
+	await page.keyboard.press('Escape');
+	await expect(insertMenu).toHaveCount(0);
+	await expect(surface).toHaveAttribute('data-tool', 'hand');
+	await surface.focus();
+	await page.keyboard.press('v');
+	await expect(surface).toHaveAttribute('data-tool', 'select');
 	await counter.focus();
 	await page.keyboard.press('h');
 	await expect(surface).toHaveAttribute('data-tool', 'select');

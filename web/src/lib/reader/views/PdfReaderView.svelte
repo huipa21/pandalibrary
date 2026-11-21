@@ -231,6 +231,11 @@
 		if (event.defaultPrevented || !engine) return;
 		if (event.target instanceof Element && event.target.closest('.pv-sidebar')) return;
 		const menuOpen = !!document.querySelector('[role="menu"], #reader-sync-status');
+		if (event.key === 'Escape' && insertMenuOpen) {
+			event.preventDefault();
+			insertMenuOpen = false;
+			return;
+		}
 		if (event.target instanceof Element && event.target.closest('button, a, [role="dialog"]') && event.key !== 'Escape') return;
 		const action = viewKey(event, editableTarget(event.target), menuOpen);
 		if (!action) return;

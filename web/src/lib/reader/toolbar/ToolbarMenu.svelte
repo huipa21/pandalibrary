@@ -124,8 +124,9 @@
 </script>
 
 <div bind:this={root} role="group" aria-label={label} onfocusout={(event) => {
-	if (!focusDismissAllowed()) return;
-	if (event.relatedTarget instanceof Node && !root?.contains(event.relatedTarget)) close();
+	if (!event.relatedTarget && !focusDismissAllowed()) return;
+	if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
+	close();
 }}>
 	<button
 		bind:this={trigger}

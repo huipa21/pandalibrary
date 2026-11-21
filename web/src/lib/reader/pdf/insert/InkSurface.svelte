@@ -54,5 +54,6 @@
 <style>
 	.ink-surface { position: absolute; inset: 0; pointer-events: auto; touch-action: none; cursor: crosshair; }
 	svg { width: 100%; height: 100%; pointer-events: none; }
-	.ink-controls { position: fixed; top: 4px; left: 4px; max-width: 100%; pointer-events: auto; }
+	/* Sit below the reader toolbar (44px + padding) instead of under its fixed position. */
+	.ink-controls { position: fixed; top: 52px; left: 4px; max-width: calc(100% - 8px); pointer-events: auto; z-index: 45; }
 </style>

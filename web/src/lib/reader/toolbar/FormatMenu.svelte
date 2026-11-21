@@ -5,6 +5,7 @@
 	import { getLocale } from '#lib/paraglide/runtime.js';
 	import { BACKGROUNDS, type BackgroundId } from '../appearance.js';
 	import type { ReaderSettings } from '../types.js';
+	import { focusableWithin } from '#lib/shell/focus.js';
 	import { focusDismissAllowed, registerMenu } from './menu-dismiss.js';
 	import './toolbar.css';
 
@@ -68,8 +69,11 @@
 	}
 
 	function onFocusOut(event: FocusEvent) {
-		if (!focusDismissAllowed()) return;
-		if (event.relatedTarget instanceof Node && !contains(event.relatedTarget)) close();
+		// A pointer press outside also closes through the menu stack, so the guard only matters
+		// when focus has nowhere to go (relatedTarget is null).
+		if (!event.relatedTarget && !focusDismissAllowed()) return;
+		if (event.relatedTarget instanceof Node && contains(event.relatedTarget)) return;
+		close();
 	}
 
 	function position() {
@@ -113,13 +117,14 @@
 	}
 
 	function onPanelKey(event: KeyboardEvent) {
-		event.stopPropagation();
 		if (event.key === 'Escape') {
 			event.preventDefault();
+			event.stopPropagation();
 			close(true);
-		} else if (nested && event.key === 'Tab' && event.shiftKey &&
-			document.activeElement === panel?.querySelector('button:not([disabled]):not([tabindex="-1"])')) {
+		} else if (event.key === 'Tab' && event.shiftKey && nested &&
+			document.activeElement === focusableWithin(panel ?? null)[0]) {
 			event.preventDefault();
+			event.stopPropagation();
 			close(true);
 		}
 	}

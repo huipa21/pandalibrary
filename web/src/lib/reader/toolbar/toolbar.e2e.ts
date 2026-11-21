@@ -624,6 +624,8 @@ test('RP2 Format remains usable inside the compact overflow menu', async ({ page
 	await trigger.click();
 	await page.getByText('PDF page fixture').click();
 	await expect(dialog).toHaveCount(0);
+	await expect(more).toHaveAttribute('aria-expanded', 'true');
+	await page.getByText('PDF page fixture').click();
 	await expect(more).toHaveAttribute('aria-expanded', 'false');
 });
 

@@ -13,6 +13,7 @@ export interface MenuRegistration {
 const openMenus = new Set<MenuRegistration>();
 let listening = false;
 let focusGuardUntil = 0;
+let keyboardFocus = false;
 
 function guardPointerFocus(): void {
 	focusGuardUntil = performance.now() + 300;
@@ -20,7 +21,15 @@ function guardPointerFocus(): void {
 
 /** Keyboard focus changes still dismiss menus; pointer-driven ones use the menu stack instead. */
 export function focusDismissAllowed(): boolean {
-	return performance.now() >= focusGuardUntil;
+	return keyboardFocus || performance.now() >= focusGuardUntil;
+}
+
+function onKeyDown(): void {
+	keyboardFocus = true;
+}
+
+function onAnyPointerDown(): void {
+	keyboardFocus = false;
 }
 
 function contains(menu: MenuRegistration, target: Node | null): boolean {
@@ -83,7 +92,9 @@ function start(): void {
 	if (listening) return;
 	listening = true;
 	// Capture so reader controls cannot stop an outside tap from dismissing menus.
+	document.addEventListener('pointerdown', onAnyPointerDown, true);
 	document.addEventListener('pointerdown', onPointerDown, true);
+	document.addEventListener('keydown', onKeyDown, true);
 	document.addEventListener('pointerup', refreshPointerGuard, true);
 	document.addEventListener('pointercancel', refreshPointerGuard, true);
 	window.addEventListener(READER_CONTENT_POINTER_EVENT, onContentPointerDown);
@@ -92,7 +103,9 @@ function start(): void {
 function stop(): void {
 	if (!listening) return;
 	listening = false;
+	document.removeEventListener('pointerdown', onAnyPointerDown, true);
 	document.removeEventListener('pointerdown', onPointerDown, true);
+	document.removeEventListener('keydown', onKeyDown, true);
 	document.removeEventListener('pointerup', refreshPointerGuard, true);
 	document.removeEventListener('pointercancel', refreshPointerGuard, true);
 	window.removeEventListener(READER_CONTENT_POINTER_EVENT, onContentPointerDown);
