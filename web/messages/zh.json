@@ -2141,7 +2141,7 @@
 	"bh3.assignment_failed": "已上传，但书库分配失败。请重试或在书堆中分配。",
 	"bh3.drop_zone": "将图书文件拖放到此处",
 	"bh3.drop_active": "松开即可添加文件",
-	"bh3.drop_hint": "支持 EPUB、PDF、MOBI、AZW3、FB2、FBZ 或 CBZ，每个文件不超过 {limit}。",
+	"bh3.drop_hint": "支持 EPUB、PDF、MOBI、AZW、AZW3、FB2、FBZ 或 CBZ，每个文件不超过 {limit}。",
 	"bh3.select": "选择文件",
 	"bh3.clear": "清空",
 	"bh3.list_label": "待上传文件",

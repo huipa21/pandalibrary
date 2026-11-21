@@ -56,7 +56,7 @@
 	);
 	const canUpload = $derived(!queue.running && counts.pending > 0 && validLibrary);
 	/** Keep the action visible while a run is active, and before the first upload. */
-	const showUpload = $derived(counts.pending > 0 || counts.checking > 0 || counts.uploading > 0 || (!queue.running && finished === 0));
+	const showUpload = $derived(counts.pending > 0 || counts.uploading > 0 || (!queue.running && finished === 0));
 	const size = $derived(formatBytes(queue.totalBytes, getLocale()));
 	const limit = $derived(formatBytes(queue.maxBytes, getLocale()));
 	const announcement = $derived(
@@ -109,7 +109,7 @@
 			const resolvedLibraryId = resolveUploadLibraryId(libraries, queue.libraryId);
 			if (resolvedLibraryId !== previousLibraryId) {
 				queue.libraryId = resolvedLibraryId;
-				queue.resetPreflight();
+				queue.resetForLibrary();
 			}
 			rememberLastUploadLibraryId(queue.libraryId);
 			queue.shelfIds = queue.shelfIds.filter((id) => shelves.some((shelf) => shelf.id === id)).slice(0, 1);
@@ -229,8 +229,6 @@
 		switch (row.status) {
 			case 'pending':
 				return m['bh3.status_pending']();
-			case 'checking':
-				return m['bh3.status_checking']({ percent: uploadPercent(row) });
 			case 'uploading':
 				if (row.item) return m['bh3.status_assigning']();
 				return m['bh3.status_uploading']({ percent: uploadPercent(row) });
@@ -294,7 +292,7 @@
 								const libraryId = event.currentTarget.value ? Number(event.currentTarget.value) : null;
 								if (libraryId !== queue.libraryId) {
 									queue.libraryId = libraryId;
-									queue.resetPreflight();
+									queue.resetForLibrary();
 								}
 								rememberLastUploadLibraryId(queue.libraryId);
 								libraryValidation = false;
@@ -460,8 +458,8 @@
 										<span class="sr-only">{visibilityLabel(row)}</span>
 									</span>
 								{/if}
-								{#if row.status === 'pending' || row.status === 'checking' || row.status === 'uploading'}
-									<span class={['shrink-0 text-xs', row.status === 'uploading' || row.status === 'checking' ? 'text-slate-600' : 'text-slate-500']} data-testid="bh3-row-status">
+								{#if row.status === 'pending' || row.status === 'uploading'}
+									<span class={['shrink-0 text-xs', row.status === 'uploading' ? 'text-slate-600' : 'text-slate-500']} data-testid="bh3-row-status">
 										{statusText(row)}
 									</span>
 								{:else if row.status === 'error'}
@@ -486,11 +484,11 @@
 									</button>
 								{/if}
 							</div>
-							{#if row.status === 'uploading' || row.status === 'checking'}
+							{#if row.status === 'uploading'}
 								<div
 									class="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"
 									role="progressbar"
-									aria-label={row.status === 'checking' ? m['bh3.check_progress_label']({ name: row.file.name }) : m['bh3.progress_label']({ name: row.file.name })}
+									aria-label={m['bh3.progress_label']({ name: row.file.name })}
 									aria-valuemin={0}
 									aria-valuemax={100}
 									aria-valuenow={percent}

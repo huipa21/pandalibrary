@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -26,7 +27,6 @@ func BookheapMount(service *bookheap.Service, catalogService *catalog.Service, a
 		router.Group(func(admin chi.Router) {
 			admin.Use(SessionMiddleware(authentication, logger))
 			admin.Use(RequireRole("admin", logger))
-			admin.With(cookieProtection).Post("/api/v1/admin/bookheap/precheck", handler.catalog.withViewer(handler.precheck))
 			admin.With(cookieProtection).Post("/api/v1/admin/bookheap/files", handler.catalog.withViewer(handler.upload))
 			admin.Get("/api/v1/admin/bookheap/items", handler.catalog.withViewer(handler.list))
 			admin.Get("/api/v1/admin/bookheap/items/{id}", handler.catalog.withViewer(handler.get))
@@ -47,6 +47,8 @@ func (h *bookheapHTTP) upload(w http.ResponseWriter, r *http.Request, viewer cat
 	var pending *bookheap.Pending
 	visibility := "public"
 	seenVisibility := false
+	libraryID := int64(0)
+	seenLibrary := false
 	defer func() {
 		if err := pending.Discard(); err != nil {
 			h.catalog.logger.Error("discard bookheap upload", "request_id", RequestID(r), "error", err)
@@ -65,6 +67,24 @@ func (h *bookheapHTTP) upload(w http.ResponseWriter, r *http.Request, viewer cat
 		if err != nil || disposition != "form-data" {
 			h.multipartError(w, r, catalog.ErrInvalid)
 			return
+		}
+		if params["name"] == "library_id" {
+			value, err := io.ReadAll(io.LimitReader(part, 20))
+			if err != nil || seenLibrary || params["filename"] != "" {
+				h.multipartError(w, r, catalog.ErrInvalid)
+				return
+			}
+			id, err := strconv.ParseInt(string(value), 10, 64)
+			if err != nil || id < 1 {
+				h.multipartError(w, r, catalog.ErrInvalid)
+				return
+			}
+			libraryID, seenLibrary = id, true
+			if err := part.Close(); err != nil {
+				h.multipartError(w, r, err)
+				return
+			}
+			continue
 		}
 		if params["name"] == "visibility" {
 			value, err := io.ReadAll(io.LimitReader(part, 16))
@@ -110,36 +130,16 @@ func (h *bookheapHTTP) upload(w http.ResponseWriter, r *http.Request, viewer cat
 		h.writeError(w, r, err)
 		return
 	}
+	if err := pending.SetLibrary(libraryID); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
 	item, err := h.service.Commit(r.Context(), viewer, pending)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
 	h.catalog.writeJSON(w, http.StatusCreated, map[string]bookheap.Item{"item": item})
-}
-
-func (h *bookheapHTTP) precheck(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	var body struct {
-		LibraryID int64    `json:"library_id"`
-		Hashes    []string `json:"hashes"`
-	}
-	if !h.catalog.decodeJSON(w, r, &body) {
-		return
-	}
-	if body.LibraryID < 1 {
-		WriteProblem(w, h.catalog.logger, http.StatusBadRequest, "The library ID is invalid.")
-		return
-	}
-	if _, err := h.catalog.service.GetLibrary(r.Context(), viewer, body.LibraryID); err != nil {
-		h.writeError(w, r, err)
-		return
-	}
-	results, err := h.service.Precheck(r.Context(), viewer, body.LibraryID, body.Hashes)
-	if err != nil {
-		h.writeError(w, r, err)
-		return
-	}
-	h.catalog.writeJSON(w, http.StatusOK, map[string][]bookheap.PrecheckMatch{"results": results})
 }
 
 func (h *bookheapHTTP) list(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {

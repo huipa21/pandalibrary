@@ -3,20 +3,17 @@ import { assignHeapItems, uploadHeapFile } from './api.js';
 import { notifyBookheapChanged } from './events.js';
 import type { HeapItem, UploadVisibility } from './types.js';
 import { MAX_UPLOAD_BYTES } from './upload-checks.js';
-import { preflightFiles, type PreflightOutcome, type Preflighter } from './upload-preflight.js';
 
 export { MAX_UPLOAD_BYTES, SUPPORTED_EXTENSIONS, UPLOAD_ACCEPT, hasSupportedExtension } from './upload-checks.js';
 
 export const UPLOAD_CONCURRENCY = 2;
 
-export type UploadRowStatus = 'pending' | 'checking' | 'uploading' | 'done' | 'error';
-export type UploadPreflightState = 'unchecked' | 'ready' | 'blocked';
+export type UploadRowStatus = 'pending' | 'uploading' | 'done' | 'error';
 
 export type UploadErrorKind =
 	| 'duplicate_book'
 	| 'duplicate_item'
 	| 'duplicate'
-	| 'duplicate_selected'
 	| 'too_large'
 	| 'unsupported'
 	| 'invalid'
@@ -38,10 +35,6 @@ export interface UploadRow {
 	error: UploadErrorKind | null;
 	/** Book or Bookheap item id for duplicate errors. */
 	duplicateOf: number | null;
-	/** SHA-256 computed before upload; reused for retries. */
-	sha256: string | null;
-	/** Whether preflight allowed this row to be sent. */
-	preflight: UploadPreflightState;
 	/** Destination captured on the first attempt and retained for all retries. */
 	libraryId: number | null;
 	shelfIds: number[];
@@ -65,7 +58,12 @@ export interface AddResult {
 
 export type Uploader = (
 	file: File,
-	options: { visibility: UploadVisibility; signal: AbortSignal; onprogress: (loaded: number, total: number | null) => void }
+	options: {
+		libraryId: number | null;
+		visibility: UploadVisibility;
+		signal: AbortSignal;
+		onprogress: (loaded: number, total: number | null) => void;
+	}
 ) => Promise<HeapItem>;
 
 export interface UploadQueueOptions {
@@ -74,7 +72,6 @@ export interface UploadQueueOptions {
 	readonly notify?: () => void;
 	readonly concurrency?: number;
 	readonly maxBytes?: number;
-	readonly preflight?: Preflighter;
 }
 
 export function fileKey(file: Pick<File, 'name' | 'size' | 'lastModified'>): string {
@@ -126,7 +123,7 @@ export function classifyUploadError(error: unknown): { kind: UploadErrorKind; du
 }
 
 export function isDuplicateError(kind: UploadErrorKind | null): boolean {
-	return kind === 'duplicate_book' || kind === 'duplicate_item' || kind === 'duplicate' || kind === 'duplicate_selected';
+	return kind === 'duplicate_book' || kind === 'duplicate_item' || kind === 'duplicate';
 }
 
 /** Errors that may succeed on a later attempt without changing the file. */
@@ -178,7 +175,6 @@ interface Run {
 	readonly done: Promise<void>;
 	readonly finish: () => void;
 	halted: boolean;
-	preflighting: boolean;
 	changed: boolean;
 	readonly libraryId: number;
 	readonly shelfIds: number[];
@@ -204,18 +200,16 @@ export class UploadQueue {
 	readonly #notify: () => void;
 	readonly #concurrency: number;
 	readonly #maxBytes: number;
-	readonly #preflight: Preflighter;
 	#nextId = 1;
 	#active = 0;
 	#run: Run | null = null;
 
-	constructor({ upload = uploadHeapFile, assign = assignHeapItems, notify = notifyBookheapChanged, concurrency = UPLOAD_CONCURRENCY, maxBytes = MAX_UPLOAD_BYTES, preflight = preflightFiles }: UploadQueueOptions = {}) {
+	constructor({ upload = uploadHeapFile, assign = assignHeapItems, notify = notifyBookheapChanged, concurrency = UPLOAD_CONCURRENCY, maxBytes = MAX_UPLOAD_BYTES }: UploadQueueOptions = {}) {
 		this.#upload = upload;
 		this.#assign = assign;
 		this.#notify = () => notify();
 		this.#concurrency = Math.max(1, concurrency);
 		this.#maxBytes = maxBytes;
-		this.#preflight = preflight;
 	}
 
 	get maxBytes(): number {
@@ -226,11 +220,10 @@ export class UploadQueue {
 		return this.rows.reduce((sum, row) => sum + row.file.size, 0);
 	}
 
-	get counts(): { pending: number; checking: number; uploading: number; uploaded: number; duplicates: number; failed: number; retryable: number } {
-		const counts = { pending: 0, checking: 0, uploading: 0, uploaded: 0, duplicates: 0, failed: 0, retryable: 0 };
+	get counts(): { pending: number; uploading: number; uploaded: number; duplicates: number; failed: number; retryable: number } {
+		const counts = { pending: 0, uploading: 0, uploaded: 0, duplicates: 0, failed: 0, retryable: 0 };
 		for (const row of this.rows) {
 			if (row.status === 'pending') counts.pending += 1;
-			else if (row.status === 'checking') counts.checking += 1;
 			else if (row.status === 'uploading') counts.uploading += 1;
 			else if (row.status === 'done') counts.uploaded += 1;
 			else if (isDuplicateError(row.error)) counts.duplicates += 1;
@@ -242,7 +235,7 @@ export class UploadQueue {
 		return counts;
 	}
 
-	/** Appends new files; unsupported, oversized and duplicate files are flagged by preflight. */
+	/** Appends new files; only exact re-adds are dropped, the server decides support and duplicates. */
 	add(files: Iterable<File>, ignored = 0): AddResult {
 		const known = new Set(this.rows.map((row) => row.key));
 		let added = 0;
@@ -264,8 +257,6 @@ export class UploadQueue {
 				item: null,
 				error: null,
 				duplicateOf: null,
-				sha256: null,
-				preflight: 'unchecked',
 				libraryId: null,
 				shelfIds: [],
 				visibility: null
@@ -277,10 +268,10 @@ export class UploadQueue {
 		return { added, duplicates, unsupported: [], tooLarge: [] };
 	}
 
-	/** Removes one row unless it is being checked or uploaded. */
+	/** Removes one row unless it is uploading. */
 	remove(id: number): boolean {
 		const index = this.rows.findIndex((row) => row.id === id);
-		if (index === -1 || this.rows[index].status === 'checking' || this.rows[index].status === 'uploading') return false;
+		if (index === -1 || this.rows[index].status === 'uploading') return false;
 		this.rows.splice(index, 1);
 		return true;
 	}
@@ -312,7 +303,7 @@ export class UploadQueue {
 		}
 		let finish!: () => void;
 		const done = new Promise<void>((resolve) => (finish = resolve));
-		const run: Run = { controller: new AbortController(), done, finish, halted: false, preflighting: false, changed: false, libraryId, shelfIds: [...this.shelfIds], visibility: this.visibility };
+		const run: Run = { controller: new AbortController(), done, finish, halted: false, changed: false, libraryId, shelfIds: [...this.shelfIds], visibility: this.visibility };
 		this.#run = run;
 		this.running = true;
 		this.stopped = null;
@@ -329,8 +320,8 @@ export class UploadQueue {
 		return this.start();
 	}
 
-	/** Invalidates preflight results after the destination library changes. */
-	resetPreflight(): boolean {
+	/** Re-queues pending and rejected rows after the destination library changes. */
+	resetForLibrary(): boolean {
 		if (this.#run) return false;
 		let changed = false;
 		for (const row of this.rows) {
@@ -358,132 +349,32 @@ export class UploadQueue {
 	}
 
 	#reset(row: UploadRow): void {
-		const keepAssignment = row.item !== null;
 		row.status = 'pending';
 		row.loaded = 0;
 		row.total = row.file.size;
 		row.error = null;
 		row.duplicateOf = null;
-		row.preflight = keepAssignment ? 'ready' : 'unchecked';
 	}
 
-	/** Runs preflight for unchecked rows, then fills available upload slots. */
+	/** Fills available upload slots, ending the run when nothing is left in flight. */
 	#advance(run: Run): void {
 		if (this.#run !== run) return;
 		if (run.halted) {
 			if (this.#active === 0) this.#finish(run);
 			return;
 		}
-		if (run.preflighting) return;
-		const unchecked = this.rows.filter((row) => row.status === 'pending' && row.preflight === 'unchecked');
-		if (unchecked.length > 0) {
-			this.#runPreflight(run, unchecked);
-			return;
-		}
 		this.#pump(run);
 	}
 
-	#runPreflight(run: Run, rows: UploadRow[]): void {
-		run.preflighting = true;
-		for (const row of rows) {
-			row.status = 'checking';
-			row.loaded = 0;
-			row.total = row.file.size;
-			row.error = null;
-			row.duplicateOf = null;
-		}
-		const inputs = rows.map((row) => ({ file: row.file, sha256: row.sha256 }));
-		let pending: PreflightOutcome[] | Promise<PreflightOutcome[]>;
-		try {
-			pending = this.#preflight(inputs, {
-				libraryId: run.libraryId,
-				signal: run.controller.signal,
-				maxBytes: this.#maxBytes,
-				onprogress: (index, loaded, total) => {
-					const row = rows[index];
-					if (!row) return;
-					row.total = total;
-					row.loaded = Math.min(loaded, total);
-				}
-			});
-		} catch (error) {
-			this.#failPreflight(run, rows, error);
-			return;
-		}
-		if (Array.isArray(pending)) {
-			this.#applyPreflight(run, rows, pending);
-		} else {
-			void pending.then(
-				(outcomes) => this.#applyPreflight(run, rows, outcomes),
-				(error) => this.#failPreflight(run, rows, error)
-			);
-		}
-	}
-
-	#applyPreflight(run: Run, rows: UploadRow[], outcomes: PreflightOutcome[]): void {
-		if (this.#run !== run) return;
-		run.preflighting = false;
-		if (run.controller.signal.aborted) {
-			for (const row of rows) this.#reset(row);
-			this.#advance(run);
-			return;
-		}
-		for (let index = 0; index < rows.length; index += 1) {
-			const row = rows[index];
-			const outcome = outcomes[index];
-			if (!outcome) {
-				row.status = 'error';
-				row.error = 'unknown';
-				row.preflight = 'blocked';
-				continue;
-			}
-			row.sha256 = outcome.sha256 ?? row.sha256;
-			row.duplicateOf = outcome.duplicateOf;
-			if (outcome.error) {
-				row.status = 'error';
-				row.error = outcome.error;
-				row.preflight = 'blocked';
-			} else {
-				row.status = 'pending';
-				row.error = null;
-				row.preflight = 'ready';
-			}
-		}
-		this.#advance(run);
-	}
-
-	#failPreflight(run: Run, rows: UploadRow[], error: unknown): void {
-		if (this.#run !== run) return;
-		run.preflighting = false;
-		if (run.controller.signal.aborted && isAbortError(error)) {
-			for (const row of rows) this.#reset(row);
-			this.#advance(run);
-			return;
-		}
-		const failure = classifyUploadError(error);
-		for (const row of rows) {
-			row.status = 'error';
-			row.error = failure.kind;
-			row.preflight = 'blocked';
-			row.duplicateOf = failure.duplicateOf;
-		}
-		if (failure.stop) {
-			run.halted = true;
-			this.stopped = failure.kind as 'unauthorized' | 'forbidden';
-		}
-		this.#advance(run);
-	}
-
 	#pump(run: Run): void {
-		if (this.#run !== run || run.halted || run.preflighting) return;
+		if (this.#run !== run || run.halted) return;
 		while (!run.halted && this.#active < this.#concurrency) {
-			const row = this.rows.find((candidate) => candidate.status === 'pending' && candidate.preflight === 'ready');
+			const row = this.rows.find((candidate) => candidate.status === 'pending');
 			if (!row) break;
 			this.#active += 1;
 			void this.#send(run, row);
 		}
-		const hasUnchecked = this.rows.some((row) => row.status === 'pending' && row.preflight === 'unchecked');
-		if (!run.halted && this.#active === 0 && !hasUnchecked) this.#finish(run);
+		if (!run.halted && this.#active === 0) this.#finish(run);
 	}
 
 	async #send(run: Run, row: UploadRow): Promise<void> {
@@ -498,6 +389,7 @@ export class UploadQueue {
 			row.visibility ??= run.visibility;
 			if (!row.item) {
 				row.item = await this.#upload(row.file, {
+					libraryId: row.libraryId,
 					visibility: row.visibility,
 					signal: run.controller.signal,
 					onprogress: (loaded, total) => {

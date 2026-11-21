@@ -33,6 +33,7 @@ type Pending struct {
 	sha256     string
 	userID     int64
 	visibility string
+	libraryID  int64
 }
 
 // Receive validates the file name and streams reader into a temp file while
@@ -104,6 +105,16 @@ func (p *Pending) Discard() (returnErr error) {
 	return nil
 }
 
+// SetLibrary names the destination library so a duplicate already in that library is
+// rejected before the file is stored. Zero leaves the destination unknown.
+func (p *Pending) SetLibrary(libraryID int64) error {
+	if libraryID < 0 {
+		return fmt.Errorf("%w: library_id must not be negative", catalog.ErrInvalid)
+	}
+	p.libraryID = libraryID
+	return nil
+}
+
 // SetVisibility selects sharing before the upload is committed.
 func (p *Pending) SetVisibility(visibility string) error {
 	if visibility != "public" && visibility != "private" {
@@ -139,6 +150,9 @@ func (s *Service) Commit(ctx context.Context, viewer catalog.Viewer, pending *Pe
 	if err := duplicateOf(ctx, sqlc.New(s.reader), pending.sha256, math.MaxInt64); err != nil {
 		return Item{}, err
 	}
+	if err := duplicateInLibrary(ctx, sqlc.New(s.reader), pending.sha256, pending.libraryID); err != nil {
+		return Item{}, err
+	}
 	root, err := os.OpenRoot(s.dir)
 	if err != nil {
 		return Item{}, fmt.Errorf("open bookheap: %w", err)
@@ -163,6 +177,9 @@ func (s *Service) Commit(ctx context.Context, viewer catalog.Viewer, pending *Pe
 	err = db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
 		if err := duplicateOf(ctx, queries, pending.sha256, math.MaxInt64); err != nil {
+			return err
+		}
+		if err := duplicateInLibrary(ctx, queries, pending.sha256, pending.libraryID); err != nil {
 			return err
 		}
 		var err error
@@ -235,6 +252,22 @@ func duplicateOf(ctx context.Context, queries *sqlc.Queries, sha string, beforeI
 	itemID, err := queries.BookheapDuplicateItem(ctx, sqlc.BookheapDuplicateItemParams{Sha256: text(sha), BeforeID: beforeID})
 	if err == nil {
 		return &DuplicateError{ItemID: itemID}
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return nil
+}
+
+// duplicateInLibrary reports a book with the same content already in the destination library.
+// Only authoritative when the caller knows the destination; assignment still checks as well.
+func duplicateInLibrary(ctx context.Context, queries *sqlc.Queries, sha string, libraryID int64) error {
+	if libraryID < 1 {
+		return nil
+	}
+	bookID, err := queries.ImportDuplicate(ctx, sqlc.ImportDuplicateParams{Sha256: sha, LibraryID: libraryID})
+	if err == nil {
+		return &DuplicateError{BookID: bookID}
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err

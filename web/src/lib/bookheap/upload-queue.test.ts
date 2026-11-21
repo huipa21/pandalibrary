@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#lib/api/client.js';
 import type { HeapItem, UploadVisibility } from './types.js';
 import type { assignHeapItems } from './api.js';
-import type { Preflighter } from './upload-preflight.js';
 import {
 	MAX_UPLOAD_BYTES,
 	UploadQueue,
@@ -57,21 +56,11 @@ function controlledUploader() {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-/** Existing tests opt out of I/O; preflight-specific tests inject their own outcomes. */
-function passPreflight(): Preflighter {
-	return (inputs) =>
-		inputs.map(({ file, sha256 }) => ({
-			sha256: sha256 ?? file.name.padEnd(64, '0').slice(0, 64),
-			error: null,
-			duplicateOf: null
-		}));
-}
-
 function createQueue(options: UploadQueueOptions = {}): UploadQueue {
 	const assign = vi.fn<typeof assignHeapItems>().mockImplementation(async ({ ids }) =>
 		ids.map((id) => ({ id, ok: true, error: null, import_job_id: 100 + id }))
 	);
-	const queue = new UploadQueue({ assign, preflight: passPreflight(), ...options });
+	const queue = new UploadQueue({ assign, ...options });
 	queue.libraryId = 1;
 	return queue;
 }
@@ -87,33 +76,30 @@ describe('UploadQueue adding files', () => {
 		expect(queue.rows.every((row) => row.status === 'pending')).toBe(true);
 	});
 
-	it('adds rejected files and flags them during preflight before uploading', async () => {
-		const upload = vi.fn<Uploader>().mockResolvedValue(item(1, 'A'));
-		const preflight: Preflighter = (inputs) =>
-			inputs.map(({ file, sha256 }) => {
-				if (file.name === 'notes.txt' || file.name === '.epub') return { sha256: null, error: 'unsupported', duplicateOf: null };
-				if (file.name === 'big.fb2') return { sha256: null, error: 'too_large', duplicateOf: null };
-				if (file.name === 'dup.fb2') return { sha256: 'a'.repeat(64), error: 'duplicate_item', duplicateOf: 7 };
-				return { sha256: sha256 ?? 'b'.repeat(64), error: null, duplicateOf: null };
-			});
-		const queue = createQueue({ upload, preflight, maxBytes: 100 });
-		const result = queue.add([file('ok.AZW3', 100), file('notes.txt'), file('.epub'), file('big.fb2', 101), file('ok.fbz'), file('dup.fb2')], 2);
-		expect(result).toEqual({ added: 6, duplicates: 0, unsupported: [], tooLarge: [] });
+	it('flags server rejections while other files keep uploading', async () => {
+		const upload = vi
+			.fn<Uploader>()
+			.mockResolvedValueOnce(item(1, 'A'))
+			.mockRejectedValueOnce(problem(415))
+			.mockRejectedValueOnce(problem(413))
+			.mockRejectedValueOnce(problem(409, { duplicate_of_item_id: 7 }))
+			.mockResolvedValueOnce(item(2, 'B'));
+		const queue = createQueue({ upload, maxBytes: 100 });
+		const result = queue.add([file('ok.AZW3'), file('bad.epub'), file('big.fb2'), file('dup.fb2'), file('ok.fbz')], 2);
+		expect(result).toEqual({ added: 5, duplicates: 0, unsupported: [], tooLarge: [] });
 		expect(queue.notice).toEqual({ unsupported: [], tooLarge: [], ignored: 2 });
 		queue.dismissNotice();
 		expect(queue.notice).toBeNull();
 		await queue.start();
-		expect(upload).toHaveBeenCalledTimes(2);
-		expect(upload.mock.calls.map(([file]) => file.name)).toEqual(['ok.AZW3', 'ok.fbz']);
+		expect(upload).toHaveBeenCalledTimes(5);
 		expect(queue.rows.map((row) => [row.error, row.duplicateOf])).toEqual([
 			[null, null],
 			['unsupported', null],
-			['unsupported', null],
 			['too_large', null],
-			[null, null],
-			['duplicate_item', 7]
+			['duplicate_item', 7],
+			[null, null]
 		]);
-		expect(queue.counts).toMatchObject({ uploaded: 2, duplicates: 1, failed: 3 });
+		expect(queue.counts).toMatchObject({ uploaded: 2, duplicates: 1, failed: 2 });
 		expect(new UploadQueue().maxBytes).toBe(MAX_UPLOAD_BYTES);
 	});
 
@@ -174,7 +160,7 @@ describe('UploadQueue uploading', () => {
 		const queue = createQueue({ upload, assign, notify: vi.fn() });
 		queue.add([file('a.epub')]);
 		await queue.start();
-		expect(upload.mock.calls[0][1].visibility).toBe('public');
+		expect(upload.mock.calls[0][1]).toMatchObject({ libraryId: 1, visibility: 'public' });
 		expect(assign).toHaveBeenCalledWith({ ids: [1], library_id: 1, shelf_ids: [] });
 		expect(queue.rows[0]).toMatchObject({ status: 'done', libraryId: 1, shelfIds: [], visibility: 'public' });
 	});
@@ -487,72 +473,20 @@ describe('upload helpers', () => {
 	});
 });
 
-describe('UploadQueue preflight', () => {
-	it('uploads only rows approved by preflight', async () => {
-		const upload = vi.fn<Uploader>().mockResolvedValue(item(1, 'A'));
-		const preflight: Preflighter = (inputs) =>
-			inputs.map(({ file }) =>
-				file.name === 'dup.epub'
-					? { sha256: 'a'.repeat(64), error: 'duplicate_selected', duplicateOf: null }
-					: { sha256: 'b'.repeat(64), error: null, duplicateOf: null }
-			);
-		const queue = createQueue({ upload, preflight });
-		queue.add([file('a.epub'), file('dup.epub')]);
-		await queue.start();
-		expect(upload).toHaveBeenCalledTimes(1);
-		expect(upload.mock.calls[0][0].name).toBe('a.epub');
-		expect(queue.rows.map((row) => row.status)).toEqual(['done', 'error']);
-		expect(queue.rows[1]).toMatchObject({ error: 'duplicate_selected', preflight: 'blocked' });
-	});
-
-	it('stops before uploading when preflight is unauthorized', async () => {
-		const upload = vi.fn<Uploader>();
-		const preflight: Preflighter = () => {
-			throw problem(401);
-		};
-		const queue = createQueue({ upload, preflight });
-		queue.add([file('a.epub'), file('b.epub')]);
-		await queue.start();
-		expect(upload).not.toHaveBeenCalled();
-		expect(queue.stopped).toBe('unauthorized');
-		expect(queue.rows.every((row) => row.error === 'unauthorized' && row.preflight === 'blocked')).toBe(true);
-	});
-
-	it('reuses hashes when retrying preflight or upload', async () => {
-		const upload = vi.fn<Uploader>().mockRejectedValueOnce(new TypeError('offline')).mockResolvedValue(item(1, 'A'));
-		const preflight = vi.fn<Preflighter>(passPreflight());
-		const queue = createQueue({ upload, preflight });
+describe('UploadQueue server-side rejections', () => {
+	it('re-queues rejected rows after the destination library changes', async () => {
+		const upload = vi.fn<Uploader>().mockRejectedValueOnce(problem(409, { duplicate_of_book_id: 42 })).mockResolvedValueOnce(item(1, 'A'));
+		const queue = createQueue({ upload });
 		queue.add([file('a.epub')]);
 		await queue.start();
-		const sha256 = queue.rows[0].sha256;
-		expect(sha256).toHaveLength(64);
-		expect(preflight).toHaveBeenCalledTimes(1);
-		await queue.retryFailed();
-		expect(preflight).toHaveBeenCalledTimes(2);
-		expect(preflight.mock.calls[1][0][0].sha256).toBe(sha256);
-		 expect(upload).toHaveBeenCalledTimes(2);
-		expect(queue.rows[0].status).toBe('done');
-	});
-
-	it('rechecks rows after the destination library changes', async () => {
-		const upload = vi.fn<Uploader>().mockResolvedValue(item(1, 'A'));
-		const duplicate = { sha256: 'a'.repeat(64), error: 'duplicate_book' as const, duplicateOf: 42 };
-		const clean = { sha256: 'a'.repeat(64), error: null, duplicateOf: null };
-		const preflight = vi.fn<Preflighter>().mockReturnValueOnce([duplicate]).mockReturnValue([clean]);
-		const queue = createQueue({ upload, preflight });
-		queue.add([file('a.epub')]);
-		await queue.start();
-		expect(queue.rows[0]).toMatchObject({ status: 'error', error: 'duplicate_book', duplicateOf: 42, preflight: 'blocked' });
-		expect(upload).not.toHaveBeenCalled();
+		expect(queue.rows[0]).toMatchObject({ status: 'error', error: 'duplicate_book', duplicateOf: 42 });
 
 		queue.libraryId = 2;
-		expect(queue.resetPreflight()).toBe(true);
-		expect(queue.rows[0]).toMatchObject({ status: 'pending', error: null, duplicateOf: null, preflight: 'unchecked' });
+		expect(queue.resetForLibrary()).toBe(true);
+		expect(queue.rows[0]).toMatchObject({ status: 'pending', error: null, duplicateOf: null });
 
 		await queue.start();
-		expect(preflight).toHaveBeenCalledTimes(2);
-		expect(preflight.mock.calls[1][0][0].sha256).toBe('a'.repeat(64));
-		expect(upload).toHaveBeenCalledTimes(1);
+		expect(upload).toHaveBeenCalledTimes(2);
 		expect(queue.rows[0].status).toBe('done');
 	});
 });

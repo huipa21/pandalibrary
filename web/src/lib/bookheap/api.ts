@@ -3,42 +3,6 @@ import type { HeapItem, HeapItemStatus, UploadVisibility } from './types.js';
 
 export const BOOKHEAP_FILES_PATH = '/api/v1/admin/bookheap/files';
 
-/** Matches `bookheap.PrecheckMatch`; at least one duplicate ID may be present. */
-export interface HeapPrecheckMatch {
-	readonly sha256: string;
-	readonly duplicate_of_book_id: number | null;
-	readonly duplicate_of_item_id: number | null;
-}
-
-function optionalPositiveId(value: unknown): number | null {
-	return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : null;
-}
-
-/** Checks SHA-256 digests against the destination library and unassigned heap. */
-export async function precheckHeapFiles(
-	libraryId: number,
-	hashes: readonly string[],
-	signal?: AbortSignal
-): Promise<Map<string, HeapPrecheckMatch>> {
-	if (hashes.length === 0) return new Map();
-	const response = await api.request<{ results?: HeapPrecheckMatch[] }>('/admin/bookheap/precheck', {
-		method: 'POST',
-		body: { library_id: libraryId, hashes: [...hashes] },
-		signal
-	});
-	if (!Array.isArray(response.results)) throw new Error('Invalid preflight response');
-	const matches = new Map<string, HeapPrecheckMatch>();
-	for (const result of response.results) {
-		if (typeof result?.sha256 !== 'string') continue;
-		matches.set(result.sha256, {
-			sha256: result.sha256,
-			duplicate_of_book_id: optionalPositiveId(result.duplicate_of_book_id),
-			duplicate_of_item_id: optionalPositiveId(result.duplicate_of_item_id)
-		});
-	}
-	return matches;
-}
-
 /** Minimal XMLHttpRequest surface used by `uploadHeapFile`, so tests can supply a fake. */
 export interface UploadRequest {
 	open(method: string, url: string): void;
@@ -57,6 +21,8 @@ export interface UploadRequest {
 }
 
 export interface UploadHeapFileOptions {
+	/** Destination library, so the server can reject a duplicate already in it. */
+	readonly libraryId?: number | null;
 	readonly visibility?: UploadVisibility;
 	readonly signal?: AbortSignal;
 	/** Called with bytes sent so far and the total request size when known. */
@@ -98,13 +64,14 @@ function abortError(): DOMException {
 
 /**
  * Uploads one file into the Bookheap (`POST /api/v1/admin/bookheap/files`, multipart fields
- * `file` and `visibility`, defaulting to public). Visibility persists through later assignment.
+ * `file`, optional `library_id` and `visibility`, defaulting to public). Visibility persists
+ * through later assignment; the server rejects unsupported content and duplicates itself.
  * XMLHttpRequest is used instead of fetch so upload progress is observable. Rejects with
  * `ApiError` for HTTP errors, a `TypeError` for network failures and an `AbortError` when aborted.
  */
 export function uploadHeapFile(
 	file: File,
-	{ visibility = 'public', signal, onprogress, createRequest = () => new XMLHttpRequest() as unknown as UploadRequest }: UploadHeapFileOptions = {}
+	{ libraryId = null, visibility = 'public', signal, onprogress, createRequest = () => new XMLHttpRequest() as unknown as UploadRequest }: UploadHeapFileOptions = {}
 ): Promise<HeapItem> {
 	return new Promise<HeapItem>((resolve, reject) => {
 		if (signal?.aborted) {
@@ -142,6 +109,9 @@ export function uploadHeapFile(
 
 		const form = new FormData();
 		form.append('file', file, file.name);
+		if (typeof libraryId === 'number' && Number.isSafeInteger(libraryId) && libraryId > 0) {
+			form.append('library_id', String(libraryId));
+		}
 		form.append('visibility', visibility);
 		request.send(form);
 	});

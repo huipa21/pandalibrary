@@ -66,6 +66,21 @@ describe('uploadHeapFile', () => {
 		await expect(pending).resolves.toMatchObject({ id: 12, title: 'Dune' });
 	});
 
+	it('sends the destination library so the server can reject library duplicates', async () => {
+		const { request, createRequest } = setup();
+		const pending = uploadHeapFile(new File(['x'], 'a.epub'), { createRequest, libraryId: 7 });
+		expect([...request.body!.keys()]).toEqual(['file', 'library_id', 'visibility']);
+		expect(request.body!.get('library_id')).toBe('7');
+		request.respond(201, JSON.stringify({ item: { id: 1 } }));
+		await expect(pending).resolves.toMatchObject({ id: 1 });
+
+		const second = setup();
+		const withoutLibrary = uploadHeapFile(new File(['x'], 'b.epub'), { createRequest: second.createRequest, libraryId: null });
+		expect([...second.request.body!.keys()]).toEqual(['file', 'visibility']);
+		second.request.respond(201, JSON.stringify({ item: { id: 2 } }));
+		await expect(withoutLibrary).resolves.toMatchObject({ id: 2 });
+	});
+
 	it('posts an explicitly selected private visibility', async () => {
 		const { request, createRequest } = setup();
 		const pending = uploadHeapFile(new File(['x'], 'a.epub'), { createRequest, visibility: 'private' });

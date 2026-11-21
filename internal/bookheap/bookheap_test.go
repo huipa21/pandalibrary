@@ -248,6 +248,24 @@ func TestUploadRejections(t *testing.T) {
 	if item, err := f.service.Upload(ctx, admin, "lib.epub", bytes.NewReader(library)); err != nil || item.Status != StatusReady || item.DuplicateOfBookID != nil {
 		t.Fatalf("library file should wait for a target library: %+v, %v", item, err)
 	}
+	libraryOnly := testEPUB(t, "library-only")
+	if _, err := f.db.Writer.Exec(`INSERT INTO books (id, library_id, title, sort_title, created_at, updated_at) VALUES (8, 1, 'C', 'c', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Writer.Exec(`INSERT INTO book_files (book_id, sha256, format, size_bytes, original_filename, created_at) VALUES (8, '` + sum(libraryOnly) + `', 'epub', 10, 'c.epub', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := f.service.Receive(ctx, admin, "lib-again.epub", bytes.NewReader(libraryOnly))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pending.SetLibrary(1); err != nil {
+		t.Fatal(err)
+	}
+	var libraryDuplicate *DuplicateError
+	if _, err := f.service.Commit(ctx, admin, pending); !errors.As(err, &libraryDuplicate) || libraryDuplicate.BookID != 8 {
+		t.Fatalf("library duplicate: %v", err)
+	}
 	if _, err := f.service.Upload(ctx, admin, "big.epub", bytes.NewReader(make([]byte, 1<<20+1))); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("too large: %v", err)
 	}

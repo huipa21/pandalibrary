@@ -12,7 +12,6 @@ async function authenticate(page: Page, role = 'admin', locale = 'en') {
 	await page.route('**/api/v1/admin/libraries?*', (route) => route.fulfill({ json: { items: [
 		{ id: 2, name: 'Main', slug: 'main', created_at: '2026-11-03T00:00:00Z', updated_at: '2026-11-03T00:00:00Z' }
 	], next_cursor: null } }));
-	await page.route('**/api/v1/admin/bookheap/precheck', (route) => route.fulfill({ json: { results: [] } }));
 	await page.route('**/api/v1/admin/bookheap/assign', (route) =>
 		route.fulfill({ status: 202, json: { results: route.request().postDataJSON().ids.map((id: number) => ({
 			id, ok: true, error: null, import_job_id: 42
@@ -70,7 +69,7 @@ function mobi() {
 	buffer.write('BOOKMOBI', 60);
 	return buffer;
 }
-/** Minimal files with valid signatures so preflight accepts them; names keep hashes distinct. */
+/** Minimal files the queue accepts; the mocked upload route answers per name. */
 function bookBytes(name: string): Buffer {
 	const extension = name.toLowerCase().slice(name.lastIndexOf('.'));
 	switch (extension) {
@@ -184,7 +183,7 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(visibility).not.toContainText('Private');
 	const upload = dialog.getByRole('button', { name: /^(Upload|Uploading…)$/ });
 	await expect(upload).toBeDisabled();
-	await expect(dialog.getByTestId('bh3-file-input')).toHaveAttribute('accept', '.epub,.pdf,.mobi,.azw3,.fb2,.fbz,.cbz');
+	await expect(dialog.getByTestId('bh3-file-input')).toHaveAttribute('accept', '.epub,.pdf,.mobi,.azw,.azw3,.fb2,.fbz,.cbz');
 
 	const zone = dialog.getByTestId('bh3-drop-zone');
 	await expect(zone).toContainText('Drag and drop book files here');
@@ -258,12 +257,12 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(trigger).toBeFocused();
 });
 
-test('unsupported files are flagged on Upload and never sent', async ({ page }) => {
+test('unsupported files are flagged after the server rejects them', async ({ page }) => {
 	await authenticate(page);
 	let uploads = 0;
 	await page.route('**/api/v1/admin/bookheap/files', (route) => {
 		uploads += 1;
-		return route.fulfill({ status: 201, json: { item: heapItem(12, 'notes.txt', 'Notes') } });
+		return problem(route, 415);
 	});
 	await page.goto('/');
 	await page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true }).click();
@@ -279,7 +278,7 @@ test('unsupported files are flagged on Upload and never sent', async ({ page }) 
 	await upload.click();
 	await expect(dialog.getByTestId('bh3-result')).toHaveText('0 uploaded, 0 duplicate, 1 failed');
 	await expect(list.getByTestId('bh3-row-status')).toHaveText('Unsupported or damaged file');
-	expect(uploads).toBe(0);
+	expect(uploads).toBe(1);
 });
 
 test('uploads assign optional shelves and retry assignment failures without re-uploading', async ({ page }) => {

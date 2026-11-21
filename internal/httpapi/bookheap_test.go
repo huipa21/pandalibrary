@@ -4,8 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"image/color"
 	"io"
@@ -108,7 +106,6 @@ func decodeBody[T any](t *testing.T, response *http.Response) T {
 func TestBookheapHTTPAuthorization(t *testing.T) {
 	f, _ := bookheapFixture(t, 1<<20)
 	body, contentType := multipartBody(t, uploadPart{name: "file", filename: "a.epub", data: heapEPUB(t, "a")})
-	precheckBody := []byte(`{"library_id":10,"hashes":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]}`)
 	for _, test := range []struct {
 		name, method, target string
 		body                 []byte
@@ -119,9 +116,6 @@ func TestBookheapHTTPAuthorization(t *testing.T) {
 		{"list-unauthenticated", http.MethodGet, "/api/v1/admin/bookheap/items", nil, nil, nil, 401},
 		{"list-reader", http.MethodGet, "/api/v1/admin/bookheap/items", nil, f.reader, nil, 403},
 		{"scan-reader", http.MethodGet, "/api/v1/admin/bookheap/scan", nil, f.reader, nil, 403},
-		{"precheck-unauthenticated", http.MethodPost, "/api/v1/admin/bookheap/precheck", precheckBody, nil, map[string]string{"Content-Type": "application/json"}, 401},
-		{"precheck-reader", http.MethodPost, "/api/v1/admin/bookheap/precheck", precheckBody, f.reader, map[string]string{"Content-Type": "application/json"}, 403},
-		{"precheck-cross-site", http.MethodPost, "/api/v1/admin/bookheap/precheck", precheckBody, f.admin, map[string]string{"Content-Type": "application/json", "Sec-Fetch-Site": "cross-site"}, 403},
 		{"upload-unauthenticated", http.MethodPost, "/api/v1/admin/bookheap/files", body, nil, map[string]string{"Content-Type": contentType}, 401},
 		{"upload-reader", http.MethodPost, "/api/v1/admin/bookheap/files", body, f.reader, map[string]string{"Content-Type": contentType}, 403},
 		{"upload-cross-site", http.MethodPost, "/api/v1/admin/bookheap/files", body, f.admin, map[string]string{"Content-Type": contentType, "Sec-Fetch-Site": "cross-site"}, 403},
@@ -137,7 +131,8 @@ func TestBookheapHTTPAuthorization(t *testing.T) {
 	}
 }
 
-func TestBookheapHTTPUploadListCoverDelete(t *testing.T) {	f, heap := bookheapFixture(t, 1<<20)
+func TestBookheapHTTPUploadListCoverDelete(t *testing.T) {
+	f, heap := bookheapFixture(t, 1<<20)
 	response := f.heapUpload(t, uploadPart{name: "file", filename: "My Book.epub", data: heapEPUB(t, "a")})
 	if response.StatusCode != http.StatusCreated {
 		t.Fatalf("upload %d", response.StatusCode)
@@ -159,6 +154,23 @@ func TestBookheapHTTPUploadListCoverDelete(t *testing.T) {	f, heap := bookheapFi
 	if library.StatusCode != http.StatusUnsupportedMediaType || problem["duplicate_of_book_id"] != nil {
 		t.Fatalf("catalog bytes without a destination must still be validated: %d %v", library.StatusCode, problem)
 	}
+	known := f.heapUpload(t,
+		uploadPart{name: "file", filename: "known.epub", data: string(f.data)},
+		uploadPart{name: "library_id", data: "10"},
+	)
+	problem = decodeBody[map[string]any](t, known)
+	if known.StatusCode != http.StatusConflict || problem["duplicate_of_book_id"] != float64(101) {
+		t.Fatalf("library duplicate: %d %v", known.StatusCode, problem)
+	}
+	for _, data := range []string{"", "0", "-1", "x"} {
+		invalid := f.heapUpload(t,
+			uploadPart{name: "file", filename: "invalid.epub", data: heapEPUB(t, "invalid")},
+			uploadPart{name: "library_id", data: data},
+		)
+		if invalid.StatusCode != http.StatusBadRequest {
+			t.Fatalf("library_id %q: %d %v", data, invalid.StatusCode, decodeBody[map[string]any](t, invalid))
+		}
+	}
 	for _, test := range []struct {
 		name  string
 		parts []uploadPart
@@ -169,7 +181,7 @@ func TestBookheapHTTPUploadListCoverDelete(t *testing.T) {	f, heap := bookheapFi
 		{"bad-name", []uploadPart{{name: "file", filename: "../x.epub", data: heapEPUB(t, "n")}}, 400},
 		{"no-file", nil, 400},
 		{"two-files", []uploadPart{{name: "file", filename: "b.epub", data: heapEPUB(t, "b")}, {name: "file", filename: "c.epub", data: heapEPUB(t, "c")}}, 400},
-		{"extra-part", []uploadPart{{name: "file", filename: "d.epub", data: heapEPUB(t, "d")}, {name: "library_id", data: "10"}}, 400},
+		{"extra-part", []uploadPart{{name: "file", filename: "d.epub", data: heapEPUB(t, "d")}, {name: "shelf_id", data: "10"}}, 400},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if response := f.heapUpload(t, test.parts...); response.StatusCode != test.want {
@@ -218,68 +230,6 @@ func TestBookheapHTTPUploadListCoverDelete(t *testing.T) {	f, heap := bookheapFi
 	}
 	if entries, err := os.ReadDir(heap); err != nil || len(entries) != 0 {
 		t.Fatalf("heap after delete %v %v", entries, err)
-	}
-}
-
-func TestBookheapHTTPPrecheck(t *testing.T) {
-	f, _ := bookheapFixture(t, 1<<20)
-	data := heapEPUB(t, "preflight")
-	uploaded := f.heapUpload(t, uploadPart{name: "file", filename: "preflight.epub", data: data})
-	if uploaded.StatusCode != http.StatusCreated {
-		t.Fatalf("upload %d", uploaded.StatusCode)
-	}
-	created := decodeBody[map[string]map[string]any](t, uploaded)["item"]
-	itemID := int64(created["id"].(float64))
-	sum := sha256.Sum256([]byte(data))
-	heapHash := hex.EncodeToString(sum[:])
-	unknownHash := strings.Repeat("f", 64)
-	body, err := json.Marshal(map[string]any{
-		"library_id": 10,
-		"hashes":    []string{f.hash, heapHash, unknownHash},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := f.request(http.MethodPost, "/api/v1/admin/bookheap/precheck", bytes.NewReader(body), f.admin, map[string]string{"Content-Type": "application/json"})
-	if response.Code != http.StatusOK {
-		t.Fatalf("precheck %d %s", response.Code, response.Body.String())
-	}
-	var result struct {
-		Results []bookheap.PrecheckMatch `json:"results"`
-	}
-	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Results) != 3 {
-		t.Fatalf("results %+v", result.Results)
-	}
-	if result.Results[0].DuplicateOfBookID == nil || *result.Results[0].DuplicateOfBookID != 101 || result.Results[0].DuplicateOfItemID != nil {
-		t.Fatalf("library duplicate %+v", result.Results[0])
-	}
-	if result.Results[1].DuplicateOfItemID == nil || *result.Results[1].DuplicateOfItemID != itemID || result.Results[1].DuplicateOfBookID != nil {
-		t.Fatalf("heap duplicate %+v", result.Results[1])
-	}
-	if result.Results[2].DuplicateOfBookID != nil || result.Results[2].DuplicateOfItemID != nil {
-		t.Fatalf("unknown hash %+v", result.Results[2])
-	}
-
-	for _, test := range []struct {
-		name string
-		body string
-		want int
-	}{
-		{"bad library", `{"library_id":0,"hashes":["` + f.hash + `"]}`, http.StatusBadRequest},
-		{"missing library", `{"library_id":9999,"hashes":["` + f.hash + `"]}`, http.StatusNotFound},
-		{"empty hashes", `{"library_id":10,"hashes":[]}`, http.StatusBadRequest},
-		{"bad hash", `{"library_id":10,"hashes":["nope"]}`, http.StatusBadRequest},
-		{"unknown field", `{"library_id":10,"hashes":["` + f.hash + `"],"x":1}`, http.StatusBadRequest},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			response := f.request(http.MethodPost, "/api/v1/admin/bookheap/precheck", strings.NewReader(test.body), f.admin, map[string]string{"Content-Type": "application/json"})
-			if response.Code != test.want {
-				t.Fatalf("status %d %s", response.Code, response.Body.String())
-			}
-		})
 	}
 }
 
