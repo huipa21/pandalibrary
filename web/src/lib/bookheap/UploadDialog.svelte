@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { tick } from 'svelte';
+	import Icon from '#lib/bookview/Icon.svelte';
 	import UploadDropzone from '#lib/upload/UploadDropzone.svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getLocale } from '#lib/paraglide/runtime.js';
@@ -53,6 +54,8 @@
 		targetsReady && Number.isSafeInteger(queue.libraryId) && libraries.some((library) => library.id > 0 && library.id === queue.libraryId)
 	);
 	const canUpload = $derived(!queue.running && counts.pending > 0 && validLibrary);
+	/** Keep the action visible while a run is active, and before the first upload. */
+	const showUpload = $derived(counts.pending > 0 || counts.uploading > 0 || (!queue.running && finished === 0));
 	const size = $derived(formatBytes(queue.totalBytes, getLocale()));
 	const limit = $derived(formatBytes(queue.maxBytes, getLocale()));
 	const announcement = $derived(
@@ -223,12 +226,15 @@
 				if (row.item) return m['bh3.status_assigning']();
 				return m['bh3.status_uploading']({ percent: uploadPercent(row) });
 			case 'done':
-				if (row.libraryId !== null) return m['bh3.assigned_title']({ title: row.item?.title ?? row.file.name });
-				return row.item ? m['bh3.done_title']({ title: row.item.title }) : m['bh3.status_done']();
+				return '';
 			case 'error':
 				if (row.item) return m['bh3.assignment_failed']();
 				return translate(`bh3.error_${row.error ?? 'unknown'}`);
 		}
+	}
+
+	function visibilityLabel(row: UploadRow): string {
+		return row.visibility === 'private' ? m['bh.visibility.private']() : m['bh.visibility.public']();
 	}
 </script>
 
@@ -261,28 +267,66 @@
 
 		<div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
 			<div class="space-y-2">
-				<label for="bh3-library" class="block text-sm font-medium">{m['bh3.library']()}</label>
-				<select
-					bind:this={librarySelect}
-					id="bh3-library"
-					class={`w-full ${inputClass}`}
-					value={queue.libraryId === null ? '' : String(queue.libraryId)}
-					required
-					disabled={queue.running || !targetsReady}
-					aria-busy={librariesLoading}
-					aria-invalid={libraryValidation && !validLibrary ? 'true' : undefined}
-					aria-describedby="bh3-library-help bh3-library-guidance"
-					onchange={(event) => {
-						queue.libraryId = event.currentTarget.value ? Number(event.currentTarget.value) : null;
-						libraryValidation = false;
-					}}
-				>
-					<option value="">{m['bh3.library_none']()}</option>
-					{#each libraries as library (library.id)}
-						<option value={String(library.id)}>{library.name}</option>
-					{/each}
-				</select>
-				<p id="bh3-library-help" class="text-xs text-slate-600">{m['bh3.library_help']()}</p>
+				<div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+					<div class="flex min-w-0 items-center gap-2">
+						<Icon name="library" class="size-5 shrink-0 text-slate-500" />
+						<label for="bh3-library" class="sr-only">{m['bh3.library']()}</label>
+						<select
+							bind:this={librarySelect}
+							id="bh3-library"
+							class={`min-w-0 flex-1 ${inputClass}`}
+							value={queue.libraryId === null ? '' : String(queue.libraryId)}
+							required
+							disabled={queue.running || !targetsReady}
+							aria-busy={librariesLoading}
+							aria-invalid={libraryValidation && !validLibrary ? 'true' : undefined}
+							aria-describedby="bh3-library-help bh3-library-guidance"
+							onchange={(event) => {
+								queue.libraryId = event.currentTarget.value ? Number(event.currentTarget.value) : null;
+								libraryValidation = false;
+							}}
+						>
+							<option value="">{m['bh3.library_none']()}</option>
+							{#each libraries as library (library.id)}
+								<option value={String(library.id)}>{library.name}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="flex min-w-0 items-center gap-2">
+						<Icon name="folder" class="size-5 shrink-0 text-slate-500" />
+						<label for="bh3-shelf" class="sr-only">{m['bh3.shelf']()}</label>
+						<select
+							id="bh3-shelf"
+							class={`min-w-0 flex-1 ${inputClass}`}
+							value={queue.shelfIds[0] === undefined ? '' : String(queue.shelfIds[0])}
+							disabled={queue.running || !targetsReady}
+							onchange={(event) => {
+								queue.shelfIds = event.currentTarget.value ? [Number(event.currentTarget.value)] : [];
+							}}
+						>
+							<option value="">{m['bh3.shelf_none']()}</option>
+							{#each shelves as shelf (shelf.id)}
+								<option value={String(shelf.id)}>{shelfLabel(shelf)}</option>
+							{/each}
+						</select>
+					</div>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={queue.visibility === 'public'}
+						aria-label={m['bh.visibility.label']()}
+						aria-describedby="bh-upload-visibility-help"
+						title={queue.visibility === 'public' ? m['bh.visibility.public']() : m['bh.visibility.private']()}
+						class="flex min-h-11 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+						disabled={queue.running}
+						onclick={() => (queue.visibility = queue.visibility === 'public' ? 'private' : 'public')}
+					>
+						<Icon name={queue.visibility === 'public' ? 'eye' : 'eye-off'} class="size-5 shrink-0" />
+						<span>{queue.visibility === 'public' ? m['bh.visibility.public_short']() : m['bh.visibility.private_short']()}</span>
+					</button>
+				</div>
+				<p id="bh3-library-help" class="sr-only">{m['bh3.library_help']()}</p>
+				<p id="bh-upload-visibility-help" class="sr-only">{m['bh.visibility.help']()}</p>
 				<div id="bh3-library-guidance">
 					{#if librariesLoading}
 						<p use:showLoadingAfterDelay class="text-sm text-slate-600" role="status">{m['bh4.assign.loading']()}</p>
@@ -295,46 +339,15 @@
 						<p class="text-sm text-red-800">{m['bh4.assign.library_required']()}</p>
 					{/if}
 				</div>
+				{#if targetsReady && shelves.length === 0}
+					<p class="text-sm text-slate-600">{m['bh4.assign.no_shelves']()}</p>
+				{/if}
 				{#if librariesError}
 					<div class="flex items-center gap-2 text-sm text-red-800" role="alert">
 						<p>{librariesError}</p>
 						<button type="button" class="underline" onclick={() => void loadLibraries()}>{m['admin.retry']()}</button>
 					</div>
 				{/if}
-			</div>
-			<div class="space-y-2">
-				<label for="bh3-shelf" class="block text-sm font-medium">{m['bh3.shelf']()}</label>
-				<select
-					id="bh3-shelf"
-					class={`w-full ${inputClass}`}
-					value={queue.shelfIds[0] === undefined ? '' : String(queue.shelfIds[0])}
-					disabled={queue.running || !targetsReady}
-					onchange={(event) => {
-						queue.shelfIds = event.currentTarget.value ? [Number(event.currentTarget.value)] : [];
-					}}
-				>
-					<option value="">{m['bh3.shelf_none']()}</option>
-					{#each shelves as shelf (shelf.id)}
-						<option value={String(shelf.id)}>{shelfLabel(shelf)}</option>
-					{/each}
-				</select>
-				{#if targetsReady && shelves.length === 0}
-					<p class="text-sm text-slate-600">{m['bh4.assign.no_shelves']()}</p>
-				{/if}
-			</div>
-			<div class="space-y-2">
-				<label for="bh-upload-visibility" class="block text-sm font-medium">{m['bh.visibility.label']()}</label>
-				<select
-					id="bh-upload-visibility"
-					class={`w-full ${inputClass}`}
-					bind:value={queue.visibility}
-					disabled={queue.running}
-					aria-describedby="bh-upload-visibility-help"
-				>
-					<option value="public">{m['bh.visibility.public']()}</option>
-					<option value="private">{m['bh.visibility.private']()}</option>
-				</select>
-				<p id="bh-upload-visibility-help" class="text-xs text-slate-600">{m['bh.visibility.help']()}</p>
 			</div>
 			<UploadDropzone
 				label={m['bh3.drop_zone']()}
@@ -370,6 +383,20 @@
 					onchange={onpick}
 				/>
 			</UploadDropzone>
+
+			{#if queue.rows.length > 0}
+				<p
+					class={[
+						'rounded-md border px-3 py-2 text-sm font-medium',
+						counts.failed > 0 ? 'border-amber-300 bg-amber-50 text-amber-900' : hasResults ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-700'
+					]}
+					data-testid="bh3-summary"
+				>
+					<span data-testid="bh3-result">{m['bh3.result']({ uploaded: counts.uploaded, duplicates: counts.duplicates, failed: counts.failed })}</span>
+					<span aria-hidden="true"> · </span>
+					<span>{m['bh3.space_used']({ size })}</span>
+				</p>
+			{/if}
 
 			{#if queue.notice}
 				<div class="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
@@ -407,43 +434,48 @@
 				<ul class="max-h-80 shrink-0 divide-y divide-slate-200 overflow-y-auto rounded-md border border-slate-200" aria-label={m['bh3.list_label']()}>
 					{#each queue.rows as row (row.id)}
 						{@const percent = uploadPercent(row)}
-						<li class={['space-y-1.5 px-3 py-2.5', row.status === 'done' ? 'bg-emerald-50' : '']} data-status={row.status}>
-							<div class="flex min-w-0 items-start gap-2">
-								{#if row.status === 'done'}
-									<svg data-testid="bh3-success-mark" aria-hidden="true" viewBox="0 0 24 24" class="mt-0.5 size-6 shrink-0 rounded-full bg-emerald-700 p-1 text-white" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6" /></svg>
-								{/if}
-								<p class="min-w-0 flex-1 break-words text-sm font-medium leading-5" title={row.file.name}>{row.file.name}</p>
-							</div>
+						<li class={['px-3 py-1.5', row.status === 'done' ? 'bg-emerald-50' : '']} data-status={row.status}>
 							<div class="flex min-w-0 items-center gap-2">
-								<p class="flex min-w-0 flex-1 flex-wrap gap-x-2 text-xs text-slate-600">
-									<span>{formatBytes(row.file.size, getLocale())}</span>
-									{#if row.visibility}
-										<span>{row.visibility === 'public' ? m['bh.visibility.public']() : m['bh.visibility.private']()}</span>
-									{/if}
-								</p>
-								<button
-									type="button"
-									class="grid size-7 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
-									aria-label={m['bh3.remove']({ name: row.file.name })}
-									disabled={row.status === 'uploading'}
-									onclick={() => queue.remove(row.id)}
-								>
-									<svg aria-hidden="true" viewBox="0 0 20 20" class="size-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15" /></svg>
-								</button>
-							</div>
-							<p
-								class={['break-words text-xs leading-5', row.status === 'error' ? 'text-red-700' : row.status === 'done' ? 'font-semibold text-emerald-800' : 'text-slate-600']}
-								data-testid="bh3-row-status"
-							>
-								{#if row.status === 'error' && row.error === 'duplicate_book' && row.duplicateOf !== null && !queue.running}
-									<a class="underline underline-offset-2" href={`/books/${row.duplicateOf}`} onclick={finishClose}>{statusText(row)}</a>
-								{:else}
-									{statusText(row)}
+								{#if row.status === 'done'}
+									<svg data-testid="bh3-success-mark" aria-hidden="true" viewBox="0 0 24 24" class="size-4 shrink-0 rounded-full bg-emerald-700 p-0.5 text-white" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6" /></svg>
 								{/if}
-							</p>
+								<p class="min-w-0 flex-1 truncate text-sm font-medium leading-5" title={row.file.name}>{row.file.name}</p>
+								<span class="shrink-0 text-xs tabular-nums text-slate-600">{formatBytes(row.file.size, getLocale())}</span>
+								{#if row.visibility}
+									<span class="shrink-0 text-slate-500" title={visibilityLabel(row)} data-testid="bh3-row-visibility">
+										<Icon name={row.visibility === 'public' ? 'eye' : 'eye-off'} class="size-4" />
+										<span class="sr-only">{visibilityLabel(row)}</span>
+									</span>
+								{/if}
+								{#if row.status === 'pending' || row.status === 'uploading'}
+									<span class={['shrink-0 text-xs', row.status === 'uploading' ? 'text-slate-600' : 'text-slate-500']} data-testid="bh3-row-status">
+										{statusText(row)}
+									</span>
+								{:else if row.status === 'error'}
+									{#if row.error === 'duplicate_book' && row.duplicateOf !== null && !queue.running}
+										<a class="min-w-0 max-w-[55%] break-words text-right text-xs text-red-700 underline underline-offset-2" href={`/books/${row.duplicateOf}`} onclick={finishClose} data-testid="bh3-row-status">
+											{statusText(row)}
+										</a>
+									{:else}
+										<span class="min-w-0 max-w-[55%] break-words text-right text-xs text-red-700" data-testid="bh3-row-status">
+											{statusText(row)}
+										</span>
+									{/if}
+								{/if}
+								{#if row.status === 'pending'}
+									<button
+										type="button"
+										class="grid size-7 shrink-0 place-items-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+										aria-label={m['bh3.remove']({ name: row.file.name })}
+										onclick={() => queue.remove(row.id)}
+									>
+										<Icon name="x" class="size-4" />
+									</button>
+								{/if}
+							</div>
 							{#if row.status === 'uploading'}
 								<div
-									class="h-1.5 overflow-hidden rounded-full bg-slate-200"
+									class="mt-1 h-1 overflow-hidden rounded-full bg-slate-200"
 									role="progressbar"
 									aria-label={m['bh3.progress_label']({ name: row.file.name })}
 									aria-valuemin={0}
@@ -461,76 +493,52 @@
 
 		<p class="sr-only" aria-live="polite">{announcement}</p>
 
-		<div class="border-t border-slate-200 px-5 py-4">
-			{#if confirming}
-				<div class="space-y-3">
-					<p class="text-sm" role="alert">{m['bh3.confirm_close']()}</p>
-					<div class="flex flex-wrap justify-end gap-2">
-						<button
-							bind:this={keepButton}
-							type="button"
-							class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
-							onclick={() => void keepUploading()}
-						>{m['bh3.confirm_continue']()}</button>
-						<button
-							type="button"
-							class="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
-							onclick={() => void confirmStop()}
-						>{m['bh3.confirm_stop']()}</button>
+		{#if confirming || showUpload || (!queue.running && counts.retryable > 0)}
+			<div class="border-t border-slate-200 px-5 py-4">
+				{#if confirming}
+					<div class="space-y-3">
+						<p class="text-sm" role="alert">{m['bh3.confirm_close']()}</p>
+						<div class="flex flex-wrap justify-end gap-2">
+							<button
+								bind:this={keepButton}
+								type="button"
+								class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+								onclick={() => void keepUploading()}
+							>{m['bh3.confirm_continue']()}</button>
+							<button
+								type="button"
+								class="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+								onclick={() => void confirmStop()}
+							>{m['bh3.confirm_stop']()}</button>
+						</div>
 					</div>
-				</div>
-			{:else}
-				<div class="flex flex-wrap items-center gap-3">
-					<div class="min-w-0 flex-1 text-sm text-slate-700">
-						{#if queue.rows.length > 0}
-							<p data-testid="bh3-summary">
-								{queue.rows.length === 1 ? m['bh3.summary_one']({ size }) : m['bh3.summary_other']({ count: queue.rows.length, size })}
-							</p>
+				{:else}
+					<div class="flex flex-wrap items-center justify-end gap-2">
+						{#if !queue.running && counts.retryable > 0}
+							<button
+								type="button"
+								class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+								aria-disabled={!validLibrary}
+								onclick={() => void retryFailed()}
+							>{m['bh3.retry_failed']()}</button>
 						{/if}
-						{#if hasResults}
-							<p class={['mt-2 rounded-md border px-3 py-2 font-semibold', counts.failed > 0 ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-300 bg-emerald-50 text-emerald-900']} data-testid="bh3-result">
-								{m['bh3.result']({ uploaded: counts.uploaded, duplicates: counts.duplicates, failed: counts.failed })}
-							</p>
+						{#if showUpload}
+							<button
+								bind:this={uploadButton}
+								type="button"
+								class="grid size-9 place-items-center rounded-md bg-emerald-700 text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+								aria-disabled={!canUpload}
+								title={queue.running ? m['bh3.uploading']() : m['bh3.upload']()}
+								onclick={startUpload}
+							>
+								<svg aria-hidden="true" viewBox="0 0 20 20" class="size-5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V3m0 0L6 7m4-4l4 4M3 13v2a2 2 0 002 2h10a2 2 0 002-2v-2" /></svg>
+								<span class="sr-only">{queue.running ? m['bh3.uploading']() : m['bh3.upload']()}</span>
+							</button>
 						{/if}
 					</div>
-					{#if hasResults}
-						<a
-							class="hidden text-sm font-medium text-emerald-800 underline underline-offset-4 hover:text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 sm:inline"
-							href="/bookheap"
-							onclick={finishClose}
-						>{m['bh3.view_bookheap']()}</a>
-					{/if}
-					{#if !queue.running && counts.retryable > 0}
-						<button
-							type="button"
-							class="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
-							aria-disabled={!validLibrary}
-							onclick={() => void retryFailed()}
-						>{m['bh3.retry_failed']()}</button>
-					{/if}
-					<button
-						type="button"
-						class="grid size-9 place-items-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
-						title={m['bh3.close']()}
-						onclick={() => void requestClose()}
-					>
-						<svg aria-hidden="true" viewBox="0 0 20 20" class="size-5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15" /></svg>
-						<span class="sr-only">{m['bh3.close']()}</span>
-					</button>
-					<button
-						bind:this={uploadButton}
-						type="button"
-						class="grid size-9 place-items-center rounded-md bg-emerald-700 text-white hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-						aria-disabled={!canUpload}
-						title={queue.running ? m['bh3.uploading']() : m['bh3.upload']()}
-						onclick={startUpload}
-					>
-						<svg aria-hidden="true" viewBox="0 0 20 20" class="size-5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V3m0 0L6 7m4-4l4 4M3 13v2a2 2 0 002 2h10a2 2 0 002-2v-2" /></svg>
-						<span class="sr-only">{queue.running ? m['bh3.uploading']() : m['bh3.upload']()}</span>
-					</button>
-				</div>
-			{/if}
-		</div>
+				{/if}
+			</div>
+		{/if}
 	</dialog>
 {/if}
 

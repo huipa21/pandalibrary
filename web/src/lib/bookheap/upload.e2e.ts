@@ -122,10 +122,10 @@ test('administrators upload many files from the header dialog with per-file resu
 	const library = dialog.getByLabel('Library (required)', { exact: true });
 	await expect(library).toBeEnabled();
 	await expect(library).toHaveValue('');
-	const visibility = dialog.getByLabel('Book visibility');
-	await expect(visibility).toHaveValue('public');
-	await expect(dialog.getByText('Public books are visible to all signed-in users', { exact: false })).toBeVisible();
-	await visibility.selectOption('private');
+	const visibility = dialog.getByRole('switch', { name: 'Book visibility' });
+	await expect(visibility).toHaveAttribute('aria-checked', 'true');
+	await expect(visibility).toHaveAccessibleDescription(/Public books are visible to all signed-in users/);
+	await visibility.click();
 	const upload = dialog.getByRole('button', { name: /^(Upload|Uploading…)$/ });
 	await expect(upload).toBeDisabled();
 	await library.selectOption({ label: 'Main' });
@@ -145,7 +145,7 @@ test('administrators upload many files from the header dialog with per-file resu
 	await (await chooser).setFiles([book('Copy.pdf'), book('Heap.mobi'), book('Flaky.cbz'), book('Gone.fb2')]);
 	const list = dialog.getByRole('list', { name: 'Files to upload' });
 	await expect(list.getByRole('listitem')).toHaveCount(5);
-	await expect(dialog.getByTestId('bh3-summary')).toHaveText('5 files, 20 B');
+	await expect(dialog.getByTestId('bh3-summary')).toHaveText('0 uploaded, 0 duplicate, 0 failed · 20 B total');
 
 	await dropFiles(zone, ['Dune.epub']);
 	await expect(list.getByRole('listitem')).toHaveCount(5);
@@ -169,21 +169,23 @@ test('administrators upload many files from the header dialog with per-file resu
 	uploads.release();
 	await expect(dialog.getByTestId('bh3-result')).toHaveText('1 uploaded, 2 duplicate, 1 failed');
 	const statuses = list.getByTestId('bh3-row-status');
-	await expect(statuses).toHaveText(['Uploaded “Dune” — queued for library import', 'Already in your library', 'Already in Bookheap', 'Server error. You can retry.']);
+	await expect(statuses).toHaveText(['Already in your library', 'Already in Bookheap', 'Server error. You can retry.']);
+	await expect(list.getByRole('listitem').filter({ hasText: 'Dune.epub' }).getByTestId('bh3-row-status')).toHaveCount(0);
 	await expect(list.getByTestId('bh3-success-mark')).toHaveCount(1);
 	await expect(list.locator('[data-status="done"]')).toHaveClass(/bg-emerald-50/);
+	await expect(list.getByTestId('bh3-row-visibility')).toHaveCount(4);
 	await expect(list.getByRole('link', { name: 'Already in your library' })).toHaveAttribute('href', '/books/4');
-	await expect(dialog.getByRole('link', { name: 'View Bookheap' })).toHaveAttribute('href', '/bookheap');
+	await expect(dialog.getByRole('link', { name: 'View Bookheap' })).toHaveCount(0);
 	await expect(dialog.locator('[aria-live="polite"]')).toHaveText('1 uploaded, 2 duplicate, 1 failed');
 	expect([...uploads.names].sort()).toEqual(['Copy.pdf', 'Dune.epub', 'Flaky.cbz', 'Heap.mobi']);
 	expect(uploads.visibilities).toEqual(['private', 'private', 'private', 'private']);
 	await expect.poll(() => changes.length).toBe(1);
 
-	await visibility.selectOption('public');
+	await visibility.click();
 	await dialog.getByRole('button', { name: 'Retry failed' }).click();
 	await expect.poll(() => uploads.names.filter((name) => name === 'Flaky.cbz').length).toBe(2);
 	await expect(dialog.getByRole('button', { name: 'Retry failed' })).toBeVisible();
-	await expect(statuses.nth(3)).toHaveText('Server error. You can retry.');
+	await expect(statuses.nth(2)).toHaveText('Server error. You can retry.');
 	expect(changes).toHaveLength(1);
 	expect(uploads.visibilities.at(-1)).toBe('private');
 
@@ -192,7 +194,7 @@ test('administrators upload many files from the header dialog with per-file resu
 	await expect(trigger).toBeFocused();
 
 	await trigger.click();
-	await expect(visibility).toHaveValue('public');
+	await expect(visibility).toHaveAttribute('aria-checked', 'true');
 	await expect(list.getByRole('listitem')).toHaveCount(3);
 	await expect(list).not.toContainText('Dune.epub');
 	await dialog.getByRole('button', { name: 'Clear' }).click();
@@ -222,7 +224,7 @@ test('uploads assign optional shelves and retry assignment failures without re-u
 	const dialog = page.getByRole('dialog', { name: 'Upload books' });
 	await dialog.getByLabel('Library (required)', { exact: true }).selectOption({ label: 'Main' });
 	await dialog.locator('#bh3-shelf').selectOption({ label: 'Favorites' });
-	await dialog.getByLabel('Book visibility').selectOption('private');
+	await dialog.getByRole('switch', { name: 'Book visibility' }).click();
 	await dialog.getByTestId('bh3-file-input').setInputFiles(book('Dune.epub'));
 	await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(dialog.getByTestId('bh3-row-status')).toHaveText('Uploaded, but library assignment failed. Retry or assign from Bookheap.');
@@ -235,7 +237,7 @@ test('uploads assign optional shelves and retry assignment failures without re-u
 	expect(assignments).toHaveLength(1);
 	await dialog.getByLabel('Library (required)', { exact: true }).selectOption('2');
 	await dialog.getByRole('button', { name: 'Retry failed' }).click();
-	await expect(dialog.getByTestId('bh3-row-status')).toHaveText('Uploaded “Dune” — queued for library import');
+	await expect(dialog.getByTestId('bh3-row-status')).toHaveCount(0);
 	await expect(dialog.getByTestId('bh3-success-mark')).toBeVisible();
 	await expect(dialog.getByTestId('bh3-result')).toHaveText('1 uploaded, 0 duplicate, 0 failed');
 	expect(uploads).toBe(1);
@@ -284,10 +286,11 @@ test('uploads require a loaded library, omit optional shelves and default to pub
 	await expect(library).toHaveAttribute('aria-invalid', 'true');
 	expect(multipart).toHaveLength(0);
 	await library.selectOption('2');
-	await expect(dialog.getByLabel('Book visibility')).toHaveValue('public');
+	await expect(dialog.getByRole('switch', { name: 'Book visibility' })).toHaveAttribute('aria-checked', 'true');
 	await expect(dialog.locator('#bh3-shelf')).toHaveValue('');
 	await upload.click();
-	await expect(dialog.getByTestId('bh3-row-status')).toHaveText('Uploaded “Dune” — queued for library import');
+	await expect(dialog.getByTestId('bh3-row-status')).toHaveCount(0);
+	await expect(dialog.getByTestId('bh3-result')).toHaveText('1 uploaded, 0 duplicate, 0 failed');
 	expect(multipart).toHaveLength(1);
 	expect(multipart[0]).toContain('name="visibility"\r\n\r\npublic');
 	expect(assignments).toEqual([{ ids: [12], library_id: 2, shelf_ids: [] }]);

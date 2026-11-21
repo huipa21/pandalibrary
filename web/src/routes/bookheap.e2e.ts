@@ -165,7 +165,7 @@ test('header Upload assigns books to the required library and optional shelf wit
 	await expect(dialog.locator('#bh3-library')).toHaveAttribute('required', '');
 	await dialog.locator('#bh3-library').selectOption(String(state.libraryID));
 	await dialog.locator('#bh3-shelf').selectOption(String(state.shelfID));
-	await expect(dialog.locator('#bh-upload-visibility')).toHaveValue('public');
+	await expect(dialog.getByRole('switch', { name: 'Book visibility' })).toHaveAttribute('aria-checked', 'true');
 
 	const file = (name: string) => join(state.uploadDir, `${name}.epub`);
 	const chooser = page.waitForEvent('filechooser');
@@ -182,7 +182,8 @@ test('header Upload assigns books to the required library and optional shelf wit
 	await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
 	await expect(dialog.getByTestId('bh3-result')).toHaveText('2 uploaded, 1 duplicate, 0 failed', { timeout: 30_000 });
 	const first = list.getByRole('listitem').filter({ hasText: 'BH5 Upload One.epub' });
-	await expect(first.getByTestId('bh3-row-status')).toHaveText('Uploaded “BH5 Upload One” — queued for library import');
+	await expect(first.getByTestId('bh3-row-status')).toHaveCount(0);
+	await expect(first.getByTestId('bh3-row-visibility')).toBeVisible();
 	const duplicate = list.getByRole('listitem').filter({ hasText: 'BH5 Existing copy.epub' });
 	await expect(duplicate.getByRole('link', { name: 'Already in your library' }))
 		.toHaveAttribute('href', `/books/${state.existingBookID}`);
@@ -209,7 +210,9 @@ test('header Upload assigns books to the required library and optional shelf wit
 	const items = await listHeap(page);
 	expect(items.map((item) => item.title).sort()).toEqual(['BH5 Alpha', 'BH5 Beta']);
 
-	await dialog.getByRole('link', { name: 'View Bookheap' }).click();
+	await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+	await expect(dialog).toBeHidden();
+	await page.goto('/bookheap');
 	await expect(page).toHaveURL('/bookheap');
 	await expect(page.getByTestId('bh4-row')).toHaveCount(2);
 });
