@@ -45,9 +45,10 @@ func Extract(ctx context.Context, input io.ReaderAt, size int64, _ string) (extr
 	if pdfContext == nil || pdfContext.XRefTable == nil {
 		return extract.Metadata{}, fmt.Errorf("%w: PDF parser returned no document", extract.ErrInvalidInput)
 	}
-	if pdfContext.Encrypt != nil {
-		return extract.Metadata{}, fmt.Errorf("%w: encrypted PDFs are not supported", extract.ErrUnsupportedFormat)
-	}
+	// An /Encrypt entry does not necessarily mean a password is required. PDFs
+	// can be owner-password-only (empty user password) and still open normally.
+	// pdfcpu reports ErrWrongPassword or ErrOwnerPasswordRequired when user
+	// credentials are actually needed, so reject only those errors below.
 	if err := api.ValidateContext(ctx, pdfContext); err != nil {
 		return extract.Metadata{}, pdfError(ctx, err)
 	}

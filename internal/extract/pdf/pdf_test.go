@@ -94,7 +94,7 @@ func TestExtractPDFRejectsMalformedAndEncryptedInputsWithoutMetadata(t *testing.
 		want error
 	}{
 		{name: "malformed", data: []byte("%PDF-1.7\nnot a document"), want: extract.ErrInvalidInput},
-		{name: "encrypted", data: encryptedPDF(t), want: extract.ErrUnsupportedFormat},
+		{name: "password-protected", data: encryptedPDF(t), want: extract.ErrUnsupportedFormat},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -106,6 +106,23 @@ func TestExtractPDFRejectsMalformedAndEncryptedInputsWithoutMetadata(t *testing.
 				t.Fatalf("Extract() returned partial metadata %#v", metadata)
 			}
 		})
+	}
+}
+
+func TestExtractPDFAcceptsOwnerPasswordOnlyEncryption(t *testing.T) {
+	data := ownerPasswordOnlyPDF(t)
+	if !bytes.Contains(data, []byte("/Encrypt")) {
+		t.Fatal("fixture is not encrypted")
+	}
+	metadata, err := Extract(context.Background(), bytes.NewReader(data), int64(len(data)), "restricted.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Title != "Owner password only" {
+		t.Fatalf("title = %q", metadata.Title)
+	}
+	if metadata.PageCount == nil || *metadata.PageCount != 1 {
+		t.Fatalf("page count = %#v, want 1", metadata.PageCount)
 	}
 }
 
@@ -194,6 +211,18 @@ func encryptedPDF(t *testing.T) []byte {
 	var encrypted bytes.Buffer
 	if err := api.Encrypt(context.Background(), bytes.NewReader(makePDF(t, `/Title (Encrypted)`)), &encrypted, config); err != nil {
 		t.Fatalf("encrypt test PDF: %v", err)
+	}
+	return encrypted.Bytes()
+}
+
+func ownerPasswordOnlyPDF(t *testing.T) []byte {
+	t.Helper()
+	config := model.NewStatelessConfiguration()
+	config.UserPW = ""
+	config.OwnerPW = "owner password"
+	var encrypted bytes.Buffer
+	if err := api.Encrypt(context.Background(), bytes.NewReader(makePDF(t, `/Title (Owner password only)`)), &encrypted, config); err != nil {
+		t.Fatalf("encrypt owner-password-only test PDF: %v", err)
 	}
 	return encrypted.Bytes()
 }
