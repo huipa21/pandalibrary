@@ -6,6 +6,7 @@
 	import Icon from '#lib/bookview/Icon.svelte';
 	import { SyncError } from '#lib/reader/api.js';
 	import { getShelf } from '#lib/shelves/api.js';
+	import { offlineStatus } from '#lib/sync/client.js';
 	import { filterControlClass } from '#lib/catalog/filter-styles.js';
 	import { flip } from 'svelte/animate';
 	import { dashboardConfigure } from './configure.svelte.js';
@@ -55,7 +56,15 @@
 		};
 		window.addEventListener('pandalibrary-shelves-changed', onShelvesChanged);
 		navigator.serviceWorker?.addEventListener('message', onSyncMessage);
+		// A queued layout can also be rejected by a background sync, which no window event covers.
+		let seenIssues = 0;
+		const stopWatchingIssues = offlineStatus.subscribe((status) => {
+			const rising = status.issues > seenIssues;
+			seenIssues = status.issues;
+			if (rising && !saving && !configOpen) void refreshLayout(false);
+		});
 		return () => {
+			stopWatchingIssues();
 			mounted = false;
 			requestVersion += 1;
 			configVersion += 1;
@@ -230,7 +239,8 @@
 	<h1 id="dashboard-heading" class="sr-only">{m['ux1.dashboard.title']()}</h1>
 
 	{#if notice}<p class="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900" role="status">{notice}</p>{/if}
-	{#if conflict}
+	{#if conflict || $offlineStatus.issues}
+		<!-- A rejected change can also surface while syncing in the background, not only on save. -->
 		<div class="space-y-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950" role="alert">
 			<p>{m['ux5.conflict']()}</p>
 			<a class="font-medium underline focus-visible:outline-2" href="/settings">{m['ux5.review_conflicts']()}</a>
