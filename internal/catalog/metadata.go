@@ -15,7 +15,7 @@ type MetadataSource struct {
 
 func validMetadataSource(source MetadataSource) bool {
 	switch source.Provider {
-	case "openlibrary", "googlebooks", "neodb", "hardcover", "douban":
+	case "openlibrary", "googlebooks", "neodb", "hardcover", "douban", "crossref", "openbd", "goodreads", "amazon":
 		return source.Reference != "" && len(source.Reference) <= 2048 && !strings.ContainsRune(source.Reference, 0)
 	default:
 		return false

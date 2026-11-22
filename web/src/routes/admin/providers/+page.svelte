@@ -71,6 +71,10 @@
 				return m['admin.providers.name.openbd']();
 			case 'douban':
 				return m['admin.providers.name.douban']();
+			case 'amazon':
+				return m['admin.providers.name.amazon']();
+			case 'goodreads':
+				return m['admin.providers.name.goodreads']();
 			default:
 				return provider;
 		}

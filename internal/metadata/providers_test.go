@@ -24,6 +24,15 @@ func fixture(t *testing.T, name string) []byte {
 	return data
 }
 
+func fixtureHTML(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name+".html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 func testAdapter(t *testing.T, name string, handler http.HandlerFunc) *adapter {
 	t.Helper()
 	server := httptest.NewServer(handler)
@@ -433,5 +442,110 @@ func TestProviderGetAndHardcoverEncodedResults(t *testing.T) {
 	result, err := p.Search(context.Background(), Query{Title: "Test Library"})
 	if err != nil || len(result) != 1 {
 		t.Fatalf("encoded search results = %+v, %v", result, err)
+	}
+}
+
+func TestGoodreadsTokenlessAutocompleteAndPage(t *testing.T) {
+	t.Run("autocomplete-preview", func(t *testing.T) {
+		p := testAdapter(t, "goodreads", func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("User-Agent") != browserUserAgent || r.Header.Get("Accept-Language") == "" {
+				t.Error("Goodreads request did not use browser headers")
+			}
+			switch r.URL.Path {
+			case "/book/auto_complete":
+				if r.URL.Query().Get("q") != "Test Library Test Author" {
+					t.Errorf("autocomplete query = %q", r.URL.Query().Get("q"))
+				}
+				_, _ = w.Write(fixture(t, "goodreads-autocomplete"))
+			default:
+				http.NotFound(w, r)
+			}
+		})
+		result, err := p.Search(context.Background(), Query{Title: "Test Library", Author: "Test Author"})
+		if err != nil || len(result) != 1 {
+			t.Fatalf("Goodreads autocomplete = %+v, %v", result, err)
+		}
+		c := result[0]
+		if c.Provider != "goodreads" || c.Reference != "12345" || c.Title != "Test Library" || c.Subtitle != nil ||
+			len(c.Authors) != 1 || c.Authors[0].Name != "Test Author" ||
+			c.PageCount == nil || *c.PageCount != 321 || c.Rating == nil || *c.Rating != 4.31 ||
+			c.RatingCount == nil || *c.RatingCount != 1462 || c.CoverURL == nil || strings.Contains(*c.CoverURL, "_SX50_") {
+			t.Fatalf("Goodreads preview = %+v", c)
+		}
+	})
+
+	t.Run("isbn-page", func(t *testing.T) {
+		p := testAdapter(t, "goodreads", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/book/isbn/9781234567897" {
+				t.Errorf("Goodreads ISBN path = %s", r.URL.Path)
+			}
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write(fixtureHTML(t, "goodreads"))
+		})
+		result, err := p.Search(context.Background(), Query{ISBN: "9781234567897"})
+		if err != nil || len(result) != 1 {
+			t.Fatalf("Goodreads ISBN = %+v, %v", result, err)
+		}
+		c := result[0]
+		if c.Provider != "goodreads" || c.Reference != "12345" || c.Title != "Test Library" || c.Subtitle == nil ||
+			*c.Subtitle != "A Fixture" || len(c.Authors) != 1 || c.PublishedDate == nil || *c.PublishedDate != "2024-02-29" ||
+			c.PageCount == nil || *c.PageCount != 321 || c.Rating == nil || *c.Rating != 4.31 ||
+			c.RatingCount == nil || *c.RatingCount != 462 || c.Description == nil || *c.Description != "A fixture description." {
+			t.Fatalf("Goodreads page = %+v", c)
+		}
+		if len(c.Identifiers) != 2 || c.Identifiers[0] != (Identifier{Scheme: "isbn13", Value: "9781234567897"}) ||
+			c.Identifiers[1] != (Identifier{Scheme: "goodreads", Value: "12345"}) {
+			t.Fatalf("Goodreads identifiers = %+v", c.Identifiers)
+		}
+	})
+}
+
+func TestAmazonTokenlessSearchAndDetail(t *testing.T) {
+	p := testAdapter(t, "amazon", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("User-Agent") != browserUserAgent || r.Header.Get("Accept-Language") == "" {
+			t.Error("Amazon request did not use browser headers")
+		}
+		switch r.URL.Path {
+		case "/s":
+			if r.URL.Query().Get("k") != "9781234567897" {
+				t.Errorf("Amazon search query = %q", r.URL.Query().Get("k"))
+			}
+			_, _ = w.Write(fixtureHTML(t, "amazon-search"))
+		case "/dp/B08TEST123":
+			_, _ = w.Write(fixtureHTML(t, "amazon"))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	result, err := p.Search(context.Background(), Query{ISBN: "9781234567897"})
+	if err != nil || len(result) != 1 {
+		t.Fatalf("Amazon search = %+v, %v", result, err)
+	}
+	c := result[0]
+	if c.Provider != "amazon" || c.Reference != "B08TEST123" || c.Title != "Test Library" || c.Subtitle == nil ||
+		*c.Subtitle != "A Fixture" || len(c.Authors) != 1 || c.Authors[0].Name != "Test Author" ||
+		c.Publisher == nil || *c.Publisher != "Test Press" || c.PublishedDate == nil || *c.PublishedDate != "2024-02-29" ||
+		c.PageCount == nil || *c.PageCount != 321 || c.Rating == nil || *c.Rating != 4.5 ||
+		c.RatingCount == nil || *c.RatingCount != 1234 || c.Description == nil || *c.Description != "A fixture description." ||
+		!reflect.DeepEqual(c.Genres, []string{"Computers"}) {
+		t.Fatalf("Amazon candidate = %+v", c)
+	}
+	if len(c.Identifiers) != 3 || c.Identifiers[0] != (Identifier{Scheme: "isbn10", Value: "123456789X"}) ||
+		c.Identifiers[1] != (Identifier{Scheme: "isbn13", Value: "9781234567897"}) ||
+		c.Identifiers[2] != (Identifier{Scheme: "asin", Value: "B08TEST123"}) {
+		t.Fatalf("Amazon identifiers = %+v", c.Identifiers)
+	}
+	detail, err := p.Get(context.Background(), "B08TEST123")
+	if err != nil || detail.Title != "Test Library" || detail.Reference != "B08TEST123" {
+		t.Fatalf("Amazon Get = %+v, %v", detail, err)
+	}
+}
+
+func TestAmazonChallengeIsRejected(t *testing.T) {
+	p := testAdapter(t, "amazon", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><body><h1>Robot Check</h1></body></html>`))
+	})
+	if _, err := p.Search(context.Background(), Query{ISBN: "9781234567897"}); lookupFailure(err).Code != "upstream_error" {
+		t.Fatalf("Amazon challenge = %v", err)
 	}
 }

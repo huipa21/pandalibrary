@@ -99,6 +99,15 @@ func stubCandidate(name string) Candidate {
 		Tags:    []string{"Chosen Tag"}, Identifiers: []Identifier{{Scheme: name, Value: "record123"}}}
 }
 
+func providerResult(result LookupResponse, name string) ProviderResult {
+	for _, provider := range result.Providers {
+		if provider.Provider == name {
+			return provider
+		}
+	}
+	return ProviderResult{}
+}
+
 func installStub(s *Service, search func(string, context.Context, Query) ([]Candidate, error)) {
 	s.factory = func(name string, _ *string, _ string) (Provider, error) {
 		return stubProvider{name: name, search: func(ctx context.Context, q Query) ([]Candidate, error) {
@@ -148,11 +157,12 @@ func TestLookupParallelPartialFailuresAndCacheTTLs(t *testing.T) {
 	}()
 	start := time.Now()
 	result, err := f.service.Lookup(ctx, administrator, 101)
-	if err != nil || len(result.Providers) != 2 || time.Since(start) > 2*time.Second {
+	if err != nil || len(result.Providers) != 4 || time.Since(start) > 2*time.Second {
 		t.Fatalf("parallel lookup = %+v, %v", result, err)
 	}
-	if result.Providers[0].Provider != "openlibrary" || len(result.Providers[0].Candidates) != 1 ||
-		result.Providers[1].Error == nil || result.Providers[1].Error.Code != "rate_limited" {
+	openlibrary, googlebooks := providerResult(result, "openlibrary"), providerResult(result, "googlebooks")
+	if openlibrary.Provider != "openlibrary" || len(openlibrary.Candidates) != 1 ||
+		googlebooks.Error == nil || googlebooks.Error.Code != "rate_limited" {
 		t.Fatalf("partial results = %+v", result)
 	}
 	for _, test := range []struct {
@@ -169,7 +179,7 @@ func TestLookupParallelPartialFailuresAndCacheTTLs(t *testing.T) {
 			t.Fatalf("cache row = %+v, %v", row, err)
 		}
 	}
-	if _, err := f.service.Lookup(ctx, administrator, 101); err != nil || calls.Load() != 2 {
+	if _, err := f.service.Lookup(ctx, administrator, 101); err != nil || calls.Load() != 4 {
 		t.Fatalf("cache was not reused: calls=%d err=%v", calls.Load(), err)
 	}
 }
@@ -196,20 +206,21 @@ func TestCacheExpirySchemaNegativeAndFailures(t *testing.T) {
 		t.Fatalf("negative TTL = %+v %v", row, err)
 	}
 	now = now.Add(8 * 24 * time.Hour)
-	if _, err := f.service.Lookup(ctx, administrator, 101); err != nil || calls.Load() != 3 {
+	if _, err := f.service.Lookup(ctx, administrator, 101); err != nil || calls.Load() != 5 {
 		t.Fatalf("negative expiry calls=%d err=%v", calls.Load(), err)
 	}
 	if _, err := f.db.Writer.ExecContext(ctx, `UPDATE metadata_cache SET schema_version = 999 WHERE provider = 'openlibrary'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.service.Lookup(ctx, administrator, 101); err != nil || calls.Load() != 4 {
+	if _, err := f.service.Lookup(ctx, administrator, 101); err != nil || calls.Load() != 6 {
 		t.Fatalf("schema invalidation calls=%d err=%v", calls.Load(), err)
 	}
 	if _, err := f.db.Writer.ExecContext(ctx, `UPDATE metadata_cache SET response = '{}' WHERE provider = 'openlibrary'`); err != nil {
 		t.Fatal(err)
 	}
 	corrupt, err := f.service.Lookup(ctx, administrator, 101)
-	if err != nil || corrupt.Providers[0].Error == nil || corrupt.Providers[0].Error.Code != "cache_read_failed" {
+	openlibrary := providerResult(corrupt, "openlibrary")
+	if err != nil || openlibrary.Error == nil || openlibrary.Error.Code != "cache_read_failed" {
 		t.Fatalf("corrupt cache not explicit: %+v %v", corrupt, err)
 	}
 	if _, err := f.db.Writer.ExecContext(ctx, `
@@ -219,8 +230,30 @@ func TestCacheExpirySchemaNegativeAndFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	failed, err := f.service.Lookup(ctx, administrator, 101)
-	if err != nil || failed.Providers[0].Error == nil || failed.Providers[0].Error.Code != "cache_write_failed" {
+	openlibrary = providerResult(failed, "openlibrary")
+	if err != nil || openlibrary.Error == nil || openlibrary.Error.Code != "cache_write_failed" {
 		t.Fatalf("cache write failure = %+v %v", failed, err)
+	}
+}
+
+func TestTokenlessProvidersEnabledByDefault(t *testing.T) {
+	f := newServiceFixture(t)
+	list, err := f.service.ListProviders(context.Background(), administrator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, provider := range list {
+		switch provider.Provider {
+		case "amazon", "goodreads":
+			found[provider.Provider] = true
+			if !provider.Enabled || provider.HasToken || provider.BaseURL != nil {
+				t.Errorf("default %s = %+v", provider.Provider, provider)
+			}
+		}
+	}
+	if !found["amazon"] || !found["goodreads"] {
+		t.Fatalf("tokenless defaults missing: %+v", list)
 	}
 }
 
@@ -242,6 +275,10 @@ func TestProviderConfigurationValidationRedactionAndInvalidation(t *testing.T) {
 		{"crossref", `{"api_token":"not-supported"}`},
 		{"openbd", `{"api_token":"not-supported"}`},
 		{"douban", `{"api_token":"not-supported"}`},
+		{"amazon", `{"api_token":"not-supported"}`},
+		{"goodreads", `{"api_token":"not-supported"}`},
+		{"amazon", `{"base_url":"https://evil.example"}`},
+		{"goodreads", `{"base_url":"https://evil.example"}`},
 		{"googlebooks", `{"api_token":"bad\r\nheader"}`},
 		{"googlebooks", `{"priority":-1}`},
 		{"googlebooks", `{"enabled":null}`},
@@ -258,8 +295,12 @@ func TestProviderConfigurationValidationRedactionAndInvalidation(t *testing.T) {
 	}
 	list, err := f.service.ListProviders(ctx, administrator)
 	data, marshalErr := json.Marshal(list)
+	hasNeoDB := false
+	for _, item := range list {
+		hasNeoDB = hasNeoDB || item.Provider == "neodb"
+	}
 	if err != nil || marshalErr != nil || strings.Contains(string(data), "write-only-fixture-token") ||
-		strings.Contains(string(data), "api_token") || list[0].Provider != "neodb" {
+		strings.Contains(string(data), "api_token") || !hasNeoDB {
 		t.Fatalf("redacted provider list = %s %v", data, err)
 	}
 	if _, err := f.service.UpdateProvider(ctx, administrator, "neodb", providerPatch(t, `{"api_token":null}`)); !errors.Is(err, ErrInvalid) {
@@ -622,8 +663,9 @@ func TestLookupOverallTimeoutRetainsFastProvider(t *testing.T) {
 	start := time.Now()
 	result, err := f.service.Lookup(context.Background(), administrator, 101)
 	elapsed := time.Since(start)
+	openlibrary, googlebooks := providerResult(result, "openlibrary"), providerResult(result, "googlebooks")
 	if err != nil || elapsed > 8*time.Second || elapsed < 6*time.Second ||
-		len(result.Providers[0].Candidates) != 1 || result.Providers[1].Error == nil || result.Providers[1].Error.Code != "timeout" {
+		len(openlibrary.Candidates) != 1 || googlebooks.Error == nil || googlebooks.Error.Code != "timeout" {
 		t.Fatalf("overall timeout = %v, %+v, %v", elapsed, result, err)
 	}
 	row, err := sqlc.New(f.db.Reader).MetadataGetCache(context.Background(),
@@ -694,7 +736,7 @@ func TestLookupCustomQueryProviderFilterAndSelection(t *testing.T) {
 	calls.Store(0)
 	again, err := f.service.LookupWith(ctx, administrator, 101, &Query{ISBN: "080442957X", Title: "Custom Title"})
 	// Without the filter both providers run, but googlebooks reuses the filtered lookup's cache row.
-	if err != nil || again.RequestKey != result.RequestKey || len(again.Providers) != 2 || calls.Load() != 1 {
+	if err != nil || again.RequestKey != result.RequestKey || len(again.Providers) != 4 || calls.Load() != 3 {
 		t.Fatalf("provider filter changed cache identity: %+v calls=%d %v", again, calls.Load(), err)
 	}
 	book, err := f.service.Apply(ctx, administrator, 101, ApplyRequest{RequestKey: result.RequestKey,

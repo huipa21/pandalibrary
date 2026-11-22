@@ -36,6 +36,7 @@ export function ratingProviderName(provider: string): string {
 		case 'hardcover': return m['admin.providers.name.hardcover']();
 		case 'douban': return m['bm8.provider_douban']();
 		case 'goodreads': return m['bm8.provider_goodreads']();
+		case 'amazon': return m['bm8.provider_amazon']();
 		default: return provider;
 	}
 }

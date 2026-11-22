@@ -211,7 +211,9 @@ const PROVIDERS: Record<string, ProviderCapabilities> = {
 	hardcover: { token: 'required', baseURL: false, defaultBaseURL: null },
 	crossref: { token: 'none', baseURL: false, defaultBaseURL: null },
 	openbd: { token: 'none', baseURL: false, defaultBaseURL: null },
-	douban: { token: 'none', baseURL: false, defaultBaseURL: null }
+	douban: { token: 'none', baseURL: false, defaultBaseURL: null },
+	amazon: { token: 'none', baseURL: false, defaultBaseURL: null },
+	goodreads: { token: 'none', baseURL: false, defaultBaseURL: null }
 };
 
 /** Documents M1's per-provider rules. Unknown providers get the most permissive token choice; the server decides. */

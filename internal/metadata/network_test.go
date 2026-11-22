@@ -96,6 +96,51 @@ func TestDoubanMobileRedirectOrigin(t *testing.T) {
 	}
 }
 
+func TestBookScraperOriginsAndCoverHosts(t *testing.T) {
+	for _, test := range []struct {
+		provider string
+		origin   string
+		covers   []string
+		blocked  []string
+	}{
+		{
+			provider: "goodreads", origin: "https://www.goodreads.com",
+			covers:  []string{"https://i.gr-assets.com/a.jpg", "https://images.gr-assets.com/a.jpg", "https://m.media-amazon.com/a.jpg"},
+			blocked: []string{"http://www.goodreads.com/a", "https://goodreads.com.evil.test/a", "https://m.douban.com/a"},
+		},
+		{
+			provider: "amazon", origin: "https://www.amazon.com",
+			covers:  []string{"https://m.media-amazon.com/a.jpg", "https://images-na.ssl-images-amazon.com/a.jpg"},
+			blocked: []string{"http://www.amazon.com/a", "https://amazon.com.evil.test/a", "https://www.amazon.co.uk/a"},
+		},
+	} {
+		t.Run(test.provider, func(t *testing.T) {
+			base, err := parseBase(test.provider, nil)
+			if err != nil || base.String() != test.origin {
+				t.Fatalf("base = %v, %v", base, err)
+			}
+			originPolicy := networkPolicy{provider: test.provider, base: base}
+			coverPolicy := networkPolicy{provider: test.provider, base: base, cover: true}
+			origin, err := url.Parse(test.origin + "/book")
+			if err != nil || originPolicy.validate(origin) != nil {
+				t.Errorf("allowed origin rejected: %s", test.origin)
+			}
+			for _, raw := range test.covers {
+				u, err := url.Parse(raw)
+				if err != nil || coverPolicy.validate(u) != nil {
+					t.Errorf("allowed cover URL rejected: %s", raw)
+				}
+			}
+			for _, raw := range test.blocked {
+				u, err := url.Parse(raw)
+				if err == nil && (originPolicy.validate(u) == nil || coverPolicy.validate(u) == nil) {
+					t.Errorf("unsafe URL accepted: %s", raw)
+				}
+			}
+		})
+	}
+}
+
 func TestResolvedPrivateAddressesAndDNSPinning(t *testing.T) {
 	base, _ := parseBase("openlibrary", nil)
 	var dialed atomic.Bool

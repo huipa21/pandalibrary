@@ -23,6 +23,8 @@ const (
 	maxResponseBytes = 2 << 20
 	maxCandidates    = 10
 	userAgent        = "PandaLibrary/1.0 (self-hosted ebook catalog; metadata lookup)"
+	// Amazon and Goodreads serve bot challenges unless the request resembles a browser.
+	browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
 )
 
 type providerError struct {
@@ -80,6 +82,10 @@ func (p *adapter) fetch(ctx context.Context, path string, values url.Values, bod
 	}
 	req.Header.Set("Accept", accept)
 	req.Header.Set("User-Agent", userAgent)
+	if p.name == "amazon" || p.name == "goodreads" {
+		req.Header.Set("User-Agent", browserUserAgent)
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -142,6 +148,10 @@ func (p *adapter) Search(ctx context.Context, q Query) ([]Candidate, error) {
 		return p.openBD(ctx, q, "")
 	case "douban":
 		return p.douban(ctx, q, "")
+	case "goodreads":
+		return p.goodreads(ctx, q, "")
+	case "amazon":
+		return p.amazon(ctx, q, "")
 	default:
 		return nil, ErrInvalid
 	}
@@ -183,6 +193,10 @@ func (p *adapter) Get(ctx context.Context, ref string) (*Candidate, error) {
 		result, err = p.openBD(ctx, Query{}, ref)
 	case "douban":
 		result, err = p.douban(ctx, Query{}, ref)
+	case "goodreads":
+		result, err = p.goodreads(ctx, Query{}, ref)
+	case "amazon":
+		result, err = p.amazon(ctx, Query{}, ref)
 	default:
 		return nil, ErrInvalid
 	}
@@ -314,6 +328,8 @@ func providerIdentifierScheme(name string) string {
 		return "doi"
 	case "openbd":
 		return ""
+	case "amazon":
+		return "asin"
 	default:
 		return name
 	}
@@ -918,6 +934,690 @@ func (p *adapter) douban(ctx context.Context, q Query, ref string) ([]Candidate,
 		result = append(result, candidate)
 	}
 	return finish(p.name, result)
+}
+
+type goodreadsAutocompleteItem struct {
+	BookID        json.RawMessage `json:"bookId"`
+	BookURL       string          `json:"bookUrl"`
+	Title         string          `json:"title"`
+	BookTitleBare string          `json:"bookTitleBare"`
+	Author        json.RawMessage `json:"author"`
+	ImageURL      string          `json:"imageUrl"`
+	Description   json.RawMessage `json:"description"`
+	AvgRating     json.RawMessage `json:"avgRating"`
+	RatingsCount  json.RawMessage `json:"ratingsCount"`
+	NumPages      json.RawMessage `json:"numPages"`
+}
+
+type goodreadsLD struct {
+	Type            string          `json:"@type"`
+	Name            string          `json:"name"`
+	URL             string          `json:"url"`
+	Author          json.RawMessage `json:"author"`
+	ISBN            string          `json:"isbn"`
+	NumberOfPages   json.RawMessage `json:"numberOfPages"`
+	Publisher       string          `json:"publisher"`
+	DatePublished   string          `json:"datePublished"`
+	Image           json.RawMessage `json:"image"`
+	Description     json.RawMessage `json:"description"`
+	InLanguage      json.RawMessage `json:"inLanguage"`
+	AggregateRating struct {
+		RatingValue json.RawMessage `json:"ratingValue"`
+		RatingCount json.RawMessage `json:"ratingCount"`
+	} `json:"aggregateRating"`
+}
+
+var (
+	goodreadsIDPattern  = regexp.MustCompile(`(?:^|/)([0-9]{1,20})(?:[^0-9]|$)`)
+	goodreadsCoverSize  = regexp.MustCompile(`\._S[XY][0-9]+_\.`)
+	amazonReferenceText = regexp.MustCompile(`/(?:dp|gp/product)/([A-Za-z0-9]{10})(?:[/?]|$)`)
+	amazonRatingText    = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)\s+out of 5`)
+)
+
+func htmlPlain(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	doc, err := nethtml.Parse(strings.NewReader(value))
+	if err != nil {
+		return value
+	}
+	return strings.TrimSpace(htmlText(doc))
+}
+
+func htmlCollect(node *nethtml.Node, match func(*nethtml.Node) bool) []*nethtml.Node {
+	result := []*nethtml.Node{}
+	var walk func(*nethtml.Node)
+	walk = func(current *nethtml.Node) {
+		if current == nil {
+			return
+		}
+		if current.Type == nethtml.ElementNode && match(current) {
+			result = append(result, current)
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+	return result
+}
+
+func htmlByID(node *nethtml.Node, id string) *nethtml.Node {
+	return htmlFind(node, func(current *nethtml.Node) bool {
+		return current.Type == nethtml.ElementNode && htmlAttr(current, "id") == id
+	})
+}
+
+func htmlByClass(node *nethtml.Node, class string) *nethtml.Node {
+	return htmlFind(node, func(current *nethtml.Node) bool {
+		return current.Type == nethtml.ElementNode && htmlClass(current, class)
+	})
+}
+
+func jsonScalar(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		return strings.TrimSpace(value)
+	}
+	var number json.Number
+	if json.Unmarshal(raw, &number) == nil {
+		return number.String()
+	}
+	return ""
+}
+
+func jsonNumber(raw json.RawMessage) (float64, bool) {
+	value := strings.ReplaceAll(jsonScalar(raw), ",", "")
+	if value == "" {
+		return 0, false
+	}
+	number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	return number, err == nil
+}
+
+func jsonText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		return strings.TrimSpace(htmlPlain(value))
+	}
+	var object struct {
+		HTML string `json:"html"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &object) == nil {
+		if object.HTML != "" {
+			return strings.TrimSpace(htmlPlain(object.HTML))
+		}
+		return strings.TrimSpace(object.Text)
+	}
+	return ""
+}
+
+func jsonURL(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		return strings.TrimSpace(value)
+	}
+	var object struct {
+		URL string `json:"url"`
+	}
+	if json.Unmarshal(raw, &object) == nil {
+		return strings.TrimSpace(object.URL)
+	}
+	return ""
+}
+
+func splitBookTitle(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	title, subtitle, found := strings.Cut(value, ":")
+	if found && strings.TrimSpace(title) != "" {
+		return strings.TrimSpace(title), strings.TrimSpace(subtitle)
+	}
+	return value, ""
+}
+
+func goodreadsReference(values ...string) string {
+	for _, value := range values {
+		if match := goodreadsIDPattern.FindStringSubmatch(strings.TrimSpace(value)); match != nil {
+			return match[1]
+		}
+	}
+	return ""
+}
+
+func goodreadsCover(value string) string {
+	return goodreadsCoverSize.ReplaceAllString(strings.TrimSpace(value), ".")
+}
+
+func goodreadsCandidate(item goodreadsAutocompleteItem) Candidate {
+	title, subtitle := splitBookTitle(item.BookTitleBare)
+	if title == "" {
+		title, subtitle = splitBookTitle(item.Title)
+	}
+	c := Candidate{
+		Reference: goodreadsReference(jsonScalar(item.BookID), item.BookURL), Title: title, Subtitle: text(subtitle),
+		Authors: people(doubanAuthors(item.Author), "author"), Description: text(jsonText(item.Description)),
+		CoverURL: text(goodreadsCover(item.ImageURL)), Tags: []string{}, Genres: []string{}, Moods: []string{}, Identifiers: []Identifier{},
+	}
+	if pageCount, ok := jsonNumber(item.NumPages); ok && pageCount > 0 {
+		c.PageCount = pages(int64(pageCount))
+	}
+	if value, ok := jsonNumber(item.AvgRating); ok {
+		countValue, _ := jsonNumber(item.RatingsCount)
+		count := int64(countValue)
+		c.Rating, c.RatingCount = rating(&value, 5, &count)
+	}
+	return c
+}
+
+func parseGoodreadsAutocomplete(data []byte) ([]Candidate, error) {
+	var items []goodreadsAutocompleteItem
+	if json.Unmarshal(data, &items) != nil {
+		return nil, failure("invalid_response")
+	}
+	result := []Candidate{}
+	for _, item := range items {
+		candidate := goodreadsCandidate(item)
+		if candidate.Reference != "" && strings.TrimSpace(candidate.Title) != "" {
+			result = append(result, candidate)
+		}
+	}
+	return result, nil
+}
+
+func parseGoodreadsPage(data []byte, fallbackRef, fallbackISBN string) (Candidate, error) {
+	doc, err := nethtml.Parse(bytes.NewReader(data))
+	if err != nil {
+		return Candidate{}, failure("invalid_response")
+	}
+	var ld goodreadsLD
+	meta := map[string]string{}
+	canonical := ""
+	_ = htmlFind(doc, func(node *nethtml.Node) bool {
+		if node.Type != nethtml.ElementNode {
+			return false
+		}
+		switch node.Data {
+		case "meta":
+			key := strings.ToLower(htmlAttr(node, "property"))
+			if key == "" {
+				key = strings.ToLower(htmlAttr(node, "name"))
+			}
+			if key != "" {
+				meta[key] = htmlAttr(node, "content")
+			}
+		case "link":
+			if strings.EqualFold(htmlAttr(node, "rel"), "canonical") {
+				canonical = htmlAttr(node, "href")
+			}
+		case "script":
+			if strings.EqualFold(htmlAttr(node, "type"), "application/ld+json") && ld.Name == "" {
+				_ = json.Unmarshal([]byte(htmlText(node)), &ld)
+			}
+		}
+		return false
+	})
+	reference := goodreadsReference(fallbackRef, canonical, ld.URL, meta["og:url"])
+	if reference == "" {
+		return Candidate{}, failure("invalid_response")
+	}
+	title, subtitle := splitBookTitle(ld.Name)
+	if title == "" {
+		title, subtitle = splitBookTitle(meta["og:title"])
+	}
+	if title == "" {
+		if node := htmlFind(doc, func(node *nethtml.Node) bool {
+			return node.Type == nethtml.ElementNode && node.Data == "h1" && htmlClass(node, "bookTitle")
+		}); node != nil {
+			title, subtitle = splitBookTitle(htmlText(node))
+		}
+	}
+	if title == "" {
+		return Candidate{}, failure("invalid_response")
+	}
+	authors := doubanAuthors(ld.Author)
+	if len(authors) == 0 {
+		for _, node := range htmlCollect(doc, func(node *nethtml.Node) bool {
+			return node.Type == nethtml.ElementNode && node.Data == "a" && htmlClass(node, "authorName")
+		}) {
+			authors = append(authors, htmlText(node))
+		}
+	}
+	cover := jsonURL(ld.Image)
+	if cover == "" {
+		cover = meta["og:image"]
+	}
+	description := jsonText(ld.Description)
+	if description == "" {
+		description = htmlPlain(meta["og:description"])
+	}
+	c := Candidate{
+		Reference: reference, Title: title, Subtitle: text(subtitle), Authors: people(authors, "author"),
+		Description: text(description), Publisher: text(ld.Publisher), PublishedDate: date(ld.DatePublished),
+		Language: text(jsonScalar(ld.InLanguage)), CoverURL: text(goodreadsCover(cover)),
+		Tags: []string{}, Genres: []string{}, Moods: []string{}, Identifiers: isbnIdentifiers([]string{ld.ISBN, fallbackISBN}),
+	}
+	if value, ok := jsonNumber(ld.NumberOfPages); ok && value > 0 {
+		c.PageCount = pages(int64(value))
+	}
+	if value, ok := jsonNumber(ld.AggregateRating.RatingValue); ok {
+		countValue, _ := jsonNumber(ld.AggregateRating.RatingCount)
+		count := int64(countValue)
+		c.Rating, c.RatingCount = rating(&value, 5, &count)
+	}
+	return c, nil
+}
+
+func parseGoodreadsSearch(data []byte) ([]Candidate, error) {
+	doc, err := nethtml.Parse(bytes.NewReader(data))
+	if err != nil {
+		return nil, failure("invalid_response")
+	}
+	result := []Candidate{}
+	seen := map[string]bool{}
+	for _, anchor := range htmlCollect(doc, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && node.Data == "a" && htmlClass(node, "bookTitle")
+	}) {
+		reference := goodreadsReference(htmlAttr(anchor, "href"))
+		title := htmlText(anchor)
+		if reference == "" || title == "" || seen[reference] {
+			continue
+		}
+		seen[reference] = true
+		row := anchor.Parent
+		for depth := 0; row != nil && depth < 5 && row.Data != "tr"; depth++ {
+			row = row.Parent
+		}
+		authors := []string{}
+		cover := ""
+		if row != nil {
+			for _, author := range htmlCollect(row, func(node *nethtml.Node) bool {
+				return node.Type == nethtml.ElementNode && node.Data == "a" && htmlClass(node, "authorName")
+			}) {
+				authors = append(authors, htmlText(author))
+			}
+			if image := htmlByClass(row, "bookCover"); image != nil {
+				cover = htmlAttr(image, "src")
+			}
+		}
+		title, subtitle := splitBookTitle(title)
+		result = append(result, Candidate{
+			Reference: reference, Title: title, Subtitle: text(subtitle), Authors: people(authors, "author"),
+			CoverURL: text(goodreadsCover(cover)), Tags: []string{}, Genres: []string{}, Moods: []string{}, Identifiers: []Identifier{},
+		})
+	}
+	return result, nil
+}
+
+func (p *adapter) goodreads(ctx context.Context, q Query, ref string) ([]Candidate, error) {
+	if ref != "" {
+		data, err := p.fetch(ctx, "/book/show/"+ref, nil, nil, "text/html")
+		if err != nil {
+			return nil, err
+		}
+		candidate, err := parseGoodreadsPage(data, ref, "")
+		if err != nil {
+			return nil, err
+		}
+		return finish(p.name, []Candidate{candidate})
+	}
+	if q.ISBN != "" {
+		if data, err := p.fetch(ctx, "/book/isbn/"+q.ISBN, nil, nil, "text/html"); err == nil {
+			if candidate, err := parseGoodreadsPage(data, "", q.ISBN); err == nil {
+				return finish(p.name, []Candidate{candidate})
+			}
+		}
+	}
+	query := queryText(q)
+	if query == "" {
+		return []Candidate{}, nil
+	}
+	if data, err := p.fetch(ctx, "/book/auto_complete", url.Values{"format": {"json"}, "q": {query}}, nil, "application/json"); err == nil {
+		previews, parseErr := parseGoodreadsAutocomplete(data)
+		if parseErr == nil && len(previews) > 0 {
+			if detail, detailErr := p.fetch(ctx, "/book/show/"+previews[0].Reference, nil, nil, "text/html"); detailErr == nil {
+				if candidate, pageErr := parseGoodreadsPage(detail, previews[0].Reference, ""); pageErr == nil {
+					previews[0] = candidate
+				}
+			}
+			return finish(p.name, previews)
+		}
+	}
+	data, err := p.fetch(ctx, "/search", url.Values{"q": {query}}, nil, "text/html")
+	if err != nil {
+		return nil, err
+	}
+	previews, err := parseGoodreadsSearch(data)
+	if err != nil {
+		return nil, err
+	}
+	return finish(p.name, previews)
+}
+
+func amazonChallenge(doc *nethtml.Node) bool {
+	page := strings.ToLower(htmlText(doc))
+	return strings.Contains(page, "robot check") || strings.Contains(page, "enter the characters you see below") ||
+		strings.Contains(page, "api-services-support@amazon.com")
+}
+
+func amazonSearchAuthors(node *nethtml.Node) []string {
+	result := []string{}
+	for _, anchor := range htmlCollect(node, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && node.Data == "a"
+	}) {
+		href := htmlAttr(anchor, "href")
+		if !strings.Contains(href, "/e/B") {
+			continue
+		}
+		if name := strings.TrimSpace(htmlText(anchor)); name != "" {
+			result = append(result, name)
+		}
+	}
+	return unique(result)
+}
+
+func parseAmazonSearch(data []byte) ([]Candidate, error) {
+	doc, err := nethtml.Parse(bytes.NewReader(data))
+	if err != nil {
+		return nil, failure("invalid_response")
+	}
+	if amazonChallenge(doc) {
+		return nil, failure("upstream_error")
+	}
+	result := []Candidate{}
+	seen := map[string]bool{}
+	for _, item := range htmlCollect(doc, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && node.Data == "div" &&
+			htmlAttr(node, "data-component-type") == "s-search-result" && htmlAttr(node, "data-asin") != ""
+	}) {
+		reference := strings.TrimSpace(htmlAttr(item, "data-asin"))
+		if reference == "" || seen[reference] {
+			continue
+		}
+		title := ""
+		if heading := htmlFind(item, func(node *nethtml.Node) bool {
+			return node.Type == nethtml.ElementNode && node.Data == "h2"
+		}); heading != nil {
+			title = strings.TrimSpace(htmlText(heading))
+		}
+		if title == "" {
+			continue
+		}
+		seen[reference] = true
+		title, subtitle := splitBookTitle(title)
+		cover := ""
+		if image := htmlFind(item, func(node *nethtml.Node) bool {
+			return node.Type == nethtml.ElementNode && node.Data == "img" && htmlClass(node, "s-image")
+		}); image != nil {
+			cover = htmlAttr(image, "src")
+		}
+		result = append(result, Candidate{
+			Reference: reference, Title: title, Subtitle: text(subtitle),
+			Authors: people(amazonSearchAuthors(item), "author"), CoverURL: text(cover),
+			Tags: []string{}, Genres: []string{}, Moods: []string{}, Identifiers: []Identifier{},
+		})
+	}
+	return result, nil
+}
+
+func amazonTextByID(doc *nethtml.Node, id string) string {
+	if node := htmlByID(doc, id); node != nil {
+		return strings.TrimSpace(htmlText(node))
+	}
+	return ""
+}
+
+func amazonDetailValue(details map[string]string, names ...string) string {
+	for _, name := range names {
+		for label, value := range details {
+			if strings.Contains(label, name) && strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		}
+	}
+	return ""
+}
+
+func amazonDetails(doc *nethtml.Node) map[string]string {
+	details := map[string]string{}
+	add := func(line string) {
+		line = strings.Map(func(r rune) rune {
+			switch r {
+			case '\u200e', '\u200f', '\u202a', '\u202b', '\u202c', '\u2066', '\u2067', '\u2068', '\u2069':
+				return -1
+			}
+			return r
+		}, line)
+		label, value, ok := strings.Cut(line, ":")
+		if !ok {
+			label, value, ok = strings.Cut(line, "\uff1a")
+		}
+		if ok && strings.TrimSpace(label) != "" {
+			details[strings.ToLower(strings.TrimSpace(label))] = strings.TrimSpace(value)
+		}
+	}
+	for _, id := range []string{"detailBullets_feature_div", "productDetails_detailBullets_sections1", "productDetails_techSpec_section_1"} {
+		if container := htmlByID(doc, id); container != nil {
+			for _, node := range htmlCollect(container, func(node *nethtml.Node) bool {
+				return node.Type == nethtml.ElementNode && (node.Data == "li" || node.Data == "tr")
+			}) {
+				add(htmlText(node))
+			}
+		}
+	}
+	for _, node := range htmlCollect(doc, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && htmlClass(node, "rpi-attribute")
+	}) {
+		label := htmlText(htmlByClass(node, "rpi-attribute-label"))
+		value := htmlText(htmlByClass(node, "rpi-attribute-value"))
+		if strings.TrimSpace(label) != "" && strings.TrimSpace(value) != "" {
+			details[strings.ToLower(strings.TrimSpace(label))] = strings.TrimSpace(value)
+		}
+	}
+	return details
+}
+
+func amazonAuthors(doc *nethtml.Node) []string {
+	for _, id := range []string{"bylineInfo_feature_div", "bylineInfo"} {
+		if container := htmlByID(doc, id); container != nil {
+			result := []string{}
+			for _, author := range htmlCollect(container, func(node *nethtml.Node) bool {
+				return node.Type == nethtml.ElementNode && htmlClass(node, "author")
+			}) {
+				for _, anchor := range htmlCollect(author, func(node *nethtml.Node) bool {
+					return node.Type == nethtml.ElementNode && node.Data == "a"
+				}) {
+					if name := strings.TrimSpace(htmlText(anchor)); name != "" {
+						result = append(result, name)
+					}
+				}
+			}
+			if len(result) == 0 {
+				for _, anchor := range htmlCollect(container, func(node *nethtml.Node) bool {
+					return node.Type == nethtml.ElementNode && node.Data == "a" && strings.Contains(htmlAttr(node, "href"), "/e/B")
+				}) {
+					if name := strings.TrimSpace(htmlText(anchor)); name != "" {
+						result = append(result, name)
+					}
+				}
+			}
+			if len(result) > 0 {
+				return unique(result)
+			}
+		}
+	}
+	return nil
+}
+
+func amazonCover(doc *nethtml.Node) string {
+	for _, id := range []string{"ebooksImgBlkFront", "imgBlkFront", "landingImage"} {
+		if image := htmlByID(doc, id); image != nil {
+			if src := htmlAttr(image, "src"); src != "" {
+				return src
+			}
+		}
+	}
+	if image := htmlFind(doc, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && node.Data == "img" && strings.Contains(htmlAttr(node, "class"), "book")
+	}); image != nil {
+		if src := htmlAttr(image, "src"); src != "" {
+			return src
+		}
+	}
+	return ""
+}
+
+func amazonDescription(doc *nethtml.Node) string {
+	for _, id := range []string{"bookDescription_feature_div", "productDescription", "bookDescription"} {
+		if node := htmlByID(doc, id); node != nil {
+			if value := strings.TrimSpace(htmlText(node)); value != "" {
+				return value
+			}
+		}
+	}
+	return ""
+}
+
+func amazonGenres(doc *nethtml.Node) []string {
+	container := htmlByID(doc, "wayfinding-breadcrumbs_feature_div")
+	if container == nil {
+		return []string{}
+	}
+	result := []string{}
+	for _, anchor := range htmlCollect(container, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && node.Data == "a"
+	}) {
+		if name := strings.TrimSpace(htmlText(anchor)); name != "" && !strings.EqualFold(name, "Books") {
+			result = append(result, name)
+		}
+	}
+	return unique(result)
+}
+
+func parseAmazonBook(data []byte, fallbackRef string) (Candidate, error) {
+	doc, err := nethtml.Parse(bytes.NewReader(data))
+	if err != nil {
+		return Candidate{}, failure("invalid_response")
+	}
+	if amazonChallenge(doc) {
+		return Candidate{}, failure("upstream_error")
+	}
+	title := ""
+	for _, id := range []string{"productTitle", "ebooksProductTitle", "title"} {
+		if title = amazonTextByID(doc, id); title != "" {
+			break
+		}
+	}
+	if title == "" {
+		title = strings.TrimPrefix(amazonTextByID(doc, "title"), "Amazon.com: ")
+	}
+	if title == "" {
+		return Candidate{}, failure("invalid_response")
+	}
+	reference := fallbackRef
+	if canonical := htmlFind(doc, func(node *nethtml.Node) bool {
+		return node.Type == nethtml.ElementNode && node.Data == "link" && strings.EqualFold(htmlAttr(node, "rel"), "canonical")
+	}); canonical != nil {
+		if match := amazonReferenceText.FindStringSubmatch(htmlAttr(canonical, "href")); match != nil {
+			reference = match[1]
+		}
+	}
+	if reference == "" {
+		return Candidate{}, failure("invalid_response")
+	}
+	title, subtitle := splitBookTitle(title)
+	details := amazonDetails(doc)
+	publisher := amazonDetailValue(details, "publisher")
+	if index := strings.Index(publisher, ";"); index >= 0 {
+		publisher = publisher[:index]
+	}
+	if index := strings.Index(publisher, "("); index >= 0 {
+		publisher = publisher[:index]
+	}
+	publication := amazonDetailValue(details, "publication date", "date")
+	if publication == "" {
+		if index := strings.Index(amazonDetailValue(details, "publisher"), "("); index >= 0 {
+			publication = strings.TrimSuffix(strings.TrimSpace(amazonDetailValue(details, "publisher")[index+1:]), ")")
+		}
+	}
+	cover := amazonCover(doc)
+	if cover == "" {
+		cover = htmlAttr(htmlFind(doc, func(node *nethtml.Node) bool {
+			return node.Type == nethtml.ElementNode && node.Data == "meta" && strings.EqualFold(htmlAttr(node, "property"), "og:image")
+		}), "content")
+	}
+	c := Candidate{
+		Reference: reference, Title: title, Subtitle: text(subtitle), Authors: people(amazonAuthors(doc), "author"),
+		Description: text(amazonDescription(doc)), Publisher: text(publisher), PublishedDate: date(publication),
+		Language: text(amazonDetailValue(details, "language")), CoverURL: text(cover),
+		Tags: []string{}, Genres: amazonGenres(doc), Moods: []string{},
+		Identifiers: isbnIdentifiers([]string{amazonDetailValue(details, "isbn-10", "isbn 10"), amazonDetailValue(details, "isbn-13", "isbn 13")}),
+	}
+	if pageCount := leadingInt(strings.ReplaceAll(amazonDetailValue(details, "print length", "pages", "paperback", "hardcover"), ",", "")); pageCount > 0 {
+		c.PageCount = pages(pageCount)
+	}
+	ratingText := ""
+	for _, id := range []string{"acrPopover", "averageCustomerReviews"} {
+		if node := htmlByID(doc, id); node != nil {
+			ratingText = htmlAttr(node, "title") + " " + htmlText(node)
+		}
+	}
+	if match := amazonRatingText.FindStringSubmatch(ratingText); match != nil {
+		if value, err := strconv.ParseFloat(match[1], 64); err == nil {
+			count := int64(leadingInt(strings.ReplaceAll(amazonTextByID(doc, "acrCustomerReviewText"), ",", "")))
+			c.Rating, c.RatingCount = rating(&value, 5, &count)
+		}
+	}
+	return c, nil
+}
+
+func (p *adapter) amazon(ctx context.Context, q Query, ref string) ([]Candidate, error) {
+	if ref != "" {
+		data, err := p.fetch(ctx, "/dp/"+ref, nil, nil, "text/html")
+		if err != nil {
+			return nil, err
+		}
+		candidate, err := parseAmazonBook(data, ref)
+		if err != nil {
+			return nil, err
+		}
+		return finish(p.name, []Candidate{candidate})
+	}
+	query := q.ISBN
+	if query == "" {
+		query = strings.TrimSpace(strings.Join([]string{q.Title, q.Author}, " "))
+	}
+	if query == "" {
+		return []Candidate{}, nil
+	}
+	data, err := p.fetch(ctx, "/s", url.Values{"k": {query}}, nil, "text/html")
+	if err != nil {
+		return nil, err
+	}
+	items, err := parseAmazonSearch(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return []Candidate{}, nil
+	}
+	if detail, err := p.fetch(ctx, "/dp/"+items[0].Reference, nil, nil, "text/html"); err == nil {
+		if candidate, parseErr := parseAmazonBook(detail, items[0].Reference); parseErr == nil {
+			items[0] = candidate
+		}
+	}
+	return finish(p.name, items)
 }
 
 type openDocument struct {

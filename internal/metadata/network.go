@@ -22,11 +22,14 @@ var providerOrigins = map[string]string{
 	"crossref":    "https://api.crossref.org",
 	"openbd":      "https://api.openbd.jp",
 	"douban":      "https://book.douban.com",
+	"goodreads":   "https://www.goodreads.com",
+	"amazon":      "https://www.amazon.com",
 }
 
 // Some providers redirect a detail page to a separate mobile origin.
 var providerRedirectHosts = map[string][]string{
-	"douban": {"m.douban.com"},
+	"douban":    {"m.douban.com"},
+	"goodreads": {"goodreads.com"},
 }
 
 var coverHosts = map[string][]string{
@@ -39,6 +42,8 @@ var coverHosts = map[string][]string{
 		"img1.doubanio.com", "img2.doubanio.com", "img3.doubanio.com", "img4.doubanio.com", "img5.doubanio.com",
 		"img6.doubanio.com", "img7.doubanio.com", "img8.doubanio.com", "img9.doubanio.com",
 	},
+	"goodreads": {"i.gr-assets.com", "images.gr-assets.com", "s.gr-assets.com", "m.media-amazon.com"},
+	"amazon":    {"m.media-amazon.com", "images-na.ssl-images-amazon.com", "images.amazon.com"},
 }
 
 type networkPolicy struct {
