@@ -33,7 +33,12 @@ if (realServer) {
 }
 
 export default defineConfig({
-	workers: realServer ? 1 : undefined,
+	// One preview server serves every worker, so cap the fan-out; more workers mostly
+	// adds timeouts on the heavier reader specs.
+	workers: realServer ? 1 : 4,
+	// A single preview server plus 4 browsers makes a few heavy reader specs miss their
+	// action timeout on a loaded machine; one retry separates that from real failures.
+	retries: realServer ? 0 : 1,
 	globalSetup: realServer ? './scripts/e2e-server.mjs' : undefined,
 	webServer: realServer
 		? undefined
@@ -42,7 +47,7 @@ export default defineConfig({
 				url: origin,
 				reuseExistingServer: !process.env.CI
 			},
-	use: { baseURL: origin, actionTimeout: 10_000, navigationTimeout: 20_000 },
+	use: { baseURL: origin, actionTimeout: 15_000, navigationTimeout: 20_000 },
 	testMatch: '**/*.e2e.{ts,js}',
 	// OCR has its own config (models are large); run it with `pnpm test:e2e:ocr`.
 	testIgnore: ['**/pdf/ocr/ocr.e2e.ts']

@@ -274,7 +274,8 @@ For explicitly stamped release binaries, use
 from the tagged checkout; `GOOS` and `GOARCH` can select a target platform.
 Run `pnpm --dir web test:e2e` for the browser suite. Set `PANDA_E2E_BINARY` to a built
 binary to run the suite against the real server and embedded SPA; see
-[Release verification](#release-verification).
+[Release verification](#release-verification). The OCR specs need the self-hosted
+models and run on their own: `pnpm --dir web test:e2e:ocr`.
 
 The [PDF engine](web/src/lib/reader/pdf.ts) exposes `viewState` and
 `subscribeView`, plus `setLayout`, `setZoom`, `zoomBy`, `rotate`, and
