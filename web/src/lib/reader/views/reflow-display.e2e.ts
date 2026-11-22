@@ -144,6 +144,8 @@ test('EPUB font-size changes keep the reading anchor instead of walking backward
 	const position = page.locator('#reader-position');
 	await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThanOrEqual(299);
 	const before = Number(await position.inputValue());
+	const fraction = async () => Number((await label.textContent())?.match(/(\d+)%/)?.[1] ?? '0');
+	const fractionBefore = await fraction();
 	await page.getByRole('button', { name: 'More view options', exact: true }).press('ArrowDown');
 	await page.getByRole('menuitem', { name: /^Format$/i, exact: true }).click();
 	const format = page.getByRole('dialog', { name: 'Format', exact: true });
@@ -158,7 +160,8 @@ test('EPUB font-size changes keep the reading anchor instead of walking backward
 	await expect.poll(() => label.textContent()).toMatch(/\/ 25$/);
 	// Repeated reflows must continue from the same anchor. Without it, every
 	// step restores the previous page start and the saved position walks back.
-	expect(Number(await position.inputValue())).toBeGreaterThanOrEqual(afterFirst - 30);
+	// Page indexes are not comparable across paginations, so compare the reading fraction.
+	expect(await fraction()).toBeGreaterThanOrEqual(fractionBefore);
 });
 
 test('EPUB zoom and resize keep complete lines and consecutive page text visible', async ({ page }) => {

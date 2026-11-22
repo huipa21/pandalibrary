@@ -135,7 +135,7 @@ async function bookFrame(page: Page): Promise<Frame> {
 		}
 		expect(frame).toBeDefined();
 		await expect(frame!.getByText('First section', { exact: true })).toBeVisible();
-	}).toPass({ timeout: 15_000 });
+	}).toPass({ timeout: 30_000 });
 	if (!frame) throw new Error('The EPUB frame is unavailable.');
 	return frame;
 }

@@ -14,6 +14,7 @@ describe('Foliate bookmark excerpts', () => {
 		it(`extracts only the first rendered ${vertical ? 'vertical' : 'horizontal'} visible line`, () => {
 			let offset = 0;
 			const doc = {
+				documentElement: {},
 				createTreeWalker: vi.fn(),
 				createRange: () => ({
 					setStart: (_node: Node, next: number) => { offset = next; },

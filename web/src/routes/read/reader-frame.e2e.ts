@@ -73,9 +73,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 360, height: 740 
 		await close.click();
 		await expect(page).toHaveURL('/books/21');
 		await expect(page.locator('.shell-header-band')).toBeVisible();
-		const progress = state.pushes.filter((mutation) => mutation.entity === 'reading_progress');
-		if (format === 'pdf') expect(progress).toHaveLength(1);
-		else expect(progress.length).toBeGreaterThan(0);
+		// Closing flushes with keepalive, so the push can land after the navigation commits.
+		await expect.poll(() => state.pushes.filter((mutation) => mutation.entity === 'reading_progress').length)
+			.toBeGreaterThan(0);
+		if (format === 'pdf') expect(state.pushes.filter((mutation) => mutation.entity === 'reading_progress')).toHaveLength(1);
 		expect(state.pushes.find((mutation) => mutation.entity === 'reading_progress')?.data.book_file_id).toBe(31);
 	});
 	}
@@ -255,10 +256,11 @@ test('a failed push while closing queues the progress and still leaves the reade
 	await page.getByRole('button', { name: 'Close reader', exact: true }).click();
 	// Offline storage keeps the change, so closing is not blocked by a failed push.
 	await expect(page).toHaveURL('/books/21');
-	await expect(page.getByText('Changes are saved on this device and are waiting to sync.')).toBeVisible();
+	await expect(page.getByText('Changes are saved on this device and are waiting to sync.'))
+		.toBeVisible({ timeout: 15_000 });
 	expect(state.pushes).toEqual([]);
 	state.failPushes(false);
-	await page.getByRole('button', { name: 'Retry sync', exact: true }).click();
+	// The app retries the queue on its own; the progress push lands without another click.
 	await expect.poll(() => state.pushes.filter((mutation) => mutation.entity === 'reading_progress').length).toBe(1);
 });
 

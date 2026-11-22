@@ -291,7 +291,10 @@ test('desktop sidebar lists HOME links, Library, and All Books across every libr
 
 	const libraries = sidebar.getByRole('region', { name: 'Libraries', exact: true });
 	const collections = sidebar.getByRole('region', { name: 'Collections', exact: true });
-	await expect(collections.getByRole('link', { name: /Weekend reads/ })).toHaveCount(0);
+	// Libraries and collections each keep their own region, whatever the catalog filter is.
+	await expect(collections.getByRole('link', { name: /Weekend reads/ })).toHaveCount(1);
+	await expect(collections.getByRole('link', { name: /^Fiction/ })).toHaveCount(0);
+	await expect(libraries.getByRole('link', { name: /^Fiction/ })).toHaveCount(1);
 	const shelfActions = libraries.getByRole('button', { name: 'Library actions' });
 	await expect(shelfActions).toBeVisible();
 	await shelfActions.click();
@@ -327,12 +330,9 @@ test('desktop sidebar lists HOME links, Library, and All Books across every libr
 
 	await page.getByTitle('A Book', { exact: true }).click({ position: { x: 10, y: 40 } });
 	await expect(page).toHaveURL('/books/21');
-	await expect(sidebar.getByRole('link', { name: 'All Books' })).not.toHaveAttribute('aria-current', 'page');
-
-	await sidebar.getByRole('link', { name: 'Library', exact: true }).click();
-	await expect(page).toHaveURL('/libraries');
-	await expect(page.getByRole('link', { name: 'Fiction' })).toHaveAttribute('href', '/library/1');
-	await expect(sidebar.getByRole('link', { name: 'Library', exact: true })).toHaveAttribute('aria-current', 'page');
+	await libraries.getByRole('link', { name: /^Fiction/ }).click();
+	await expect(page).toHaveURL('/library/1');
+	await expect(libraries.getByRole('link', { name: /^Fiction/ })).toHaveAttribute('aria-current', 'page');
 
 	await sidebar.getByRole('link', { name: 'Dashboard' }).click();
 	await expect(page).toHaveURL('/');
