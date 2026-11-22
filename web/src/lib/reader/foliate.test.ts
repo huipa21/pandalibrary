@@ -106,6 +106,26 @@ afterEach(async () => {
 	vi.clearAllMocks();
 });
 
+describe('Foliate page turns', () => {
+	it('runs a turn that arrives mid-settle after the previous one finishes', async () => {
+		const { reader, view } = await openEngine();
+		const order: string[] = [];
+		let release: (() => void) | undefined;
+		Object.assign(view, {
+			next: async () => { order.push('next:start'); await new Promise<void>((resolve) => { release = resolve; }); order.push('next:end'); },
+			prev: async () => { order.push('prev'); }
+		});
+
+		const first = reader.next();
+		const second = reader.previous();
+		await Promise.resolve();
+		expect(order).toEqual(['next:start']);
+		release?.();
+		await Promise.all([first, second]);
+		expect(order).toEqual(['next:start', 'next:end', 'prev']);
+	});
+});
+
 describe('Foliate content pointer bridge', () => {
 	it('reports pointerdown inside the book frame to the embedding window', async () => {
 		const { doc, outer } = await openEngine();

@@ -5,6 +5,9 @@ import { readdirSync } from 'node:fs';
 import { ocrAssets } from '../../../../../scripts/ocr-assets.js';
 import { mixedPdfFixture, scannedFixtureImage, scannedPdfFixture } from '../../fixtures.js';
 
+// This spec needs the real service worker: the app's offline path is the subject.
+test.use({ serviceWorkers: 'allow' });
+
 let server: ViteDevServer;
 let origin: string;
 

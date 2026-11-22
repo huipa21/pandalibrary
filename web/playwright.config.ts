@@ -47,7 +47,18 @@ export default defineConfig({
 				url: origin,
 				reuseExistingServer: !process.env.CI
 			},
-	use: { baseURL: origin, actionTimeout: 15_000, navigationTimeout: 20_000 },
+	// Pages that open a PDF or EPUB do real layout work while other workers load their own
+	// books, so a 5s assertion budget mostly measured machine load.
+	expect: { timeout: 15_000 },
+	timeout: 60_000,
+	use: {
+		baseURL: origin,
+		actionTimeout: 15_000,
+		navigationTimeout: 20_000,
+		// A service worker serves requests the specs cannot route, so a stale cache makes them
+		// nondeterministic. The specs that exercise offline behaviour opt back in.
+		serviceWorkers: 'block'
+	},
 	testMatch: '**/*.e2e.{ts,js}',
 	// OCR has its own config (models are large); run it with `pnpm test:e2e:ocr`.
 	testIgnore: ['**/pdf/ocr/ocr.e2e.ts']

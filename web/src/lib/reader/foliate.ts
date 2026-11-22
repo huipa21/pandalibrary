@@ -113,6 +113,7 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	private display: FoliateDisplay | null = null;
 	private displayScale = 1;
 	private reflowAnchor: { type: 'cfi'; value: string } | null = null;
+	private turnQueue: Promise<void> = Promise.resolve();
 	private reflowGeneration = 0;
 	private settingsTask: Promise<void> = Promise.resolve();
 	private applyingSettings = false;
@@ -474,17 +475,27 @@ export class FoliateReader implements Reader, ReaderSearchEngine {
 	}
 
 	async previous(): Promise<void> {
-		this.clearReflowAnchor();
-		this.lastLoadError = null;
-		await this.requireView().prev();
-		if (this.lastLoadError) throw this.lastLoadError;
+		await this.turn((view) => view.prev());
 	}
 
 	async next(): Promise<void> {
-		this.clearReflowAnchor();
-		this.lastLoadError = null;
-		await this.requireView().next();
-		if (this.lastLoadError) throw this.lastLoadError;
+		await this.turn((view) => view.next());
+	}
+
+	/**
+	 * Turns are serialized: the paginator drops a request that arrives while another turn is
+	 * still settling, so a quick next-then-previous used to leave the reader on one page.
+	 */
+	private turn(run: (view: View) => Promise<void>): Promise<void> {
+		const queued = this.turnQueue.then(async () => {
+			this.clearReflowAnchor();
+			this.lastLoadError = null;
+			await run(this.requireView());
+			if (this.lastLoadError) throw this.lastLoadError;
+		});
+		// Keep the chain alive after a rejected turn so later turns still run.
+		this.turnQueue = queued.catch(() => undefined);
+		return queued;
 	}
 
 	private clearReflowAnchor(): void {

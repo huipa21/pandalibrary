@@ -3,6 +3,9 @@ import { pdfFixture } from '../../fixtures';
 import { resolve } from 'node:path';
 import type { PageAnnotationInput } from '../../types';
 
+// This spec needs the real service worker: the app's offline path is the subject.
+test.use({ serviceWorkers: 'allow' });
+
 type InsertMutation = { entity: string; id: string; op: string; data: {
 	kind: string; locator: { page: number; rect: { x: number; y: number; width: number; height: number } };
 	data: { text?: string; strokes?: number[][]; asset?: string }; position: number;

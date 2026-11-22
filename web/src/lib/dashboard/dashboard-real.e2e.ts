@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { realAdmin, signInRealAdmin } from '../real-auth.js';
 
+// This spec needs the real service worker: the app's offline path is the subject.
+test.use({ serviceWorkers: 'allow' });
+
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
 
 test('real server persists configured shelves and an empty layout across devices', async ({ page, browser }) => {

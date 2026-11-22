@@ -387,6 +387,8 @@ test('does not disclose metadata for an inaccessible saved shelf', async ({ page
 });
 
 test('discards a late shelf response after a refresh', async ({ page }) => {
+	// Holds a request open on purpose, so it needs headroom beyond the default budget.
+	test.slow();
 	const server = state();
 	seed(server, 1, { version: 1, sections: [{ id: 'shelf:8' }] });
 	await mockApi(page, server);
@@ -402,7 +404,9 @@ test('discards a late shelf response after a refresh', async ({ page }) => {
 		if (requests === 1) {
 			firstStarted();
 			await release;
-			await route.fulfill({ json: { shelf: shelf(8, 'Stale shelf') } });
+			// The refresh aborts this request, so fulfilling it can throw; the test still needs
+			// to know the attempt finished.
+			await route.fulfill({ json: { shelf: shelf(8, 'Stale shelf') } }).catch(() => undefined);
 			firstFinished();
 		} else {
 			await route.fulfill({ json: { shelf: shelf(8, 'Fresh shelf') } });
@@ -571,6 +575,8 @@ test('refreshes dashboard feeds immediately when books are added or made visible
 });
 
 test('refreshes an automatic shelf when book state changes during its first load', async ({ page }) => {
+	// Holds a request open on purpose, so it needs headroom beyond the default budget.
+	test.slow();
 	const server = state();
 	seed(server, 1, { version: 1, sections: [{ id: 'shelf:8' }, { id: 'shelf:7' }] });
 	await mockApi(page, server);

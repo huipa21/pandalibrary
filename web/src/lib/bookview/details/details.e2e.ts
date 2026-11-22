@@ -9,6 +9,9 @@ import type { Note, Progress } from '#lib/reader/types.js';
 import type { Shelf } from '#lib/shelves/types.js';
 import type { UserBook } from '../user-book.js';
 
+// This spec needs the real service worker: the app's offline path is the subject.
+test.use({ serviceWorkers: 'allow' });
+
 type CapturedMutation = {
 	entity: string;
 	id?: string;

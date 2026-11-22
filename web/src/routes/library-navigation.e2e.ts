@@ -68,19 +68,7 @@ async function mockLibraries(page: Page, role = 'admin', locale = 'en') {
 			? { items: [shelf(12, 'Second-page shelf')], next_cursor: null }
 			: { items: [shelf(11, 'Weekend reads')], next_cursor: 'next-shelf-page' }
 		});
-		if (path.endsWith('/books') || ['/books', '/authors', '/series', '/tags', '/me/book-states'].includes(path)) {
-			return route.fulfill({ json: { items: [], next_cursor: null } });
-		}
-		if (path === '/shelves/11') return route.fulfill({ json: { shelf: shelf(11, 'Weekend reads') } });
-		if (path === '/shelves/12') return route.fulfill({ json: { shelf: shelf(12, 'Second-page shelf') } });
-		if (path.startsWith('/shelves/system/')) {
-			const key = path.split('/').at(-1) ?? '';
-			return route.fulfill({ json: { shelf: {
-				key, name: key, mode: key === 'favorites' ? 'manual' : 'automatic',
-				shelf_id: key === 'favorites' ? 13 : null, visible_book_count: scope === 2 ? 1 : 3
-			} } });
-		}
-		if (path === '/books/count') return route.fulfill({ json: { count: 9 } });
+		// Stats routes must win over the generic suffix match below: /stats/books ends in /books.
 		if (path === '/stats') return route.fulfill({ json: {
 			from: url.searchParams.get('from'), to: url.searchParams.get('to'),
 			timezone: url.searchParams.get('timezone'), daily: [], finished_per_month: [],
@@ -105,6 +93,19 @@ async function mockLibraries(page: Page, role = 'admin', locale = 'en') {
 				records: { busiest_day: null, longest_session_seconds: 0, most_read_book: null }
 			}
 		} });
+		if (path.endsWith('/books') || ['/books', '/authors', '/series', '/tags', '/me/book-states'].includes(path)) {
+			return route.fulfill({ json: { items: [], next_cursor: null } });
+		}
+		if (path === '/shelves/11') return route.fulfill({ json: { shelf: shelf(11, 'Weekend reads') } });
+		if (path === '/shelves/12') return route.fulfill({ json: { shelf: shelf(12, 'Second-page shelf') } });
+		if (path.startsWith('/shelves/system/')) {
+			const key = path.split('/').at(-1) ?? '';
+			return route.fulfill({ json: { shelf: {
+				key, name: key, mode: key === 'favorites' ? 'manual' : 'automatic',
+				shelf_id: key === 'favorites' ? 13 : null, visible_book_count: scope === 2 ? 1 : 3
+			} } });
+		}
+		if (path === '/books/count') return route.fulfill({ json: { count: 9 } });
 		if (path === '/me/notes' || path === '/admin/bookheap/items') {
 			return route.fulfill({ json: { items: [], next_cursor: null, total: 0 } });
 		}

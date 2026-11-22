@@ -5,6 +5,9 @@ import { pdfFixture, epubFixture } from '../lib/reader/fixtures.js';
 import { realAdmin, signInRealAdmin } from '../lib/real-auth.js';
 import { bookmarkPdfSelection, jumpToPdfPage, openBookmarksPanel, openedPdf, pdfPageBox, pdfPageText, renamePdfBookmark } from '../lib/real-pdf.js';
 
+// This spec needs the real service worker: the app's offline path is the subject.
+test.use({ serviceWorkers: 'allow' });
+
 test.skip(!process.env.PANDA_E2E_BINARY, 'Requires the compiled server and isolated first-run setup');
 
 async function login(page: Page, username: string, password: string) {

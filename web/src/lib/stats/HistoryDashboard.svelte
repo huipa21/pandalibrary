@@ -163,7 +163,7 @@
 			</header>
 		<div class="waterfall" aria-busy={loading}>
 			{#each months as group (group.month)}
-				{@const monthSummary = summary?.months.find((month) => month.month === group.month)}
+				{@const monthSummary = (summary?.months ?? []).find((month) => month.month === group.month)}
 				<section aria-labelledby={`month-${group.month}`} class="history-month">
 					<header class="month-heading">
 						<h2 id={`month-${group.month}`}>{formatCalendar(group.month, locale, true)}</h2>

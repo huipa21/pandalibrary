@@ -19,6 +19,9 @@ import {
 	selectPdfText, selectionToolbar
 } from '../lib/real-pdf.js';
 
+// This spec needs the real service worker: the app's offline path is the subject.
+test.use({ serviceWorkers: 'allow' });
+
 declare global {
 	interface Window { pv11PaintSamples?: number[] }
 }

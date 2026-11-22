@@ -4,6 +4,9 @@ import type { Book, BookFile } from '../../catalog/types.js';
 import { pdfFixture } from '../../reader/fixtures.js';
 import type { Progress } from '../../reader/types.js';
 
+// This spec needs the real service worker: the app's offline path is the subject.
+test.use({ serviceWorkers: 'allow' });
+
 const hash = 'a'.repeat(64);
 
 function file(id: number, format: string, name: string, size: number, added: string): BookFile {

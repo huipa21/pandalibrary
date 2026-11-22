@@ -25,7 +25,7 @@
 	);
 	const added = $derived(bucketData(addedTimeline(data?.added_over_time ?? []), (key) => key === 'unknown' ? m['stats.catalog.unknown']() : addedLabel(key, locale), locale));
 	const years = $derived(bucketData(publicationTimeline(data?.publication_years ?? []), (key) => key, locale));
-	const unknownYears = $derived(data?.publication_years.find(({ key }) => key === 'unknown')?.count ?? 0);
+	const unknownYears = $derived((data?.publication_years ?? []).find(({ key }) => key === 'unknown')?.count ?? 0);
 	const genres = $derived(bucketData(data?.genres ?? [], metadataLabel, locale, data?.total_books ?? 0));
 	const languages = $derived(bucketData(data?.languages ?? [], (key) => key === 'unknown' ? m['stats.catalog.unknown']() : languageLabel(key, locale), locale, data?.total_books ?? 0));
 	const formats = $derived(bucketData(data?.formats ?? [], (key) => key === 'unknown' ? m['stats.catalog.unknown']() : key.toUpperCase(), locale, data?.total_books ?? 0));

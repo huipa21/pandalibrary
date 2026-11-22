@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { pdfFixture } from '../../lib/reader/fixtures';
 
+// This spec needs the real service worker: the app's offline path is the subject.
+test.use({ serviceWorkers: 'allow' });
+
 type Mutation = {
 	entity: string; key?: string;
 	data: { value?: Record<string, unknown>; locator?: { page: number; offset?: number }; percentage?: number };
