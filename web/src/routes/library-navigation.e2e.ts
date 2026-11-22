@@ -587,6 +587,7 @@ test('changing collection filters while another page loads starts a fresh pageab
 	let releaseSlow = () => {};
 	let markStarted = () => {};
 	const slow = new Promise<void>((resolve) => { releaseSlow = resolve; });
+	page.on('close', releaseSlow);
 	const started = new Promise<void>((resolve) => { markStarted = resolve; });
 	await page.route('**/api/v1/shelves/11/books?*', async (route) => {
 		const params = new URL(route.request().url()).searchParams;

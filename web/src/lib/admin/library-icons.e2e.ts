@@ -64,9 +64,11 @@ test('library creation saves the chosen icon and resets the picker', async ({ pa
 	const form = name.locator('xpath=ancestor::form');
 	for (const width of [320, 1280]) {
 		await page.setViewportSize({ width, height: 900 });
+		await page.evaluate(() => document.fonts.ready);
 		const controls = form.getByRole('group', { name: 'Icon' }).locator('label, button');
-		const positions = await controls.evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().top));
-		expect(new Set(positions).size).toBe(1);
+		await expect.poll(() => controls.evaluateAll((elements) =>
+			new Set(elements.map((element) => Math.round(element.getBoundingClientRect().top))).size
+		)).toBe(1);
 		await expect(form.getByRole('button', { name: 'Show more icons' })).toHaveAttribute('aria-expanded', 'false');
 	}
 	await name.fill('History');

@@ -397,6 +397,7 @@ test('discards a late shelf response after a refresh', async ({ page }) => {
 	let firstFinished!: () => void;
 	const started = new Promise<void>((resolve) => { firstStarted = resolve; });
 	const release = new Promise<void>((resolve) => { releaseFirst = resolve; });
+	page.on('close', releaseFirst);
 	const finished = new Promise<void>((resolve) => { firstFinished = resolve; });
 	let requests = 0;
 	await page.route((url) => url.pathname === '/api/v1/shelves/8', async (route) => {
@@ -585,6 +586,7 @@ test('refreshes an automatic shelf when book state changes during its first load
 	let finishFirst!: () => void;
 	const started = new Promise<void>((resolve) => { startFirst = resolve; });
 	const release = new Promise<void>((resolve) => { releaseFirst = resolve; });
+	page.on('close', releaseFirst);
 	const finished = new Promise<void>((resolve) => { finishFirst = resolve; });
 	let requests = 0;
 	let manualRequests = 0;

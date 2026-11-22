@@ -319,6 +319,7 @@ test('visibility is disabled while saving or offline and preserves state on fail
 	state.rejectVisibility = true;
 	let release!: () => void;
 	state.visibilityWait = new Promise<void>((resolve) => { release = resolve; });
+	page.on('close', release);
 	await page.goto('/books/21');
 	const makePrivate = page.getByRole('button', { name: 'Make private', exact: true });
 	await confirmInApp(page, () => makePrivate.click());
@@ -830,6 +831,7 @@ test('opens the inline status with the keyboard and updates it optimistically', 
 	await page.keyboard.press('ArrowDown');
 	await expect(page.getByRole('menuitemradio', { name: 'Reading', exact: true })).toBeFocused();
 	const pending = Promise.withResolvers<void>();
+	page.on('close', () => pending.resolve());
 	await page.route('**/api/v1/sync/push', async (route) => {
 		await pending.promise;
 		await route.fallback();

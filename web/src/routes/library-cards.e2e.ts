@@ -145,7 +145,7 @@ for (const width of [1280, 390]) {
 	test(`library and collection listings share the cover layout without visibility or deletion at ${width}px`, async ({ page }) => {
 		await authenticate(page);
 		await page.setViewportSize({ width, height: 900 });
-		await page.route('**/api/v1/shelves?*', (route) => route.fulfill({ json: {
+		await page.route((url) => url.pathname === '/api/v1/shelves', (route) => route.fulfill({ json: {
 			items: [{
 				id: 11, name: 'Weekend', kind: 'private', mode: 'manual', system_key: null,
 				owner_id: 1, description: null, created_by: 1, visible_book_count: 12,
@@ -160,7 +160,8 @@ for (const width of [1280, 390]) {
 			await page.goto(destination.path);
 			const main = page.getByRole('main');
 			const heading = main.getByRole('heading', { name: destination.heading, level: 1, exact: true });
-			await expect(heading).toBeVisible();
+			await expect(heading).toBeVisible({ timeout: 30_000 });
+			await page.evaluate(() => document.fonts.ready);
 			const card = main.getByRole('listitem').filter({ has: page.getByRole('heading', { name: destination.name, exact: true }) });
 			await expect(card.getByRole('link')).toHaveAttribute('href', destination.href);
 			await expect(card).toContainText('12 books');

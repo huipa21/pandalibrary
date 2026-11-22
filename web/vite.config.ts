@@ -24,6 +24,19 @@ export default defineConfig(({ command, mode }) => {
 			]
 		},
 		plugins: [
+			{
+				name: 'preview-keep-alive',
+				configurePreviewServer(server) {
+					// Node closes idle keep-alive sockets after 5s. Under a full browser run Chromium
+					// can reuse one just after it expired and report ERR_NETWORK_CHANGED for the chunk.
+					const http = server.httpServer as typeof server.httpServer & {
+						keepAliveTimeout: number;
+						headersTimeout: number;
+					};
+					http.keepAliveTimeout = 120_000;
+					http.headersTimeout = 125_000;
+				}
+			},
 			ocrAssets(),
 			tailwindcss(),
 			sveltekit({

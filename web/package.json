@@ -15,8 +15,11 @@
 		"check": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --emit-ts-declarations && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run",
-		"test:e2e": "playwright test",
-		"test:e2e:ocr": "playwright test --config src/lib/reader/pdf/ocr/playwright.config.ts"
+		"test:e2e": "pnpm test:e2e:parallel && pnpm test:e2e:reader",
+		"test:e2e:saturation": "playwright test --workers=4 --retries=1",
+		"test:e2e:ocr": "playwright test --config src/lib/reader/pdf/ocr/playwright.config.ts",
+		"test:e2e:parallel": "playwright test --config playwright.parallel.config.ts",
+		"test:e2e:reader": "playwright test --config playwright.reader.config.ts"
 	},
 	"devDependencies": {
 		"@axe-core/playwright": "4.14.0",

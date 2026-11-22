@@ -20,6 +20,12 @@ export async function jumpToPdfPage(page: Page, n: number) {
 
 /** Selects from the start of the text item containing `from` to the end of the one containing `to`. */
 export async function selectPdfText(page: Page, from: string, to = from) {
+	// The text layer is built after the page canvas; wait for the same leaf spans the evaluate uses.
+	const hasLeafText = (text: string) => page.evaluate((value) =>
+		[...document.querySelectorAll('.reader-pdf .textLayer span')]
+			.some((span) => !span.children.length && Boolean(span.firstChild) && span.textContent?.includes(value)), text);
+	if (to === from) await expect.poll(() => hasLeafText(from), { timeout: 30_000 }).toBe(true);
+	else await expect.poll(async () => (await hasLeafText(from)) && (await hasLeafText(to)), { timeout: 30_000 }).toBe(true);
 	await page.evaluate(([start, end]) => {
 		const items = [...document.querySelectorAll('.reader-pdf .textLayer span')].filter((span) => !span.children.length);
 		const find = (text: string) => {

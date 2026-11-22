@@ -597,6 +597,7 @@ test('failed saves keep drafts and disable mutation while pending, and chip vali
 	let current = baseBook();
 	const patches: Record<string, unknown>[] = [];
 	let finishSave: (() => void) | undefined;
+	page.on('close', () => finishSave?.());
 	await page.route('**/api/v1/books/21', async (route) => {
 		if (route.request().method() !== 'PATCH') return route.fulfill({ json: { book: current } });
 		const patch = route.request().postDataJSON() as Record<string, unknown>;

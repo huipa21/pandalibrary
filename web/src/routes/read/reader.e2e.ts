@@ -1,7 +1,7 @@
 import { expect, test, type Frame, type Page, type Route } from '@playwright/test';
 import type { View } from 'foliate-js/view.js';
 import { azw3Fixture, cbzFixture, epubFixture, fb2Fixture, fbzFixture, mobiFixture, pdfFixture } from '../../lib/reader/fixtures';
-import { pdfPageBox, pdfPageText } from '../../lib/real-pdf.js';
+import { openedPdf, pdfPageBox, pdfPageText } from '../../lib/real-pdf.js';
 import axe from 'axe-core';
 import { BACKGROUNDS } from '../../lib/reader/appearance.js';
 import { resolve } from 'node:path';
@@ -161,7 +161,7 @@ async function bookFrame(page: Page, text?: string): Promise<Frame> {
 			}
 		}
 		expect(frame).toBeDefined();
-	}).toPass({ timeout: 5000 });
+	}).toPass({ timeout: 30_000 });
 	if (!frame) throw new Error('Book frame was not created.');
 	return frame;
 }
@@ -172,6 +172,7 @@ for (const format of ['epub', 'pdf'] as const) {
 		const attempts: Record<string, unknown>[] = [];
 		let failing = true;
 		let release: (() => void) | undefined;
+		page.on('close', () => release?.());
 		await page.route('**/api/v1/wordbooks/entries', async (route) => {
 			const input = route.request().postDataJSON();
 			attempts.push(input);
@@ -467,7 +468,7 @@ test('opens PDF, restores its page and paints persisted selectable highlights', 
 	}];
 	await useProductionCsp(page);
 	await page.goto('/read/21/31');
-	await expect(page.locator('.reader-pdf-text')).toContainText('Second PDF page text');
+	await openedPdf(page, 2, 'Second PDF page text');
 	await page.evaluate(() => {
 		const span = document.querySelector('.reader-pdf-text span');
 		if (!span) throw new Error('Missing PDF text layer');
@@ -481,7 +482,7 @@ test('opens PDF, restores its page and paints persisted selectable highlights', 
 	await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('Second PDF page text');
 	await expect(page.locator('.reader-pdf-highlight')).toHaveCount(1);
 	await page.reload();
-	await expect(page.locator('.reader-pdf-text')).toContainText('Second PDF page text');
+	await openedPdf(page, 2, 'Second PDF page text');
 	await expect(page.locator('.reader-pdf-highlight')).toHaveCount(1);
 });
 
@@ -996,12 +997,12 @@ for (const { format, fixture, locator, target, start } of [
 			else await expect((await bookFrame(page, text)).getByText(text, { exact: true })).toBeVisible();
 		};
 		await page.goto('/read/21/31?highlight=missing-highlight');
-		if (format !== 'pdf') await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 		await visibleText(start);
+		if (format !== 'pdf') await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 		await expect(page.getByRole('alert').filter({ hasText: "This bookmark's file or position is unavailable on this device." })).toBeVisible();
 		await page.goto('/read/21/31?highlight=hl-target');
-		if (format !== 'pdf') await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 		await visibleText(target);
+		if (format !== 'pdf') await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 	});
 }
 

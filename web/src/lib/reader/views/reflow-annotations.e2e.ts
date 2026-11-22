@@ -649,6 +649,7 @@ for (const [format, fixture] of [
 		if (format === 'epub') await bookFrame(page, 'Second section');
 		await openAnnotations(page);
 		await page.locator('[data-panel-jump]').click();
+		if (format !== 'cbz') await bookFrame(page, passage);
 		await expect(inserted).toBeVisible();
 		await page.reload();
 		await expect(inserted).toBeVisible();

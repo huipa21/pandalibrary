@@ -33,12 +33,12 @@ if (realServer) {
 }
 
 export default defineConfig({
-	// One preview server serves every worker, so cap the fan-out; more workers mostly
-	// adds timeouts on the heavier reader specs.
-	workers: realServer ? 1 : 4,
-	// A single preview server plus 4 browsers makes a few heavy reader specs miss their
-	// action timeout on a loaded machine; one retry separates that from real failures.
-	retries: realServer ? 0 : 1,
+	// The blocking gate is retry-free. Two workers limit simultaneous EPUB/PDF layout;
+	// remaining failures must be fixed in the specs, not hidden with retries.
+	workers: realServer ? 1 : 2,
+	// Retries hide flakes. Saturation runs opt into the old four-worker, one-retry
+	// budget explicitly with `test:e2e:saturation` and stay non-blocking.
+	retries: 0,
 	globalSetup: realServer ? './scripts/e2e-server.mjs' : undefined,
 	webServer: realServer
 		? undefined
@@ -47,14 +47,19 @@ export default defineConfig({
 				url: origin,
 				reuseExistingServer: !process.env.CI
 			},
-	// Pages that open a PDF or EPUB do real layout work while other workers load their own
-	// books, so a 5s assertion budget mostly measured machine load.
-	expect: { timeout: 15_000 },
-	timeout: 60_000,
+	// Pages that open a PDF or EPUB do real layout work while another worker loads its own
+	// book. Under a full two-worker run the previous federation budget still measured load.
+	expect: { timeout: 60_000 },
+	timeout: 180_000,
 	use: {
 		baseURL: origin,
-		actionTimeout: 15_000,
-		navigationTimeout: 20_000,
+		launchOptions: {
+			// WSL/Chromium can report ERR_NETWORK_CHANGED when the out-of-process network
+			// service restarts under load. Keep it in the browser process for the gate.
+			args: ['--enable-features=NetworkServiceInProcess']
+		},
+		actionTimeout: 60_000,
+		navigationTimeout: 60_000,
 		// A service worker serves requests the specs cannot route, so a stale cache makes them
 		// nondeterministic. The specs that exercise offline behaviour opt back in.
 		serviceWorkers: 'block'

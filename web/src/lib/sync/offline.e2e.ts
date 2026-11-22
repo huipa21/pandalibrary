@@ -187,6 +187,7 @@ test('storage settings refresh when an explicit sync reconciles an existing conf
 
 	let releasePull = () => {};
 	const held = new Promise<void>((resolve) => { releasePull = resolve; });
+	page.on('close', releasePull);
 	let pullStarted = false;
 	await page.route('**/api/v1/sync/pull?*', async (route) => {
 		pullStarted = true;
@@ -251,6 +252,7 @@ test('book details use synced state and the cached cover while offline', async (
 });
 
 test('offline progress survives reload and reconnect without a standalone book note writer', async ({ page, context }) => {
+	test.setTimeout(120_000);
 	const state = await setup(page);
 	await download(page);
 	await page.goto('/read/21/31');
@@ -316,6 +318,7 @@ test('a denied online file is revalidated and evicted rather than served from an
 });
 
 test('account changes and logout cannot expose a previous account download offline', async ({ page, context }) => {
+	test.setTimeout(120_000);
 	const state = await setup(page);
 	await download(page);
 	state.account = 2;

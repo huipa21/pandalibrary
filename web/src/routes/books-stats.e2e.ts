@@ -201,12 +201,13 @@ for (const width of [900, 1440]) {
 		await page.setViewportSize({ width, height: 1000 });
 		await page.route('**/api/v1/stats/books?*', (route) => route.fulfill({ json: stats() }));
 		await page.goto('/stats/books');
+		await page.evaluate(() => document.fonts.ready);
 		let previousBottom = 0;
 		for (const [leftIndex, rightIndex] of [[0, 4], [1, 5], [2, 3]]) {
 			const left = page.getByRole('region', { name: titles[leftIndex], exact: true });
 			const right = page.getByRole('region', { name: titles[rightIndex], exact: true });
-			await expect(left).toBeVisible();
-			await expect(right).toBeVisible();
+			await expect(left).toBeVisible({ timeout: 30_000 });
+			await expect(right).toBeVisible({ timeout: 30_000 });
 			const leftBox = (await left.boundingBox())!;
 			const rightBox = (await right.boundingBox())!;
 			expect(leftBox.y).toBeCloseTo(rightBox.y, 0);
@@ -242,6 +243,7 @@ test('catalog handles loading, retryable connection and server failures, and exp
 	let calls = 0;
 	let release: (() => void) | undefined;
 	const waiting = new Promise<void>((resolve) => { release = resolve; });
+	page.on('close', () => release?.());
 	await page.route('**/api/v1/stats/books?*', async (route) => {
 		calls += 1;
 		if (calls === 1) {

@@ -63,6 +63,10 @@ async function setup(page: Page, options: { empty?: boolean; locale?: 'en' | 'zh
 		holdProgress: options.holdProgress ?? false, releaseProgress: null,
 		holdFile: false, releaseFile: null
 	};
+	page.on('close', () => {
+		state.releaseProgress?.();
+		state.releaseFile?.();
+	});
 	if (options.empty) {
 		state.book = { ...state.book, files: [] };
 		state.progress = null;

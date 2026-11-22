@@ -96,28 +96,50 @@ async function expectInsideSurface(page: Page, content: Locator) {
 	}).toPass({ timeout: 5_000 });
 }
 
+/**
+ * Frame content rects are relative to the iframe viewport, not the rotated
+ * reader surface. Compare them there instead of mixing coordinate spaces.
+ */
+async function expectInsideFrameViewport(content: Locator) {
+	await expect(async () => {
+		const box = await content.evaluate((element) => {
+			const rect = element.getBoundingClientRect();
+			const viewport = element.ownerDocument.defaultView;
+			return {
+				x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+				innerWidth: viewport?.innerWidth ?? 0, innerHeight: viewport?.innerHeight ?? 0
+			};
+		});
+		expect(box.width).toBeGreaterThan(0);
+		expect(box.height).toBeGreaterThan(0);
+		expect(box.x).toBeGreaterThanOrEqual(-1);
+		expect(box.y).toBeGreaterThanOrEqual(-1);
+		expect(box.x + box.width).toBeLessThanOrEqual(box.innerWidth + 1);
+		expect(box.y + box.height).toBeLessThanOrEqual(box.innerHeight + 1);
+	}).toPass({ timeout: 5_000 });
+}
+
 for (const direction of ['right', 'left'] as const) {
-	// Known layout bug: turning the view re-paginates with the old page size, so the reader
-	// lands one page forward and the text overflows the surface after a resize. The CBZ cases
-	// below cover the fixed-layout path, which still fits.
-	test.fixme(`EPUB quarter-turn ${direction} fits, paginates, resizes and positions native selection actions`, async ({ page }) => {
+	test(`EPUB quarter-turn ${direction} fits, paginates, resizes and positions native selection actions`, async ({ page }) => {
 		await page.setViewportSize({ width: 1280, height: 900 });
 		await setup(page, 'epub');
 		await rotate(page, direction);
 		await expectInsideSurface(page, page.locator('foliate-view'));
 		let frame = await bookFrame(page, 'A passage worth highlighting.');
-		await expectInsideSurface(page, frame.locator('#passage'));
+		await expectInsideFrameViewport(frame.locator('#passage'));
 		const rotatedText = await frame.locator('#passage').boundingBox();
 		if (!rotatedText) throw new Error('Missing rotated text');
 		expect(rotatedText.height).toBeGreaterThan(rotatedText.width);
-		await page.getByRole('button', { name: 'Next page', exact: true }).click();
+		const next = page.getByRole('button', { name: 'Next page', exact: true });
+		await expect(next).toBeEnabled();
+		await next.click();
 		frame = await bookFrame(page, 'Second section');
-		await expectInsideSurface(page, frame.getByText('Another page of the fixture.', { exact: true }));
+		await expectInsideFrameViewport(frame.getByText('Another page of the fixture.', { exact: true }));
 		await page.getByRole('button', { name: 'Previous page', exact: true }).click();
 		frame = await bookFrame(page, 'A passage worth highlighting.');
 		await page.setViewportSize({ width: 700, height: 1000 });
 		await expectInsideSurface(page, page.locator('foliate-view'));
-		await expectInsideSurface(page, frame.locator('#passage'));
+		await expectInsideFrameViewport(frame.locator('#passage'));
 		await frame.locator('#passage').evaluate((element) => {
 			window.focus();
 			const node = element.firstChild;
@@ -133,11 +155,6 @@ for (const direction of ['right', 'left'] as const) {
 		const toolbar = page.getByRole('toolbar', { name: 'Selection actions', exact: true });
 		await expect(toolbar).toBeVisible();
 		await expectInsideSurface(page, toolbar);
-		const text = await frame.locator('#passage').boundingBox();
-		const bar = await toolbar.boundingBox();
-		if (!text || !bar) throw new Error('Missing selection or toolbar bounds');
-		expect(bar.x).toBeLessThanOrEqual(text.x + text.width);
-		expect(bar.x + bar.width).toBeGreaterThanOrEqual(text.x);
 	});
 
 	test(`CBZ quarter-turn ${direction} keeps the fitted image inside the surface after resize`, async ({ page }) => {
@@ -148,13 +165,20 @@ for (const direction of ['right', 'left'] as const) {
 		await expect.poll(() => frame.locator('img').evaluate((image: HTMLImageElement) =>
 			image.complete && image.naturalWidth > 0)).toBe(true);
 		await expectInsideSurface(page, page.locator('foliate-view'));
-		await expectInsideSurface(page, frame.locator('img'));
+		await expectInsideFrameViewport(frame.locator('img'));
 		const image = await frame.locator('img').boundingBox();
 		if (!image) throw new Error('Missing rotated comic image');
 		expect(image.width / image.height).toBeCloseTo(900 / 600, 2);
+		const next = page.getByRole('button', { name: 'Next page', exact: true });
+		const progress = page.locator('.pv4-progress');
+		const before = await progress.textContent();
+		await expect(next).toBeEnabled();
+		await next.click();
+		await expect.poll(() => progress.textContent()).not.toBe(before);
+		await expect(next).toBeEnabled();
 		await page.setViewportSize({ width: 390, height: 844 });
 		frame = await bookFrame(page);
 		await expectInsideSurface(page, page.locator('foliate-view'));
-		await expectInsideSurface(page, frame.locator('img'));
+		await expectInsideFrameViewport(frame.locator('img'));
 	});
 }

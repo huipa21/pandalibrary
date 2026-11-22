@@ -45,6 +45,7 @@ async function mockUploads(page: Page) {
 	const visibilities: string[] = [];
 	let release!: () => void;
 	const gate = new Promise<void>((resolve) => (release = resolve));
+	page.on('close', release);
 	await page.route('**/api/v1/admin/bookheap/files', async (route) => {
 		const body = route.request().postDataBuffer()?.toString('latin1') ?? '';
 		const name = /filename="([^"]+)"/.exec(body)?.[1] ?? '';
@@ -332,6 +333,7 @@ test('uploads require a loaded library, omit optional shelves and default to pub
 	await authenticate(page);
 	let release!: () => void;
 	const loading = new Promise<void>((resolve) => (release = resolve));
+	page.on('close', release);
 	await page.route('**/api/v1/admin/libraries?*', async (route) => {
 		await loading;
 		await route.fulfill({ json: { items: [{ id: 2, name: 'Main' }, { id: 3, name: 'Comics' }], next_cursor: null } });

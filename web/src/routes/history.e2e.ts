@@ -99,6 +99,7 @@ test('history card contains its heading, search, and year selector without old c
 	await page.goto('/stats/history');
 	const history = page.getByRole('region', { name: 'History', exact: true });
 	await expect(history).toHaveClass(/\bcard\b/);
+	await page.evaluate(() => document.fonts.ready);
 	await expect(history).toHaveAttribute('aria-labelledby', 'history-heading');
 	const header = history.locator('header').filter({
 		has: page.getByRole('heading', { name: 'History', exact: true })
@@ -125,7 +126,7 @@ test('history card contains its heading, search, and year selector without old c
 	expect(headerBox!.y).toBeGreaterThanOrEqual(cardBox!.y);
 	expect(headerBox!.x + headerBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width);
 	expect(firstRowBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height);
-	expect(await history.evaluate((element) => {
+	await expect.poll(() => history.evaluate((element) => {
 		const style = getComputedStyle(element);
 		return Number.parseFloat(style.borderTopWidth) > 0 && style.borderTopStyle !== 'none';
 	})).toBe(true);
@@ -138,6 +139,7 @@ test('year summary text is readable and fits at desktop and mobile widths', asyn
 		await page.goto('/stats/history');
 		const panel = page.getByRole('complementary', { name: `${year} in numbers` });
 		await expect(panel).toBeVisible();
+		await page.evaluate(() => document.fonts.ready);
 		for (const selector of ['h3', '.total-grid dt', '.month-table', '.records dt', '.records strong']) {
 			const size = await panel.locator(selector).first().evaluate((element) =>
 				Number.parseFloat(getComputedStyle(element).fontSize)
@@ -149,17 +151,15 @@ test('year summary text is readable and fits at desktop and mobile widths', asyn
 		)).toBeGreaterThanOrEqual(10);
 		expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-		const labels = await panel.locator('.chart-column span').evaluateAll((elements) =>
-			elements.map((element) => {
+		await expect.poll(() => panel.locator('.chart-column span').evaluateAll((elements) => {
+			const labels = elements.map((element) => {
 				const range = document.createRange();
 				range.selectNodeContents(element);
 				const { left, right } = range.getBoundingClientRect();
 				return { left, right };
-			})
-		);
-		for (let index = 1; index < labels.length; index++) {
-			expect(labels[index].left).toBeGreaterThanOrEqual(labels[index - 1].right);
-		}
+			});
+			return labels.every((label, index) => index === 0 || label.left >= labels[index - 1].right);
+		})).toBe(true);
 	}
 });
 

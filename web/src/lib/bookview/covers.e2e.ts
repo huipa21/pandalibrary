@@ -84,6 +84,10 @@ function problem(route: Route, status: number) {
 }
 
 async function mockApi(page: Page, state: MockState) {
+	page.on('close', () => {
+		state.releasePush?.();
+		state.releaseUserBook?.();
+	});
 	await page.addInitScript(() => {
 		window.addEventListener('pandalibrary-quick-view', (event) => {
 			const detail = (event as CustomEvent<{ bookId: number; book?: { title: string }; trigger: Element | null }>).detail;

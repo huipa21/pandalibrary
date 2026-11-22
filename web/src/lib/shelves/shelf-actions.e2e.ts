@@ -208,6 +208,7 @@ test('one creation dialog refreshes the management page and sidebar', async ({ p
 test('mobile administrator drawer keeps focus and creates a private collection with automatic rules', async ({ page }, info) => {
 	let releaseCreate = () => {};
 	const pendingCreate = new Promise<void>((resolve) => { releaseCreate = resolve; });
+	page.on('close', releaseCreate);
 	const server = await mockApi(page, { role: 'admin', beforeCreate: () => pendingCreate });
 	await page.setViewportSize({ width: 320, height: 720 });
 	await page.goto('/shelves');

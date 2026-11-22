@@ -29,6 +29,7 @@ test('renders localized loading, API error, and empty library states', async ({ 
 	let attempts = 0;
 	let releaseFirstResponse: () => void = () => {};
 	const firstResponse = new Promise<void>((resolve) => { releaseFirstResponse = resolve; });
+	page.on('close', releaseFirstResponse);
 	await page.route('**/api/v1/libraries?*', async (route) => {
 		if (new URL(route.request().url()).searchParams.get('limit') === '100') {
 			return route.fulfill({ json: { items: [], next_cursor: null } });

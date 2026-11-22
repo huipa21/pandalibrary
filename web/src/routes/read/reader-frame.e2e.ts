@@ -208,7 +208,7 @@ for (const width of [1440, 360]) {
 test('EPUB bookmark rejection remains an accessible error instead of a queued success', async ({ page }) => {
 	const state = await setup(page, 'epub');
 	await page.goto('/read/21/31');
-	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
+	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled({ timeout: 30_000 });
 	state.rejectBookmarks('bookmark book is unavailable');
 	const toggle = page.getByTestId('reflow-bookmark-toggle');
 	await toggle.click();

@@ -272,8 +272,13 @@ with `pnpm --dir web dev`; its development server proxies `/api`, `/opds`, and
 For explicitly stamped release binaries, use
 `node scripts/build-binary.mjs --output bin/pandalibrary --release v1.0.0`
 from the tagged checkout; `GOOS` and `GOARCH` can select a target platform.
-Run `pnpm --dir web test:e2e` for the browser suite. Set `PANDA_E2E_BINARY` to a built
-binary to run the suite against the real server and embedded SPA; see
+Run `pnpm --dir web test:e2e` for the blocking browser gate: two workers, no retries.
+Reader specs (`src/lib/reader/**`, `src/routes/read/**`) run in a second single-worker
+invocation because browser state crosses files there. `pnpm --dir web test:e2e:parallel`
+and `pnpm --dir web test:e2e:reader` run each half alone. `pnpm --dir web
+test:e2e:saturation` uses the old four-worker, one-retry budget as a non-blocking load
+diagnostic; do not use it as a merge gate. Set `PANDA_E2E_BINARY` to a
+built binary to run the suite against the real server and embedded SPA; see
 [Release verification](#release-verification). The OCR specs need the self-hosted
 models and run on their own: `pnpm --dir web test:e2e:ocr`.
 

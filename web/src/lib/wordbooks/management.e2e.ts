@@ -303,7 +303,10 @@ test('collection searches notebook descriptions and entry categories, preserving
 	await page.getByRole('searchbox', { name: 'Search entries' }).fill('sentence');
 	await expect(collection.locator('a')).toHaveCount(1);
 	await collection.locator('a').click();
-	await page.getByRole('combobox', { name: 'Category', exact: true }).selectOption('lexical');
+	await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+	const category = page.getByRole('combobox', { name: 'Category', exact: true });
+	await category.selectOption('lexical');
+	await expect(category).toHaveValue('lexical');
 	await page.getByRole('searchbox', { name: 'Search entries' }).fill('apple');
 	await expect(page.locator('[data-entry-id]')).toHaveCount(1);
 });
@@ -454,7 +457,9 @@ test('wordbook upload crops an image into a persistent 600 by 900 JPEG', async (
 	await expect(page.getByRole('dialog', { name: 'Settings', exact: true }).locator('.preview .book-cover img')).toHaveAttribute('src', payload.cover_image);
 	await page.getByRole('dialog', { name: 'Settings', exact: true }).getByRole('button', { name: 'Cancel', exact: true }).click();
 	await page.goto('/wordbooks');
-	await expect(page.getByRole('link', { name: 'Cropped cover', exact: true }).locator('.book-cover img')).toHaveAttribute('src', payload.cover_image);
+	const croppedLink = page.getByRole('link', { name: 'Cropped cover', exact: true });
+	await expect(croppedLink).toBeVisible({ timeout: 30_000 });
+	await expect(croppedLink.locator('.book-cover img')).toHaveAttribute('src', payload.cover_image, { timeout: 30_000 });
 });
 
 test('failed crop encoding blocks saving but permits reverting and cancelling the modal', async ({ page }) => {
@@ -594,6 +599,7 @@ test('specific wordbook has compact controls, metadata and four persistent entry
 	}
 	await page.locator('button[data-view="list"]').click();
 	await page.reload();
+	await expect(main.getByRole('heading', { name: 'English notebook', exact: true })).toBeVisible({ timeout: 30_000 });
 	await expect(sort).toHaveValue('alphabetical-desc');
 	await expect(page.locator('ol[data-view]')).toHaveAttribute('data-view', 'cards');
 	await back.click();

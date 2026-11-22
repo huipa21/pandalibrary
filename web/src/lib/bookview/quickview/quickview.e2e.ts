@@ -299,6 +299,7 @@ test('shows not found and replaces the book without stale responses', async ({ p
 
 	let release: () => void = () => undefined;
 	const held = new Promise<void>((resolve) => { release = resolve; });
+	page.on('close', release);
 	await page.route('**/api/v1/books/2', async (route) => {
 		await held;
 		await route.fallback();
