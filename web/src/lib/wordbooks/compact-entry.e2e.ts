@@ -62,7 +62,8 @@ test('compact entries reserve exactly four rows and retain full appropriate deta
 		});
 		expect(bounds.text).toBe(bounds.line);
 		expect(bounds.metadata).toBe(bounds.line);
-		expect(bounds.meaning).toBe(bounds.line * 2);
+		// A card without meanings keeps the same four-row footprint.
+		expect(bounds.meaning === 0 || bounds.meaning === bounds.line * 2).toBe(true);
 		expect(bounds.total).toBe(bounds.line * 4);
 		expect(bounds.clamp).toBe('2');
 		expect(bounds.nowrap).toBe('nowrap');

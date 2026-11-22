@@ -439,6 +439,10 @@ test('isolates EPUB scripts and round-trips progress, highlights, notes and sett
 	await page.getByRole('button', { name: 'Save note' }).click();
 	await expect.poll(() => state.notes.find((note) => note.highlight_id !== null)?.body_md).toBe('Edited note');
 	await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+	// Deleting a note asks for confirmation. Dispatch the click directly: the spec's
+	// confirmation locator handler would otherwise intercept a normal click.
+	await page.locator('#app-confirmation').getByRole('button', { name: 'Confirm', exact: true }).dispatchEvent('click');
+	await expect.poll(() => state.mutations.filter((mutation) => mutation.entity === 'notes' && mutation.op === 'delete').length).toBe(1);
 	await expect.poll(() => state.notes.length).toBe(0);
 	await page.getByRole('button', { name: 'Close annotation details' }).click();
 	await highlight.locator('[data-rp7-delete]').click();

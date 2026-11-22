@@ -247,20 +247,19 @@ test('Chinese PDF chrome is localized', async ({ page }) => {
 	await expect(page.locator('.pv-frame-toolbar')).toContainText('0.00%');
 });
 
-test('a failed close stays in the frame and can retry before leaving', async ({ page }) => {
+test('a failed push while closing queues the progress and still leaves the reader', async ({ page }) => {
 	const state = await setup(page);
 	state.failPushes(true);
 	await page.goto('/read/21/31');
 	await expect(page.locator('.reader-pdf-text')).toContainText('First PDF page text');
 	await page.getByRole('button', { name: 'Close reader', exact: true }).click();
-	await expect(page).toHaveURL('/read/21/31');
-	await expect(page.getByRole('link', { name: 'Leave without saving' })).toBeVisible();
-	await expect(page.locator('.shell-header-band')).toHaveCount(0);
-	state.failPushes(false);
-	await page.getByRole('button', { name: 'Retry unsaved changes' }).click();
-	await expect.poll(() => state.pushes.filter((mutation) => mutation.entity === 'reading_progress').length).toBe(1);
-	await page.getByRole('button', { name: 'Close reader', exact: true }).click();
+	// Offline storage keeps the change, so closing is not blocked by a failed push.
 	await expect(page).toHaveURL('/books/21');
+	await expect(page.getByText('Changes are saved on this device and are waiting to sync.')).toBeVisible();
+	expect(state.pushes).toEqual([]);
+	state.failPushes(false);
+	await page.getByRole('button', { name: 'Retry sync', exact: true }).click();
+	await expect.poll(() => state.pushes.filter((mutation) => mutation.entity === 'reading_progress').length).toBe(1);
 });
 
 test('PDF saved-bookmark links restore their page without the legacy bookmark UI', async ({ page }) => {

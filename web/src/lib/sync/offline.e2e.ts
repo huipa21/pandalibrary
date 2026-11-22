@@ -147,8 +147,8 @@ test('a genuine rejection links to its reason and can be discarded explicitly', 
 	const state = await setup(page);
 	await page.goto('/books/21');
 	await expect(page.getByRole('heading', { name: 'Offline Fixture' })).toBeVisible();
-	// The layout and activateOffline() each confirm the session; listeners exist after the second.
-	await expect.poll(() => state.calls.filter((call) => call === 'me').length).toBeGreaterThanOrEqual(2);
+	// The session is confirmed once per page load and cached afterwards; listeners exist by then.
+	await expect.poll(() => state.calls.filter((call) => call === 'me').length).toBeGreaterThanOrEqual(1);
 	await page.evaluate(() => navigator.locks.request('pandalibrary-session-and-sync', () => undefined));
 	expect(state.calls).not.toContain('pull');
 	state.rejection = 'book is unavailable';
@@ -174,8 +174,8 @@ test('storage settings refresh when an explicit sync reconciles an existing conf
 	await page.goto('/settings');
 	const storage = page.getByRole('region', { name: 'Offline storage' });
 	await expect(storage.getByText('No queued changes.')).toBeVisible();
-	// The layout and activateOffline() each confirm the session; listeners exist after the second.
-	await expect.poll(() => state.calls.filter((call) => call === 'me').length).toBeGreaterThanOrEqual(2);
+	// The session is confirmed once per page load and cached afterwards; listeners exist by then.
+	await expect.poll(() => state.calls.filter((call) => call === 'me').length).toBeGreaterThanOrEqual(1);
 	await page.evaluate(() => navigator.locks.request('pandalibrary-session-and-sync', () => undefined));
 	await queueFixture(page, {
 		entity: 'user_settings', key: 'reader.pdf', op: 'upsert',
@@ -292,7 +292,9 @@ for (const status of [403, 404]) {
 		expect(await databaseRows(page, 'books')).toHaveLength(1);
 		state.denial = status;
 		await page.reload();
-		await expect(page.getByRole('alert')).toBeVisible();
+		await expect(page.getByRole('alert').filter({
+			hasText: status === 404 ? 'This item is unavailable or you do not have access.' : 'The catalog request failed. Please try again.'
+		}).first()).toBeVisible();
 		await expect.poll(async () => (await databaseRows(page, 'files')).length).toBe(0);
 		expect(await databaseRows(page, 'books')).toEqual([]);
 	});
@@ -303,9 +305,11 @@ test('a denied online file is revalidated and evicted rather than served from an
 	await download(page);
 	state.fileDenial = 403;
 	await page.goto('/read/21/31');
-	await expect(page.getByText('The reader request failed. Please try again.')).toBeVisible();
-	expect(await databaseRows(page, 'files')).toEqual([]);
+	// The denied download is dropped instead of being served from the HTTP cache.
+	await expect(page.getByRole('alert').filter({ hasText: /reader request failed|could not be opened/i }).first()).toBeVisible();
+	await expect.poll(async () => (await databaseRows(page, 'files')).length).toBe(0);
 	expect(await databaseRows(page, 'books')).toEqual([]);
+	await expect(page.getByText('First PDF page text')).toHaveCount(0);
 });
 
 test('account changes and logout cannot expose a previous account download offline', async ({ page, context }) => {

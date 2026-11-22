@@ -64,7 +64,11 @@
 	.entry { display: block; min-height: 6rem; }
 	.preview-text, .preview-metadata { height: 1.5rem; line-height: 1.5rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 	.has-speaker { padding-right: 1.75rem; }
-	.preview-meaning { line-height: 1.5rem; overflow-wrap: anywhere; }
+	/* Text and metadata take one row each; the meanings fill the remaining two. */
+	.preview-meaning {
+		display: -webkit-box; -webkit-box-orient: vertical; line-clamp: 2; -webkit-line-clamp: 2;
+		overflow: hidden; overflow-wrap: anywhere; line-height: 1.5rem;
+	}
 	.speaker { position: absolute; top: 1.5rem; right: 0; height: 1.5rem; width: 1.5rem; display: grid; place-items: center; }
 	.entry:focus-visible, .speaker:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 </style>

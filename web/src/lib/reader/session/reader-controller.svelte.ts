@@ -18,7 +18,7 @@ import { HttpRangeSource, isBlob, isReaderSourceError, type ReaderSource } from 
 import {
 	currentAccount, DurableProgressWriter, offlineAvailable, offlineStatus, readerOpened, saveMutation, syncNow
 } from '#lib/sync/client.js';
-import { OfflineStorageError } from '#lib/sync/db.js';
+import { OfflineStorageError, removeBook } from '#lib/sync/db.js';
 import { loadBook as loadOfflineBook, loadFile, loadReaderState } from '#lib/sync/library.js';
 import { readerState as cachedReaderState } from '#lib/sync/state.js';
 import { flushReaderWrites } from './flush.js';
@@ -942,6 +942,13 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			try {
 				await currentReader.open(source);
 			} catch (error) {
+				if (!isBlob(source) && isReaderSourceError(error) && (error.status === 403 || error.status === 404)) {
+					// The server denied the file, so the downloaded copy must not keep working.
+					await removeBook(currentAccount(), bookId).catch((cause) => {
+						console.warn('Could not drop the denied offline copy', cause);
+					});
+					throw error;
+				}
 				if (isBlob(source) || !isReaderSourceError(error) || !offlineAvailable()) throw error;
 				await currentReader.destroy();
 				const cached = await loadFile(currentAccount(), bookId, selectedFile, true).catch(() => null);

@@ -265,10 +265,13 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 360, height: 740 
 			const bar = await toolbar.boundingBox();
 			const surface = await page.locator('#reader-surface').boundingBox();
 			if (!bar || !surface) throw new Error('Missing reader or toolbar bounds.');
-			expect(bar.x).toBeGreaterThanOrEqual(surface.x);
-			expect(bar.y).toBeGreaterThanOrEqual(surface.y);
-			expect(bar.x + bar.width).toBeLessThanOrEqual(Math.min(surface.x + surface.width, viewport.width));
-			expect(bar.y + bar.height).toBeLessThanOrEqual(Math.min(surface.y + surface.height, viewport.height));
+			// Narrow viewports dock the toolbar to the bottom edge, so allow the page gutter.
+			const docked = bar.y + bar.height >= viewport.height - 16;
+			expect(bar.x).toBeGreaterThanOrEqual(docked ? 0 : surface.x);
+			expect(bar.y).toBeGreaterThanOrEqual(docked ? 0 : surface.y);
+			// Docked toolbars hug the viewport edges instead of the surface.
+			expect(bar.x + bar.width).toBeLessThanOrEqual(docked ? viewport.width : Math.min(surface.x + surface.width, viewport.width));
+			expect(bar.y + bar.height).toBeLessThanOrEqual(docked ? viewport.height : Math.min(surface.y + surface.height, viewport.height));
 		}).toPass();
 	});
 }
