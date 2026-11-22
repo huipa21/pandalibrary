@@ -501,13 +501,20 @@ func TestGoodreadsTokenlessAutocompleteAndPage(t *testing.T) {
 }
 
 func TestAmazonTokenlessSearchAndDetail(t *testing.T) {
+	direct, searched := false, false
 	p := testAdapter(t, "amazon", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("User-Agent") != browserUserAgent || r.Header.Get("Accept-Language") == "" {
+		if r.Header.Get("User-Agent") != browserUserAgent || r.Header.Get("Accept-Language") == "" ||
+			r.Header.Get("X-Amz-Ammabot-Click-Attributes") != "disable" ||
+			r.Header.Get("Origin") != "http://"+r.Host {
 			t.Error("Amazon request did not use browser headers")
 		}
 		switch r.URL.Path {
+		case "/dp/123456789X":
+			direct = true
+			_, _ = w.Write(fixtureHTML(t, "amazon"))
 		case "/s":
-			if r.URL.Query().Get("k") != "9781234567897" {
+			searched = true
+			if r.URL.Query().Get("k") != "Test Library Test Author" {
 				t.Errorf("Amazon search query = %q", r.URL.Query().Get("k"))
 			}
 			_, _ = w.Write(fixtureHTML(t, "amazon-search"))
@@ -518,8 +525,8 @@ func TestAmazonTokenlessSearchAndDetail(t *testing.T) {
 		}
 	})
 	result, err := p.Search(context.Background(), Query{ISBN: "9781234567897"})
-	if err != nil || len(result) != 1 {
-		t.Fatalf("Amazon search = %+v, %v", result, err)
+	if err != nil || len(result) != 1 || !direct || searched {
+		t.Fatalf("Amazon direct ISBN = %+v, direct=%v searched=%v, %v", result, direct, searched, err)
 	}
 	c := result[0]
 	if c.Provider != "amazon" || c.Reference != "B08TEST123" || c.Title != "Test Library" || c.Subtitle == nil ||
@@ -538,6 +545,29 @@ func TestAmazonTokenlessSearchAndDetail(t *testing.T) {
 	detail, err := p.Get(context.Background(), "B08TEST123")
 	if err != nil || detail.Title != "Test Library" || detail.Reference != "B08TEST123" {
 		t.Fatalf("Amazon Get = %+v, %v", detail, err)
+	}
+	searched = false
+	result, err = p.Search(context.Background(), Query{Title: "Test Library", Author: "Test Author"})
+	if err != nil || len(result) != 1 || !searched {
+		t.Fatalf("Amazon title search = %+v, searched=%v, %v", result, searched, err)
+	}
+}
+
+func TestISBN10Conversion(t *testing.T) {
+	for raw, want := range map[string]string{
+		"9780138228088": "0138228086",
+		"9781234567897": "123456789X",
+		"0-13-822808-6": "0138228086",
+	} {
+		got, ok := isbn10(raw)
+		if !ok || got != want {
+			t.Errorf("isbn10(%q) = %q, %v; want %q", raw, got, ok, want)
+		}
+	}
+	for _, raw := range []string{"", "123", "9791234567897"} {
+		if got, ok := isbn10(raw); ok {
+			t.Errorf("isbn10(%q) = %q, want rejection", raw, got)
+		}
 	}
 }
 

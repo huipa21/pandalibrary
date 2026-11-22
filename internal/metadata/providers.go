@@ -53,6 +53,38 @@ func newAdapter(name string, base *string, token string) (Provider, error) {
 
 func (p *adapter) Name() string { return p.name }
 
+func (p *adapter) browserHeaders(req *http.Request) {
+	if p.name != "amazon" && p.name != "goodreads" {
+		return
+	}
+	req.Header.Set("User-Agent", browserUserAgent)
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Sec-Ch-Ua", `"Google Chrome";v="137", "Chromium";v="137", "Not_A Brand";v="24"`)
+	req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+	req.Header.Set("Sec-Ch-Ua-Platform", `"macOS"`)
+	if p.name == "amazon" {
+		req.Header.Set("Accept", "text/html, application/json")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", p.base.Scheme+"://"+p.base.Host)
+		req.Header.Set("Device-Memory", "8")
+		req.Header.Set("Downlink", "10")
+		req.Header.Set("Dpr", "2")
+		req.Header.Set("Ect", "4g")
+		req.Header.Set("Priority", "u=1, i")
+		req.Header.Set("Rtt", "50")
+		req.Header.Set("Sec-Fetch-Dest", "empty")
+		req.Header.Set("Sec-Fetch-Mode", "cors")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.Header.Set("Viewport-Width", "1170")
+		req.Header.Set("X-Amz-Ammabot-Click-Attributes", "disable")
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		return
+	}
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Site", "none")
+}
+
 func (p *adapter) fetch(ctx context.Context, path string, values url.Values, body any, accept string) ([]byte, error) {
 	if (p.name == "neodb" || p.name == "hardcover") && p.token == "" {
 		return nil, failure("credentials_required")
@@ -82,10 +114,7 @@ func (p *adapter) fetch(ctx context.Context, path string, values url.Values, bod
 	}
 	req.Header.Set("Accept", accept)
 	req.Header.Set("User-Agent", userAgent)
-	if p.name == "amazon" || p.name == "goodreads" {
-		req.Header.Set("User-Agent", browserUserAgent)
-		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	}
+	p.browserHeaders(req)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -1582,6 +1611,31 @@ func parseAmazonBook(data []byte, fallbackRef string) (Candidate, error) {
 	return c, nil
 }
 
+func isbn10(value string) (string, bool) {
+	value = strings.ToUpper(strings.NewReplacer("-", "", " ", "").Replace(value))
+	if len(value) == 10 {
+		return value, true
+	}
+	if len(value) != 13 || !strings.HasPrefix(value, "978") {
+		return "", false
+	}
+	sum := 0
+	for index, digit := range value[3:12] {
+		if digit < '0' || digit > '9' {
+			return "", false
+		}
+		sum += int(digit-'0') * (10 - index)
+	}
+	check := 11 - sum%11
+	if check == 10 {
+		return value[3:12] + "X", true
+	}
+	if check == 11 {
+		return value[3:12] + "0", true
+	}
+	return value[3:12] + string(rune('0'+check)), true
+}
+
 func (p *adapter) amazon(ctx context.Context, q Query, ref string) ([]Candidate, error) {
 	if ref != "" {
 		data, err := p.fetch(ctx, "/dp/"+ref, nil, nil, "text/html")
@@ -1593,6 +1647,13 @@ func (p *adapter) amazon(ctx context.Context, q Query, ref string) ([]Candidate,
 			return nil, err
 		}
 		return finish(p.name, []Candidate{candidate})
+	}
+	if isbn, ok := isbn10(q.ISBN); ok {
+		if data, err := p.fetch(ctx, "/dp/"+isbn, nil, nil, "text/html"); err == nil {
+			if candidate, parseErr := parseAmazonBook(data, isbn); parseErr == nil {
+				return finish(p.name, []Candidate{candidate})
+			}
+		}
 	}
 	query := q.ISBN
 	if query == "" {

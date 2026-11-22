@@ -196,8 +196,25 @@ func (p networkPolicy) client() *http.Client {
 					return nil, errUnsafeURL
 				}
 			}
-			// Dial the validated address, not the hostname, to prevent DNS rebinding.
-			return dial(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+			// Dial validated addresses, not the hostname, to prevent DNS rebinding.
+			// Prefer IPv4 because many containers have no IPv6 route, then fall back.
+			var lastErr error
+			for _, family := range []bool{true, false} {
+				for _, ip := range ips {
+					if (ip.IP.To4() != nil) != family {
+						continue
+					}
+					conn, err := dial(ctx, network, net.JoinHostPort(ip.IP.String(), port))
+					if err == nil {
+						return conn, nil
+					}
+					lastErr = err
+					if ctx.Err() != nil {
+						return nil, ctx.Err()
+					}
+				}
+			}
+			return nil, lastErr
 		},
 	}
 	return &http.Client{

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -174,6 +175,32 @@ func TestResolvedPrivateAddressesAndDNSPinning(t *testing.T) {
 	_, _ = policy.client().Get("https://covers.openlibrary.org/a.jpg")
 	if !dialed.Load() {
 		t.Fatal("public resolved IP was not dialed")
+	}
+}
+
+func TestDNSFallbackDialsValidatedAddresses(t *testing.T) {
+	base, _ := parseBase("openlibrary", nil)
+	var dialed []string
+	policy := networkPolicy{
+		provider: "openlibrary", base: base,
+		lookup: func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{
+				{IP: net.ParseIP("2606:4700:4700::1111")},
+				{IP: net.ParseIP("8.8.8.8")},
+			}, nil
+		},
+		dial: func(_ context.Context, _, address string) (net.Conn, error) {
+			dialed = append(dialed, address)
+			return nil, errors.New("fixture connection refused")
+		},
+	}
+	response, err := policy.client().Get("https://openlibrary.org/")
+	if response != nil {
+		response.Body.Close()
+	}
+	want := []string{"8.8.8.8:443", "[2606:4700:4700::1111]:443"}
+	if err == nil || !reflect.DeepEqual(dialed, want) {
+		t.Fatalf("dialed = %v, want %v (err=%v)", dialed, want, err)
 	}
 }
 
