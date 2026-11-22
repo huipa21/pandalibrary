@@ -705,6 +705,35 @@ test('RP9 EPUB Format changes live typography and background and automatically s
 	await expect(frame.locator('html')).toHaveCSS('color-scheme', 'dark');
 });
 
+test('EPUB and CBZ toolbars stay inside a 360px viewport with their actions in the overflow menu', async ({ page }) => {
+	await page.setViewportSize({ width: 360, height: 740 });
+	await setupReader(page, 'epub', epubFixture());
+	await page.goto('/read/21/31');
+	const frame = await bookFrame(page);
+	await expect(frame.locator('body')).toBeVisible();
+	await expectReaderToolbarFits(page);
+	const close = page.getByRole('button', { name: 'Close reader', exact: true });
+	const closeBounds = await close.boundingBox();
+	expect(closeBounds && closeBounds.x + closeBounds.width).toBeLessThanOrEqual(360);
+	// The wide insert and highlight actions move into the overflow list on phones.
+	await expect(page.getByRole('button', { name: 'Insert text, drawing or image', exact: true })).toBeHidden();
+	const overflow = page.getByRole('button', { name: 'More view options', exact: true });
+	await overflow.press('ArrowDown');
+	await expect(page.getByRole('menuitem', { name: 'Insert text, drawing or image', exact: true })).toBeVisible();
+	await expect(page.getByRole('menuitem', { name: 'Reading mode', exact: true })).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(overflow).toHaveAttribute('aria-expanded', 'false');
+
+	await setupReader(page, 'cbz', cbzFixture());
+	await page.goto('/read/21/31');
+	await bookFrame(page);
+	await expectReaderToolbarFits(page);
+	const cbzClose = await page.getByRole('button', { name: 'Close reader', exact: true }).boundingBox();
+	expect(cbzClose && cbzClose.x + cbzClose.width).toBeLessThanOrEqual(360);
+	await page.getByRole('button', { name: 'More view options', exact: true }).press('ArrowDown');
+	await expect(page.getByRole('menuitem', { name: 'Highlight current page', exact: true })).toBeVisible();
+});
+
 test('EPUB shares PDF zoom, display and insertion menus on desktop and mobile', async ({ page }) => {
 	await page.setViewportSize({ width: 1440, height: 900 });
 	const state = await setupReader(page, 'epub', epubFixture());
