@@ -21,12 +21,45 @@ export interface FlatOutlineNode extends OutlineNode {
 type PdfOutlineItem = NonNullable<Awaited<ReturnType<PDFDocumentProxy['getOutline']>>>[number];
 type ResolvedDestination = { page: number | null };
 type OutlineEntry = { item: PdfOutlineItem; id: string; parentId: string | null; depth: number };
+type OutlineTitleNode = { title?: string | null; items?: readonly OutlineTitleNode[] | null };
 
 const OUTLINE_CONCURRENCY = 8;
 const outlineCache = new Map<string, Promise<OutlineNode[]>>();
+const IMAGE_FILE_EXTENSION = /\.(?:avif|bmp|gif|heic|heif|jpe?g|jfif|png|svg|tiff?|webp)\s*$/i;
+const IMAGE_LABEL = /^(?:image|img|scan(?:ned)?|photo|picture|pic|snapshot|screenshot|frame|dscn?|pxl|gopr|dji|file|document|doc|page|p|untitled)(?:[\s._#()\[\]-]*(?:(?:no|nr|number|of)\.?|#)?[\s._#()\[\]-]*\d+)*[\s._#()\[\]-]*$/i;
+const CJK_IMAGE_LABEL = /^(?:图片|图像|影像|照片|扫描件?|扫描|截图)[\s._#()\[\]-]*\d*[\s._#()\[\]-]*(?:页|张)?$/;
 
 export function outlineTitle(title: string): string {
 	return title.trim().slice(0, 300).trimEnd() || 'Untitled';
+}
+
+/** Image filenames and scanner-generated labels are not a useful table of contents. */
+export function isImageNameTitle(title: string | null | undefined): boolean {
+	const value = title?.trim();
+	if (!value) return false;
+	const name = value.split(/[\\/]/).pop()?.trim() ?? value;
+	return IMAGE_FILE_EXTENSION.test(name) || IMAGE_LABEL.test(name) || CJK_IMAGE_LABEL.test(name);
+}
+
+/**
+ * An outline whose leaves are all image filenames is a scan artifact (one entry
+ * per page), not a table of contents. Container titles are ignored so a generic
+ * root such as "Scanned document" does not keep the useless list visible.
+ */
+export function isImageOnlyOutline(items: readonly OutlineTitleNode[]): boolean {
+	let leaves = 0;
+	const visit = (nodes: readonly OutlineTitleNode[]): boolean => {
+		for (const node of nodes) {
+			if (node.items?.length) {
+				if (!visit(node.items)) return false;
+			} else {
+				leaves++;
+				if (node.title?.trim() && !isImageNameTitle(node.title)) return false;
+			}
+		}
+		return true;
+	};
+	return visit(items) && leaves > 0;
 }
 
 export function safeOutlineUrl(value: string | null): string | null {
@@ -87,6 +120,9 @@ export async function loadOutline(pdf: PDFDocumentProxy, signal?: AbortSignal): 
 async function buildOutline(pdf: PDFDocumentProxy): Promise<OutlineNode[]> {
 	const outline = await pdf.getOutline();
 	if (!outline?.length) return [];
+	// Stop before resolving destinations: a scan can list thousands of image
+	// filenames, and page resolution is what makes the Contents tab hang.
+	if (isImageOnlyOutline(outline)) return [];
 
 	const entries: OutlineEntry[] = [];
 	const collect = (items: readonly PdfOutlineItem[], parentId: string | null, prefix: string, depth: number) => {

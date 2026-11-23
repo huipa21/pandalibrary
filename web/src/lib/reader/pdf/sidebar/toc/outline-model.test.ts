@@ -1,8 +1,11 @@
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	currentNode,
 	flattenOutline,
+	isImageNameTitle,
+	isImageOnlyOutline,
 	loadOutline,
 	outlineTitle,
 	resolveOutlineOffset,
@@ -70,6 +73,50 @@ describe('outline model', () => {
 		expect(outlineTitle('  Chapter 1  ')).toBe('Chapter 1');
 		expect(outlineTitle('  ')).toBe('Untitled');
 		expect(outlineTitle('x'.repeat(301))).toHaveLength(300);
+	});
+
+	it('recognises scanner and image filenames without hiding real chapter titles', () => {
+		for (const title of [
+			'image-001.jpg', 'IMG_0002.JPG', 'img20181218_20571494', 'scan0003', 'Scan 0004',
+			'0005.png', 'Photo 6', 'Page 1', 'Untitled', 'C:\\scans\\scan_0007.tif', '图片 8', '扫描件009'
+		]) {
+			expect(isImageNameTitle(title), title).toBe(true);
+		}
+		for (const title of ['Part One', 'Chapter 1', 'Index', 'Project site', 'Plate 1', 'Scanning electron microscopy']) {
+			expect(isImageNameTitle(title), title).toBe(false);
+		}
+	});
+
+	it('skips image-name outlines before resolving any destinations', async () => {
+		const getDestination = vi.fn(async () => [1]);
+		const getPageIndex = vi.fn(async () => 0);
+		const pdf = {
+			fingerprints: ['image-name-outline'],
+			numPages: 2,
+			getOutline: vi.fn(async () => [
+				{ title: 'Image 1', dest: [1], url: null, items: [] },
+				{ title: 'Image 2', dest: [2], url: null, items: [] }
+			]),
+			getDestination,
+			getPageIndex
+		} as unknown as PDFDocumentProxy;
+
+		expect(await loadOutline(pdf)).toEqual([]);
+		expect(getDestination).not.toHaveBeenCalled();
+		expect(getPageIndex).not.toHaveBeenCalled();
+	});
+
+	it('detects image-only outlines through generic container entries', () => {
+		expect(isImageOnlyOutline([
+			{ title: 'Scanned document', items: [
+				{ title: '0001.tif', items: [] },
+				{ title: '0002.tif', items: [] }
+			] }
+		])).toBe(true);
+		expect(isImageOnlyOutline([
+			{ title: 'Chapter 1', items: [{ title: 'Opening', items: [] }] },
+			{ title: 'Chapter 2', items: [{ title: 'Ending', items: [] }] }
+		])).toBe(false);
 	});
 
 	it('keeps only safe external URL schemes', () => {
