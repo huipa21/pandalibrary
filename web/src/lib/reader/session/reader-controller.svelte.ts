@@ -19,7 +19,7 @@ import { HttpRangeSource, isBlob, isReaderSourceError, type ReaderSource } from 
 import {
 	currentAccount, DurableProgressWriter, offlineAvailable, offlineStatus, readerOpened, saveMutation, syncNow
 } from '#lib/sync/client.js';
-import { OfflineStorageError, removeBook } from '#lib/sync/db.js';
+import { downloadedFile, OfflineStorageError, removeBook } from '#lib/sync/db.js';
 import { loadBook as loadOfflineBook, loadFile, loadReaderState } from '#lib/sync/library.js';
 import { readerState as cachedReaderState } from '#lib/sync/state.js';
 import { flushReaderWrites } from './flush.js';
@@ -323,9 +323,19 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				loadError = m['reader.error.unsupported']();
 				return;
 			}
+			// Prefer an explicitly downloaded copy online as well as offline. The stored
+			// URL contains the file content hash, so a stale copy cannot be selected.
+			let saved: Blob | null = null;
+			if (!offline && offlineAvailable()) {
+				try {
+					saved = await downloadedFile(currentAccount(), bookId, selectedFile);
+				} catch (error) {
+					if (!(error instanceof OfflineStorageError)) throw error;
+				}
+			}
 			const source: Blob | ReaderSource = offline
 				? await loadFile(currentAccount(), bookId, selectedFile, true)
-				: new HttpRangeSource(
+				: saved ?? new HttpRangeSource(
 					validatedBookFileUrl(bookId, selectedFile, globalThis.location?.origin ?? 'http://localhost'),
 					selectedFile,
 					fetch,
@@ -355,7 +365,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 			pageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id === fileId);
 			otherPageAnnotations = (state.page_annotations ?? []).filter((row) => !row.deleted_at && row.book_file_id !== fileId);
 			progressWriter = new PeriodicProgressWriter(new DurableProgressWriter(reportPendingError));
-			loaded = { version, bookId, fileId, selectedFile, selectedFormat, source, state, bookmarkId, highlightId, annotationId, context: sourceContext(contextLocator, contextFraction, selectedFormat) };
+			loaded = { version, offline, bookId, fileId, selectedFile, selectedFormat, source, state, bookmarkId, highlightId, annotationId, context: sourceContext(contextLocator, contextFraction, selectedFormat) };
 		} catch (cause) {
 			if (version !== requestVersion) return;
 			console.error('Could not open book', cause);
@@ -915,14 +925,14 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 	}
 
 	let loaded: {
-		version: number; bookId: number; fileId: number; selectedFile: BookFile; selectedFormat: ReaderFormat;
+		version: number; offline: boolean; bookId: number; fileId: number; selectedFile: BookFile; selectedFormat: ReaderFormat;
 		source: Blob | ReaderSource; state: Awaited<ReturnType<typeof getBookState>>;
 		bookmarkId: string | null; highlightId: string | null; annotationId: string | null;
 		context: ReturnType<typeof sourceContext>;
 	} | null = null;
 	async function attach(surface: HTMLElement): Promise<Reader> {
 		if (!loaded) throw new Error('The reader has not loaded.');
-		const { version, bookId, fileId, selectedFile, selectedFormat, source, state, bookmarkId, highlightId, annotationId, context } = loaded;
+		const { version, offline, bookId, fileId, selectedFile, selectedFormat, source, state, bookmarkId, highlightId, annotationId, context } = loaded;
 		opening = true;
 		try {
 			const events: ReaderEvents = {
@@ -975,13 +985,25 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 					});
 					throw error;
 				}
-				if (isBlob(source) || !isReaderSourceError(error) || !offlineAvailable()) throw error;
+				let fallback: Blob | ReaderSource | null = null;
+				if (isBlob(source)) {
+					if (!offline && offlineAvailable()) {
+						fallback = new HttpRangeSource(
+							validatedBookFileUrl(bookId, selectedFile, globalThis.location?.origin ?? 'http://localhost'),
+							selectedFile,
+							fetch,
+							currentAccount(),
+							{ bookId, fileId: selectedFile.id, bookTitle: book?.title ?? '' }
+						);
+					}
+				} else if (isReaderSourceError(error) && offlineAvailable()) {
+					fallback = await loadFile(currentAccount(), bookId, selectedFile, true).catch(() => null);
+				}
+				if (!fallback) throw error;
 				await currentReader.destroy();
-				const cached = await loadFile(currentAccount(), bookId, selectedFile, true).catch(() => null);
-				if (!cached) throw error;
 				currentReader = await createReader(selectedFormat, surface, events);
 				reader = currentReader;
-				loaded.source = cached;
+				loaded.source = fallback;
 				(currentReader as typeof configurable).configure?.({
 					account: currentAccount(),
 					bookId,
@@ -990,7 +1012,7 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 					initialSettings: settings,
 					initialTarget
 				});
-				await currentReader.open(cached);
+				await currentReader.open(fallback);
 			}
 			if (version !== requestVersion) throw new Error('Reader opening was superseded.');
 			await currentReader.applySettings(settings);

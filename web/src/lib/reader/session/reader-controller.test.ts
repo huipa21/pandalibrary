@@ -6,6 +6,8 @@ import { getBook } from '#lib/catalog/api.js';
 import { downloadBookFile, getBookState, getSettings } from '../api.js';
 import { createReader } from '../index.js';
 import { currentAccount, offlineAvailable, offlineStatus, saveMutation } from '#lib/sync/client.js';
+import { downloadedFile } from '#lib/sync/db.js';
+import { loadBook as loadSavedBook, loadFile, loadReaderState } from '#lib/sync/library.js';
 import { readerState } from '#lib/sync/state.js';
 import type { Book } from '#lib/catalog/types.js';
 import type { BookState, PageAnnotationInput, ReaderEvents, Setting } from '../types.js';
@@ -16,12 +18,12 @@ import type { WordbookEntry } from '#lib/wordbooks/api.js';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 vi.mock('#lib/shell/confirmation.js', async (original) => ({
-	...await original<typeof import('#lib/shell/confirmation.js')>(),
+	...(await original() as typeof import('#lib/shell/confirmation.js')),
 	confirmAction: vi.fn(async () => true)
 }));
 vi.mock('#lib/catalog/api.js', () => ({ getBook: vi.fn() }));
 vi.mock('../api.js', async (original) => ({
-	...await original<typeof import('../api.js')>(),
+	...(await original() as typeof import('../api.js')),
 	deviceId: () => 'test-device',
 	downloadBookFile: vi.fn(),
 	getBookState: vi.fn(),
@@ -30,6 +32,16 @@ vi.mock('../api.js', async (original) => ({
 vi.mock('../index.js', async () => ({
 	createReader: vi.fn(),
 	readerFormat: (await import('../types.js')).readerFormat
+}));
+vi.mock('#lib/sync/db.js', async (original) => ({
+	...(await original() as typeof import('#lib/sync/db.js')),
+	downloadedFile: vi.fn()
+}));
+vi.mock('#lib/sync/library.js', async (original) => ({
+	...(await original() as typeof import('#lib/sync/library.js')),
+	loadBook: vi.fn(),
+	loadFile: vi.fn(),
+	loadReaderState: vi.fn()
 }));
 vi.mock('#lib/sync/client.js', () => ({
 	currentAccount: vi.fn(() => 1),
@@ -77,6 +89,32 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('reader controller PDF extensions', () => {
+	it('opens online from a saved file instead of the HTTP range source', async () => {
+		const saved = new Blob(['saved'], { type: 'application/pdf' });
+		vi.mocked(offlineAvailable).mockReturnValue(true);
+		vi.mocked(downloadedFile).mockResolvedValue(saved);
+		vi.mocked(loadSavedBook).mockResolvedValue({ book, offline: false });
+		vi.mocked(loadReaderState).mockResolvedValue({ state: empty, settings: [] });
+		let events!: ReaderEvents;
+		const reader = {
+			open: vi.fn(async () => events.relocate({ fraction: 0, locator: { type: 'pdf', page: 1 } })),
+			applySettings: vi.fn(), addAnnotation: vi.fn(), removeAnnotation: vi.fn(),
+			destroy: vi.fn(async () => {}), goTo: vi.fn(), previous: vi.fn(), next: vi.fn()
+		};
+		vi.mocked(createReader).mockImplementation(async (_format, _surface, next) => {
+			events = next;
+			return reader;
+		});
+		const controller = createReaderController(params);
+		await controller.retry();
+		vi.stubGlobal('document', { hidden: true });
+		await controller.attach({} as HTMLElement);
+		expect(downloadedFile).toHaveBeenCalledWith(1, 21, book.files[0]);
+		expect(reader.open).toHaveBeenCalledWith(saved);
+		expect(loadFile).not.toHaveBeenCalled();
+		controller.dispose();
+	});
+
 	async function wordbookController(contextLocator?: string, contextFraction?: string) {
 		let events: ReaderEvents;
 		const reader = {
