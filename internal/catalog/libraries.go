@@ -189,7 +189,7 @@ func (s *Service) DeleteLibrary(ctx context.Context, viewer Viewer, id int64, de
 			return invalid("destination must be a different library")
 		}
 	}
-	return db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
 		if _, err := libraryInTx(ctx, queries, viewer, id); err != nil {
 			return err
@@ -267,6 +267,10 @@ func (s *Service) DeleteLibrary(ctx context.Context, viewer Viewer, id int64, de
 		}
 		return nil
 	})
+	if err == nil {
+		s.invalidateFileCache()
+	}
+	return err
 }
 
 // ListAccess returns a library's administrator-visible access grants.
@@ -314,7 +318,7 @@ func (s *Service) SetAccess(ctx context.Context, viewer Viewer, libraryID, userI
 	if libraryID < 1 || userID < 1 {
 		return invalid("library and user IDs must be positive")
 	}
-	return db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
 		if _, err := libraryInTx(ctx, queries, viewer, libraryID); err != nil {
 			return err
@@ -339,6 +343,10 @@ func (s *Service) SetAccess(ctx context.Context, viewer Viewer, libraryID, userI
 		}
 		return nil
 	})
+	if err == nil {
+		s.invalidateFileCache()
+	}
+	return err
 }
 
 // ListHidden returns hide-list configuration without exposing book metadata.
@@ -388,7 +396,7 @@ func (s *Service) SetHidden(ctx context.Context, viewer Viewer, userID, bookID i
 	if userID < 1 || bookID < 1 {
 		return invalid("user and book IDs must be positive")
 	}
-	return db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
 		if _, err := queries.CatalogUserRole(ctx, userID); err != nil {
 			return notFound(fmt.Errorf("get hide-list user: %w", err))
@@ -414,4 +422,8 @@ func (s *Service) SetHidden(ctx context.Context, viewer Viewer, userID, bookID i
 		}
 		return nil
 	})
+	if err == nil {
+		s.invalidateFileCache()
+	}
+	return err
 }

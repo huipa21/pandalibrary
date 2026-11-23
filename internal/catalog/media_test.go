@@ -3,6 +3,7 @@ package catalog
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -113,5 +114,49 @@ func TestCoverPublicationRollbackAndConcurrentUploads(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+func TestOpenBookFileVersionCacheAndInvalidation(t *testing.T) {
+	fixture := newCatalogFixture(t)
+	ctx := context.Background()
+	admin := Viewer{UserID: 1, IsAdmin: true}
+	reader := Viewer{UserID: 2}
+	var version string
+	if err := fixture.db.Reader.QueryRowContext(ctx, `SELECT sha256 FROM book_files WHERE id = 201`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := fixture.service.OpenBookFile(ctx, reader, 101, 201, version)
+	if err != nil {
+		t.Fatalf("first OpenBookFile: %v", err)
+	}
+	_ = first.File.Close()
+	if !first.Immutable || first.ETag != version {
+		t.Fatalf("unexpected content metadata: %+v", first)
+	}
+
+	key := bookFileCacheKey{
+		userID: reader.UserID, isAdmin: reader.IsAdmin,
+		bookID: 101, fileID: 201, version: version,
+	}
+	if _, ok := fixture.service.getCachedBookFile(key); !ok {
+		t.Fatal("expected versioned book file entry to be cached")
+	}
+
+	second, err := fixture.service.OpenBookFile(ctx, reader, 101, 201, version)
+	if err != nil {
+		t.Fatalf("cached OpenBookFile: %v", err)
+	}
+	_ = second.File.Close()
+
+	if err := fixture.service.SetHidden(ctx, admin, reader.UserID, 101, true); err != nil {
+		t.Fatalf("SetHidden: %v", err)
+	}
+	if _, ok := fixture.service.getCachedBookFile(key); ok {
+		t.Fatal("expected cache to be invalidated after SetHidden")
+	}
+	if _, err := fixture.service.OpenBookFile(ctx, reader, 101, 201, version); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound after hide, got %v", err)
 	}
 }

@@ -12,8 +12,9 @@ import { annotationForReader, deleteAnnotation, highlightColor, isMarkColor, mak
 import { bookmarkForPosition, deleteBookmark, makeBookmark, updateBookmarkLabel } from '#lib/reader/bookmarks.js';
 import { fraction, progressMutation, restorePosition } from '#lib/reader/progress.js';
 import { ReadingSessions, SessionWriter } from '#lib/reader/sessions.js';
+import { clearBookReaderCache } from '#lib/reader/range-cache.js';
 import { DEFAULT_SETTINGS, isReaderSettings, loadReaderSettings, mergeBookSettings } from '#lib/reader/settings.js';
-import type { Bookmark, Highlight, Note, Reader, ReaderEvents, ReaderFormat, ReaderSelection, ReaderSettings, Relocation } from '#lib/reader/types.js';
+import { isPdfLocator, type Bookmark, type Highlight, type Note, type Reader, type ReaderEvents, type ReaderFormat, type ReaderSelection, type ReaderSettings, type Relocation } from '#lib/reader/types.js';
 import { HttpRangeSource, isBlob, isReaderSourceError, type ReaderSource } from '#lib/reader/source.js';
 import {
 	currentAccount, DurableProgressWriter, offlineAvailable, offlineStatus, readerOpened, saveMutation, syncNow
@@ -328,7 +329,8 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 					validatedBookFileUrl(bookId, selectedFile, globalThis.location?.origin ?? 'http://localhost'),
 					selectedFile,
 					fetch,
-					currentAccount()
+					currentAccount(),
+					{ bookId, fileId: selectedFile.id, bookTitle: loadedBook.title }
 				);
 			if (version !== requestVersion) return;
 			browserDeviceId = deviceId();
@@ -939,11 +941,35 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				throw new Error('Reader opening was superseded.');
 			}
 			reader = currentReader;
+			const initialTarget = context?.locator ?? context?.fraction ?? (
+				state.progress && state.progress.book_file_id === fileId
+					? (isPdfLocator(state.progress.locator) ? state.progress.locator : fraction(state.progress.percentage ?? 0))
+					: null
+			);
+			const configurable = currentReader as Reader & {
+				configure?: (config: {
+					account?: number | null;
+					bookId?: number;
+					fileId?: number;
+					bookTitle?: string;
+					initialSettings?: ReaderSettings | null;
+					initialTarget?: unknown;
+				}) => void;
+			};
+			configurable.configure?.({
+				account: currentAccount(),
+				bookId,
+				fileId: selectedFile.id,
+				bookTitle: book?.title ?? '',
+				initialSettings: settings,
+				initialTarget
+			});
 			try {
 				await currentReader.open(source);
 			} catch (error) {
 				if (!isBlob(source) && isReaderSourceError(error) && (error.status === 403 || error.status === 404)) {
 					// The server denied the file, so the downloaded copy must not keep working.
+					await clearBookReaderCache(currentAccount(), bookId).catch(() => {});
 					await removeBook(currentAccount(), bookId).catch((cause) => {
 						console.warn('Could not drop the denied offline copy', cause);
 					});
@@ -956,6 +982,14 @@ export function createReaderController(params: () => { bookId: string; fileId: s
 				currentReader = await createReader(selectedFormat, surface, events);
 				reader = currentReader;
 				loaded.source = cached;
+				(currentReader as typeof configurable).configure?.({
+					account: currentAccount(),
+					bookId,
+					fileId: selectedFile.id,
+					bookTitle: book?.title ?? '',
+					initialSettings: settings,
+					initialTarget
+				});
 				await currentReader.open(cached);
 			}
 			if (version !== requestVersion) throw new Error('Reader opening was superseded.');

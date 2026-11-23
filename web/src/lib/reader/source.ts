@@ -1,12 +1,23 @@
 import type { BookFile } from '#lib/catalog/types.js';
-import { RangeCache } from '#lib/reader/range-cache.js';
+import {
+	getReaderCacheSettings,
+	RangeCache,
+	type ReaderCacheBookMeta
+} from '#lib/reader/range-cache.js';
 
-/** Bytes fetched per HTTP Range request. */
-export const RANGE_CHUNK_SIZE = 256 * 1024;
+/** Bytes fetched per HTTP Range request (2 MiB reduces round-trips on large scanned PDFs). */
+export const RANGE_CHUNK_SIZE = 2 * 1024 * 1024;
 /** Refuse to turn an ignored Range request into a large full download. */
 export const MAX_RANGE_FALLBACK_BYTES = 32 * 1024 * 1024;
-/** Per-reader range cache budget. */
-export const MAX_RANGE_CACHE_BYTES = 32 * 1024 * 1024;
+/** Default per-reader in-memory range cache budget. */
+export const MAX_RANGE_CACHE_BYTES = 256 * 1024 * 1024;
+/** Default sliding-window lookahead in chunks (4 * 2 MiB = 8 MiB ahead). */
+export const DEFAULT_PREFETCH_WINDOW_CHUNKS = 4;
+const MAX_CONCURRENT_PREFETCH = 2;
+
+export interface HttpRangeSourceOptions extends ReaderCacheBookMeta {
+	prefetchWindowChunks?: number;
+}
 
 export interface BlobLike {
 	readonly size: number;
@@ -18,7 +29,9 @@ export interface BlobLike {
 export interface ReaderSource extends BlobLike {
 	readonly name: string;
 	readonly type: string;
+	readonly bookMeta?: ReaderCacheBookMeta;
 	read(offset: number, length: number, signal?: AbortSignal): Promise<Uint8Array>;
+	warmup?(): Promise<Uint8Array | null>;
 	close(): void;
 }
 
@@ -74,11 +87,13 @@ export class BlobSource implements ReaderSource {
 	readonly size: number;
 	readonly name: string;
 	readonly type: string;
+	readonly bookMeta?: ReaderCacheBookMeta;
 
-	constructor(private readonly blob: Blob, file: BookFile) {
+	constructor(private readonly blob: Blob, file: BookFile, bookMeta?: ReaderCacheBookMeta) {
 		this.size = blob.size;
 		this.name = sourceName(file);
 		this.type = blob.type || contentType(file.format);
+		this.bookMeta = bookMeta;
 	}
 
 	slice(start = 0, end = this.size): BlobLike {
@@ -147,15 +162,22 @@ class LazySlice implements BlobLike {
 
 /**
  * Reads an authorized, immutable book URL with HTTP Range requests.
- * Chunks are aligned, deduplicated and kept in a small LRU cache.
+ * Chunks are aligned, deduplicated, prefetched in a sliding window, and kept in an LRU cache.
  */
 export class HttpRangeSource implements ReaderSource {
 	readonly size: number;
 	readonly name: string;
 	readonly type: string;
+	readonly bookMeta?: ReaderCacheBookMeta;
 
 	private readonly chunks = new Map<number, Uint8Array>();
 	private readonly inFlight = new Map<number, Promise<Uint8Array>>();
+	private readonly prefetchControllers = new Map<number, AbortController>();
+	private prefetchQueue: number[] = [];
+	private activePrefetches = 0;
+	private lastReadChunk: number | null = null;
+	private direction: 1 | -1 = 1;
+	private readonly prefetchWindow: number;
 	private readonly controller = new AbortController();
 	private readonly rangeCache: RangeCache | null;
 	private cachedBytes = 0;
@@ -166,12 +188,21 @@ export class HttpRangeSource implements ReaderSource {
 		private readonly url: URL,
 		file: BookFile,
 		private readonly fetcher: typeof fetch = fetch,
-		account: number | null = null
+		account: number | null = null,
+		options: HttpRangeSourceOptions = {}
 	) {
-		this.rangeCache = account === null ? null : new RangeCache(account, url);
+		this.bookMeta = {
+			bookId: options.bookId,
+			fileId: options.fileId ?? file.id,
+			bookTitle: options.bookTitle
+		};
+		this.rangeCache = account === null ? null : new RangeCache(account, url, this.bookMeta);
 		this.size = file.size_bytes;
 		this.name = sourceName(file);
 		this.type = contentType(file.format);
+		this.prefetchWindow = options.prefetchWindowChunks !== undefined
+			? Math.max(0, Math.trunc(options.prefetchWindowChunks))
+			: (account !== null ? DEFAULT_PREFETCH_WINDOW_CHUNKS : 0);
 	}
 
 	slice(start = 0, end = this.size): BlobLike {
@@ -189,6 +220,23 @@ export class HttpRangeSource implements ReaderSource {
 		return new TextDecoder().decode(await this.read(0, this.size, signal));
 	}
 
+	/**
+	 * Warms the first chunk (PDF header / linearized objects) and final chunk
+	 * (PDF trailer / XRef table) in parallel to accelerate initial document open.
+	 */
+	async warmup(): Promise<Uint8Array | null> {
+		if (this.closed || this.size <= 0) return null;
+		const lastIndex = Math.floor((this.size - 1) / RANGE_CHUNK_SIZE);
+		const headPromise = this.chunk(0);
+		const tailPromise = lastIndex > 0 ? this.chunk(lastIndex).catch(() => null) : Promise.resolve(null);
+		try {
+			const [head] = await Promise.all([headPromise, tailPromise]);
+			return head;
+		} catch {
+			return null;
+		}
+	}
+
 	async read(offset: number, length: number, signal?: AbortSignal): Promise<Uint8Array> {
 		if (this.closed) throw new ReaderSourceError('The book file was closed.');
 		if (!Number.isFinite(offset) || !Number.isFinite(length) || length <= 0) return new Uint8Array();
@@ -197,8 +245,18 @@ export class HttpRangeSource implements ReaderSource {
 		if (end <= start) return new Uint8Array();
 		const first = Math.floor(start / RANGE_CHUNK_SIZE);
 		const last = Math.floor((end - 1) / RANGE_CHUNK_SIZE);
+		if (this.lastReadChunk !== null) {
+			if (first < this.lastReadChunk) this.direction = -1;
+			else if (last > this.lastReadChunk) this.direction = 1;
+		}
+		this.lastReadChunk = this.direction === 1 ? last : first;
+
 		const pending: Promise<Uint8Array>[] = [];
-		for (let index = first; index <= last; index += 1) pending.push(this.chunk(index, signal));
+		for (let index = first; index <= last; index += 1) {
+			// Promote any in-flight background prefetch to a non-cancellable foreground read.
+			this.prefetchControllers.delete(index);
+			pending.push(this.chunk(index, signal));
+		}
 		const chunks = await Promise.all(pending);
 		const output = new Uint8Array(end - start);
 		let written = 0;
@@ -213,7 +271,51 @@ export class HttpRangeSource implements ReaderSource {
 			}
 		}
 		if (written !== output.length) throw new ReaderSourceError('The server returned incomplete book content.');
+		if (this.prefetchWindow > 0 && !this.closed) {
+			this.updateSlidingWindow(first, last);
+		}
 		return output;
+	}
+
+	private updateSlidingWindow(first: number, last: number): void {
+		if (this.closed || this.fullFallback || this.size <= 0) return;
+		const totalChunks = Math.ceil(this.size / RANGE_CHUNK_SIZE);
+		const targets: number[] = [];
+		for (let step = 1; step <= this.prefetchWindow; step += 1) {
+			const candidate = this.direction === 1 ? last + step : first - step;
+			if (candidate >= 0 && candidate < totalChunks) {
+				targets.push(candidate);
+			}
+		}
+		const keepWindow = new Set<number>(targets);
+		for (let index = Math.max(0, first - 1); index <= Math.min(totalChunks - 1, last + 1); index += 1) {
+			keepWindow.add(index);
+		}
+		for (const [index, controller] of this.prefetchControllers.entries()) {
+			if (!keepWindow.has(index)) {
+				this.prefetchControllers.delete(index);
+				this.inFlight.delete(index);
+				controller.abort();
+			}
+		}
+		this.prefetchQueue = targets.filter((index) => !this.chunks.has(index) && !this.inFlight.has(index));
+		this.pumpPrefetchQueue();
+	}
+
+	private pumpPrefetchQueue(): void {
+		if (this.closed || this.fullFallback) return;
+		while (this.activePrefetches < MAX_CONCURRENT_PREFETCH && this.prefetchQueue.length > 0) {
+			const next = this.prefetchQueue.shift()!;
+			if (this.chunks.has(next) || this.inFlight.has(next)) continue;
+			const controller = new AbortController();
+			this.prefetchControllers.set(next, controller);
+			this.activePrefetches += 1;
+			void this.chunk(next, controller.signal).catch(() => {}).finally(() => {
+				this.prefetchControllers.delete(next);
+				this.activePrefetches = Math.max(0, this.activePrefetches - 1);
+				if (!this.closed) this.pumpPrefetchQueue();
+			});
+		}
 	}
 
 	private async chunk(index: number, signal?: AbortSignal): Promise<Uint8Array> {
@@ -225,7 +327,11 @@ export class HttpRangeSource implements ReaderSource {
 		}
 		const pending = this.inFlight.get(index);
 		if (pending) return pending;
-		const request = this.fetchChunk(index, signal).finally(() => this.inFlight.delete(index));
+		const request = this.fetchChunk(index, signal).finally(() => {
+			if (this.inFlight.get(index) === request) {
+				this.inFlight.delete(index);
+			}
+		});
 		this.inFlight.set(index, request);
 		return request;
 	}
@@ -297,6 +403,11 @@ export class HttpRangeSource implements ReaderSource {
 		return full.subarray(start, Math.min(full.length, start + RANGE_CHUNK_SIZE));
 	}
 
+	private memoryCacheBudget(): number {
+		const configured = getReaderCacheSettings().memoryLimitBytes;
+		return Math.max(32 * 1024 * 1024, Math.floor(configured * 0.6));
+	}
+
 	private remember(index: number, data: Uint8Array): void {
 		const previous = this.chunks.get(index);
 		if (previous) {
@@ -305,7 +416,8 @@ export class HttpRangeSource implements ReaderSource {
 		}
 		this.chunks.set(index, data);
 		this.cachedBytes += data.byteLength;
-		while (this.cachedBytes > MAX_RANGE_CACHE_BYTES) {
+		const limit = this.memoryCacheBudget();
+		while (this.cachedBytes > limit) {
 			const oldest = this.chunks.entries().next().value as [number, Uint8Array] | undefined;
 			if (!oldest) break;
 			this.chunks.delete(oldest[0]);
@@ -317,6 +429,11 @@ export class HttpRangeSource implements ReaderSource {
 		if (this.closed) return;
 		this.closed = true;
 		this.controller.abort();
+		for (const controller of this.prefetchControllers.values()) {
+			controller.abort();
+		}
+		this.prefetchControllers.clear();
+		this.prefetchQueue = [];
 		this.chunks.clear();
 		this.inFlight.clear();
 		this.fullFallback = null;

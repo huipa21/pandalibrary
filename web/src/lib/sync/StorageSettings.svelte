@@ -2,11 +2,24 @@
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
+	import {
+		clearAllReaderCaches,
+		clearBookReaderCache,
+		DISK_CACHE_LIMIT_OPTIONS,
+		getReaderCacheSettings,
+		listCachedBooks,
+		MEMORY_CACHE_LIMIT_OPTIONS,
+		saveReaderCacheSettings,
+		type CachedBookSummary,
+		type ReaderCacheSettings
+	} from '#lib/reader/range-cache.js';
 	import { currentAccount, offlineAvailable, offlineStatus, refreshStatus, syncNow } from './client.js';
 	import { discardMutation, downloadedBooks, outbox, removeAllBooks, removeBook } from './db.js';
 	import type { DownloadedBook, OutboxEntry, SyncMutation } from './types.js';
 
 	let books = $state<DownloadedBook[]>([]);
+	let cachedBooks = $state<CachedBookSummary[]>([]);
+	let cacheSettings = $state<ReaderCacheSettings>(getReaderCacheSettings());
 	let entries = $state<OutboxEntry[]>([]);
 	let usage = $state<number | null>(null);
 	let quota = $state<number | null>(null);
@@ -15,6 +28,7 @@
 	let error = $state('');
 	let notice = $state('');
 	let refreshVersion = 0;
+	const readerCacheUsed = $derived(cachedBooks.reduce((sum, item) => sum + item.totalBytes, 0));
 
 	onMount(() => {
 		let previous: { account: number | null; pending: number; issues: number; syncing: boolean } | null = null;
@@ -34,10 +48,16 @@
 		const version = ++refreshVersion;
 		try {
 			const account = currentAccount();
-			const [savedBooks, savedEntries] = await Promise.all([downloadedBooks(account), outbox(account)]);
+			const [savedBooks, savedEntries, savedCachedBooks] = await Promise.all([
+				downloadedBooks(account),
+				outbox(account),
+				listCachedBooks(account)
+			]);
 			if (version !== refreshVersion) return;
 			books = savedBooks;
 			entries = savedEntries;
+			cachedBooks = savedCachedBooks;
+			cacheSettings = getReaderCacheSettings();
 			if (navigator.storage?.estimate) {
 				const estimate = await navigator.storage.estimate();
 				if (version !== refreshVersion) return;
@@ -97,6 +117,35 @@
 			notice = m['offline.storage.removed']();
 		} catch (cause) {
 			console.error('Could not remove downloaded books', cause);
+			error = m['offline.storage.failure']();
+		} finally {
+			busy = false;
+		}
+	}
+
+	function updateCacheLimits(partial: Partial<ReaderCacheSettings>) {
+		error = '';
+		cacheSettings = saveReaderCacheSettings(partial);
+		notice = m['offline.storage.cache_settings_saved']();
+		void refresh();
+	}
+
+	async function clearReaderCache(bookId?: number) {
+		const confirm = bookId === undefined
+			? m['offline.storage.cache_clear_all_confirm']()
+			: m['offline.storage.cache_clear_confirm']();
+		if (!await confirmAction(confirm)) return;
+		busy = true;
+		error = '';
+		notice = '';
+		try {
+			const account = currentAccount();
+			if (bookId === undefined) await clearAllReaderCaches(account);
+			else await clearBookReaderCache(account, bookId);
+			await refresh();
+			notice = m['offline.storage.cache_cleared']();
+		} catch (cause) {
+			console.error('Could not clear reader cache', cause);
 			error = m['offline.storage.failure']();
 		} finally {
 			busy = false;
@@ -206,6 +255,65 @@
 				</button>
 			{:else}
 				<p class="text-sm text-slate-600">{m['offline.storage.empty']()}</p>
+			{/if}
+		</div>
+
+		<div class="space-y-3">
+			<div>
+				<h3 class="font-semibold">{m['offline.storage.cache_title']()}</h3>
+				<p class="text-sm text-slate-600">{m['offline.storage.cache_description']()}</p>
+			</div>
+			<div class="grid gap-4 sm:grid-cols-2">
+				<label class="block text-sm">
+					<span class="font-medium">{m['offline.storage.cache_disk_limit']()}</span>
+					<select
+						class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-2"
+						value={cacheSettings.diskLimitBytes}
+						disabled={busy}
+						onchange={(event) => updateCacheLimits({ diskLimitBytes: Number((event.currentTarget as HTMLSelectElement).value) })}
+					>
+						{#each DISK_CACHE_LIMIT_OPTIONS as option (option)}
+							<option value={option}>{formatSize(option)}</option>
+						{/each}
+					</select>
+				</label>
+				<label class="block text-sm">
+					<span class="font-medium">{m['offline.storage.cache_memory_limit']()}</span>
+					<select
+						class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:outline-2"
+						value={cacheSettings.memoryLimitBytes}
+						disabled={busy}
+						onchange={(event) => updateCacheLimits({ memoryLimitBytes: Number((event.currentTarget as HTMLSelectElement).value) })}
+					>
+						{#each MEMORY_CACHE_LIMIT_OPTIONS as option (option)}
+							<option value={option}>{formatSize(option)}</option>
+						{/each}
+					</select>
+				</label>
+			</div>
+			<p class="text-sm text-slate-600">
+				<span class="font-medium text-slate-800">{m['offline.storage.cache_usage']()}:</span>
+				{formatSize(readerCacheUsed)}
+			</p>
+			{#if cachedBooks.length}
+				<ul class="divide-y divide-slate-200 rounded-md border border-slate-200">
+					{#each cachedBooks as item (item.bookId)}
+						<li class="flex flex-wrap items-center justify-between gap-3 p-4">
+							<div>
+								<a class="font-medium underline-offset-4 hover:underline focus-visible:outline-2" href={`/books/${item.bookId}`}>{item.title}</a>
+								<p class="text-sm text-slate-600">{formatSize(item.totalBytes)}</p>
+							</div>
+							<button class="text-sm font-medium text-red-700 underline focus-visible:outline-2" disabled={busy} onclick={() => clearReaderCache(item.bookId)}>
+								{m['offline.storage.cache_clear_book']()}
+							</button>
+						</li>
+					{/each}
+				</ul>
+				<button class="rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-700 focus-visible:outline-2" disabled={busy} onclick={() => clearReaderCache()}>
+					{m['offline.storage.cache_clear_all']()}
+				</button>
+			{:else}
+				<p class="text-sm text-slate-600">{m['offline.storage.cache_empty']()}</p>
 			{/if}
 		</div>
 

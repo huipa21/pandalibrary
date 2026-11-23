@@ -229,6 +229,9 @@ func (s *Service) updateBookWithManualPatch(ctx context.Context, viewer Viewer, 
 		result, err = hydrateBook(ctx, queries, viewer, updated)
 		return err
 	})
+	if err == nil {
+		s.invalidateFileCache()
+	}
 	return result, err
 }
 
@@ -353,7 +356,7 @@ func (s *Service) DeleteBook(ctx context.Context, viewer Viewer, id int64) error
 	if id < 1 {
 		return invalid("book ID is invalid")
 	}
-	return db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		queries := sqlc.New(tx)
 		if _, err := visibleBook(ctx, queries, viewer, id); err != nil {
 			return err
@@ -383,4 +386,8 @@ func (s *Service) DeleteBook(ctx context.Context, viewer Viewer, id int64) error
 		}
 		return nil
 	})
+	if err == nil {
+		s.invalidateFileCache()
+	}
+	return err
 }

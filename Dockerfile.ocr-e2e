@@ -1,0 +1,49 @@
+# Browser-only OCR gate. This image exists solely to run
+# `pnpm test:e2e:ocr` with Chromium and the CJK fonts used by the fixture.
+# It is not the production image: PandaLibrary serves static assets and OCR
+# runs in the user's browser, so the scratch production image must stay free
+# of Chromium, fontconfig and font packages.
+ARG PLAYWRIGHT_VERSION=1.64.1
+FROM mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble
+
+ARG PNPM_VERSION=11.2.2
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ENV npm_config_registry=${NPM_REGISTRY} \
+    CI=1
+
+# Noto CJK is OFL-licensed and covers Simplified Chinese, Traditional Chinese,
+# Japanese and Korean. fonts-liberation2 supplies metric-compatible Latin
+# substitutions for Arial/Times New Roman/Courier New. fonts-noto-cjk-extra
+# (additional weights) is intentionally omitted; add it only if a fixture
+# needs a weight outside regular/bold.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        fontconfig \
+        fonts-liberation2 \
+        fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install --global pnpm@${PNPM_VERSION}
+
+WORKDIR /src/web
+
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
+COPY web/patches ./patches
+COPY web/project.inlang ./project.inlang
+RUN pnpm install --frozen-lockfile --registry="${NPM_REGISTRY}"
+
+COPY web/ ./
+# The service-worker test reads web/build, so build before running the gate.
+RUN pnpm build
+
+COPY deploy/ocr-e2e/fonts.conf /etc/fonts/conf.d/99-pandalibrary-cjk.conf
+# Fail the build if fontconfig cannot resolve the fixture's SimSun request.
+RUN fc-cache -f \
+    && test "$(fc-match -f '%{family[0]}' SimSun)" = "Noto Serif CJK SC" \
+    && test "$(fc-match -f '%{family[0]}' 'Microsoft YaHei')" = "Noto Sans CJK SC" \
+    && test "$(fc-match -f '%{family[0]}' 'MS Gothic')" = "Noto Sans CJK JP" \
+    && mkdir -p /src/web/test-results /src/web/playwright-report /src/web/node_modules/.vite /src/web/node_modules/.vite-temp \
+    && chown pwuser:pwuser /src/web \
+    && chown -R pwuser:pwuser /src/web/test-results /src/web/playwright-report /src/web/.svelte-kit /src/web/node_modules/.vite /src/web/node_modules/.vite-temp
+
+USER pwuser
+CMD ["pnpm", "test:e2e:ocr"]

@@ -280,7 +280,9 @@ test:e2e:saturation` uses the old four-worker, one-retry budget as a non-blockin
 diagnostic; do not use it as a merge gate. Set `PANDA_E2E_BINARY` to a
 built binary to run the suite against the real server and embedded SPA; see
 [Release verification](#release-verification). The OCR specs need the self-hosted
-models and run on their own: `pnpm --dir web test:e2e:ocr`.
+models and run on their own: `pnpm --dir web test:e2e:ocr`. On Linux, install a
+CJK font first or run the gate in the dedicated Playwright image; see
+[CJK fonts for the OCR browser gate](web/README.md#cjk-fonts-for-the-ocr-browser-gate).
 
 The [PDF engine](web/src/lib/reader/pdf.ts) exposes `viewState` and
 `subscribeView`, plus `setLayout`, `setZoom`, `zoomBy`, `rotate`, and

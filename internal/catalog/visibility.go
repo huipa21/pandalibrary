@@ -38,5 +38,6 @@ func (s *Service) SetVisibility(ctx context.Context, viewer Viewer, id int64, vi
 		}
 		return Book{}, ErrForbidden
 	}
+	s.invalidateFileCache()
 	return s.GetBook(ctx, viewer, id)
 }

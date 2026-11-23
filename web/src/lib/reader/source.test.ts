@@ -111,4 +111,67 @@ describe('HttpRangeSource', () => {
 		await reader.close();
 		source.close();
 	});
+
+	it('prefetches ahead in a sliding window and shifts direction when scrolling backward', async () => {
+		const data = new Uint8Array(RANGE_CHUNK_SIZE * 5);
+		data[0] = 11;
+		data[RANGE_CHUNK_SIZE] = 22;
+		data[RANGE_CHUNK_SIZE * 2] = 33;
+		data[RANGE_CHUNK_SIZE * 3] = 44;
+		data[RANGE_CHUNK_SIZE * 4] = 55;
+		const requestedRanges: string[] = [];
+		const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+			const header = new Headers(init?.headers).get('Range') ?? '';
+			requestedRanges.push(header);
+			const match = /^bytes=(\d+)-(\d+)$/.exec(header);
+			if (!match) throw new Error(`missing range: ${header}`);
+			const start = Number(match[1]);
+			const end = Math.min(Number(match[2]), data.length - 1);
+			return new Response(data.slice(start, end + 1), {
+				status: 206,
+				headers: { 'Content-Range': `bytes ${start}-${end}/${data.length}` }
+			});
+		});
+		const source = new HttpRangeSource(
+			url(),
+			file(data.length),
+			fetcher as typeof fetch,
+			null,
+			{ prefetchWindowChunks: 2 }
+		);
+
+		const firstByte = await source.read(0, 1);
+		expect(firstByte[0]).toBe(11);
+		await expect.poll(() => requestedRanges.length).toBe(3);
+		expect(requestedRanges).toEqual([
+			`bytes=0-${RANGE_CHUNK_SIZE - 1}`,
+			`bytes=${RANGE_CHUNK_SIZE}-${RANGE_CHUNK_SIZE * 2 - 1}`,
+			`bytes=${RANGE_CHUNK_SIZE * 2}-${RANGE_CHUNK_SIZE * 3 - 1}`
+		]);
+
+		// Reading chunk 1 hits the prefetched in-memory cache without re-fetching chunk 1 or 2,
+		// and slides the prefetch window forward to chunk 3.
+		const secondByte = await source.read(RANGE_CHUNK_SIZE, 1);
+		expect(secondByte[0]).toBe(22);
+		await expect.poll(() => requestedRanges.length).toBe(4);
+		expect(requestedRanges[3]).toBe(`bytes=${RANGE_CHUNK_SIZE * 3}-${RANGE_CHUNK_SIZE * 4 - 1}`);
+		source.close();
+	});
+
+	it('warms head and tail chunks in parallel on open', async () => {
+		const data = new Uint8Array(RANGE_CHUNK_SIZE * 3);
+		data[0] = 77;
+		data[RANGE_CHUNK_SIZE * 2] = 99;
+		const fetcher = rangeFetch(data);
+		const source = new HttpRangeSource(url(), file(data.length), fetcher as typeof fetch);
+
+		const head = await source.warmup();
+		expect(head?.[0]).toBe(77);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		// Subsequent reads of chunk 0 and the tail chunk hit the warmed in-memory cache.
+		expect((await source.read(0, 1))[0]).toBe(77);
+		expect((await source.read(RANGE_CHUNK_SIZE * 2, 1))[0]).toBe(99);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		source.close();
+	});
 });

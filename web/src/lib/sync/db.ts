@@ -1,6 +1,7 @@
 import { withBookDefaults } from '#lib/catalog/book-defaults.js';
 import type { Book, BookFile } from '#lib/catalog/types.js';
 import type { JsonValue } from '#lib/api/client.js';
+import { clearAllReaderCaches, clearBookReaderCache } from '#lib/reader/range-cache.js';
 import type {
 	CachedBookDetail,
 	CursorState,
@@ -517,6 +518,7 @@ export async function removeBook(account: number, bookId: number): Promise<void>
 		await result(tx.objectStore('meta').delete(detailKey(account, bookId)));
 		await deleteMatching(tx.objectStore('files').index('book'), [account, bookId]);
 	});
+	await clearBookReaderCache(account, bookId);
 }
 
 export async function removeAllBooks(account: number): Promise<void> {
@@ -530,4 +532,5 @@ export async function removeAllBooks(account: number): Promise<void> {
 		}
 		await removeBookDetails(tx, account);
 	});
+	await clearAllReaderCaches(account);
 }

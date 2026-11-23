@@ -1,9 +1,10 @@
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { EventBus as PdfEventBus, PDFLinkService as PdfLinkService, PDFViewer as PdfJsViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import { fraction as clampFraction } from '../progress.js';
+import type { ReaderCacheBookMeta } from '../range-cache.js';
 import { isReaderSettings } from '../settings.js';
 import type { ReaderSearchEngine, ReaderSearchResult } from '../search.js';
-import { RANGE_CHUNK_SIZE, isBlob, type ReaderSource } from '../source.js';
+import { BlobSource, RANGE_CHUNK_SIZE, isBlob, type ReaderSource } from '../source.js';
 import {
 	isPdfLocator,
 	type NormalizedRect,
@@ -31,6 +32,7 @@ import type {
 } from './types.js';
 import { clampScale, nextScale, presetValue } from './zoom.js';
 import { readPdfViewState } from './view-state.js';
+import { PdfPageCache } from './page-cache.js';
 import { PdfSearch } from './search.js';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './pdf.css';
@@ -39,12 +41,28 @@ export { PdfBinaryDataFactory };
 
 type ViewerModule = typeof import('pdfjs-dist/web/pdf_viewer.mjs');
 type PdfjsModule = typeof import('pdfjs-dist');
-type PageView = { id: number; div: HTMLDivElement; viewport: { width: number; height: number }; pdfPage: PDFPageProxy | null; textLayer: { div: HTMLElement } | null };
+type PageView = {
+	id: number;
+	div: HTMLDivElement;
+	canvas?: HTMLCanvasElement | null;
+	viewport: { width: number; height: number };
+	pdfPage: PDFPageProxy | null;
+	textLayer: { div: HTMLElement } | null;
+};
 type Anchor = { clientX: number; clientY: number };
+
+export interface PdfEngineConfig extends ReaderCacheBookMeta {
+	account?: number | null;
+	initialSettings?: ReaderSettings | null;
+	initialTarget?: ReaderLocator | number | null;
+}
 
 const IMAGE_OPS = ['paintImageXObject', 'paintInlineImageXObject', 'paintImageMaskXObject', 'paintImageXObjectRepeat'] as const;
 const ENHANCER_Z = 1;
 const OFFSET_STEP = 0.005;
+const LARGE_BLOB_STREAM_THRESHOLD = 16 * 1024 * 1024;
+const PREFETCH_AHEAD_PAGES = 4;
+const PREFETCH_BEHIND_PAGES = 1;
 
 let viewerModule: Promise<ViewerModule> | null = null;
 
@@ -127,7 +145,16 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 	private readonly enhancers = new Map<PageEnhancer, Map<number, Enhancement>>();
 	private readonly textReady = new Set<number>();
 	private readonly paintReady = new Set<number>();
+	private readonly canvasReady = new Set<number>();
 	private readonly pageImages = new Map<number, Promise<boolean>>();
+	private pageCache: PdfPageCache | null = null;
+	private account: number | null = null;
+	private bookMeta: ReaderCacheBookMeta = {};
+	private initialTarget: ReaderLocator | number | null = null;
+	private scrollDirection: 1 | -1 = 1;
+	private preRenderQueue: number[] = [];
+	private activePreRender: { page: number; cancel: () => void } | null = null;
+	private preRendering = false;
 	private selectionCapture: ((selection: Selection) => void) | null = null;
 	private resizeObserver: ResizeObserver | null = null;
 	private mutationObserver: MutationObserver | null = null;
@@ -187,21 +214,64 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		return () => { this.subscribers.delete(listener); };
 	}
 
+	configure(config: PdfEngineConfig): void {
+		if (config.account !== undefined) this.account = config.account;
+		this.bookMeta = {
+			bookId: config.bookId ?? this.bookMeta.bookId,
+			fileId: config.fileId ?? this.bookMeta.fileId,
+			bookTitle: config.bookTitle ?? this.bookMeta.bookTitle
+		};
+		if (config.initialSettings && isReaderSettings(config.initialSettings)) {
+			this.settings = { ...config.initialSettings };
+			const view = readPdfViewState(this.settings);
+			this.zoom = view.zoom;
+			this.layout = view.layout;
+		}
+		if (config.initialTarget !== undefined) {
+			this.initialTarget = config.initialTarget;
+		}
+	}
+
 	async open(input: Blob | ReaderSource): Promise<void> {
+		let streamSource: ReaderSource | null = null;
+		if (!isBlob(input)) {
+			streamSource = input;
+			if (input.bookMeta) {
+				this.bookMeta = {
+					bookId: this.bookMeta.bookId ?? input.bookMeta.bookId,
+					fileId: this.bookMeta.fileId ?? input.bookMeta.fileId,
+					bookTitle: this.bookMeta.bookTitle ?? input.bookMeta.bookTitle
+				};
+			}
+		} else if (input.size > LARGE_BLOB_STREAM_THRESHOLD) {
+			streamSource = new BlobSource(input, {
+				id: this.bookMeta.fileId ?? 0,
+				format: 'pdf',
+				original_filename: this.bookMeta.bookTitle || 'book.pdf',
+				size_bytes: input.size,
+				download_url: '',
+				created_at: '',
+				is_default: true
+			}, this.bookMeta);
+		}
+		// Warm head and tail chunks in parallel while pdf.js viewer and worker modules load.
+		const warmupPromise = streamSource?.warmup ? streamSource.warmup().catch(() => null) : Promise.resolve(null);
 		const [{ pdfjs, viewer: module }, worker] = await Promise.all([
 			loadViewer(),
-			import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+			import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+			warmupPromise
 		]);
 		if (this.disposed) return;
 		this.pdfjs = pdfjs;
 		pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
 		let options: Record<string, unknown>;
 		let failure: Promise<never> | null = null;
-		if (isBlob(input)) {
+		if (!streamSource && isBlob(input)) {
 			options = { data: new Uint8Array(await input.arrayBuffer()) };
 		} else {
-			this.source = input;
-			const range = createRangeTransport(pdfjs, input);
+			const activeSource = streamSource!;
+			this.source = activeSource;
+			const range = createRangeTransport(pdfjs, activeSource);
 			failure = range.failure;
 			options = {
 				range: range.transport,
@@ -233,6 +303,14 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 			return;
 		}
 		this.document = pdf;
+		this.pageCache?.dispose();
+		this.pageCache = new PdfPageCache({
+			account: this.account,
+			bookId: this.bookMeta.bookId,
+			fileId: this.bookMeta.fileId,
+			bookTitle: this.bookMeta.bookTitle,
+			fingerprint: this.fingerprint()
+		});
 		this.mount(module);
 		const viewer = this.viewer!;
 		const initialized = new Promise<void>((resolve) => this.eventBus!.on('pagesinit', () => resolve(), { once: true }));
@@ -242,7 +320,19 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		await initialized;
 		if (this.disposed) return;
 		this.decoratePages();
+		const initialResolved = this.resolveTarget(this.initialTarget, pdf.numPages);
+		if (initialResolved) {
+			this.position = {
+				page: spreadStart(initialResolved.page, this.layout),
+				offset: isContinuous(this.layout) ? initialResolved.offset : 0
+			};
+			this.intended = initialResolved.page;
+		}
 		this.applyView(this.settings ? readPdfViewState(this.settings) : { layout: this.layout, zoom: this.zoom, rotation: 0 });
+		if (initialResolved) {
+			await this.goToPage(initialResolved.page, initialResolved.offset).catch(() => {});
+		}
+		this.showVisiblePreviews();
 	}
 
 	private mount(module: ViewerModule): void {
@@ -285,7 +375,11 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		this.linkService = linkService;
 		this.searchEngine = searchEngine;
 
-		eventBus.on('pagerender', ({ pageNumber }: { pageNumber: number }) => this.abortEnhancements(pageNumber));
+		eventBus.on('pagerender', ({ pageNumber }: { pageNumber: number }) => {
+			this.canvasReady.delete(pageNumber);
+			this.abortEnhancements(pageNumber);
+			this.showCachedPagePreview(pageNumber);
+		});
 		eventBus.on('pagerendered', ({ pageNumber }: { pageNumber: number }) => this.pageRendered(pageNumber));
 		eventBus.on('textlayerrendered', ({ pageNumber }: { pageNumber: number }) => this.textRendered(pageNumber));
 		eventBus.on('pagesloaded', () => {
@@ -315,6 +409,13 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 				for (const node of record.removedNodes) {
 					if (node instanceof HTMLElement && node.classList.contains('reader-pdf-enhancement')) {
 						this.abortEnhancements(Number(node.dataset.page), node);
+					} else if (node instanceof HTMLElement && (node.classList.contains('canvasWrapper') || node.tagName === 'CANVAS')) {
+						const pageDiv = record.target instanceof HTMLElement
+							? record.target.closest<HTMLElement>('.page[data-page-number]')
+							: null;
+						if (pageDiv) {
+							this.canvasReady.delete(Number(pageDiv.dataset.pageNumber));
+						}
 					}
 				}
 			}
@@ -494,6 +595,12 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		this.pageImages.clear();
 		this.textReady.clear();
 		this.paintReady.clear();
+		this.canvasReady.clear();
+		this.activePreRender?.cancel();
+		this.activePreRender = null;
+		this.preRenderQueue = [];
+		this.pageCache?.dispose();
+		this.pageCache = null;
 		try {
 			this.viewer?.cleanup();
 			this.viewer?.setDocument(null as unknown as PDFDocumentProxy);
@@ -666,14 +773,19 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		if (this.disposed || !this.document) return;
 		const next = this.measure();
 		if (!next) return;
-		if (next.page !== this.position.page) this.intended = null;
+		if (next.page !== this.position.page) {
+			this.scrollDirection = next.page < this.position.page ? -1 : 1;
+			this.intended = null;
+		}
 		this.position = next;
+		this.showVisiblePreviews();
 		const last = this.emitted;
 		if (last && last.page === next.page && Math.abs(last.offset - next.offset) < (final ? 1e-4 : OFFSET_STEP)) {
 			this.notify();
 			return;
 		}
 		this.relocate();
+		this.prefetchPages(this.position.page);
 	}
 
 	private relocate(): void {
@@ -697,23 +809,190 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		for (const listener of this.subscribers) listener(state);
 	}
 
+	private resolveTarget(target: ReaderLocator | number | null | undefined, pages: number): { page: number; offset: number } | null {
+		if (target === null || target === undefined || pages <= 0) return null;
+		if (typeof target === 'number') {
+			return fromFraction(clampFraction(target), pages);
+		}
+		if (isPdfLocator(target) && target.page >= 1 && target.page <= pages) {
+			const off = (target as { offset?: unknown }).offset;
+			return {
+				page: target.page,
+				offset: typeof off === 'number' && off >= 0 && off < 1 ? off : 0
+			};
+		}
+		return null;
+	}
+
+	private showVisiblePreviews(): void {
+		if (this.disposed || !this.document || !this.pageCache) return;
+		const total = this.document.numPages;
+		const center = this.position.page;
+		for (let page = Math.max(1, center - 1); page <= Math.min(total, center + 2); page += 1) {
+			if (!this.canvasReady.has(page)) {
+				this.showCachedPagePreview(page);
+			}
+		}
+	}
+
+	private showCachedPagePreview(page: number): void {
+		if (this.disposed || !this.pageCache || this.canvasReady.has(page)) return;
+		const view = this.pageView(page);
+		if (!view) return;
+		const rotation = this.state.rotation;
+		const scale = this.state.scale;
+		const immediate = this.pageCache.getMemory(page, rotation, scale);
+		if (immediate) {
+			this.paintPreviewCanvas(view.div, immediate);
+			return;
+		}
+		void this.pageCache.get(page, rotation, scale).then((bitmap) => {
+			if (!bitmap || this.disposed || this.canvasReady.has(page)) return;
+			const currentView = this.pageView(page);
+			if (currentView) this.paintPreviewCanvas(currentView.div, bitmap);
+		});
+	}
+
+	private paintPreviewCanvas(pageDiv: HTMLElement, bitmap: ImageBitmap): void {
+		if (!bitmap.width || !bitmap.height) return;
+		let preview = pageDiv.querySelector<HTMLCanvasElement>(':scope > canvas.reader-pdf-page-preview');
+		if (!preview) {
+			preview = document.createElement('canvas');
+			preview.className = 'reader-pdf-page-preview';
+			preview.setAttribute('aria-hidden', 'true');
+			pageDiv.prepend(preview);
+		}
+		if (preview.width !== bitmap.width || preview.height !== bitmap.height) {
+			preview.width = bitmap.width;
+			preview.height = bitmap.height;
+		}
+		const ctx = preview.getContext('2d');
+		if (ctx) {
+			ctx.clearRect(0, 0, preview.width, preview.height);
+			ctx.drawImage(bitmap, 0, 0, preview.width, preview.height);
+		}
+	}
+
 	private pageRendered(page: number): void {
 		const view = this.pageView(page);
 		if (!view) return;
 		view.div.classList.add('reader-pdf-page');
 		view.div.dataset.page = String(page);
+		view.div.querySelector(':scope > canvas.reader-pdf-page-preview')?.remove();
+		this.canvasReady.add(page);
 		this.paintReady.add(page);
 		const box = this.pageBox(page);
 		if (box) this.layers.paintPage(box);
-		this.prefetchPages(page);
+		const renderedCanvas = view.canvas ?? view.div.querySelector<HTMLCanvasElement>('canvas:not(.reader-pdf-page-preview)');
+		if (renderedCanvas) {
+			void this.pageCache?.captureCanvas(page, this.state.rotation, this.state.scale, renderedCanvas);
+		}
+		this.prefetchPages(this.position.page);
 	}
 
-	/** Warm the next pages without letting pdf.js prefetch the whole file. */
-	private prefetchPages(page: number): void {
-		if (!this.source || !this.document || this.disposed) return;
+	/**
+	 * Sliding-window page prefetcher: warms upcoming pages in the scroll direction
+	 * into the persistent page bitmap cache and triggers HttpRangeSource chunk prefetching.
+	 */
+	private prefetchPages(centerPage: number): void {
+		if (!this.document || this.disposed) return;
 		const total = this.document.numPages;
-		for (const next of [page + 1, page + 2]) {
-			if (next <= total) void this.document.getPage(next).catch(() => {});
+		const dir = this.scrollDirection;
+		const windowPages: number[] = [];
+		for (let step = 1; step <= PREFETCH_AHEAD_PAGES; step += 1) {
+			const next = centerPage + step * dir;
+			if (next >= 1 && next <= total) windowPages.push(next);
+		}
+		for (let step = 1; step <= PREFETCH_BEHIND_PAGES; step += 1) {
+			const prev = centerPage - step * dir;
+			if (prev >= 1 && prev <= total) windowPages.push(prev);
+		}
+		for (const next of windowPages.slice(0, 2)) {
+			void this.document.getPage(next).catch(() => {});
+		}
+		if (!this.pageCache) return;
+		const keepSet = new Set(windowPages);
+		if (this.activePreRender && !keepSet.has(this.activePreRender.page)) {
+			this.activePreRender.cancel();
+			this.activePreRender = null;
+		}
+		const rotation = this.state.rotation;
+		const scale = this.state.scale;
+		this.preRenderQueue = windowPages.filter(
+			(target) => !this.canvasReady.has(target) && !this.pageCache!.hasMemory(target, rotation, scale)
+		);
+		void this.pumpPreRenderQueue();
+	}
+
+	private async pumpPreRenderQueue(): Promise<void> {
+		if (this.preRendering || this.disposed || !this.document || !this.pageCache) return;
+		// Yield until the currently visible page has finished rendering so pre-rendering never blocks it.
+		if (!this.canvasReady.has(this.position.page)) return;
+		this.preRendering = true;
+		try {
+			while (this.preRenderQueue.length > 0 && !this.disposed && this.document && this.pageCache) {
+				if (!this.canvasReady.has(this.position.page)) break;
+				const targetPage = this.preRenderQueue.shift()!;
+				const rotation = this.state.rotation;
+				const scale = this.state.scale;
+				if (this.canvasReady.has(targetPage) || this.pageCache.hasMemory(targetPage, rotation, scale)) {
+					continue;
+				}
+				// First check persistent Cache Storage so already-cached pages decode without pdf.js worker work.
+				const fromDisk = await this.pageCache.get(targetPage, rotation, scale);
+				if (this.disposed) break;
+				if (fromDisk) {
+					if (!this.canvasReady.has(targetPage)) this.showCachedPagePreview(targetPage);
+					continue;
+				}
+				if (!this.source || typeof document === 'undefined') continue;
+				let pdfPage: PDFPageProxy;
+				try {
+					pdfPage = await this.document.getPage(targetPage);
+				} catch {
+					continue;
+				}
+				if (this.disposed || this.canvasReady.has(targetPage)) continue;
+				if (typeof pdfPage.getViewport !== 'function' || typeof pdfPage.render !== 'function') continue;
+				const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+				const renderScale = Math.max(0.5, Math.min(scale * dpr, 2));
+				const viewport = pdfPage.getViewport({ scale: renderScale, rotation });
+				const width = Math.max(1, Math.floor(viewport.width));
+				const height = Math.max(1, Math.floor(viewport.height));
+				const canvas = document.createElement('canvas');
+				canvas.width = width;
+				canvas.height = height;
+				const canvasContext = canvas.getContext('2d');
+				if (!canvasContext) continue;
+				const renderTask = pdfPage.render({
+					canvasContext,
+					canvas,
+					viewport
+				});
+				this.activePreRender = {
+					page: targetPage,
+					cancel: () => {
+						try { renderTask.cancel(); } catch { /* ignore */ }
+					}
+				};
+				try {
+					await renderTask.promise;
+					if (!this.disposed && this.pageCache) {
+						await this.pageCache.captureCanvas(targetPage, rotation, scale, canvas);
+						if (!this.canvasReady.has(targetPage)) this.showCachedPagePreview(targetPage);
+					}
+				} catch {
+					// Pre-render cancellation or transient failure is non-fatal.
+				} finally {
+					if (this.activePreRender?.page === targetPage) {
+						this.activePreRender = null;
+					}
+					canvas.width = 0;
+					canvas.height = 0;
+				}
+			}
+		} finally {
+			this.preRendering = false;
 		}
 	}
 
@@ -744,15 +1023,17 @@ export class PdfViewerEngine implements Reader, ReaderSearchEngine {
 		runs.set(page, run);
 		const textLayer = view.textLayer?.div ?? null;
 		const pdfPage = view.pdfPage;
+		const textChars = (textLayer?.textContent ?? '').replace(/\s/g, '').length;
 		void (async () => {
-			const hasImages = await this.hasImages(pdfPage);
+			// Skip expensive getOperatorList() worker round-trip when page already has selectable text.
+			const hasImages = textChars >= 20 ? false : await this.hasImages(pdfPage);
 			if (controller.signal.aborted) return;
 			await enhancer({
 				page,
 				pdfPage,
 				pageDiv: view.div,
 				textLayer,
-				textChars: (textLayer?.textContent ?? '').replace(/\s/g, '').length,
+				textChars,
 				hasImages,
 				rotation: box.rotation,
 				overlay,

@@ -57,6 +57,26 @@ func (s *Service) OpenBookFile(ctx context.Context, viewer Viewer, bookID, fileI
 	if version != "" && !blobstore.ValidHash(version) {
 		return Content{}, invalid("file version is invalid")
 	}
+	cacheKey := bookFileCacheKey{
+		userID: viewer.UserID, isAdmin: viewer.IsAdmin,
+		bookID: bookID, fileID: fileID, version: version,
+	}
+	if version != "" {
+		if cached, ok := s.getCachedBookFile(cacheKey); ok {
+			file, err := s.blobs.OpenBook(cached.row.Sha256, cached.row.Format)
+			if errors.Is(err, fs.ErrNotExist) {
+				s.invalidateFileCache()
+				return Content{}, ErrNotFound
+			}
+			if err != nil {
+				return Content{}, fmt.Errorf("open book file: %w", err)
+			}
+			return Content{
+				File: file, Filename: cached.row.OriginalFilename, ContentType: cached.contentType,
+				ETag: cached.row.Sha256, ModTime: utcMillis(cached.row.CreatedAt), Immutable: true,
+			}, nil
+		}
+	}
 	row, err := sqlc.New(s.reader).CatalogBookFile(ctx, sqlc.CatalogBookFileParams{
 		BookID: bookID, FileID: fileID, IsAdmin: adminFlag(viewer), UserID: viewer.UserID,
 	})
@@ -83,6 +103,9 @@ func (s *Service) OpenBookFile(ctx context.Context, viewer Viewer, bookID, fileI
 	}
 	if info.Size() != row.SizeBytes {
 		return Content{}, errors.Join(errors.New("stored book file size does not match the catalog"), file.Close())
+	}
+	if version != "" {
+		s.putCachedBookFile(cacheKey, row, contentType)
 	}
 	return Content{
 		File: file, Filename: row.OriginalFilename, ContentType: contentType, ETag: row.Sha256,

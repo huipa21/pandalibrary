@@ -11,7 +11,7 @@ export async function scannedFixtureImage(page: Page) {
 		context.fillStyle = 'white';
 		context.fillRect(0, 0, canvas.width, canvas.height);
 		context.fillStyle = 'black';
-		context.font = '64px SimSun, serif';
+		context.font = '64px "Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Zen Hei", SimSun, "PingFang SC", "Microsoft YaHei", serif';
 		context.fillText('Scanned PDF sample', 70, 180);
 		context.fillText('扫描样本', 70, 300);
 		return canvas.toDataURL('image/png').split(',')[1];
