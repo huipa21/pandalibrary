@@ -1,7 +1,7 @@
 import type { PDFPageProxy } from 'pdfjs-dist';
 
 export function ocrScale(width: number, height: number): number {
-	return Math.min(300 / 72, 3000 / Math.max(width, height));
+	return Math.min(400 / 72, 4000 / Math.max(width, height));
 }
 
 export async function renderOcrPage(page: PDFPageProxy, signal: AbortSignal): Promise<{ image: Blob; width: number; height: number }> {

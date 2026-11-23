@@ -30,10 +30,10 @@ it('canonicalizes language sets for cache and worker reuse', () => {
 	expect(() => languageKey([])).toThrow('At least one');
 });
 
-it('limits rendering to 300 DPI and 3000 pixels', () => {
-	expect(ocrScale(612, 792) * 792).toBe(3000);
-	expect(ocrScale(100, 200)).toBe(300 / 72);
-	expect(ocrScale(5000, 1000) * 5000).toBe(3000);
+it('limits rendering to 400 DPI and 4000 pixels', () => {
+	expect(ocrScale(612, 792) * 792).toBeCloseTo(4000, 6);
+	expect(ocrScale(100, 200)).toBe(400 / 72);
+	expect(ocrScale(5000, 1000) * 5000).toBeCloseTo(4000, 6);
 });
 
 it('joins CJK characters without spaces, preserves Latin word boundaries', () => {

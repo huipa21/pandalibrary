@@ -9,6 +9,7 @@ const engine = vi.hoisted(() => ({
 }));
 vi.mock('tesseract.js', () => ({
 	OEM: { LSTM_ONLY: 1 },
+	PSM: { SPARSE_TEXT: '11' },
 	createWorker: engine.createWorker
 }));
 
@@ -37,6 +38,9 @@ it('uses self-hosted URLs and reuses a language-set worker until 60 seconds idle
 		corePath: expect.stringMatching(/^https:\/\/library.test\/_app\/immutable\/ocr\//),
 		langPath: expect.stringMatching(/^https:\/\/library.test\/_app\/immutable\/ocr\//)
 	});
+	expect(engine.setParameters).toHaveBeenCalledWith(expect.objectContaining({
+		user_defined_dpi: '400', tessedit_pageseg_mode: '11'
+	}));
 	expect(engine.recognize).toHaveBeenCalledWith(expect.any(Blob), {}, { blocks: true, text: true });
 	await vi.advanceTimersByTimeAsync(59_999);
 	expect(engine.terminate).not.toHaveBeenCalled();

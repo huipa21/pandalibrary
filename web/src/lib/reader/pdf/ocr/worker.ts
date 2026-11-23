@@ -1,3 +1,4 @@
+import { PSM } from 'tesseract.js';
 import type { Bbox, Page, Worker } from 'tesseract.js';
 import base from 'virtual:ocr-assets';
 import { languageKey, type OcrLanguage } from './languages.js';
@@ -101,7 +102,12 @@ export class OcrWorkers {
 				signal.addEventListener('abort', cancel, { once: true });
 			});
 			const work = async () => {
-				await current.worker.setParameters({ user_defined_dpi: '300' });
+				await current.worker.setParameters({
+					user_defined_dpi: '400',
+					// Scans mix body text, tables, and cover art; default PSM 3 drops
+					// table cells and sparse text. Sparse mode recovers both.
+					tessedit_pageseg_mode: PSM.SPARSE_TEXT
+				});
 				signal.throwIfAborted();
 				return current.worker.recognize(image, {}, { blocks: true, text: true });
 			};

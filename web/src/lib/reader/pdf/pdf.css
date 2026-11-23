@@ -34,6 +34,17 @@
 	color: #111827;
 }
 
+/*
+ * OCR spans are an invisible fallback-font hit layer over the scanned page.
+ * Exposing their glyphs on selection draws an enlarged, mismatched duplicate
+ * of the raster text. Keep them transparent and tint the page image instead.
+ */
+.reader-pdf .textLayer.pv-ocr-text ::selection {
+	background: rgb(191 219 254 / 55%);
+	color: transparent;
+	-webkit-text-fill-color: transparent;
+}
+
 .reader-pdf .pv-layer,
 .reader-pdf .reader-pdf-enhancement {
 	position: absolute;
