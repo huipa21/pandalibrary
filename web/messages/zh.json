@@ -485,6 +485,8 @@
 	"pv9.upload_failed": "无法上传图片，请重试。",
 	"pv9.save_failed": "无法保存批注，请重试。",
 	"pv6.loading": "正在加载文字识别模型...",
+	"pv6.scanned": "扫描页",
+	"pv6.enable": "识别文字",
 	"pv6.recognizing": "正在识别文字 · 第 {page} 页 · {progress}%",
 	"pv6.failed": "文字识别失败",
 	"pv6.retry": "重试",

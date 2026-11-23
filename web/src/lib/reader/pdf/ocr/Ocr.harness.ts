@@ -38,7 +38,8 @@ async function open(base64: string, options: { enabled?: boolean; active?: boole
 	const fingerprint = pdf.fingerprints[0];
 	if (!fingerprint) throw new Error('The PDF fixture has no fingerprint.');
 	enhance = createOcrEnhancer({
-		enabled: () => enabled, active: () => active, languages: () => ['chi_sim', 'eng'],
+		enabled: () => enabled, active: () => active, enable: () => { enabled = true; },
+		languages: () => ['chi_sim', 'eng'],
 		fingerprint: () => fingerprint, visiblePage: () => 1,
 		onStatus: (status: OcrStatus) => {
 			document.querySelector('#status')!.textContent = JSON.stringify(status);
@@ -73,10 +74,11 @@ async function open(base64: string, options: { enabled?: boolean; active?: boole
 }
 
 /** Opens the fixture in the real reader engine with the enhancer registered as the live reader does. */
-async function openLive(base64: string, options: { rotation?: 0 | 90 | 180 | 270 } = {}) {
+async function openLive(base64: string, options: { rotation?: 0 | 90 | 180 | 270; enabled?: boolean } = {}) {
 	await harness.dispose();
 	lifetime = new AbortController();
 	root.replaceChildren();
+	enabled = options.enabled ?? true;
 	await setActiveViewer({ id: 1, username: 'ocr', display_name: 'OCR', role: 'user', locale: 'en' });
 	const surface = document.createElement('div');
 	Object.assign(surface.style, { position: 'relative', width: '900px', height: '700px', overflow: 'hidden' });
@@ -89,7 +91,9 @@ async function openLive(base64: string, options: { rotation?: 0 | 90 | 180 | 270
 	harness.live = reader;
 	await reader.open(new Blob([Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))]));
 	enhance = createOcrEnhancer({
-		enabled: () => true, active: () => true, languages: () => ocrLanguagesFor(null),
+		enabled: () => enabled, active: () => true,
+		enable: () => { enabled = true; harness.live?.rerunEnhancers(); },
+		languages: () => ocrLanguagesFor(null),
 		fingerprint: () => reader.fingerprint(), visiblePage: () => reader.state.page,
 		onStatus: (status: OcrStatus) => { harness.status = status; }
 	});

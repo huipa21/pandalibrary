@@ -1,5 +1,7 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
+export type OutlineDestination = string | readonly unknown[] | null;
+
 export interface OutlineNode {
 	id: string;
 	title: string;
@@ -7,6 +9,8 @@ export interface OutlineNode {
 	page: number | null;
 	offset: number;
 	url: string | null;
+	/** Raw PDF destination, kept so the exact offset can be resolved lazily. */
+	dest?: OutlineDestination;
 	children: OutlineNode[];
 }
 
@@ -15,7 +19,7 @@ export interface FlatOutlineNode extends OutlineNode {
 }
 
 type PdfOutlineItem = NonNullable<Awaited<ReturnType<PDFDocumentProxy['getOutline']>>>[number];
-type ResolvedDestination = { page: number | null; offset: number };
+type ResolvedDestination = { page: number | null };
 type OutlineEntry = { item: PdfOutlineItem; id: string; parentId: string | null; depth: number };
 
 const OUTLINE_CONCURRENCY = 8;
@@ -112,6 +116,8 @@ async function buildOutline(pdf: PDFDocumentProxy): Promise<OutlineNode[]> {
 		title: outlineTitle(item.title),
 		depth,
 		...resolved[index],
+		offset: 0,
+		dest: item.dest,
 		url: safeOutlineUrl(item.url),
 		children: [] as OutlineNode[],
 		parentId
@@ -125,33 +131,54 @@ async function buildOutline(pdf: PDFDocumentProxy): Promise<OutlineNode[]> {
 	return roots;
 }
 
+/** Resolve only the page; page heights are expensive and deferred until navigation. */
 async function resolveDestination(
 	pdf: PDFDocumentProxy,
 	value: PdfOutlineItem['dest']
 ): Promise<ResolvedDestination> {
 	try {
 		const destination = typeof value === 'string' ? await pdf.getDestination(value) : value;
-		if (!Array.isArray(destination) || destination.length < 2) return { page: null, offset: 0 };
+		if (!Array.isArray(destination) || destination.length < 2) return { page: null };
 
 		const pageReference = destination[0];
 		const pageIndex = typeof pageReference === 'number'
 			? pageReference
-			: await pdf.getPageIndex(pageReference);
+			: await pdf.getPageIndex(pageReference as Parameters<PDFDocumentProxy['getPageIndex']>[0]);
 		if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pdf.numPages) {
-			return { page: null, offset: 0 };
+			return { page: null };
 		}
-		const page = pageIndex + 1;
+		return { page: pageIndex + 1 };
+	} catch {
+		return { page: null };
+	}
+}
+
+/** Resolve the precise `XYZ` offset only when a chapter is activated. */
+export async function resolveOutlineOffset(
+	pdf: PDFDocumentProxy,
+	node: OutlineNode,
+	signal?: AbortSignal
+): Promise<number> {
+	if (signal?.aborted) throw abortError();
+	if (node.page === null || !node.dest) return 0;
+	try {
+		const destination = typeof node.dest === 'string' ? await pdf.getDestination(node.dest) : node.dest;
+		if (signal?.aborted) throw abortError();
+		if (!Array.isArray(destination) || destination.length < 2) return 0;
+
 		const mode = destination[1];
 		const top = destination[3];
 		if (typeof mode !== 'object' || mode === null || !('name' in mode) || mode.name !== 'XYZ' ||
 			typeof top !== 'number' || !Number.isFinite(top)) {
-			return { page, offset: 0 };
+			return 0;
 		}
-		const height = (await pdf.getPage(page)).getViewport({ scale: 1 }).height;
-		if (!Number.isFinite(height) || height <= 0) return { page, offset: 0 };
-		return { page, offset: Math.min(0.999, Math.max(0, 1 - top / height)) };
-	} catch {
-		return { page: null, offset: 0 };
+		const height = (await pdf.getPage(node.page)).getViewport({ scale: 1 }).height;
+		if (signal?.aborted) throw abortError();
+		if (!Number.isFinite(height) || height <= 0) return 0;
+		return Math.min(0.999, Math.max(0, 1 - top / height));
+	} catch (error) {
+		if (signal?.aborted) throw abortError();
+		return 0;
 	}
 }
 

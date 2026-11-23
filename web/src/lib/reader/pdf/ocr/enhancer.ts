@@ -12,6 +12,7 @@ import { OcrWorkers } from './worker.js';
 export interface OcrEnhancerOptions {
 	enabled: () => boolean;
 	active: () => boolean;
+	enable: () => void;
 	languages: () => readonly OcrLanguage[];
 	fingerprint: () => string;
 	visiblePage: () => number;
@@ -43,12 +44,17 @@ export function createOcrEnhancer(options: OcrEnhancerOptions): OcrEnhancer & { 
 	};
 
 	const enhance: OcrEnhancer = async (context: OcrPageContext) => {
-		if (!options.enabled() || !options.active() || !needsOcr(context) || lifetime.signal.aborted || context.signal.aborted) return;
+		if (lifetime.signal.aborted || context.signal.aborted || !options.active()) return;
 		const signal = AbortSignal.any([context.signal, lifetime.signal]);
-		const valid = () => !signal.aborted && options.enabled() && options.active();
-		context.pageDiv.dataset.scanned = 'true';
 		const clear = () => update(context.page, { state: 'idle' });
 		signal.addEventListener('abort', clear, { once: true });
+		if (!needsOcr(context)) return;
+		context.pageDiv.dataset.scanned = 'true';
+		if (!options.enabled()) {
+			update(context.page, { state: 'available', page: context.page, enable: options.enable });
+			return;
+		}
+		const valid = () => !signal.aborted && options.enabled() && options.active();
 		try {
 			const accountId = await account();
 			if (!valid()) return;

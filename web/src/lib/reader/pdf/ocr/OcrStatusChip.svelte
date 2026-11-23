@@ -2,15 +2,18 @@
 	import * as m from '#lib/paraglide/messages.js';
 	import type { OcrStatus } from './status.js';
 
-	let { status }: { status: OcrStatus } = $props();
+	let { status, active = true }: { status: OcrStatus; active?: boolean } = $props();
 </script>
 
-{#if status.state !== 'idle'}
+{#if active && status.state !== 'idle'}
 	<span role="status" aria-live="polite" class="pv6-status inline-flex items-center gap-1 rounded-full bg-[var(--pv-chrome)] px-2 py-1 text-xs">
 		{#if status.state === 'error'}
 			<span class="pv6-message" title={status.error instanceof Error ? status.error.message : String(status.error)}>{m['pv6.failed']()}</span>
 			<span class="pv6-compact" aria-hidden="true">OCR!</span>
-			<button class="min-h-9 min-w-9 underline focus-visible:outline-2" onclick={status.retry}>{m['pv6.retry']()}</button>
+			<button type="button" class="min-h-9 min-w-9 underline focus-visible:outline-2" onclick={status.retry}>{m['pv6.retry']()}</button>
+		{:else if status.state === 'available'}
+			<span class="pv6-message">{m['pv6.scanned']()}</span>
+			<button type="button" data-testid="ocr-enable" class="min-h-9 min-w-9 underline focus-visible:outline-2" onclick={status.enable}>{m['pv6.enable']()}</button>
 		{:else}
 			<span aria-hidden="true" class="size-3 animate-spin rounded-full border-2 border-current border-r-transparent motion-reduce:animate-none"></span>
 			<span class="pv6-message">

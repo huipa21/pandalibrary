@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getPdfReaderContext } from '../../context.js';
-	import { currentNode, flattenOutline, loadOutline, type FlatOutlineNode, type OutlineNode } from './outline-model.js';
+	import { currentNode, flattenOutline, loadOutline, resolveOutlineOffset, type FlatOutlineNode, type OutlineNode } from './outline-model.js';
 
 	const ctx = getPdfReaderContext();
 	let root = $state<HTMLDivElement>();
@@ -92,14 +92,26 @@
 		if (!ctx.sidebar.docked) ctx.sidebar.collapse();
 	}
 
-	function activate(node: OutlineNode) {
+	async function activate(node: OutlineNode) {
 		if (node.url) {
 			closeOverlay();
 			return;
 		}
-		if (node.page === null) return;
+		const page = node.page;
+		if (page === null) return;
 		closeOverlay();
-		void ctx.engine.goToPage(node.page, node.offset).catch((error: unknown) => {
+		const engine = ctx.engine;
+		const pdf = engine.pdf;
+		let offset = node.offset;
+		if (pdf) {
+			try {
+				offset = await resolveOutlineOffset(pdf, node);
+			} catch (error) {
+				if (error instanceof DOMException && error.name === 'AbortError') return;
+				console.error('Could not resolve the PDF outline destination', error);
+			}
+		}
+		await engine.goToPage(page, offset).catch((error: unknown) => {
 			console.error('Could not navigate to the PDF outline destination', error);
 			ctx.announce(m['rp5.navigation_error']());
 		});
@@ -131,7 +143,7 @@
 			case 'Enter':
 				if (node.url) return;
 				event.preventDefault();
-				activate(node);
+				void activate(node);
 				break;
 		}
 	}
@@ -192,7 +204,7 @@
 					target="_blank"
 					rel="noopener noreferrer"
 					onfocus={() => { focusedId = node.id; }}
-					onclick={() => activate(node)}
+					onclick={() => void activate(node)}
 					onkeydown={(event) => onkeydown(event, node)}
 				>
 					<span class="min-w-0 flex-1 truncate">{node.title}</span>
@@ -214,7 +226,7 @@
 					onfocus={() => { focusedId = node.id; }}
 					onclick={() => {
 						moveFocus(node.id);
-						activate(node);
+						void activate(node);
 					}}
 					onkeydown={(event) => onkeydown(event, node)}
 				>

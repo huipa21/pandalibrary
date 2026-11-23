@@ -1,10 +1,11 @@
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	currentNode,
 	flattenOutline,
 	loadOutline,
 	outlineTitle,
+	resolveOutlineOffset,
 	safeOutlineUrl,
 	type OutlineNode
 } from './outline-model';
@@ -28,19 +29,24 @@ function node(id: string, page: number | null, offset: number, depth: number): O
 }
 
 describe('outline model', () => {
-	it('resolves named, explicit and XYZ destinations and marks broken destinations unresolved', async () => {
+	it('resolves pages eagerly and defers XYZ offsets until navigation', async () => {
 		const pdf = await openPdf(outlinePdfFixture());
+		const pageSpy = vi.spyOn(pdf, 'getPage');
 		const outline = await loadOutline(pdf);
 
 		expect(outline.map((entry) => entry.title)).toEqual(['Part One', 'Part Two', 'Unresolved', 'Project site']);
 		expect(outline[0]).toMatchObject({ page: 1, offset: 0 });
 		expect(outline[0].children).toMatchObject([
 			{ title: 'Opening', page: 1, offset: 0 },
-			{ title: 'Middle', page: 2, offset: 0.5 }
+			{ title: 'Middle', page: 2, offset: 0 }
 		]);
 		expect(outline[1]).toMatchObject({ page: 3, offset: 0 });
 		expect(outline[2]).toMatchObject({ page: null, offset: 0 });
 		expect(outline[3]).toMatchObject({ page: null, url: 'https://example.test/contents' });
+		expect(pageSpy).not.toHaveBeenCalled();
+
+		expect(await resolveOutlineOffset(pdf, outline[0].children[1])).toBe(0.5);
+		expect(pageSpy).toHaveBeenCalledTimes(1);
 	});
 
 	it('returns an empty outline and reuses the result for a document fingerprint', async () => {

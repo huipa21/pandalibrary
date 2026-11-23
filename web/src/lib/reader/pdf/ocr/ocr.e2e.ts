@@ -118,6 +118,21 @@ test('live PdfReader runs OCR through its page-enhancer hook, with selection, ro
 	expect(workerStarts).toBe(1);
 });
 
+test('offers recognition on a scanned page when OCR is off', async ({ page }) => {
+	test.slow();
+	await page.goto(`${origin}/src/lib/reader/pdf/ocr/Ocr.harness.html`);
+	await page.waitForFunction(() => !!window.ocrHarness);
+	const image = await scannedFixtureImage(page);
+	const mixed = mixedPdfFixture(image).toString('base64');
+	await page.evaluate((pdf) => window.ocrHarness.openLive(pdf, { enabled: false }), mixed);
+	await expect.poll(() => page.evaluate(() => window.ocrHarness.status)).toMatchObject({ state: 'available', page: 2 });
+	await page.evaluate(() => {
+		const status = window.ocrHarness.status;
+		if (status.state === 'available') status.enable();
+	});
+	await expect.poll(() => page.evaluate(() => window.ocrHarness.status.state)).not.toBe('available');
+});
+
 test('cancelled pages do not cache results and missing models expose a working retry', async ({ page }) => {
 	test.slow();
 	await page.goto(`${origin}/src/lib/reader/pdf/ocr/Ocr.harness.html`);

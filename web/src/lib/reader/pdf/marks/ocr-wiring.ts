@@ -30,6 +30,7 @@ export function wireOcr(context: PdfReaderContext, onStatus: (status: OcrStatus)
 		const enhancer = createOcrEnhancer({
 			enabled: () => context.ocr.enabled,
 			active: () => !disposed && context.tool.current === 'select',
+			enable: () => context.ocr.set(true),
 			languages: () => ocrLanguagesFor(context.bookLanguage),
 			fingerprint: () => engine.fingerprint() || `book-file:${context.controller.file?.id ?? 'unknown'}`,
 			visiblePage: () => engine.state.page,

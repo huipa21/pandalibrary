@@ -376,7 +376,7 @@
 	});
 </script>
 
-{#snippet ocrChip()}<OcrStatusChip status={ocrStatus} />{/snippet}
+{#snippet ocrChip()}<OcrStatusChip status={ocrStatus} active={ctx.tool.current === 'select'} />{/snippet}
 
 {#if selection && !comment && !lookup}
 	<SelectionToolbar

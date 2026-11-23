@@ -20,6 +20,7 @@
 			enhancer = createOcrEnhancer({
 				enabled: () => reader.ocr.enabled,
 				active: () => !disposed,
+				enable: () => reader.ocr.set(true),
 				languages: () => ocrLanguagesFor(reader.bookLanguage),
 				fingerprint: () => engine.fingerprint() || `book-file:${reader.controller.file?.id ?? 'unknown'}`,
 				visiblePage: () => engine.state.page,

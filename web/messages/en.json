@@ -485,6 +485,8 @@
 	"pv9.upload_failed": "Could not upload the image. Please try again.",
 	"pv9.save_failed": "Could not save the annotation. Please try again.",
 	"pv6.loading": "Loading OCR model...",
+	"pv6.scanned": "Scanned page",
+	"pv6.enable": "Recognize text",
 	"pv6.recognizing": "Recognizing text · p. {page} · {progress}%",
 	"pv6.failed": "Text recognition failed",
 	"pv6.retry": "Retry",
