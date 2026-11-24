@@ -30,7 +30,7 @@ func fixture(t *testing.T) (*Service, *db.DB) {
 		`INSERT INTO libraries(id,name,slug,created_at,updated_at) VALUES (1,'Library','library',1,1)`,
 		`INSERT INTO library_access(library_id,user_id,granted_at) VALUES (1,2,1)`,
 		`INSERT INTO books(id,library_id,title,sort_title,created_at,updated_at,deleted_at) VALUES (1,1,'Deleted book','deleted book',1,1,123), (2,1,'Active book','active book',1,1,NULL)`,
-		`INSERT INTO book_files(id,book_id,sha256,format,size_bytes,original_filename,created_at) VALUES (1,1,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','epub',1,'book.epub',1)`,
+		`INSERT INTO book_files(id,book_id,sha256,format,size_bytes,original_filename,created_at) VALUES (1,1,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','epub',1,'book.epub',1), (2,2,'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','pdf',2,'active.pdf',1)`,
 		`INSERT INTO wordbooks(id,user_id,name,created_at,updated_at,deleted_at) VALUES (1,2,'Deleted words','x','x',123), (2,2,'Active words','x','x',NULL), (3,3,'Private words','x','x',123), (4,2,'Other trash','x','x',456)`,
 		`INSERT INTO wordbook_entries(id,wordbook_id,kind,text,dictionary_entries,source,created_at,updated_at) VALUES (1,1,'word','kept','[]','{}','x','x')`,
 		`INSERT INTO highlights(id,user_id,book_id,locator,text,created_at,updated_at,deleted_at,rev) VALUES ('00000000-0000-0000-0000-000000000001',2,2,'{}','Deleted highlight',1,2,3,1)`,
@@ -125,6 +125,48 @@ func TestBookAndAnnotationRestoreAndPurge(t *testing.T) {
 	}
 	if err := s.Apply(ctx, reader, []Ref{ref}, true); !errors.Is(err, catalog.ErrNotFound) {
 		t.Fatalf("purged item restored: %v", err)
+	}
+}
+
+func TestFileRestoreAndPurge(t *testing.T) {
+	s, d := fixture(t)
+	ctx := context.Background()
+	admin := catalog.Viewer{UserID: 1, IsAdmin: true}
+	reader := catalog.Viewer{UserID: 2}
+	ref := Ref{Type: "file", ID: "2"}
+
+	if err := s.Apply(ctx, reader, []Ref{ref}, true); !errors.Is(err, catalog.ErrForbidden) {
+		t.Fatalf("non-admin file restore = %v", err)
+	}
+	if _, err := d.Writer.ExecContext(ctx, `UPDATE book_files SET deleted_at = 123 WHERE id = 2`); err != nil {
+		t.Fatal(err)
+	}
+	items, err := s.List(ctx, admin, "file", "")
+	if err != nil || len(items) != 1 || items[0].ID != "2" || items[0].Title != "active.pdf" || items[0].Subtitle != "Active book · PDF" {
+		t.Fatalf("file trash list = %+v, %v", items, err)
+	}
+	if err := s.Apply(ctx, admin, []Ref{ref}, true); err != nil {
+		t.Fatal(err)
+	}
+	var deletedAt int64
+	if err := d.Reader.QueryRowContext(ctx, `SELECT COALESCE(deleted_at, 0) FROM book_files WHERE id = 2`).Scan(&deletedAt); err != nil || deletedAt != 0 {
+		t.Fatalf("file restore = %d, %v", deletedAt, err)
+	}
+	if err := s.Apply(ctx, admin, []Ref{ref}, true); !errors.Is(err, catalog.ErrNotFound) {
+		t.Fatalf("second file restore = %v", err)
+	}
+	if _, err := d.Writer.ExecContext(ctx, `UPDATE book_files SET deleted_at = 456 WHERE id = 2`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Apply(ctx, admin, []Ref{ref}, false); err != nil {
+		t.Fatal(err)
+	}
+	var files, books int
+	if err := d.Reader.QueryRowContext(ctx, `SELECT count(*) FROM book_files WHERE id = 2`).Scan(&files); err != nil || files != 0 {
+		t.Fatalf("file purge left %d rows, %v", files, err)
+	}
+	if err := d.Reader.QueryRowContext(ctx, `SELECT count(*) FROM books WHERE id = 2`).Scan(&books); err != nil || books != 1 {
+		t.Fatalf("file purge removed parent book: %d, %v", books, err)
 	}
 }
 

@@ -37,7 +37,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
             WHEN 'series_id' THEN b.series_id = json_extract(c.value, '$.value')
             WHEN 'language' THEN lower(b.language) = lower(json_extract(c.value, '$.value'))
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
-                WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
+                WHERE bf.book_id = b.id AND bf.deleted_at IS NULL AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) != (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
@@ -52,7 +52,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
             WHEN 'series_id' THEN b.series_id = json_extract(c.value, '$.value')
             WHEN 'language' THEN lower(b.language) = lower(json_extract(c.value, '$.value'))
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
-                WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
+                WHERE bf.book_id = b.id AND bf.deleted_at IS NULL AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
@@ -84,7 +84,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
             WHEN 'series_id' THEN b.series_id = json_extract(c.value, '$.value')
             WHEN 'language' THEN lower(b.language) = lower(json_extract(c.value, '$.value'))
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
-                WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
+                WHERE bf.book_id = b.id AND bf.deleted_at IS NULL AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) != (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
@@ -99,7 +99,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
             WHEN 'series_id' THEN b.series_id = json_extract(c.value, '$.value')
             WHEN 'language' THEN lower(b.language) = lower(json_extract(c.value, '$.value'))
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
-                WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
+                WHERE bf.book_id = b.id AND bf.deleted_at IS NULL AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
@@ -156,7 +156,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
             WHEN 'series_id' THEN b.series_id = json_extract(c.value, '$.value')
             WHEN 'language' THEN lower(b.language) = lower(json_extract(c.value, '$.value'))
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
-                WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
+                WHERE bf.book_id = b.id AND bf.deleted_at IS NULL AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) != (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))
@@ -171,7 +171,7 @@ WHERE (CASE json_extract(g.value, '$.rules.match')
             WHEN 'series_id' THEN b.series_id = json_extract(c.value, '$.value')
             WHEN 'language' THEN lower(b.language) = lower(json_extract(c.value, '$.value'))
             WHEN 'format' THEN EXISTS (SELECT 1 FROM book_files bf
-                WHERE bf.book_id = b.id AND bf.format = json_extract(c.value, '$.value'))
+                WHERE bf.book_id = b.id AND bf.deleted_at IS NULL AND bf.format = json_extract(c.value, '$.value'))
             WHEN 'reading_status' THEN COALESCE((SELECT ub.status FROM user_books ub
                 WHERE ub.user_id = sqlc.arg(user_id) AND ub.book_id = b.id), 'unread') = json_extract(c.value, '$.value')
             ELSE 0 END, 0) = (CASE WHEN json_extract(c.value, '$.not') = 1 THEN 0 ELSE 1 END))

@@ -12,9 +12,11 @@
 		onSave: (file: FileItem) => void;
 		onRemove: (file: FileItem) => void;
 		onCopy: (file: FileItem) => void;
+		canDelete: boolean;
+		onDelete: (file: FileItem) => void;
 	}
 
-	let { file, online, offlineAvailable, busy, onSave, onRemove, onCopy }: Props = $props();
+	let { file, online, offlineAvailable, busy, onSave, onRemove, onCopy, canDelete, onDelete }: Props = $props();
 	let open = $state(false);
 	let root = $state<HTMLDivElement | null>(null);
 	let trigger = $state<HTMLButtonElement | null>(null);
@@ -124,6 +126,15 @@
 				class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 focus-visible:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-700"
 				onclick={() => action(onCopy)}
 			><Icon name="copy" class="size-4" />{m['bv7.copy_name']()}</button>
+			{#if canDelete}
+				<button
+					type="button"
+					role="menuitem"
+					tabindex="-1"
+					class="mt-1 flex w-full items-center gap-2 rounded-md border-t border-slate-100 px-3 pt-2 pb-2 text-left text-sm text-red-800 hover:bg-red-50 focus-visible:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-700"
+					onclick={() => action(onDelete)}
+				><Icon name="trash" class="size-4" />{m['bv7.delete_format']()}</button>
+			{/if}
 		</div>
 	{/if}
 </div>

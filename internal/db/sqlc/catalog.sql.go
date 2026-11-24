@@ -139,8 +139,9 @@ func (q *Queries) CatalogBookFieldSources(ctx context.Context, arg CatalogBookFi
 }
 
 const catalogBookFile = `-- name: CatalogBookFile :one
-SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default FROM book_files f JOIN active_books b ON b.id = f.book_id
+SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default, f.deleted_at FROM book_files f JOIN active_books b ON b.id = f.book_id
 WHERE b.id = ?1 AND f.id = ?2
+AND f.deleted_at IS NULL
 AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?3
@@ -175,13 +176,15 @@ func (q *Queries) CatalogBookFile(ctx context.Context, arg CatalogBookFileParams
 		&i.KoreaderMd5,
 		&i.CreatedAt,
 		&i.IsDefault,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const catalogBookFiles = `-- name: CatalogBookFiles :many
-SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default FROM book_files f JOIN active_books b ON b.id = f.book_id
+SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default, f.deleted_at FROM book_files f JOIN active_books b ON b.id = f.book_id
 WHERE b.id = ?1
+AND f.deleted_at IS NULL
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?2
@@ -217,6 +220,7 @@ func (q *Queries) CatalogBookFiles(ctx context.Context, arg CatalogBookFilesPara
 			&i.KoreaderMd5,
 			&i.CreatedAt,
 			&i.IsDefault,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1664,6 +1668,7 @@ SELECT EXISTS (
     JOIN book_files destination ON destination.sha256 = source.sha256
     JOIN active_books b ON b.id = destination.book_id
     WHERE source.book_id = ?1
+      AND source.deleted_at IS NULL AND destination.deleted_at IS NULL
       AND b.library_id = ?2 AND b.id != ?1
 )
 `

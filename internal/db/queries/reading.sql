@@ -14,6 +14,7 @@ AND NOT EXISTS (
 SELECT bf.id FROM book_files bf
 JOIN active_books b ON b.id = bf.book_id
 WHERE bf.id = sqlc.arg(book_file_id) AND b.id = sqlc.arg(book_id)
+AND bf.deleted_at IS NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -27,6 +28,7 @@ AND NOT EXISTS (
 SELECT bf.format FROM book_files bf
 JOIN active_books b ON b.id = bf.book_id
 WHERE bf.id = sqlc.arg(book_file_id) AND b.id = sqlc.arg(book_id)
+AND bf.deleted_at IS NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)

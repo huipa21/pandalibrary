@@ -9,6 +9,7 @@
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { requestErrorKind } from '#lib/paging/errors.js';
 	import { ApiError } from '#lib/api/client.js';
+	import { notifyBooksChanged } from '#lib/catalog/events.js';
 	import { notifyWordbooksChanged } from '#lib/wordbooks/api.js';
 	import { TrashState } from './TrashState.svelte.js';
 	import { trashKey, type TrashAction, type TrashFilter, type TrashReference, type TrashType } from './api.js';
@@ -22,9 +23,10 @@
 	const disabled = $derived(trash.loading || trash.busy);
 	const reviewRestoreConflict = $derived(lastAction?.action === 'restore' && trash.actionError instanceof ApiError
 		&& trash.actionError.status === 409 && trash.actionError.problem?.detail === 'a review already exists for this book and user');
-	const types: TrashType[] = ['book', 'wordbook', 'annotation'];
+	const types: TrashType[] = ['book', 'file', 'wordbook', 'annotation'];
 	const labels = {
 		book: m['trash.book'],
+		file: m['trash.file'],
 		wordbook: m['trash.wordbook'],
 		annotation: m['trash.annotation']
 	};
@@ -65,6 +67,7 @@
 		notice = '';
 		if (await trash.act(action, targets)) {
 			notice = action === 'restore' ? m['trash.restored']({ count: targets.length }) : m['trash.deleted']({ count: targets.length });
+			if (targets.some((item) => item.type === 'book' || item.type === 'file')) notifyBooksChanged();
 			if (targets.some((item) => item.type === 'wordbook')) notifyWordbooksChanged();
 		}
 	}

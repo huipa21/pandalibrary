@@ -2,11 +2,15 @@
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
+	import { deleteBook } from '#lib/catalog/api.js';
+	import { notifyBooksChanged } from '#lib/catalog/events.js';
 	import { readerFormat } from '#lib/reader/types.js';
+	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { currentAccount, offlineStatus } from '#lib/sync/client.js';
 	import BookCover from '../BookCover.svelte';
 	import Icon from '../Icon.svelte';
 	import { getBookContext } from '../book-context.svelte.js';
+	import { readBookOrigin } from '../book-origin.js';
 	import { BOOK_STATE_CHANGED_EVENT, type BookStateChangedDetail } from '../events.js';
 	import { detailsVisibleIdentifiers } from '../identifiers.js';
 	import { readTarget } from '../read.js';
@@ -38,12 +42,15 @@
 	let relatedRevision = $state(0);
 	let readBusy = $state(false);
 	let readError = $state('');
+	let deleteBusy = $state(false);
+	let deleteError = $state('');
 	const detailsReady = $derived(details !== null && !detailsLoading && !detailsError);
 	const readable = $derived(book?.files.some((file) => readerFormat(file.format) !== null) ?? false);
 
 	$effect(() => {
 		bookId;
 		readError = '';
+		deleteError = '';
 	});
 
 	$effect(() => {
@@ -132,6 +139,24 @@
 			readBusy = false;
 		}
 	}
+
+	async function removeBook() {
+		if (!book || offline || !context.canEditMetadata || deleteBusy) return;
+		const current = $state.snapshot(book);
+		if (!await confirmAction(m['bv6.delete_book_confirm']({ title: current.title }))) return;
+		deleteBusy = true;
+		deleteError = '';
+		try {
+			await deleteBook(current.id);
+			notifyBooksChanged();
+			await goto(readBookOrigin()?.href ?? '/');
+		} catch (cause) {
+			console.error('Could not delete the book', cause);
+			if (bookId === current.id) deleteError = m['bv6.delete_book_failure']();
+		} finally {
+			deleteBusy = false;
+		}
+	}
 </script>
 
 {#if book}
@@ -155,6 +180,19 @@
 					</button>
 				</div>
 				{#if readError}<p class="text-sm text-red-800" role="alert">{readError}</p>{/if}
+				{#if context.canEditMetadata && !offline}
+					<button
+						type="button"
+						class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-800 hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-red-700 disabled:opacity-60"
+						disabled={deleteBusy}
+						aria-busy={deleteBusy}
+						onclick={() => void removeBook()}
+					>
+						<Icon name={deleteBusy ? 'refresh' : 'trash'} class={deleteBusy ? 'size-4 animate-spin motion-reduce:animate-none' : 'size-4'} />
+						{deleteBusy ? m['bv6.deleting_book']() : m['bv6.delete_book']()}
+					</button>
+				{/if}
+				{#if deleteError}<p class="text-sm text-red-800" role="alert">{deleteError}</p>{/if}
 				<div class="flex flex-wrap items-start gap-2">
 					{#if !offline}
 						{#key book.id}

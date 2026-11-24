@@ -59,6 +59,7 @@ func CatalogMount(service *catalog.Service, authentication *auth.Service, logger
 				admin.With(cookieProtection).Delete("/api/v1/admin/users/{userID}/hidden-books/{bookID}", handler.withViewer(handler.setHidden(false)))
 				admin.With(cookieProtection).Patch("/api/v1/books/{id}", handler.withViewer(handler.updateBook))
 				admin.With(cookieProtection).Delete("/api/v1/books/{id}", handler.withViewer(handler.deleteBook))
+				admin.With(cookieProtection).Delete("/api/v1/books/{id}/files/{fileID}", handler.withViewer(handler.deleteBookFile))
 				admin.With(cookieProtection).Put("/api/v1/books/{id}/cover", handler.withViewer(handler.updateCover))
 				admin.With(cookieProtection).Put("/api/v1/books/{id}/default-file", handler.withViewer(handler.setDefaultFile))
 			})
@@ -417,6 +418,22 @@ func (h *catalogHTTP) deleteBook(w http.ResponseWriter, r *http.Request, viewer 
 		return
 	}
 	if err := h.service.DeleteBook(r.Context(), viewer, id); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+func (h *catalogHTTP) deleteBookFile(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	bookID, ok := h.pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	fileID, ok := h.pathID(w, r, "fileID")
+	if !ok {
+		return
+	}
+	if err := h.service.DeleteBookFile(r.Context(), viewer, bookID, fileID); err != nil {
 		h.writeError(w, r, err)
 		return
 	}

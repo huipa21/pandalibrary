@@ -24,7 +24,7 @@ func (s *Service) SetDefaultFile(ctx context.Context, viewer Viewer, bookID int6
 		}
 		if fileID != nil {
 			var exists bool
-			if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM book_files WHERE id = ? AND book_id = ?)`,
+			if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM book_files WHERE id = ? AND book_id = ? AND deleted_at IS NULL)`,
 				*fileID, bookID).Scan(&exists); err != nil {
 				return fmt.Errorf("check book file: %w", err)
 			}

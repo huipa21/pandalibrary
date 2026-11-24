@@ -391,3 +391,40 @@ func (s *Service) DeleteBook(ctx context.Context, viewer Viewer, id int64) error
 	}
 	return err
 }
+
+// DeleteBookFile moves one of a visible book's formats to Trash while keeping
+// the parent book and its other formats active.
+func (s *Service) DeleteBookFile(ctx context.Context, viewer Viewer, bookID, fileID int64) error {
+	if err := checkAdmin(viewer); err != nil {
+		return err
+	}
+	if bookID < 1 || fileID < 1 {
+		return invalid("book or file ID is invalid")
+	}
+	now := s.now().UnixMilli()
+	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+		if _, err := visibleBook(ctx, sqlc.New(tx), viewer, bookID); err != nil {
+			return err
+		}
+		result, err := tx.ExecContext(ctx, `UPDATE book_files SET deleted_at = ?, is_default = 0
+			WHERE id = ? AND book_id = ? AND deleted_at IS NULL`, now, fileID, bookID)
+		if err != nil {
+			return fmt.Errorf("trash book file: %w", err)
+		}
+		deleted, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if deleted != 1 {
+			return ErrNotFound
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE books SET updated_at = ? WHERE id = ?`, now, bookID); err != nil {
+			return fmt.Errorf("touch book: %w", err)
+		}
+		return nil
+	})
+	if err == nil {
+		s.invalidateFileCache()
+	}
+	return err
+}

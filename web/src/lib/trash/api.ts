@@ -1,6 +1,6 @@
 import { api } from '#lib/api/client.js';
 
-export type TrashType = 'book' | 'wordbook' | 'annotation';
+export type TrashType = 'book' | 'file' | 'wordbook' | 'annotation';
 export type TrashFilter = TrashType | '';
 export interface TrashReference { id: string; type: TrashType }
 export interface TrashItem extends TrashReference {

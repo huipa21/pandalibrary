@@ -2,6 +2,7 @@
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { ApiError } from '#lib/api/client.js';
 	import { getLibrary } from '#lib/catalog/api.js';
+	import { notifyBooksChanged } from '#lib/catalog/events.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getBookState } from '#lib/reader/api.js';
 	import type { Progress } from '#lib/reader/types.js';
@@ -15,7 +16,7 @@
 	import FilePanel from '../files/FilePanel.svelte';
 	import FilesSummary from '../files/FilesSummary.svelte';
 	import { buildFilesModel, type FileItem } from '../files/files-model.js';
-	import { setDefaultFile } from '../files/files-api.js';
+	import { setDefaultFile, deleteBookFile } from '../files/files-api.js';
 	import AddFileButton from '../files/AddFileButton.svelte';
 	import MoveBookButton from '../files/MoveBookButton.svelte';
 	import BookShelfTags from '../details/BookShelfTags.svelte';
@@ -33,7 +34,7 @@
 	let selectedFileId = $state<number | null>(null);
 	let selectionChanged = $state(false);
 	let busyFileId = $state<number | null>(null);
-	let busyAction = $state<'save' | 'remove' | null>(null);
+	let busyAction = $state<'save' | 'remove' | 'delete' | null>(null);
 	let defaultBusy = $state(false);
 	let notice = $state('');
 	let actionError = $state('');
@@ -227,6 +228,30 @@
 			actionError = m['bv7.copy_failure']();
 		}
 	}
+
+	async function deleteFormat(file: FileItem) {
+		if (!book || busyAction !== null || !online || !context.canEditMetadata) return;
+		const id = book.id;
+		if (!await confirmAction(m['bv7.delete_format_confirm']({ name: file.original_filename }))) return;
+		busyFileId = file.id;
+		busyAction = 'delete';
+		notice = '';
+		actionError = '';
+		try {
+			await deleteBookFile(id, file.id);
+			if (context.book?.id !== id) return;
+			await context.reload();
+			if (context.book?.id !== id) return;
+			notifyBooksChanged();
+			notice = m['bv7.delete_format_success']();
+		} catch (cause) {
+			console.error('Could not delete the book format', cause);
+			if (context.book?.id === id) actionError = m['bv7.delete_format_failure']();
+		} finally {
+			busyFileId = null;
+			busyAction = null;
+		}
+	}
 </script>
 
 {#if book && model}
@@ -261,7 +286,7 @@
 		{#if notice}<p role="status" class="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>{/if}
 		{#if actionError}<p role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionError}</p>{/if}
 		{#if busyFileId !== null}
-			<p role="status" class="text-sm text-slate-600">{busyAction === 'save' ? m['offline.downloading']() : m['bv7.removing_offline']()}</p>
+			<p role="status" class="text-sm text-slate-600">{busyAction === 'save' ? m['offline.downloading']() : busyAction === 'delete' ? m['bv7.deleting_format']() : m['bv7.removing_offline']()}</p>
 		{/if}
 		{#if model.groups.length}
 			<div class="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
@@ -269,6 +294,7 @@
 					bookId={book.id} groups={model.groups} sort="format" {selectedFileId} {online}
 					offlineAvailable={$offlineStatus.available} busy={busyAction !== null}
 					onChoose={chooseFile} onSave={saveOffline} onRemove={removeOffline} onCopy={copyName}
+					canDelete={context.canEditMetadata && online && !context.offline} onDelete={deleteFormat}
 				/>
 				{#if selected}
 					<FilePanel

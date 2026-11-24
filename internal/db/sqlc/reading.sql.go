@@ -2408,6 +2408,7 @@ const readingVisibleBookFile = `-- name: ReadingVisibleBookFile :one
 SELECT bf.id FROM book_files bf
 JOIN active_books b ON b.id = bf.book_id
 WHERE bf.id = ?1 AND b.id = ?2
+AND bf.deleted_at IS NULL
 AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?3
@@ -2466,6 +2467,7 @@ const readingVisibleBookmarkFileFormat = `-- name: ReadingVisibleBookmarkFileFor
 SELECT bf.format FROM book_files bf
 JOIN active_books b ON b.id = bf.book_id
 WHERE bf.id = ?1 AND b.id = ?2
+AND bf.deleted_at IS NULL
 AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?3

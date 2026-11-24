@@ -11,7 +11,7 @@ describe('Trash API', () => {
 		request.mockResolvedValue({ items: [] });
 		await expect(trashApi.list()).resolves.toEqual([]);
 		expect(request).toHaveBeenLastCalledWith('/trash', { signal: undefined, cache: 'no-store' });
-		for (const type of ['book', 'wordbook', 'annotation'] as const) {
+		for (const type of ['book', 'file', 'wordbook', 'annotation'] as const) {
 			const controller = new AbortController();
 			await trashApi.list('  a & b  ', type, controller.signal);
 			expect(request).toHaveBeenLastCalledWith(`/trash?type=${type}&search=a+%26+b`, {

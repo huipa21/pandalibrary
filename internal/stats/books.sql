@@ -13,7 +13,7 @@ WITH visible_books AS (
       )
 )
 SELECT b.id, b.title, b.created_at, b.published_date, b.language, b.page_count,
-       (SELECT SUM(f.size_bytes) FROM book_files f WHERE f.book_id = b.id),
+       (SELECT SUM(f.size_bytes) FROM book_files f WHERE f.book_id = b.id AND f.deleted_at IS NULL),
        (SELECT json_group_array(name) FROM (
            SELECT a.name FROM book_authors ba JOIN authors a ON a.id = ba.author_id
            WHERE ba.book_id = b.id AND ba.role = 'author'
@@ -24,7 +24,7 @@ SELECT b.id, b.title, b.created_at, b.published_date, b.language, b.page_count,
            WHERE bt.book_id = b.id ORDER BY t.name, t.id
        )),
        (SELECT json_group_array(format) FROM (
-           SELECT DISTINCT f.format FROM book_files f WHERE f.book_id = b.id ORDER BY f.format
+           SELECT DISTINCT f.format FROM book_files f WHERE f.book_id = b.id AND f.deleted_at IS NULL ORDER BY f.format
        ))
 FROM visible_books b
 ORDER BY b.id;

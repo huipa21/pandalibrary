@@ -15,9 +15,11 @@
 		onSave: (file: FileItem) => void;
 		onRemove: (file: FileItem) => void;
 		onCopy: (file: FileItem) => void;
+		canDelete: boolean;
+		onDelete: (file: FileItem) => void;
 	}
 
-	let { bookId, groups, sort, selectedFileId, online, offlineAvailable, busy, onChoose, onSave, onRemove, onCopy }: Props = $props();
+	let { bookId, groups, sort, selectedFileId, online, offlineAvailable, busy, onChoose, onSave, onRemove, onCopy, canDelete, onDelete }: Props = $props();
 
 	function groupLabel(group: ReaderGroup): string {
 		switch (group) {
@@ -45,7 +47,7 @@
 					{#each sortFiles(group.files, sort) as file (file.id)}
 						<FileRow
 							{bookId} {file} selected={file.id === selectedFileId} {online} {offlineAvailable} {busy}
-							{onChoose} {onSave} {onRemove} {onCopy}
+							{onChoose} {onSave} {onRemove} {onCopy} {canDelete} {onDelete}
 						/>
 					{/each}
 				</ul>

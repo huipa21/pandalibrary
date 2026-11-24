@@ -53,7 +53,7 @@ func admin(v catalog.Viewer) int {
 }
 
 func (s *Service) List(ctx context.Context, v catalog.Viewer, kind, query string) ([]Item, error) {
-	if v.UserID <= 0 || (kind != "" && kind != "book" && kind != "wordbook" && kind != "annotation") {
+	if v.UserID <= 0 || (kind != "" && kind != "book" && kind != "file" && kind != "wordbook" && kind != "annotation") {
 		return nil, fmt.Errorf("%w: invalid trash filter", catalog.ErrInvalid)
 	}
 	items := []Item{}
@@ -67,6 +67,9 @@ func (s *Service) List(ctx context.Context, v catalog.Viewer, kind, query string
 			}
 			if query != "" && !strings.Contains(strings.ToLower(title+" "+subtitle), strings.ToLower(query)) {
 				continue
+			}
+			if typ == "file" {
+				title = fileBaseName(title)
 			}
 			items = append(items, Item{ID: prefix + id, Type: typ, Title: title, Subtitle: subtitle,
 				DeletedAt: time.UnixMilli(deleted).UTC().Format("2006-01-02T15:04:05.000Z")})
@@ -82,6 +85,16 @@ func (s *Service) List(ctx context.Context, v catalog.Viewer, kind, query string
 	}
 	if (kind == "" || kind == "book") && v.IsAdmin {
 		if err := run("book", "", `SELECT CAST(b.id AS TEXT), b.title, COALESCE(b.subtitle,''), b.deleted_at FROM books b WHERE b.deleted_at IS NOT NULL AND `+visibleBook,
+			v.UserID, admin(v), v.UserID, v.UserID); err != nil {
+			return nil, err
+		}
+	}
+	if (kind == "" || kind == "file") && v.IsAdmin {
+		if err := run("file", "", `SELECT CAST(f.id AS TEXT),
+			COALESCE(NULLIF(f.original_filename, ''), b.title || '.' || f.format),
+			b.title || ' · ' || upper(f.format), f.deleted_at
+			FROM book_files f JOIN active_books b ON b.id = f.book_id
+			WHERE f.deleted_at IS NOT NULL AND `+visibleBook,
 			v.UserID, admin(v), v.UserID, v.UserID); err != nil {
 			return nil, err
 		}
@@ -147,6 +160,14 @@ func positiveID(id string) (int64, error) {
 		return 0, fmt.Errorf("%w: invalid item ID", catalog.ErrInvalid)
 	}
 	return n, nil
+}
+
+func fileBaseName(name string) string {
+	name = strings.ReplaceAll(strings.TrimSpace(name), `\`, "/")
+	if slash := strings.LastIndex(name, "/"); slash >= 0 {
+		name = name[slash+1:]
+	}
+	return name
 }
 
 func changed(result sql.Result, err error) error {
@@ -228,6 +249,34 @@ func applyOne(ctx context.Context, tx *sql.Tx, v catalog.Viewer, ref Ref, restor
 			}
 		}
 		return nil
+	case "file":
+		if !v.IsAdmin {
+			return catalog.ErrForbidden
+		}
+		id, err := positiveID(ref.ID)
+		if err != nil {
+			return err
+		}
+		var bookID int64
+		err = tx.QueryRowContext(ctx, `SELECT f.book_id FROM book_files f
+			JOIN active_books b ON b.id = f.book_id
+			WHERE f.id = ? AND f.deleted_at IS NOT NULL AND `+visibleBook,
+			id, v.UserID, admin(v), v.UserID, v.UserID).Scan(&bookID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return catalog.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if restore {
+			if err := changed(tx.ExecContext(ctx, `UPDATE book_files SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`, id)); err != nil {
+				return err
+			}
+		} else if err := changed(tx.ExecContext(ctx, `DELETE FROM book_files WHERE id = ? AND deleted_at IS NOT NULL`, id)); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE books SET updated_at = ? WHERE id = ?`, time.Now().UTC().UnixMilli(), bookID)
+		return err
 	case "wordbook":
 		id, err := positiveID(ref.ID)
 		if err != nil {

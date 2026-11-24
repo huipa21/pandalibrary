@@ -282,7 +282,7 @@ ORDER BY br.provider;
 
 -- name: CatalogBookFiles :many
 SELECT f.* FROM book_files f JOIN active_books b ON b.id = f.book_id
-WHERE b.id = sqlc.arg(book_id)
+WHERE b.id = sqlc.arg(book_id) AND f.deleted_at IS NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -295,6 +295,7 @@ ORDER BY f.id;
 -- name: CatalogBookFile :one
 SELECT f.* FROM book_files f JOIN active_books b ON b.id = f.book_id
 WHERE b.id = sqlc.arg(book_id) AND f.id = sqlc.arg(file_id)
+AND f.deleted_at IS NULL
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -500,5 +501,6 @@ SELECT EXISTS (
     JOIN book_files destination ON destination.sha256 = source.sha256
     JOIN active_books b ON b.id = destination.book_id
     WHERE source.book_id = sqlc.arg(book_id)
+      AND source.deleted_at IS NULL AND destination.deleted_at IS NULL
       AND b.library_id = sqlc.arg(library_id) AND b.id != sqlc.arg(book_id)
 );

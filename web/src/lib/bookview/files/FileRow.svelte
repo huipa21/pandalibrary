@@ -16,9 +16,11 @@
 		onSave: (file: FileItem) => void;
 		onRemove: (file: FileItem) => void;
 		onCopy: (file: FileItem) => void;
+		canDelete: boolean;
+		onDelete: (file: FileItem) => void;
 	}
 
-	let { bookId, file, selected, online, offlineAvailable, busy, onChoose, onSave, onRemove, onCopy }: Props = $props();
+	let { bookId, file, selected, online, offlineAvailable, busy, onChoose, onSave, onRemove, onCopy, canDelete, onDelete }: Props = $props();
 	const name = $derived(splitFileName(file.original_filename));
 </script>
 
@@ -49,6 +51,6 @@
 				aria-label={file.progress !== null ? m['bv7.resume_file']({ name: file.original_filename }) : m['bv7.read_file']({ name: file.original_filename })}
 			>{file.progress !== null ? m['bv7.resume']() : m['bv7.read']()}</a>
 		{/if}
-		<FileMenu {file} {online} {offlineAvailable} {busy} {onSave} {onRemove} {onCopy} />
+		<FileMenu {file} {online} {offlineAvailable} {busy} {onSave} {onRemove} {onCopy} {canDelete} {onDelete} />
 	</div>
 </li>

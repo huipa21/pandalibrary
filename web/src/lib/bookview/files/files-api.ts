@@ -43,3 +43,12 @@ export async function setDefaultFile(bookId: number, fileId: number | null, sign
 	});
 	return response.book;
 }
+
+/** Moves one attached book format to Trash. */
+export async function deleteBookFile(bookId: number, fileId: number, signal?: AbortSignal): Promise<void> {
+	const response = await api.request<{ deleted: boolean }>(`/books/${bookId}/files/${fileId}`, {
+		method: 'DELETE',
+		signal
+	});
+	if (response?.deleted !== true) throw new Error('The server did not confirm the format deletion.');
+}
