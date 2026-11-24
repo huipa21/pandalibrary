@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import Icon from '#lib/bookview/Icon.svelte';
@@ -434,26 +433,13 @@
 			<InsertLayer />
 		{/if}
 	</div>
-	{#if controller.wordbookMessage || controller.wordbookError}
-		<div class="absolute inset-x-2 bottom-2 z-20">
-			<ReaderNotifications errors={[controller.wordbookError]} message={controller.wordbookMessage}
-				bookHref={`/books/${controller.book?.id}`} onretry={() => controller.retryWrites()} />
-		</div>
-	{/if}
 	<p class="sr-only" aria-live="polite" aria-atomic="true">{announcement}</p>
-	{#if controller.pendingError || controller.actionError || controller.opening}
-		<div class="absolute inset-x-2 top-2 z-20 max-h-[50%] overflow-auto rounded-md bg-[var(--pv-chrome)] p-3 text-sm shadow-md">
-			{#if controller.pendingError}
-				<div role="alert" class="space-y-2">
-					<p>{controller.pendingError}</p>
-					<button class="underline focus-visible:outline-2" onclick={() => controller.retryWrites()}>{m['reader.retry_saves']()}</button>
-					<a class="ml-4 underline focus-visible:outline-2" href={`/books/${controller.book?.id}`}>{m['reader.leave_unsaved']()}</a>
-				</div>
-			{/if}
-			{#if controller.actionError}<p role="alert">{controller.actionError}</p>{/if}
-			{#if controller.opening}<p use:showLoadingAfterDelay role="status">{m['reader.loading']()}</p>{/if}
-		</div>
-	{/if}
+	{#snippet notifications()}
+		<ReaderNotifications pendingError={controller.pendingError}
+			errors={[controller.actionError, controller.wordbookError]} message={controller.wordbookMessage}
+			loading={controller.opening} bookHref={`/books/${controller.book?.id}`}
+			onretry={() => controller.retryWrites()} />
+	{/snippet}
 </ReaderFrame>
 
 <style>
