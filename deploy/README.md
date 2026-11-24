@@ -35,6 +35,12 @@ GOPROXY=https://goproxy.cn,direct \
   node scripts/build-container.mjs
 ```
 
+```sh
+  NPM_CONFIG_REGISTRY=https://mirrors.cloud.tencent.com/npm \
+  GOPROXY=https://goproxy.cn,direct \
+    node scripts/build-container.mjs
+```
+
 The build script passes
 `NPM_REGISTRY`, `GOPROXY`, and `GOSUMDB` to Docker when the matching
 environment variables are set. `NPM_CONFIG_REGISTRY` is passed as
