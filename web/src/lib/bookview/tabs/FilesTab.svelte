@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { ApiError } from '#lib/api/client.js';
-	import { getLibrary } from '#lib/catalog/api.js';
+	import { deleteBook, getLibrary } from '#lib/catalog/api.js';
 	import { notifyBooksChanged } from '#lib/catalog/events.js';
 	import * as m from '#lib/paraglide/messages.js';
 	import { getBookState } from '#lib/reader/api.js';
@@ -11,6 +12,7 @@
 	import { downloadForOffline } from '#lib/sync/library.js';
 	import { readerState } from '#lib/sync/state.js';
 	import { getBookContext } from '../book-context.svelte.js';
+	import { readBookOrigin } from '../book-origin.js';
 	import { BOOK_STATE_CHANGED_EVENT, type BookStateChangedDetail } from '../events.js';
 	import FileGroupList from '../files/FileGroupList.svelte';
 	import FilePanel from '../files/FilePanel.svelte';
@@ -34,7 +36,7 @@
 	let selectedFileId = $state<number | null>(null);
 	let selectionChanged = $state(false);
 	let busyFileId = $state<number | null>(null);
-	let busyAction = $state<'save' | 'remove' | 'delete' | null>(null);
+	let busyAction = $state<'save' | 'remove' | 'delete' | 'delete-book' | null>(null);
 	let defaultBusy = $state(false);
 	let notice = $state('');
 	let actionError = $state('');
@@ -229,24 +231,34 @@
 		}
 	}
 
-	async function deleteFormat(file: FileItem) {
+	async function deleteFile(file: FileItem) {
 		if (!book || busyAction !== null || !online || !context.canEditMetadata) return;
 		const id = book.id;
-		if (!await confirmAction(m['bv7.delete_format_confirm']({ name: file.original_filename }))) return;
+		const lastFile = book.files.length <= 1;
+		const confirmation = lastFile
+			? m['bv7.delete_last_file_confirm']({ name: file.original_filename, title: book.title })
+			: m['bv7.delete_file_confirm']({ name: file.original_filename });
+		if (!await confirmAction(confirmation)) return;
 		busyFileId = file.id;
-		busyAction = 'delete';
+		busyAction = lastFile ? 'delete-book' : 'delete';
 		notice = '';
 		actionError = '';
 		try {
+			if (lastFile) {
+				await deleteBook(id);
+				notifyBooksChanged();
+				await goto(readBookOrigin()?.href ?? '/');
+				return;
+			}
 			await deleteBookFile(id, file.id);
 			if (context.book?.id !== id) return;
 			await context.reload();
 			if (context.book?.id !== id) return;
 			notifyBooksChanged();
-			notice = m['bv7.delete_format_success']();
+			notice = m['bv7.delete_file_success']();
 		} catch (cause) {
-			console.error('Could not delete the book format', cause);
-			if (context.book?.id === id) actionError = m['bv7.delete_format_failure']();
+			console.error(lastFile ? 'Could not delete the book and its last file' : 'Could not delete the book file', cause);
+			if (context.book?.id === id) actionError = lastFile ? m['bv6.delete_book_failure']() : m['bv7.delete_file_failure']();
 		} finally {
 			busyFileId = null;
 			busyAction = null;
@@ -286,7 +298,7 @@
 		{#if notice}<p role="status" class="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>{/if}
 		{#if actionError}<p role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionError}</p>{/if}
 		{#if busyFileId !== null}
-			<p role="status" class="text-sm text-slate-600">{busyAction === 'save' ? m['offline.downloading']() : busyAction === 'delete' ? m['bv7.deleting_format']() : m['bv7.removing_offline']()}</p>
+			<p role="status" class="text-sm text-slate-600">{busyAction === 'save' ? m['offline.downloading']() : busyAction === 'delete-book' ? m['bv6.deleting_book']() : busyAction === 'delete' ? m['bv7.deleting_file']() : m['bv7.removing_offline']()}</p>
 		{/if}
 		{#if model.groups.length}
 			<div class="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
@@ -294,7 +306,7 @@
 					bookId={book.id} groups={model.groups} sort="format" {selectedFileId} {online}
 					offlineAvailable={$offlineStatus.available} busy={busyAction !== null}
 					onChoose={chooseFile} onSave={saveOffline} onRemove={removeOffline} onCopy={copyName}
-					canDelete={context.canEditMetadata && online && !context.offline} onDelete={deleteFormat}
+					canDelete={context.canEditMetadata && online && !context.offline} onDelete={deleteFile}
 				/>
 				{#if selected}
 					<FilePanel

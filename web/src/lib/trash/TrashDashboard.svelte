@@ -12,7 +12,7 @@
 	import { notifyBooksChanged } from '#lib/catalog/events.js';
 	import { notifyWordbooksChanged } from '#lib/wordbooks/api.js';
 	import { TrashState } from './TrashState.svelte.js';
-	import { trashKey, type TrashAction, type TrashFilter, type TrashReference, type TrashType } from './api.js';
+	import { trashKey, type TrashAction, type TrashFilter, type TrashItem, type TrashReference, type TrashType } from './api.js';
 
 	const trash = new TrashState();
 	let draft = $state('');
@@ -59,10 +59,21 @@
 		if (!selecting) trash.selected = [];
 	}
 
+	function restoreConfirmation(items: readonly TrashReference[]): string {
+		if (items.length !== 1) return m['trash.confirm_restore_many']({ count: items.length });
+		const item: TrashItem | undefined = trash.items.find((candidate) => trashKey(candidate) === trashKey(items[0]));
+		if (!item) return m['trash.confirm_restore_item']({ title: items[0].id });
+		const target = item.restoreTo || m['trash.original_location']();
+		if (item.type === 'book') return m['trash.confirm_restore_book']({ title: item.title, target });
+		if (item.type === 'file') return m['trash.confirm_restore_file']({ name: item.title, target });
+		return m['trash.confirm_restore_item']({ title: item.title });
+	}
+
 	async function act(action: TrashAction, items: readonly TrashReference[]) {
 		if (!items.length || disabled) return;
 		const targets = items.map(({ id, type }) => ({ id, type }));
 		if (action === 'delete' && !await confirmAction(m['trash.confirm_delete']({ count: targets.length }))) return;
+		if (action === 'restore' && !await confirmAction(restoreConfirmation(targets))) return;
 		lastAction = { action, items: targets };
 		notice = '';
 		if (await trash.act(action, targets)) {

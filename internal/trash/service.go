@@ -21,6 +21,7 @@ type Item struct {
 	Type      string `json:"type"`
 	Title     string `json:"title"`
 	Subtitle  string `json:"subtitle,omitempty"`
+	RestoreTo string `json:"restoreTo,omitempty"`
 	DeletedAt string `json:"deletedAt"`
 }
 
@@ -60,9 +61,9 @@ func (s *Service) List(ctx context.Context, v catalog.Viewer, kind, query string
 	appendRows := func(rows *sql.Rows, typ, prefix string) error {
 		defer rows.Close()
 		for rows.Next() {
-			var id, title, subtitle string
+			var id, title, subtitle, restoreTo string
 			var deleted int64
-			if err := rows.Scan(&id, &title, &subtitle, &deleted); err != nil {
+			if err := rows.Scan(&id, &title, &subtitle, &restoreTo, &deleted); err != nil {
 				return err
 			}
 			if query != "" && !strings.Contains(strings.ToLower(title+" "+subtitle), strings.ToLower(query)) {
@@ -71,7 +72,7 @@ func (s *Service) List(ctx context.Context, v catalog.Viewer, kind, query string
 			if typ == "file" {
 				title = fileBaseName(title)
 			}
-			items = append(items, Item{ID: prefix + id, Type: typ, Title: title, Subtitle: subtitle,
+			items = append(items, Item{ID: prefix + id, Type: typ, Title: title, Subtitle: subtitle, RestoreTo: restoreTo,
 				DeletedAt: time.UnixMilli(deleted).UTC().Format("2006-01-02T15:04:05.000Z")})
 		}
 		return rows.Err()
@@ -84,7 +85,9 @@ func (s *Service) List(ctx context.Context, v catalog.Viewer, kind, query string
 		return appendRows(rows, typ, prefix)
 	}
 	if (kind == "" || kind == "book") && v.IsAdmin {
-		if err := run("book", "", `SELECT CAST(b.id AS TEXT), b.title, COALESCE(b.subtitle,''), b.deleted_at FROM books b WHERE b.deleted_at IS NOT NULL AND `+visibleBook,
+		if err := run("book", "", `SELECT CAST(b.id AS TEXT), b.title, COALESCE(b.subtitle,''), COALESCE(l.name,''), b.deleted_at
+			FROM books b LEFT JOIN libraries l ON l.id = b.library_id
+			WHERE b.deleted_at IS NOT NULL AND `+visibleBook,
 			v.UserID, admin(v), v.UserID, v.UserID); err != nil {
 			return nil, err
 		}
@@ -92,15 +95,18 @@ func (s *Service) List(ctx context.Context, v catalog.Viewer, kind, query string
 	if (kind == "" || kind == "file") && v.IsAdmin {
 		if err := run("file", "", `SELECT CAST(f.id AS TEXT),
 			COALESCE(NULLIF(f.original_filename, ''), b.title || '.' || f.format),
-			b.title || ' · ' || upper(f.format), f.deleted_at
+			b.title || ' · ' || upper(f.format),
+			COALESCE(b.title || ' · ' || l.name, b.title),
+			f.deleted_at
 			FROM book_files f JOIN active_books b ON b.id = f.book_id
+			LEFT JOIN libraries l ON l.id = b.library_id
 			WHERE f.deleted_at IS NOT NULL AND `+visibleBook,
 			v.UserID, admin(v), v.UserID, v.UserID); err != nil {
 			return nil, err
 		}
 	}
 	if kind == "" || kind == "wordbook" {
-		if err := run("wordbook", "", `SELECT CAST(id AS TEXT), name, '', deleted_at FROM wordbooks WHERE user_id = ? AND deleted_at IS NOT NULL`, v.UserID); err != nil {
+		if err := run("wordbook", "", `SELECT CAST(id AS TEXT), name, '', '', deleted_at FROM wordbooks WHERE user_id = ? AND deleted_at IS NOT NULL`, v.UserID); err != nil {
 			return nil, err
 		}
 	}
@@ -109,8 +115,9 @@ func (s *Service) List(ctx context.Context, v catalog.Viewer, kind, query string
 			{"highlight:", "highlights", "a.text"}, {"note:", "notes", "a.body_md"},
 			{"page:", "page_annotations", "COALESCE(json_extract(a.data, '$.text'), a.kind)"},
 		} {
-			sql := `SELECT a.id, ` + a.title + `, b.title, a.deleted_at FROM ` + a.table + ` a
-				JOIN active_books b ON b.id = a.book_id WHERE a.user_id = ? AND a.deleted_at IS NOT NULL AND a.purged = 0 AND ` + visibleBook
+			sql := `SELECT a.id, ` + a.title + `, b.title, COALESCE(b.title || ' · ' || l.name, b.title), a.deleted_at FROM ` + a.table + ` a
+				JOIN active_books b ON b.id = a.book_id LEFT JOIN libraries l ON l.id = b.library_id
+				WHERE a.user_id = ? AND a.deleted_at IS NOT NULL AND a.purged = 0 AND ` + visibleBook
 			if a.table == "notes" {
 				sql += ` AND NOT EXISTS (SELECT 1 FROM trash_highlight_notes t JOIN highlights h ON h.id=t.highlight_id WHERE t.note_id=a.id AND t.deleted_rev=a.rev AND h.deleted_at IS NOT NULL AND h.purged=0)`
 			}
@@ -118,8 +125,9 @@ func (s *Service) List(ctx context.Context, v catalog.Viewer, kind, query string
 				return nil, err
 			}
 		}
-		if err := run("annotation", "review:", `SELECT CAST(r.id AS TEXT), r.body, b.title, r.deleted_at
-			FROM trash_reviews r JOIN active_books b ON b.id = r.book_id WHERE `+visibleDeletedReview+` AND `+visibleBook,
+		if err := run("annotation", "review:", `SELECT CAST(r.id AS TEXT), r.body, b.title, COALESCE(b.title || ' · ' || l.name, b.title), r.deleted_at
+			FROM trash_reviews r JOIN active_books b ON b.id = r.book_id LEFT JOIN libraries l ON l.id = b.library_id
+			WHERE `+visibleDeletedReview+` AND `+visibleBook,
 			v.UserID, admin(v), v.UserID, admin(v), v.UserID, v.UserID); err != nil {
 			return nil, err
 		}
@@ -205,6 +213,11 @@ func applyOne(ctx context.Context, tx *sql.Tx, v catalog.Viewer, ref Ref, restor
 		}
 		if restore {
 			if err := changed(tx.ExecContext(ctx, `UPDATE books SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`, id)); err != nil {
+				return err
+			}
+			// A book is not restorable without its files. This also repairs books
+			// whose files were trashed individually before the parent was removed.
+			if _, err := tx.ExecContext(ctx, `UPDATE book_files SET deleted_at = NULL WHERE book_id = ? AND deleted_at IS NOT NULL`, id); err != nil {
 				return err
 			}
 			if err := search.IndexBook(ctx, tx, id); err != nil {

@@ -6,6 +6,7 @@ export interface TrashReference { id: string; type: TrashType }
 export interface TrashItem extends TrashReference {
 	title: string;
 	subtitle?: string;
+	restoreTo?: string;
 	deletedAt: string;
 }
 export type TrashAction = 'restore' | 'delete';

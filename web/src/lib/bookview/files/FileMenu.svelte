@@ -133,7 +133,7 @@
 					tabindex="-1"
 					class="mt-1 flex w-full items-center gap-2 rounded-md border-t border-slate-100 px-3 pt-2 pb-2 text-left text-sm text-red-800 hover:bg-red-50 focus-visible:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-700"
 					onclick={() => action(onDelete)}
-				><Icon name="trash" class="size-4" />{m['bv7.delete_format']()}</button>
+				><Icon name="trash" class="size-4" />{m['bv7.delete_file']()}</button>
 			{/if}
 		</div>
 	{/if}

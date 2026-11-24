@@ -88,12 +88,19 @@ func TestBookAndAnnotationRestoreAndPurge(t *testing.T) {
 	admin := catalog.Viewer{UserID: 1, IsAdmin: true}
 	reader := catalog.Viewer{UserID: 2}
 	book := Ref{Type: "book", ID: "1"}
+	items, err := s.List(ctx, admin, "book", "")
+	if err != nil || len(items) != 1 || items[0].RestoreTo != "Library" {
+		t.Fatalf("book restore target = %+v, %v", items, err)
+	}
+	if _, err := d.Writer.ExecContext(ctx, `UPDATE book_files SET deleted_at=123 WHERE book_id=1`); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Apply(ctx, admin, []Ref{book}, true); err != nil {
 		t.Fatal(err)
 	}
 
 	var count int
-	if err := d.Reader.QueryRowContext(ctx, `SELECT count(*) FROM active_books b JOIN book_files f ON f.book_id=b.id WHERE b.id=1`).Scan(&count); err != nil || count != 1 {
+	if err := d.Reader.QueryRowContext(ctx, `SELECT count(*) FROM active_books b JOIN book_files f ON f.book_id=b.id WHERE b.id=1 AND f.deleted_at IS NULL`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("book files missing after restore: %d %v", count, err)
 	}
 	if _, err := d.Writer.ExecContext(ctx, `UPDATE books SET deleted_at=999 WHERE id=1; DELETE FROM books_fts WHERE rowid=1`); err != nil {
@@ -142,7 +149,7 @@ func TestFileRestoreAndPurge(t *testing.T) {
 		t.Fatal(err)
 	}
 	items, err := s.List(ctx, admin, "file", "")
-	if err != nil || len(items) != 1 || items[0].ID != "2" || items[0].Title != "active.pdf" || items[0].Subtitle != "Active book · PDF" {
+	if err != nil || len(items) != 1 || items[0].ID != "2" || items[0].Title != "active.pdf" || items[0].Subtitle != "Active book · PDF" || items[0].RestoreTo != "Active book · Library" {
 		t.Fatalf("file trash list = %+v, %v", items, err)
 	}
 	if err := s.Apply(ctx, admin, []Ref{ref}, true); err != nil {

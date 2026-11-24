@@ -392,8 +392,8 @@ func (s *Service) DeleteBook(ctx context.Context, viewer Viewer, id int64) error
 	return err
 }
 
-// DeleteBookFile moves one of a visible book's formats to Trash while keeping
-// the parent book and its other formats active.
+// DeleteBookFile moves one of a visible book's files to Trash. The last active
+// file cannot be removed on its own; the book must be deleted instead.
 func (s *Service) DeleteBookFile(ctx context.Context, viewer Viewer, bookID, fileID int64) error {
 	if err := checkAdmin(viewer); err != nil {
 		return err
@@ -405,6 +405,19 @@ func (s *Service) DeleteBookFile(ctx context.Context, viewer Viewer, bookID, fil
 	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
 		if _, err := visibleBook(ctx, sqlc.New(tx), viewer, bookID); err != nil {
 			return err
+		}
+		var target, active int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM book_files WHERE id = ? AND book_id = ? AND deleted_at IS NULL`, fileID, bookID).Scan(&target); err != nil {
+			return fmt.Errorf("locate book file: %w", err)
+		}
+		if target == 0 {
+			return ErrNotFound
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM book_files WHERE book_id = ? AND deleted_at IS NULL`, bookID).Scan(&active); err != nil {
+			return fmt.Errorf("count book files: %w", err)
+		}
+		if active <= 1 {
+			return conflict("cannot delete the last file; delete the book instead")
 		}
 		result, err := tx.ExecContext(ctx, `UPDATE book_files SET deleted_at = ?, is_default = 0
 			WHERE id = ? AND book_id = ? AND deleted_at IS NULL`, now, fileID, bookID)

@@ -180,19 +180,6 @@
 					</button>
 				</div>
 				{#if readError}<p class="text-sm text-red-800" role="alert">{readError}</p>{/if}
-				{#if context.canEditMetadata && !offline}
-					<button
-						type="button"
-						class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-800 hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-red-700 disabled:opacity-60"
-						disabled={deleteBusy}
-						aria-busy={deleteBusy}
-						onclick={() => void removeBook()}
-					>
-						<Icon name={deleteBusy ? 'refresh' : 'trash'} class={deleteBusy ? 'size-4 animate-spin motion-reduce:animate-none' : 'size-4'} />
-						{deleteBusy ? m['bv6.deleting_book']() : m['bv6.delete_book']()}
-					</button>
-				{/if}
-				{#if deleteError}<p class="text-sm text-red-800" role="alert">{deleteError}</p>{/if}
 				<div class="flex flex-wrap items-start gap-2">
 					{#if !offline}
 						{#key book.id}
@@ -203,7 +190,21 @@
 					{#key book.id}
 						<BookVisibilityButton {book} {offline} onUpdate={(updated) => { context.book = updated; }} />
 					{/key}
+					{#if context.canEditMetadata && !offline}
+						<button
+							type="button"
+							class="shell-icon-button size-10 text-red-700 disabled:opacity-60"
+							aria-label={deleteBusy ? m['bv6.deleting_book']() : m['bv6.delete_book']()}
+							title={deleteBusy ? m['bv6.deleting_book']() : m['bv6.delete_book']()}
+							disabled={deleteBusy}
+							aria-busy={deleteBusy}
+							onclick={() => void removeBook()}
+						>
+							<Icon name={deleteBusy ? 'refresh' : 'trash'} class={deleteBusy ? 'size-5 shrink-0 animate-spin motion-reduce:animate-none' : 'size-5 shrink-0'} />
+						</button>
+					{/if}
 				</div>
+				{#if deleteError}<p class="text-sm text-red-800" role="alert">{deleteError}</p>{/if}
 			</aside>
 
 			<div class="min-w-0 space-y-6">
