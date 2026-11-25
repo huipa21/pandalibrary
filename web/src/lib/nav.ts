@@ -35,8 +35,7 @@ export function homeNavigationFor(role: string | null | undefined): readonly Nav
 /** Statistics are distinct views of the same visible reading data. */
 export const navigation: readonly NavigationItem[] = [
 	{ id: 'stats-books', href: '/stats/books', label: m['organize.books'], icon: 'book-open' },
-	{ id: 'stats-reading', href: '/stats/reading', label: m['organize.reading'], icon: 'chart' },
-	{ id: 'stats-history', href: '/stats/history', label: m['organize.history'], icon: 'clock' }
+	{ id: 'stats-reading', href: '/stats/reading', label: m['organize.reading'], icon: 'chart', sections: ['/stats/history'] }
 ];
 
 export function navigationFor(role: string | null | undefined): readonly NavigationItem[] {
