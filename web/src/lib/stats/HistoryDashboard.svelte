@@ -12,7 +12,6 @@
 		createHistoryCache, formatHistoryDuration,
 		type HistoryRow, type HistorySummary
 	} from './history.js';
-	import ReadingHeader from './ReadingHeader.svelte';
 
 	const timeZone = browserTimeZone();
 	const initialYear = new Date().getFullYear();
@@ -145,14 +144,14 @@
 </script>
 
 <svelte:head>
-	<title>{m['stats.reading.log']()} · {m['common.app_name']()}</title>
+	<title>{m['organize.history']()} · {m['common.app_name']()}</title>
 </svelte:head>
 
-<section class="history space-y-4" aria-labelledby="reading-heading">
-	<ReadingHeader current="log" />
+<section class="history">
 	<div class="history-layout">
-		<section class="history-container card" aria-label={m['stats.reading.log']()}>
+		<section class="history-container card" aria-labelledby="history-heading">
 			<header class="history-toolbar">
+				<h1 id="history-heading">{m['organize.history']()}</h1>
 				<label for="history-search" class="sr-only">{m['history.search']()}</label>
 				<input id="history-search" type="search" placeholder={m['history.search']()} bind:value={search} />
 				<label for="history-year" class="sr-only">{m['history.year']()}</label>
@@ -290,6 +289,7 @@
 	.history { color: var(--shell-text); }
 	.history-toolbar, .month-heading { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
 	.history-toolbar { border-bottom: 1px solid var(--shell-border); padding: .75rem 1rem; }
+	h1 { font-size: .85rem; font-weight: 700; }
 	.muted { color: var(--shell-muted); }
 	button, input, select { border: 1px solid var(--shell-border); border-radius: .375rem; background: var(--shell-surface); color: var(--shell-text); padding: .4rem .65rem; font-size: .8rem; }
 	button { cursor: pointer; }
@@ -354,6 +354,7 @@
 	}
 	@media (max-width: 30rem) {
 		.history-toolbar { gap: .5rem; padding: .75rem; }
+		.history-toolbar h1 { width: 100%; }
 		.waterfall { padding: 0 .75rem; }
 		.history-row { grid-template-columns: 2.5rem minmax(0, 1fr) 5.7rem; padding: .75rem .25rem; }
 		time { grid-column: 1 / -1; padding: 0; }

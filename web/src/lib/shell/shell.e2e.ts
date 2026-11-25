@@ -284,11 +284,9 @@ test('desktop sidebar lists HOME links, Library, and All Books across every libr
 	await expect(sidebar.locator('a[href="/bookmarks"]')).toHaveCount(0);
 	await expect(sidebar.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current', 'page');
 	await expect(sidebar.getByRole('link', { name: 'Admin', exact: true })).toHaveCount(0);
-	for (const name of ['Books', 'Reading']) {
+	for (const name of ['Books', 'Reading', 'History']) {
 		await expect(sidebar.getByRole('link', { name, exact: true })).toBeVisible();
 	}
-	await expect(sidebar.getByRole('region', { name: 'Statistics', exact: true })
-		.getByRole('link', { name: 'History', exact: true })).toHaveCount(0);
 	await expect(sidebar.getByRole('link', { name: 'Search', exact: true })).toHaveCount(0);
 
 	const libraries = sidebar.getByRole('region', { name: 'Libraries', exact: true });

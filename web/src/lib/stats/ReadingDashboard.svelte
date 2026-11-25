@@ -13,7 +13,6 @@
 	import ReadingHeatmap from './ReadingHeatmap.svelte';
 	import ReadingHabits from './ReadingHabits.svelte';
 	import ReadingCompletionRace from './ReadingCompletionRace.svelte';
-	import ReadingHeader from './ReadingHeader.svelte';
 
 	type Track = 'heatmap' | 'weekdays' | 'hours' | 'race';
 	type HabitTrack = 'weekdays' | 'hours';
@@ -120,8 +119,8 @@
 	</section>
 {/snippet}
 
-<section class="space-y-6" aria-labelledby="reading-heading">
-	<ReadingHeader current="overview" />
+<section class="space-y-6" aria-labelledby="reading-stats-heading">
+	<h1 id="reading-stats-heading" class="sr-only">{m['organize.reading']()}</h1>
 	{@render panel('heatmap', m['stats.reading.heatmap']())}
 	<div class="grid grid-cols-1 items-start gap-6 md:grid-cols-2">
 		{@render panel('weekdays', m['stats.reading.weekdays']())}

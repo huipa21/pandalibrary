@@ -327,27 +327,20 @@ test('editing the current library refreshes its sidebar name and New Library foc
 	expect(unexpected).toEqual([]);
 });
 
-test('statistics menu opens Books and Reading; Reading log is a Reading view', async ({ page }) => {
+test('statistics menu links open distinct Books, Reading and History views', async ({ page }) => {
 	const { unexpected } = await mockLibraries(page);
 	await page.goto('/stats/books');
 	const sidebar = page.getByRole('navigation', { name: 'Main navigation' });
-	const statistics = sidebar.getByRole('region', { name: 'Statistics', exact: true });
 	for (const [label, path, heading] of [
 		['Books', '/stats/books', 'Books'],
-		['Reading', '/stats/reading', 'Reading']
+		['Reading', '/stats/reading', 'Reading'],
+		['History', '/stats/history', 'History']
 	]) {
 		await sidebar.getByRole('link', { name: label, exact: true }).click();
 		await expect(page).toHaveURL(path);
 		await expect(sidebar.getByRole('link', { name: label, exact: true })).toHaveAttribute('aria-current', 'page');
 		await expect(page.getByRole('main').getByRole('heading', { name: heading, level: 1, exact: true })).toBeAttached();
 	}
-	await expect(statistics.getByRole('link', { name: 'History', exact: true })).toHaveCount(0);
-	const readingViews = page.getByRole('navigation', { name: 'Reading views', exact: true });
-	await readingViews.getByRole('link', { name: 'Reading log', exact: true }).click();
-	await expect(page).toHaveURL('/stats/history');
-	await expect(sidebar.getByRole('link', { name: 'Reading', exact: true })).toHaveAttribute('aria-current', 'page');
-	await expect(readingViews.getByRole('link', { name: 'Reading log', exact: true })).toHaveAttribute('aria-current', 'page');
-	await expect(page.getByRole('main').getByRole('heading', { name: 'Reading', level: 1, exact: true })).toBeAttached();
 	expect(unexpected.filter((entry) => !entry.startsWith('GET /stats/'))).toEqual([]);
 });
 

@@ -34,7 +34,7 @@ Installation, configuration, backups and upgrades are in the
 | Annotations | Sidebar → **Annotations** | Reviews, comments, highlights, inserted text and drawings in date order; consistent search results and direct navigation |
 | Collections | Sidebar → **Collections** | Logical containers across libraries, with manual additions and independent automatic rules |
 | Search | Header search | Find books by title, author or series |
-| Statistics | Sidebar → **Statistics → Books, Reading** | Catalog statistics, reading overview and reading log |
+| Statistics | Sidebar → **Statistics → Books, Reading, History** | Per-book and monthly totals, daily reading time, streaks and reading history |
 | Settings | Account menu → **Profile** | Profile, language, app passwords for devices, and offline storage |
 | Bookheap | Sidebar → **Bookheap** (admins) | Staging area for books that are not in a library yet |
 | Admin | Account menu → **Admin** (admins) | Accounts, libraries and access, hidden books, imports, metadata providers, dictionaries, maintenance |

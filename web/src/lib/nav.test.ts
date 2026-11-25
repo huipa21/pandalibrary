@@ -6,13 +6,12 @@ import { homeNavigation, homeNavigationFor, isActive, isImmersiveRoute, navigati
 const item = (id: string) => [...homeNavigation, ...navigation, ...otherNavigation].find((entry) => entry.id === id)!;
 
 describe('navigationFor', () => {
-	it('shows only Books and Reading under Statistics for every role', () => {
+	it('shows only Books, Reading and History under Statistics for every role', () => {
 		for (const role of ['admin', 'user', null]) {
 			expect(navigationFor(role).map((entry) => entry.href)).toEqual([
-				'/stats/books', '/stats/reading'
+				'/stats/books', '/stats/reading', '/stats/history'
 			]);
 		}
-		expect(navigationFor('user').some((entry) => entry.id === 'stats-history')).toBe(false);
 	});
 
 	it('leaves search to the header search box', () => {
@@ -70,7 +69,7 @@ describe('isActive', () => {
 
 	it('marks section entries on their descendants without prefix collisions', () => {
 		expect(isActive(item('stats-reading'), '/stats/reading/')).toBe(true);
-		expect(isActive(item('stats-reading'), '/stats/history')).toBe(true);
+		expect(isActive(item('stats-reading'), '/stats/history')).toBe(false);
 		expect(isActive(item('notes'), '/notes')).toBe(true);
 		expect(isActive(item('notes'), '/notesxyz')).toBe(false);
 		expect(isActive(item('wordbooks'), '/wordbooks')).toBe(true);

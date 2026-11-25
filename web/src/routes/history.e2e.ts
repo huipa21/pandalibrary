@@ -81,31 +81,31 @@ test('history groups months, completes split days, and reuses locally cached pag
 	await expect(page.getByText('Day total', { exact: true })).toHaveCount(0);
 	await expect(page.getByRole('heading', { name: `Nov ${year}`, exact: true })).toHaveCount(1);
 	await expect(page.getByText('52 books · 104 sessions · 8 h 20 m')).toBeVisible();
-	await page.getByRole('button', { name: 'Load more reading log' }).scrollIntoViewIfNeeded();
+	await page.getByRole('button', { name: 'Load more history' }).scrollIntoViewIfNeeded();
 	await expect(page.getByTestId('history-row')).toHaveCount(53);
 	await expect(page.getByText('Day total', { exact: true })).toHaveCount(3);
 	await expect(page.getByRole('heading', { name: `Oct ${year}`, exact: true })).toHaveCount(1);
 	expect(state.requests).toHaveLength(2);
 	await page.reload();
 	await expect(page.getByTestId('history-row').first()).toBeAttached();
-	const moreButton = page.getByRole('button', { name: 'Load more reading log' });
+	const moreButton = page.getByRole('button', { name: 'Load more history' });
 	if (await moreButton.count()) await moreButton.scrollIntoViewIfNeeded();
 	await expect(page.getByTestId('history-row')).toHaveCount(53);
 	expect(state.requests).toHaveLength(2);
 });
 
-test('reading log card contains its search and year selector without old controls', async ({ page }) => {
+test('history card contains its heading, search, and year selector without old controls', async ({ page }) => {
 	await setup(page);
 	await page.goto('/stats/history');
-	const history = page.getByRole('region', { name: 'Reading log', exact: true });
+	const history = page.getByRole('region', { name: 'History', exact: true });
 	await expect(history).toHaveClass(/\bcard\b/);
 	await page.evaluate(() => document.fonts.ready);
-	await expect(history).toHaveAttribute('aria-label', 'Reading log');
-	await expect(page.getByRole('main').getByRole('heading', { name: 'Reading', level: 1, exact: true })).toBeVisible();
-	const readingViews = page.getByRole('navigation', { name: 'Reading views', exact: true });
-	await expect(readingViews.getByRole('link', { name: 'Reading log', exact: true })).toHaveAttribute('aria-current', 'page');
-	const header = history.locator('header').first();
-	const search = header.getByRole('searchbox', { name: 'Search reading log', exact: true });
+	await expect(history).toHaveAttribute('aria-labelledby', 'history-heading');
+	const header = history.locator('header').filter({
+		has: page.getByRole('heading', { name: 'History', exact: true })
+	});
+	await expect(header.getByRole('heading', { name: 'History', exact: true })).toBeVisible();
+	const search = header.getByRole('searchbox', { name: 'Search history', exact: true });
 	await expect(search).toHaveAttribute('type', 'search');
 	await expect(search).toBeVisible();
 	const yearSelect = header.getByRole('combobox', { name: 'Year', exact: true });
@@ -163,11 +163,11 @@ test('year summary text is readable and fits at desktop and mobile widths', asyn
 	}
 });
 
-test('reading log search loads later pages and matches titles and authors without filtering the summary', async ({ page }) => {
+test('history search loads later pages and matches titles and authors without filtering the summary', async ({ page }) => {
 	const state = await setup(page);
 	await page.goto('/stats/history');
-	const history = page.getByRole('region', { name: 'Reading log', exact: true });
-	const search = history.getByRole('searchbox', { name: 'Search reading log', exact: true });
+	const history = page.getByRole('region', { name: 'History', exact: true });
+	const search = history.getByRole('searchbox', { name: 'Search history', exact: true });
 	const rows = history.getByTestId('history-row');
 	const panel = page.getByRole('complementary', { name: `${year} in numbers` });
 	await expect(rows).toHaveCount(50);
@@ -184,11 +184,11 @@ test('reading log search loads later pages and matches titles and authors withou
 	await expect(rows.getByRole('link', { name: 'History book 51', exact: true })).toBeVisible();
 	await search.fill('no matching title or author');
 	await expect(rows).toHaveCount(0);
-	await expect(history.getByText('No reading log entries match your search.', { exact: true })).toBeVisible();
+	await expect(history.getByText('No history matches your search.', { exact: true })).toBeVisible();
 	await expect(panel.getByText('60', { exact: true })).toBeVisible();
 	await search.fill('');
 	await expect(rows).toHaveCount(53);
-	await expect(history.getByText('No reading log entries match your search.', { exact: true })).toHaveCount(0);
+	await expect(history.getByText('No history matches your search.', { exact: true })).toHaveCount(0);
 	expect(state.requests).toHaveLength(2);
 });
 
@@ -197,7 +197,7 @@ test('failed next page is retryable without losing rows; year switching shows em
 	state.failNext = true;
 	await page.goto('/stats/history');
 	await expect(page.getByTestId('history-row')).toHaveCount(50);
-	await page.getByRole('button', { name: 'Load more reading log' }).scrollIntoViewIfNeeded();
+	await page.getByRole('button', { name: 'Load more history' }).scrollIntoViewIfNeeded();
 	await expect(page.getByRole('alert')).toBeVisible();
 	await expect(page.getByTestId('history-row')).toHaveCount(50);
 	await page.getByRole('button', { name: 'Try again', exact: true }).click();
@@ -208,13 +208,13 @@ test('failed next page is retryable without losing rows; year switching shows em
 	await expect(page.getByRole('complementary', { name: `${year - 1} in numbers` })).toBeVisible();
 });
 
-test('reading log fits mobile and exposes accessible content', async ({ page }) => {
+test('history fits mobile and exposes accessible content', async ({ page }) => {
 	await setup(page);
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto('/stats/history');
 	await expect(page.getByTestId('history-row')).toHaveCount(50);
-	const history = page.getByRole('region', { name: 'Reading log', exact: true });
-	const search = history.getByRole('searchbox', { name: 'Search reading log', exact: true });
+	const history = page.getByRole('region', { name: 'History', exact: true });
+	const search = history.getByRole('searchbox', { name: 'Search history', exact: true });
 	const yearSelect = history.getByRole('combobox', { name: 'Year', exact: true });
 	await expect(search).toBeVisible();
 	await expect(yearSelect).toBeVisible();

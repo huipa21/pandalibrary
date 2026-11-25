@@ -668,8 +668,7 @@ author exists for that book.
 
 ## Statistics
 
-The sidebar groups **Books** and **Reading** under **Statistics**.
-**Reading** has two views: **Overview** and **Reading log**.
+The sidebar groups **Books**, **Reading** and **History** under **Statistics**.
 **Books** shows all-time statistics for the catalog you can access, in responsive
 cards: books added by month (with counts), a publication-year area timeline,
 a genre treemap, language and format pies, page-count bars, and the top 20
@@ -703,7 +702,7 @@ intervals, so even sparse publication dates retain their chronological gaps.
   around a small hollow center, with labels 1 through 24 on the outside (midnight is 24,
   and single-digit hours have no leading zero).
   Reading time is assigned to the session's local start day and hour, matching
-  the heatmap and reading log.
+  the heatmap and history.
 - **Reading Completion Race** shows a colored progress line for each book,
   with book-title links in the legend and exact values on hover or keyboard focus.
   The axes show days since the book's first recorded session and reading progress.
@@ -719,18 +718,18 @@ valid data. The heatmap itself still shows the full calendar. The combined
 date-range reading view, including sessions, streaks, ended
 reading cycles per month and time per book, remains at `/stats`.
 
-**Reading log** is the second view under **Reading**. It shows a newest-first waterfall for the selected year, separated by
+**History** shows a newest-first waterfall for the selected year, separated by
 month. Each row includes the date, cover, title, author and reading cycle.
 Sessions for the same book, cycle and local date are combined. The last row of
 each complete day shows that day's total time and session count. Month headings
 show distinct books, sessions and total time; durations use `123 h 04 m`.
 Days follow your browser's time zone, with sessions assigned to their start date.
 
-Reading log loads 50 rows at a time and requests the next page as you scroll; **Load
-more reading log** is also available. Requested pages are cached locally for your
-account for five minutes. The reading log container's header includes a scrollable
-**Year** selector and **Search reading log** field. Selecting a year updates both the
-reading log and summary. Search matches book titles and authors, ignoring case, and
+History loads 50 rows at a time and requests the next page as you scroll; **Load
+more history** is also available. Requested pages are cached locally for your
+account for five minutes. The history container's header includes a scrollable
+**Year** selector and **Search history** field. Selecting a year updates both the
+history and summary. Search matches book titles and authors, ignoring case, and
 loads remaining pages to search the entire selected year. Clear the search to
 restore all rows. Filtered rows show individual reading time and session counts
 rather than day totals. The right-hand yearly summary always covers the
