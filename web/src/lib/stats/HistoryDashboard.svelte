@@ -12,13 +12,13 @@
 		createHistoryCache, formatHistoryDuration,
 		type HistoryRow, type HistorySummary
 	} from './history.js';
+	import YearSelect from './YearSelect.svelte';
 
 	const timeZone = browserTimeZone();
 	const initialYear = new Date().getFullYear();
 	let year = $state(initialYear);
 	let requestedYear = $state(initialYear);
 	let search = $state('');
-	const years = Array.from({ length: initialYear }, (_, index) => initialYear - index);
 	let rows = $state<HistoryRow[]>([]);
 	let summary = $state<HistorySummary | null>(null);
 	let nextCursor = $state<string | null>(null);
@@ -154,12 +154,8 @@
 				<h1 id="history-heading">{m['organize.history']()}</h1>
 				<label for="history-search" class="sr-only">{m['history.search']()}</label>
 				<input id="history-search" type="search" placeholder={m['history.search']()} bind:value={search} />
-				<label for="history-year" class="sr-only">{m['history.year']()}</label>
-				<select id="history-year" bind:value={year} onchange={changeYear}>
-					{#each years as option (option)}
-						<option value={option}>{option}</option>
-					{/each}
-				</select>
+				<YearSelect year={year} label={m['history.year']()} class="history-year"
+					onchange={(value) => { year = value; changeYear(); }} />
 			</header>
 		<div class="waterfall" aria-busy={loading}>
 			{#each months as group (group.month)}
@@ -253,15 +249,6 @@
 							</div>
 						{/each}
 					</div>
-					<table class="month-table">
-						<caption class="sr-only">{m['history.by_month']()}</caption>
-						<thead><tr><th scope="col">{m['history.month']()}</th><th scope="col">{m['history.books']()}</th><th scope="col">{m['stats.summary.total_time']()}</th></tr></thead>
-						<tbody>
-							{#each summary.months as month (month.month)}
-								<tr><th scope="row">{monthLabel(month.month)}</th><td>{number(month.books)}</td><td>{formatHistoryDuration(month.active_seconds)}</td></tr>
-							{/each}
-						</tbody>
-					</table>
 				</section>
 				<section>
 					<h3>{m['history.records']()}</h3>
@@ -291,13 +278,13 @@
 	.history-toolbar { border-bottom: 1px solid var(--shell-border); padding: .75rem 1rem; }
 	h1 { font-size: .85rem; font-weight: 700; }
 	.muted { color: var(--shell-muted); }
-	button, input, select { border: 1px solid var(--shell-border); border-radius: .375rem; background: var(--shell-surface); color: var(--shell-text); padding: .4rem .65rem; font-size: .8rem; }
+	button, input { border: 1px solid var(--shell-border); border-radius: .375rem; background: var(--shell-surface); color: var(--shell-text); padding: .4rem .65rem; font-size: .8rem; }
 	button { cursor: pointer; }
 	button:hover:not(:disabled) { background: var(--shell-hover); }
 	button:disabled { opacity: .5; cursor: default; }
-	button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--shell-active); outline-offset: 3px; }
+	button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--shell-active); outline-offset: 3px; }
 	input { flex: 1; min-width: 8rem; width: 100%; }
-	select { width: 6rem; margin-left: auto; }
+	:global(.history-year) { width: 6rem; margin-left: auto; }
 	.history-layout { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1.25rem; align-items: start; }
 	.history-container { min-width: 0; overflow: hidden; }
 	.waterfall { min-width: 0; padding: 0 1rem; }
@@ -332,12 +319,6 @@
 	.chart-track { display: flex; align-items: end; height: 5rem; border-bottom: 1px solid var(--shell-border); }
 	.chart-bar { width: 100%; background: var(--shell-active); border-radius: 2px 2px 0 0; }
 	.chart-column span { font-size: .65rem; color: var(--shell-muted); }
-	.month-table { width: 100%; font-size: .75rem; }
-	.month-table th { font-weight: 500; text-align: left; }
-	.month-table td, .month-table th { padding: .15rem 0; }
-	.month-table td { text-align: right; font-variant-numeric: tabular-nums; }
-	.month-table thead th:not(:first-child) { text-align: right; }
-	.month-table thead { color: var(--shell-muted); }
 	.records { font-size: .85rem; display: grid; gap: 1rem; }
 	.records dt { color: var(--shell-muted); font-size: .75rem; margin-bottom: .25rem; }
 	.records dd { overflow-wrap: anywhere; }

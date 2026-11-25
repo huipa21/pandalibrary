@@ -75,7 +75,7 @@ test('history groups months, completes split days, and reuses locally cached pag
 	await page.goto('/stats/history');
 	await expect(page.getByTestId('history-row')).toHaveCount(50);
 	await expect(page.getByText('Read cycle 3', { exact: true })).toBeVisible();
-	const panel = page.getByRole('complementary', { name: `${year} in numbers` });
+	const panel = page.getByRole('complementary', { name: `${year} Summary` });
 	await expect(panel.getByText('60', { exact: true })).toBeVisible();
 	await expect(panel.getByText('10 h 20 m', { exact: true })).toBeVisible();
 	await expect(page.getByText('Day total', { exact: true })).toHaveCount(0);
@@ -137,10 +137,11 @@ test('year summary text is readable and fits at desktop and mobile widths', asyn
 	for (const width of [1280, 1100, 390]) {
 		await page.setViewportSize({ width, height: 844 });
 		await page.goto('/stats/history');
-		const panel = page.getByRole('complementary', { name: `${year} in numbers` });
+		const panel = page.getByRole('complementary', { name: `${year} Summary` });
 		await expect(panel).toBeVisible();
+		await expect(panel.getByRole('table')).toHaveCount(0);
 		await page.evaluate(() => document.fonts.ready);
-		for (const selector of ['h3', '.total-grid dt', '.month-table', '.records dt', '.records strong']) {
+		for (const selector of ['h3', '.total-grid dt', '.records dt', '.records strong']) {
 			const size = await panel.locator(selector).first().evaluate((element) =>
 				Number.parseFloat(getComputedStyle(element).fontSize)
 			);
@@ -169,7 +170,7 @@ test('history search loads later pages and matches titles and authors without fi
 	const history = page.getByRole('region', { name: 'History', exact: true });
 	const search = history.getByRole('searchbox', { name: 'Search history', exact: true });
 	const rows = history.getByTestId('history-row');
-	const panel = page.getByRole('complementary', { name: `${year} in numbers` });
+	const panel = page.getByRole('complementary', { name: `${year} Summary` });
 	await expect(rows).toHaveCount(50);
 	expect(state.requests).toHaveLength(1);
 	await search.fill('hIsToRy BoOk 53');
@@ -205,7 +206,7 @@ test('failed next page is retryable without losing rows; year switching shows em
 	await page.getByRole('combobox', { name: 'Year', exact: true }).selectOption(String(year - 1));
 	await expect(page.getByText(`No reading sessions in ${year - 1}.`)).toBeVisible();
 	await expect(page.getByTestId('history-row')).toHaveCount(0);
-	await expect(page.getByRole('complementary', { name: `${year - 1} in numbers` })).toBeVisible();
+	await expect(page.getByRole('complementary', { name: `${year - 1} Summary` })).toBeVisible();
 });
 
 test('history fits mobile and exposes accessible content', async ({ page }) => {

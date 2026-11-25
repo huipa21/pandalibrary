@@ -66,26 +66,22 @@ test('reading cards share yearly data, filter independently and expose exact cha
 	expect(titleBox && yearSelectBox && monthSelectBox &&
 		Math.abs(titleBox.y + titleBox.height / 2 - yearSelectBox.y - yearSelectBox.height / 2) < 2 &&
 		Math.abs(yearSelectBox.y + yearSelectBox.height / 2 - monthSelectBox.y - monthSelectBox.height / 2) < 2).toBe(true);
-	await expect(heatmap.getByText('Days of reading', { exact: true })).toBeVisible();
+	await expect(heatmap.getByText('Reading Days', { exact: true })).toBeVisible();
 	expect(requests).toHaveLength(1);
 	expect([...requests[0].searchParams.keys()]).toEqual(['year', 'timezone']);
 	expect(requests[0].searchParams.get('timezone')).toBe('America/New_York');
 	await expect(page.getByLabel('From', { exact: true })).toHaveCount(0);
 	await heatmap.getByLabel('Year', { exact: true }).selectOption('2024');
-	await expect(heatmap.getByText('Total reading hours', { exact: true }).locator('..')).toContainText('9 h');
-	await expect(heatmap.getByText('Average hours per reading day', { exact: true }).locator('..')).toContainText('3 h');
-	await expect(heatmap.getByText('Days of reading', { exact: true }).locator('..')).toContainText('3');
+	await expect(heatmap.getByText('Reading Hours', { exact: true }).locator('..')).toContainText('9 h');
+	await expect(heatmap.getByText('Average Time per Reading Day', { exact: true }).locator('..')).toContainText('3 h');
+	await expect(heatmap.getByText('Average Time per Day', { exact: true }).locator('..')).toContainText('0.02 h');
+	await expect(heatmap.getByText('Reading Days', { exact: true }).locator('..')).toContainText('3');
 	await expect(heatmap.getByText('Books Read', { exact: true }).locator('..')).toContainText('4');
-	await expect(heatmap.getByText('Books Read and Reading', { exact: true }).locator('..')).toContainText('5');
+	await expect(heatmap.getByText('Books Reading', { exact: true }).locator('..')).toContainText('5');
 	await expect(heatmap.locator('rect[data-date]')).toHaveCount(366);
 	await expect(heatmap.locator('rect[data-date="2024-02-29"]')).toHaveAttribute('data-seconds', '7200');
 	await expect(page.getByText('Days follow your time zone', { exact: false })).toHaveCount(0);
-	await heatmap.getByText('Daily reading details', { exact: true }).click();
-	const dailyDetails = heatmap.getByRole('table');
-	await expect(dailyDetails.locator('tbody tr')).toHaveCount(3);
-	expect(await dailyDetails.locator('time').evaluateAll((elements) => elements.map((element) => element.getAttribute('datetime'))))
-		.toEqual(['2024-01-01', '2024-01-02', '2024-02-29']);
-	await expect(dailyDetails.locator('tbody')).not.toContainText('0 h 0 min 0 s');
+	await expect(heatmap.getByText('Daily reading details', { exact: true })).toHaveCount(0);
 	await expect(weekdaysCard.getByLabel('Year', { exact: true })).not.toHaveValue('2024');
 	await expect(hoursCard.getByLabel('Year', { exact: true })).not.toHaveValue('2024');
 	await expect(race.getByLabel('Year', { exact: true })).not.toHaveValue('2024');
@@ -121,32 +117,24 @@ test('reading cards share yearly data, filter independently and expose exact cha
 	await expect(race.getByRole('tooltip')).toContainText('20%');
 	await race.getByText('Book completion details', { exact: true }).first().click();
 	await expect(race.getByRole('table').locator('tbody tr')).toHaveCount(3);
-	await weekdaysCard.getByText('Reading hours by weekday', { exact: true }).click();
-	const weekdays = weekdaysCard.getByRole('table', { name: 'Weekdays', exact: true });
-	await expect(weekdays.getByRole('row')).toHaveCount(4);
-	await expect(weekdays.getByRole('row').nth(1)).toHaveText('Monday6 h');
-	await expect(weekdays.getByRole('row').nth(2)).toHaveText('Tuesday1 h');
-	await expect(weekdays.getByRole('row').nth(3)).toHaveText('Thursday2 h');
-	await hoursCard.getByText('Reading hours by time range', { exact: true }).click();
-	const hours = hoursCard.getByRole('table', { name: 'Hours', exact: true });
-	await expect(hours.getByRole('row')).toHaveCount(4);
-	await expect(hours.getByRole('row').nth(1)).toHaveText('24:00–1:006 h');
-	await expect(hours.getByRole('row').nth(2)).toHaveText('6:00–7:002 h');
-	await expect(hours.getByRole('row').nth(3)).toHaveText('23:00–24:001 h');
+	await expect(weekdaysCard.getByText('Reading hours by weekday', { exact: true })).toHaveCount(0);
+	await expect(hoursCard.getByText('Reading hours by time range', { exact: true })).toHaveCount(0);
+	await expect(weekdaysCard.locator('.weekday-chart rect title')).toHaveText([
+		'Monday: 6 h', 'Tuesday: 1 h', 'Wednesday: 0 h', 'Thursday: 2 h',
+		'Friday: 0 h', 'Saturday: 0 h', 'Sunday: 0 h'
+	]);
 	await hoursCard.getByLabel('Month', { exact: true }).selectOption('2');
-	await expect(hoursCard.getByText('2 h', { exact: true }).first()).toBeAttached();
-	await expect(hours.locator('tbody tr')).toHaveText(['6:00–7:002 h']);
 	await expect(hoursCard.locator('.hour-chart path title')).toHaveText(['6:00–7:00: 2 h']);
 	await expect(weekdaysCard.getByLabel('Month', { exact: true })).toHaveValue('0');
 	await hoursCard.getByLabel('Month', { exact: true }).selectOption('3');
 	await expect(hoursCard.getByText('No reading recorded in this period.')).toBeVisible();
-	await expect(heatmap.getByText('Total reading hours', { exact: true }).locator('..')).toContainText('9 h');
+	await expect(heatmap.getByText('Reading Hours', { exact: true }).locator('..')).toContainText('9 h');
 	expect(requests).toHaveLength(2);
-	await heatmap.getByRole('button', { name: 'Previous year', exact: true }).click();
+	await heatmap.getByLabel('Year', { exact: true }).selectOption('2023');
 	await expect(heatmap.getByLabel('Year', { exact: true })).toHaveValue('2023');
-	await expect(heatmap.getByText('Total reading hours', { exact: true }).locator('..')).toContainText('7 h');
-	await heatmap.getByRole('button', { name: 'Next year', exact: true }).click();
-	await expect(heatmap.getByText('Total reading hours', { exact: true }).locator('..')).toContainText('9 h');
+	await expect(heatmap.getByText('Reading Hours', { exact: true }).locator('..')).toContainText('7 h');
+	await heatmap.getByLabel('Year', { exact: true }).selectOption('2024');
+	await expect(heatmap.getByText('Reading Hours', { exact: true }).locator('..')).toContainText('9 h');
 	await expect(weekdaysCard.getByLabel('Year', { exact: true })).toHaveValue('2024');
 	await expect(hoursCard.getByLabel('Year', { exact: true })).toHaveValue('2024');
 	await expect(race.getByLabel('Year', { exact: true })).toHaveValue('2024');
@@ -159,9 +147,10 @@ test('reading cards share yearly data, filter independently and expose exact cha
 	const mobileHoursBox = await hoursCard.boundingBox();
 	expect(mobileWeekdayBox && mobileHoursBox && mobileHoursBox.y >= mobileWeekdayBox.y + mobileWeekdayBox.height).toBe(true);
 	await heatmap.getByLabel('Year', { exact: true }).selectOption('1');
-	await expect(heatmap.getByText('Total reading hours', { exact: true }).locator('..')).toContainText('7 h');
+	await expect(heatmap.getByText('Reading Hours', { exact: true }).locator('..')).toContainText('7 h');
 	expect(requests.at(-1)?.searchParams.get('year')).toBe('0001');
-	await expect(heatmap.getByRole('button', { name: 'Previous year', exact: true })).toBeDisabled();
+	await expect(heatmap.getByLabel('Year', { exact: true })).toHaveValue('1');
+	await expect(heatmap.getByRole('button', { name: /^(Previous year|Next year)$/ })).toHaveCount(0);
 });
 
 test('reading cards recover from failures and show empty and localized results', async ({ page }) => {
@@ -179,8 +168,7 @@ test('reading cards recover from failures and show empty and localized results',
 	await expect(page.getByRole('alert')).toHaveCount(0);
 	await expect(page.getByRole('region', { name: '阅读热力图', exact: true })).toBeVisible();
 	const heatmap = page.getByRole('region', { name: '阅读热力图', exact: true });
-	await heatmap.getByText('每日阅读详情', { exact: true }).click();
-	await expect(heatmap.getByRole('table').locator('tbody tr')).toHaveCount(0);
+	await expect(heatmap.getByText('每日阅读详情', { exact: true })).toHaveCount(0);
 	await expect(page.getByText('此期间没有阅读记录。')).toHaveCount(2);
 	await expect(page.getByText('此年份没有同时记录开始及完成日期的已读图书。')).toBeVisible();
 	expect(calls).toBe(2);

@@ -66,20 +66,6 @@
 						</g>
 					{/each}
 				</svg>
-				<details>
-					<summary>{m['stats.reading.weekday_table']()}</summary>
-					<table>
-						<caption>{m['stats.reading.weekdays']()}</caption>
-						<thead><tr><th scope="col">{m['stats.reading.weekday']()}</th><th scope="col">{m['stats.reading.hour']()}</th></tr></thead>
-						<tbody>
-							{#each totals.weekdays as hours, index}
-								{#if hours > 0}
-									<tr><th scope="row">{weekdayNames[index]}</th><td>{hoursLabel(hours)}</td></tr>
-								{/if}
-							{/each}
-						</tbody>
-					</table>
-				</details>
 			</figure>
 		{:else}
 			<figure>
@@ -100,20 +86,6 @@
 						</g>
 					{/each}
 				</svg>
-				<details>
-					<summary>{m['stats.reading.hour_table']()}</summary>
-					<table>
-						<caption>{m['stats.reading.time_range']()}</caption>
-						<thead><tr><th scope="col">{m['stats.reading.time_range']()}</th><th scope="col">{m['stats.reading.hour']()}</th></tr></thead>
-						<tbody>
-							{#each totals.hours as hours, hour}
-								{#if hours > 0}
-									<tr><th scope="row">{hourRange(hour)}</th><td>{hoursLabel(hours)}</td></tr>
-								{/if}
-							{/each}
-						</tbody>
-					</table>
-				</details>
 			</figure>
 		{/if}
 	{/if}
@@ -121,7 +93,6 @@
 
 <style>
 	.habits { display: grid; gap: 1rem; min-width: 0; }
-	summary:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
 	figure { margin: 0; min-width: 0; }
 	svg { display: block; width: 100%; max-width: 22rem; margin: 0 auto; }
 	.axis { stroke: #cbd5e1; }
@@ -134,12 +105,5 @@
 	:global(:root[data-theme='dark']) .hour-guide { stroke: #475569; }
 	:global(:root[data-theme='dark']) .hour-chart .bar { fill: #34d399; }
 	:global(:root[data-theme='dark']) .hour-label { fill: #cbd5e1; }
-	details { margin-top: 0.75rem; border-top: 1px solid #e2e8f0; padding-top: 0.75rem; font-size: 0.8125rem; }
-	summary { cursor: pointer; color: #64748b; overflow-wrap: anywhere; }
-	table { width: 100%; margin-top: 0.75rem; border-collapse: collapse; text-align: left; }
-	caption { text-align: left; font-weight: 600; margin-bottom: 0.5rem; }
-	th, td { border-bottom: 1px solid #f1f5f9; padding: 0.375rem; overflow-wrap: anywhere; }
-	th { font-weight: 400; }
-	td { text-align: right; }
 	.empty { margin: 0; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 1.5rem; color: #64748b; text-align: center; }
 </style>

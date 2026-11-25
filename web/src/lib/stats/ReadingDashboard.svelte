@@ -9,7 +9,7 @@
 	import { browserTimeZone, statsErrorKey } from './api.js';
 	import type { ReadingStats } from './reading-types.js';
 	import { defaultReadingMonth } from './reading-habits.js';
-	import YearScroller from './YearScroller.svelte';
+	import YearSelect from './YearSelect.svelte';
 	import ReadingHeatmap from './ReadingHeatmap.svelte';
 	import ReadingHabits from './ReadingHabits.svelte';
 	import ReadingCompletionRace from './ReadingCompletionRace.svelte';
@@ -78,7 +78,7 @@
 		<header class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3">
 			<h2 class="text-base font-semibold text-slate-900">{title}</h2>
 			<div class="flex items-center gap-2">
-				<YearScroller {year} compact={track === 'weekdays' || track === 'hours'} onchange={(value) => selectYear(track, value)} />
+				<YearSelect {year} onchange={(value) => selectYear(track, value)} />
 				{#if track === 'weekdays' || track === 'hours'}
 					{@const habitTrack = track}
 					<label class="sr-only" for={`${habitTrack}-month`}>{m['stats.reading.month']()}</label>

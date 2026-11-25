@@ -16,7 +16,7 @@
 		session_count: byDate.get(cell.date)?.session_count ?? 0
 	})));
 	const summary = $derived(totals(daily));
-	const recordedDays = $derived(daily.filter((day) => day.active_seconds > 0));
+	const daysInYear = $derived(calendar.days.length);
 	const peak = $derived(Math.max(0, ...daily.map((day) => day.active_seconds)));
 	const numbers = $derived(new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }));
 	const counts = $derived(new Intl.NumberFormat(locale));
@@ -95,35 +95,11 @@
 		<p class="empty">{m['stats.daily.empty']()}</p>
 	{/if}
 
-	<details class="daily-table">
-		<summary>{m['stats.reading.daily_table']()}</summary>
-		<div class="table-scroll">
-			<table>
-				<caption>{m['stats.daily.table_caption']()}</caption>
-				<thead>
-					<tr>
-						<th scope="col">{m['stats.table.date']()}</th>
-						<th scope="col">{m['stats.table.time']()}</th>
-						<th scope="col">{m['stats.table.sessions']()}</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each recordedDays as day (day.date)}
-						<tr>
-							<th scope="row"><time datetime={day.date}>{formatCalendar(day.date, locale)}</time></th>
-							<td>{exactDuration(day.active_seconds)}</td>
-							<td>{counts.format(day.session_count)}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-	</details>
-
 	<dl class="summary">
 		<div><dt>{m['stats.reading.days']()}</dt><dd>{counts.format(summary.activeDays)}</dd></div>
 		<div><dt>{m['stats.reading.total_hours']()}</dt><dd>{hours(summary.activeSeconds)}</dd></div>
 		<div><dt>{m['stats.reading.average_hours']()}</dt><dd>{hours(summary.activeDays ? summary.activeSeconds / summary.activeDays : 0)}</dd></div>
+		<div><dt>{m['stats.reading.average_per_day']()}</dt><dd>{hours(daysInYear ? summary.activeSeconds / daysInYear : 0)}</dd></div>
 		<div><dt>{m['stats.reading.read_books']()}</dt><dd>{counts.format(data.books.read)}</dd></div>
 		<div><dt>{m['stats.reading.read_and_reading_books']()}</dt><dd>{counts.format(data.books.read_and_reading)}</dd></div>
 	</dl>
@@ -140,14 +116,6 @@
 	.legend { display: flex; align-items: center; justify-content: flex-end; gap: 0.25rem; margin-top: 0.375rem; font-size: 0.75rem; color: var(--shell-muted, #56657a); }
 	.swatch { width: 0.75rem; height: 0.75rem; border-radius: 2px; border: 0.5px solid var(--shell-border, #dde2e8); }
 	.empty { margin: 0.75rem 0; font-size: 0.875rem; color: var(--shell-muted, #56657a); }
-	.daily-table { margin-top: 0.75rem; font-size: 0.8125rem; }
-	.daily-table summary { width: fit-content; cursor: pointer; }
-	.daily-table summary:focus-visible { outline: 2px solid var(--shell-active, #047857); outline-offset: 3px; }
-	.table-scroll { overflow: auto; max-height: 22rem; margin-top: 0.5rem; }
-	table { width: 100%; border-collapse: collapse; text-align: start; }
-	caption { text-align: start; padding: 0.5rem 0; color: var(--shell-muted, #56657a); }
-	th, td { padding: 0.5rem; border-bottom: 1px solid var(--shell-border, #dde2e8); white-space: nowrap; }
-	tbody th { font-weight: normal; }
 	.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin: 1.25rem 0 0; padding-top: 1rem; border-top: 1px solid var(--shell-border, #dde2e8); }
 	dt { color: var(--shell-muted, #56657a); font-size: 0.75rem; }
 	dd { margin: 0.375rem 0 0; font-size: 1.125rem; font-weight: 600; }
