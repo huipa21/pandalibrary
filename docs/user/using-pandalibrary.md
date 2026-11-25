@@ -34,8 +34,11 @@ require confirmation. Bulk operations stop on the first failure and report
 how many accounts were changed; completed changes are not rolled back.
 
 **Uploads** handles book uploads and their processing history. **Backup**
-creates and saves a single database-and-media `.tar.gz` archive on the server.
-Download archives for safekeeping, or restore from a saved or uploaded archive.
+creates and saves a single encrypted database-and-media `.tar.gz.age` archive on
+the server. Enter a passphrase when creating it; the passphrase is not stored.
+Download archives for safekeeping, or restore from a saved or uploaded archive,
+entering the passphrase when prompted. Legacy `.tar.gz` backups remain
+restorable. If you lose the passphrase, that backup cannot be recovered.
 Restores are validated and staged first: restart the server to replace all
 application data. The executable and deployment configuration are not replaced.
 Before reconnecting, clear offline data on every client so old queued changes

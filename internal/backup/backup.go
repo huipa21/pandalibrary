@@ -64,6 +64,7 @@ type Info struct {
 	Name      string    `json:"name"`
 	SizeBytes int64     `json:"size_bytes"`
 	CreatedAt time.Time `json:"created_at"`
+	Encrypted bool      `json:"encrypted"`
 }
 
 // Service shares Gate with HTTP requests and all background data writers.
@@ -132,7 +133,8 @@ func token() string {
 }
 
 func validName(name string) bool {
-	if !strings.HasPrefix(name, "full-") || !strings.HasSuffix(name, ".tar.gz") || len(name) > 100 {
+	if !strings.HasPrefix(name, "full-") ||
+		(!strings.HasSuffix(name, ".tar.gz") && !encryptedName(name)) || len(name) > 104 {
 		return false
 	}
 	for _, c := range name {
@@ -192,7 +194,10 @@ func (s *Service) List() ([]Info, error) {
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, Info{entry.Name(), info.Size(), info.ModTime().UTC()})
+		items = append(items, Info{
+			Name: entry.Name(), SizeBytes: info.Size(), CreatedAt: info.ModTime().UTC(),
+			Encrypted: encryptedName(entry.Name()),
+		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Name > items[j].Name })
 	return items, nil
@@ -236,7 +241,10 @@ func (s *Service) PendingStatus() (bool, error) {
 	return err == nil, err
 }
 
-func (s *Service) Create(ctx context.Context) (_ Info, returnErr error) {
+func (s *Service) Create(ctx context.Context, passphrase string) (_ Info, returnErr error) {
+	if err := ValidatePassphrase(passphrase); err != nil {
+		return Info{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.Gate != nil {
@@ -258,11 +266,15 @@ func (s *Service) Create(ctx context.Context) (_ Info, returnErr error) {
 	if _, err := s.Writer.ExecContext(ctx, "VACUUM INTO '"+strings.ReplaceAll(snapshot, "'", "''")+"'"); err != nil {
 		return Info{}, fmt.Errorf("snapshot database: %w", err)
 	}
-	file, err := os.OpenFile(filepath.Join(work, "archive"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	file, err := os.OpenFile(filepath.Join(work, "archive.age"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return Info{}, err
 	}
-	gz := gzip.NewWriter(file)
+	encrypted, err := encryptArchive(file, passphrase)
+	if err != nil {
+		return Info{}, errors.Join(err, file.Close())
+	}
+	gz := gzip.NewWriter(encrypted)
 	tw := tar.NewWriter(gz)
 	m := manifest{Version: 1, Files: map[string]record{}}
 	var total int64
@@ -368,18 +380,18 @@ func (s *Service) Create(ctx context.Context) (_ Info, returnErr error) {
 			_, err = tw.Write(data)
 		}
 	}
-	if err = errors.Join(err, tw.Close(), gz.Close(), file.Sync(), file.Close()); err != nil {
+	if err = errors.Join(err, tw.Close(), gz.Close(), encrypted.Close(), file.Sync(), file.Close()); err != nil {
 		return Info{}, err
 	}
-	archive := filepath.Join(work, "archive")
+	archive := filepath.Join(work, "archive.age")
 	if stat, err := os.Stat(archive); err != nil || stat.Size() > MaxArchiveBytes {
 		return Info{}, errors.Join(ErrInvalid, err)
 	}
 	// Read back every entry and verify SQLite before publishing a saved backup.
-	if err := s.validate(ctx, archive, filepath.Join(work, "verify")); err != nil {
+	if err := s.validate(ctx, archive, filepath.Join(work, "verify"), passphrase); err != nil {
 		return Info{}, err
 	}
-	name := "full-" + time.Now().UTC().Format("20060102-150405") + "-" + token() + ".tar.gz"
+	name := "full-" + time.Now().UTC().Format("20060102-150405") + "-" + token() + EncryptedSuffix
 	destination := filepath.Join(s.directory(), name)
 	if err := os.Rename(archive, destination); err != nil {
 		return Info{}, err
@@ -391,7 +403,7 @@ func (s *Service) Create(ctx context.Context) (_ Info, returnErr error) {
 	if err != nil {
 		return Info{}, err
 	}
-	return Info{name, stat.Size(), stat.ModTime().UTC()}, nil
+	return Info{Name: name, SizeBytes: stat.Size(), CreatedAt: stat.ModTime().UTC(), Encrypted: true}, nil
 }
 
 type contextReader struct {
@@ -407,7 +419,9 @@ func (r contextReader) Read(p []byte) (int, error) {
 }
 
 // Stage validates and durably queues an archive; it never replaces live data.
-func (s *Service) Stage(ctx context.Context, input io.Reader) (returnErr error) {
+// Encrypted input is decrypted to the plaintext pending archive so startup can
+// apply it without retaining the passphrase in memory.
+func (s *Service) Stage(ctx context.Context, input io.Reader, passphrase string) (returnErr error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.prepare(); err != nil {
@@ -425,8 +439,8 @@ func (s *Service) Stage(ctx context.Context, input io.Reader) (returnErr error) 
 		return err
 	}
 	defer func() { returnErr = errors.Join(returnErr, os.RemoveAll(work)) }()
-	archive := filepath.Join(work, "archive")
-	file, err := os.OpenFile(archive, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	raw := filepath.Join(work, "input")
+	file, err := os.OpenFile(raw, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -437,7 +451,40 @@ func (s *Service) Stage(ctx context.Context, input io.Reader) (returnErr error) 
 	if n > MaxArchiveBytes {
 		return fmt.Errorf("%w: compressed size limit", ErrInvalid)
 	}
-	if err := s.validate(ctx, archive, filepath.Join(work, "verify")); err != nil {
+	encrypted, err := IsEncryptedFile(raw)
+	if err != nil {
+		return err
+	}
+	archive := raw
+	if encrypted {
+		source, err := os.Open(raw)
+		if err != nil {
+			return err
+		}
+		decrypted, _, err := decryptReader(source, passphrase)
+		if err != nil {
+			return errors.Join(err, source.Close())
+		}
+		archive = filepath.Join(work, "archive")
+		out, err := os.OpenFile(archive, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return errors.Join(err, source.Close())
+		}
+		plainBytes, copyErr := io.Copy(out, io.LimitReader(contextReader{ctx, decrypted}, MaxArchiveBytes+1))
+		if copyErr != nil && !errors.Is(copyErr, context.Canceled) && !errors.Is(copyErr, context.DeadlineExceeded) {
+			copyErr = fmt.Errorf("%w: decrypt payload: %v", ErrInvalid, copyErr)
+		}
+		if err := errors.Join(copyErr, out.Sync(), out.Close(), source.Close()); err != nil {
+			return err
+		}
+		if plainBytes > MaxArchiveBytes {
+			return fmt.Errorf("%w: expanded archive size limit", ErrInvalid)
+		}
+		if err := os.Remove(raw); err != nil {
+			return err
+		}
+	}
+	if err := s.validate(ctx, archive, filepath.Join(work, "verify"), ""); err != nil {
 		return err
 	}
 	if err := os.Rename(archive, filepath.Join(s.directory(), pendingName)); err != nil {
@@ -481,7 +528,7 @@ func allowedPath(name string) bool {
 	return false
 }
 
-func (s *Service) validate(ctx context.Context, archive, destination string) (returnErr error) {
+func (s *Service) validate(ctx context.Context, archive, destination, passphrase string) (returnErr error) {
 	if err := os.Mkdir(destination, 0o700); err != nil {
 		return err
 	}
@@ -494,7 +541,11 @@ func (s *Service) validate(ctx context.Context, archive, destination string) (re
 	if err != nil || stat.Size() > MaxArchiveBytes {
 		return errors.Join(ErrInvalid, err)
 	}
-	buffered := bufio.NewReader(file)
+	decrypted, _, err := decryptReader(file, passphrase)
+	if err != nil {
+		return err
+	}
+	buffered := bufio.NewReader(decrypted)
 	gz, err := gzip.NewReader(buffered)
 	if err != nil {
 		return fmt.Errorf("%w: gzip: %v", ErrInvalid, err)

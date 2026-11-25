@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { showLoadingAfterDelay } from '#lib/ui/deferred.js';
-	import { confirmAction } from '#lib/shell/confirmation.js';
 	import { onMount } from 'svelte';
 	import * as m from '#lib/paraglide/messages.js';
 	import { ApiError } from '#lib/api/client.js';
 	import AdminAlert from '#lib/admin/AdminAlert.svelte';
+	import BackupPassphraseDialog from '#lib/admin/BackupPassphraseDialog.svelte';
 	import { backupDownloadPath, createBackup, listBackups, restoreBackup, type Backup } from '#lib/admin/backup.js';
 	import { adminErrorKey } from '#lib/admin/form.js';
 	import { formatTimestamp } from '#lib/admin/jobs.js';
@@ -19,7 +19,15 @@
 	let busy = $state(false);
 	let pending = $state(false);
 	let file = $state<File | null>(null);
+	let dialog = $state<'create' | 'restore' | null>(null);
+	let restoreSource = $state<string | File | null>(null);
+	let dialogError = $state('');
 	const blocked = $derived(busy || pending || status !== 'ready');
+	const restoreEncrypted = $derived(
+		typeof restoreSource === 'string'
+			? backups.find((backup) => backup.name === restoreSource)?.encrypted ?? true
+			: restoreSource?.name.endsWith('.age') ?? true
+	);
 
 	onMount(() => {
 		const controller = new AbortController();
@@ -44,6 +52,9 @@
 
 	function failure(cause: unknown): string {
 		if (cause instanceof ApiError) {
+			if (cause.status === 400 && cause.message.startsWith('Backup passphrase')) {
+				return m['admin.backup.passphrase_error']();
+			}
 			if (cause.status === 400 || cause.status === 422) return m['admin.backup.invalid']();
 			if (cause.status === 409) return m['admin.backup.conflict']();
 			if (cause.status === 413) return m['admin.backup.too_large']();
@@ -51,45 +62,71 @@
 		return translate(adminErrorKey(cause, 'load'));
 	}
 
-	async function create() {
+	function openCreate() {
 		if (blocked) return;
+		dialogError = '';
+		dialog = 'create';
+	}
+
+	async function submitCreate(passphrase: string) {
+		if (busy) return;
 		busy = true;
+		dialogError = '';
 		error = '';
 		notice = '';
 		try {
-			const backup = await createBackup();
+			const backup = await createBackup(passphrase);
 			notice = m['admin.backup.created']({ name: backup.name });
+			dialog = null;
 			await load();
 		} catch (cause) {
-			error = failure(cause);
+			dialogError = failure(cause);
 		} finally {
 			busy = false;
 		}
 	}
 
-	async function restore(source: string | File) {
-		if (blocked || !await confirmAction(m['admin.backup.confirm_restore']())) return;
+	function beginRestore(source: string | File) {
+		if (blocked) return;
+		restoreSource = source;
+		dialogError = '';
+		dialog = 'restore';
+	}
+
+	async function submitRestore(passphrase: string) {
+		const source = restoreSource;
+		if (!source || busy) return;
 		busy = true;
+		dialogError = '';
 		error = '';
 		notice = '';
 		try {
-			await restoreBackup(source);
+			await restoreBackup(source, passphrase);
 			pending = true;
+			dialog = null;
+			restoreSource = null;
 		} catch (cause) {
-			error = failure(cause);
+			dialogError = failure(cause);
 		} finally {
 			busy = false;
 		}
+	}
+
+	function closeDialog() {
+		if (busy) return;
+		dialog = null;
+		restoreSource = null;
+		dialogError = '';
 	}
 
 	function upload(event: SubmitEvent) {
 		event.preventDefault();
 		if (blocked) return;
-		if (!file || file.size === 0 || !file.name.endsWith('.tar.gz')) {
+		if (!file || file.size === 0 || !(file.name.endsWith('.tar.gz') || file.name.endsWith('.age'))) {
 			error = m['admin.backup.file_required']();
 			return;
 		}
-		void restore(file);
+		beginRestore(file);
 	}
 </script>
 
@@ -110,7 +147,7 @@
 			<h2 id="saved-backups-heading" class="text-xl font-semibold">{m['admin.backup.saved']()}</h2>
 			<div class="flex gap-2">
 				<button type="button" class={secondaryButton} disabled={busy || status === 'loading'} onclick={() => load()}>{m['admin.imports.refresh']()}</button>
-				<button type="button" class={primaryButton} disabled={blocked} onclick={create}>{m['admin.backup.create']()}</button>
+				<button type="button" class={primaryButton} disabled={blocked} onclick={openCreate}>{m['admin.backup.create']()}</button>
 			</div>
 		</div>
 		{#if status === 'error'}
@@ -136,7 +173,7 @@
 								<td class="py-2 pr-4">{(backup.size_bytes / 1024 / 1024).toFixed(2)} MiB</td>
 								<td class="py-2"><div class="flex flex-wrap items-center gap-3">
 									<a class={linkClass} href={backupDownloadPath(backup.name)} download>{m['admin.backup.download']()}<span class="sr-only"> {backup.name}</span></a>
-									<button type="button" class={dangerButton} disabled={blocked} onclick={() => restore(backup.name)}>{m['admin.backup.restore']()}<span class="sr-only"> {backup.name}</span></button>
+									<button type="button" class={dangerButton} disabled={blocked} onclick={() => beginRestore(backup.name)}>{m['admin.backup.restore']()}<span class="sr-only"> {backup.name}</span></button>
 								</div></td>
 							</tr>
 						{/each}
@@ -152,10 +189,20 @@
 		<form class="flex flex-wrap items-end gap-3" onsubmit={upload}>
 			<label class="min-w-0 flex-1 space-y-1">
 				<span class="block text-sm font-medium">{m['admin.backup.file_label']()}</span>
-				<input class={`${inputClass} w-full`} type="file" accept=".tar.gz" disabled={blocked}
+				<input class={`${inputClass} w-full`} type="file" accept=".tar.gz,.age" disabled={blocked}
 					onchange={(event) => { file = event.currentTarget.files?.[0] ?? null; error = ''; }} />
 			</label>
 			<button class={dangerButton} type="submit" disabled={blocked}>{m['admin.backup.upload_restore']()}</button>
 		</form>
 	</section>
+
+	<BackupPassphraseDialog
+		open={dialog !== null}
+		mode={dialog ?? 'create'}
+		{busy}
+		error={dialogError}
+		requiresPassphrase={dialog === 'restore' ? restoreEncrypted : true}
+		onclose={closeDialog}
+		onsubmit={dialog === 'create' ? submitCreate : submitRestore}
+	/>
 </section>

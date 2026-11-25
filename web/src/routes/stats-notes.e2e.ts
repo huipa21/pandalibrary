@@ -9,6 +9,10 @@ async function authenticate(page: Page, locale = 'en') {
 		cursor: 0, user_books: [], reading_progress: [], highlights: [], notes: [], user_settings: []
 	} }));
 	await page.route('**/api/v1/setup', (route) => route.fulfill({ json: { required: false } }));
+	await page.route('**/api/v1/version', (route) => route.fulfill({ json: {
+		version: 'test', commit: '0123456789abcdef0123456789abcdef01234567',
+		commit_date: '2026-11-04T00:00:00Z', dirty: false, release: null
+	} }));
 	await page.route('**/api/v1/auth/me', (route) =>
 		route.fulfill({ json: { user: { id: 1, username: 'reader', display_name: 'Reader', role: 'user', locale } } })
 	);
@@ -379,6 +383,7 @@ test('annotation type dropdown combines with search, preserves URLs, and keeps t
 		return route.fulfill({ json: { items: filtered.map((item) => ({ ...item, position: 0 })) } });
 	});
 	await page.goto('/notes');
+	await expect(page.getByRole('search', { name: 'Annotations search' })).toBeVisible();
 	const type = page.getByRole('combobox', { name: 'Annotation type' });
 	await expect(type).toHaveValue('');
 	await expect(type.getByRole('option')).toHaveCount(9);
@@ -405,6 +410,7 @@ test('annotation type dropdown combines with search, preserves URLs, and keeps t
 	await expect(type).toHaveValue('review');
 	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 1');
 	await page.reload();
+	await expect(page.getByRole('search', { name: 'Annotations search' })).toBeVisible();
 	await expect(type).toHaveValue('review');
 	await expect(page.getByRole('heading', { name: 'Your annotations', exact: true })).toHaveText('Your annotations 1');
 

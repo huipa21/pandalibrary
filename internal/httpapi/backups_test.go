@@ -26,6 +26,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+const testBackupPassphrase = "correct horse battery staple"
+
 func TestBackupsAdminAPIAndStagedRestore(t *testing.T) {
 	ctx := context.Background()
 	databases := openHTTPTestDatabase(t)
@@ -87,14 +89,21 @@ func TestBackupsAdminAPIAndStagedRestore(t *testing.T) {
 		router.ServeHTTP(response, request)
 		requireProblem(t, response, http.StatusForbidden)
 	}
-	created := authRequest(t, router, http.MethodPost, base, nil, cookies["admin"])
+	requireProblem(t, authRequest(t, router, http.MethodPost, base, map[string]string{}, cookies["admin"]), http.StatusBadRequest)
+	requireProblem(t, authRequest(t, router, http.MethodPost, base, map[string]string{
+		"passphrase": "short",
+	}, cookies["admin"]), http.StatusBadRequest)
+	created := authRequest(t, router, http.MethodPost, base, map[string]string{
+		"passphrase": testBackupPassphrase,
+	}, cookies["admin"])
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create = %d %s", created.Code, created.Body.String())
 	}
 	var body struct {
 		Backup backup.Info `json:"backup"`
 	}
-	if err := json.Unmarshal(created.Body.Bytes(), &body); err != nil || body.Backup.SizeBytes <= 0 {
+	if err := json.Unmarshal(created.Body.Bytes(), &body); err != nil || body.Backup.SizeBytes <= 0 ||
+		!body.Backup.Encrypted || !strings.HasSuffix(body.Backup.Name, backup.EncryptedSuffix) {
 		t.Fatalf("create response = %s, %v", created.Body.String(), err)
 	}
 	list := authRequest(t, router, http.MethodGet, base, nil, cookies["admin"])
@@ -103,23 +112,29 @@ func TestBackupsAdminAPIAndStagedRestore(t *testing.T) {
 		t.Fatalf("list = %d %s", list.Code, list.Body.String())
 	}
 	download := authRequest(t, router, http.MethodGet, base+"/"+body.Backup.Name, nil, cookies["admin"])
-	if download.Code != http.StatusOK || download.Header().Get("Content-Type") != "application/gzip" ||
+	if download.Code != http.StatusOK || download.Header().Get("Content-Type") != "application/octet-stream" ||
 		!strings.Contains(download.Header().Get("Content-Disposition"), "attachment") {
 		t.Fatalf("download = %d %s", download.Code, download.Body.String())
 	}
 	requireProblem(t, authRequest(t, router, http.MethodGet, base+"/full-missing.tar.gz", nil, cookies["admin"]), http.StatusNotFound)
 	requireProblem(t, authRequest(t, router, http.MethodPost, base+"/restore", map[string]any{
-		"name": body.Backup.Name, "confirm": false,
+		"name": body.Backup.Name, "confirm": true, "passphrase": "wrong passphrase value",
+	}, cookies["admin"]), http.StatusBadRequest)
+	requireProblem(t, authRequest(t, router, http.MethodPost, base+"/restore", map[string]any{
+		"name": body.Backup.Name, "confirm": false, "passphrase": testBackupPassphrase,
+	}, cookies["admin"]), http.StatusBadRequest)
+	requireProblem(t, authRequest(t, router, http.MethodPost, base+"/restore", map[string]any{
+		"name": body.Backup.Name, "confirm": true,
 	}, cookies["admin"]), http.StatusBadRequest)
 	restored := authRequest(t, router, http.MethodPost, base+"/restore", map[string]any{
-		"name": body.Backup.Name, "confirm": true,
+		"name": body.Backup.Name, "confirm": true, "passphrase": testBackupPassphrase,
 	}, cookies["admin"])
 	if restored.Code != http.StatusAccepted || !strings.Contains(restored.Body.String(), `"restart_required":true`) ||
 		!strings.Contains(restored.Body.String(), `"status":"staged"`) {
 		t.Fatalf("restore = %d %s", restored.Code, restored.Body.String())
 	}
 	requireProblem(t, authRequest(t, router, http.MethodPost, base+"/restore", map[string]any{
-		"name": body.Backup.Name, "confirm": true,
+		"name": body.Backup.Name, "confirm": true, "passphrase": testBackupPassphrase,
 	}, cookies["admin"]), http.StatusConflict)
 	pending := filepath.Join(service.DataDir, "backups", ".pending-restore.tar.gz")
 	if err := os.Remove(pending); err != nil {
@@ -131,7 +146,10 @@ func TestBackupsAdminAPIAndStagedRestore(t *testing.T) {
 		if err := writer.WriteField("confirm", "true"); err != nil {
 			t.Fatal(err)
 		}
-		part, err := writer.CreateFormFile("file", "backup.tar.gz")
+		if err := writer.WriteField("passphrase", testBackupPassphrase); err != nil {
+			t.Fatal(err)
+		}
+		part, err := writer.CreateFormFile("file", "backup.tar.gz.age")
 		if err != nil {
 			t.Fatal(err)
 		}

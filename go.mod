@@ -3,6 +3,7 @@ module pandalibrary
 go 1.27.0
 
 require (
+	filippo.io/age v1.3.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/mozillazg/go-pinyin v0.21.0
@@ -17,6 +18,7 @@ require (
 )
 
 require (
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect

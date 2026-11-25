@@ -86,6 +86,8 @@ func write(t *testing.T, name, content string) {
 	}
 }
 
+const testPassphrase = "correct horse battery staple"
+
 func TestFullBackupRoundTripAndOfflineReplacement(t *testing.T) {
 	s, databases := fixture(t)
 	ctx := context.Background()
@@ -104,15 +106,26 @@ func TestFullBackupRoundTripAndOfflineReplacement(t *testing.T) {
 	}
 	write(t, filepath.Join(s.directory(), "keep.txt"), "preserve backups")
 	write(t, filepath.Join(s.directory(), ".create-stale", "pandalibrary.db"), "abandoned backup snapshot")
-	info, err := s.Create(ctx)
+	info, err := s.Create(ctx, testPassphrase)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !info.Encrypted || !strings.HasSuffix(info.Name, EncryptedSuffix) {
+		t.Fatalf("backup is not marked encrypted: %+v", info)
+	}
+	if encrypted, err := IsEncryptedFile(filepath.Join(s.directory(), info.Name)); err != nil || !encrypted {
+		t.Fatalf("backup is not an age file: %v, %v", encrypted, err)
 	}
 	archiveFile, err := s.Open(info.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	gz, err := gzip.NewReader(archiveFile)
+	decrypted, encrypted, err := decryptReader(archiveFile, testPassphrase)
+	if err != nil || !encrypted {
+		archiveFile.Close()
+		t.Fatalf("decrypt backup: %v, %v", encrypted, err)
+	}
+	gz, err := gzip.NewReader(decrypted)
 	if err != nil {
 		archiveFile.Close()
 		t.Fatal(err)
@@ -150,13 +163,13 @@ func TestFullBackupRoundTripAndOfflineReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Stage(ctx, saved); err != nil {
+	if err := s.Stage(ctx, saved, testPassphrase); err != nil {
 		t.Fatal(err)
 	}
 	if err := saved.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Stage(ctx, bytes.NewReader(nil)); !errors.Is(err, ErrPending) {
+	if err := s.Stage(ctx, bytes.NewReader(nil), testPassphrase); !errors.Is(err, ErrPending) {
 		t.Fatalf("second restore = %v", err)
 	}
 	content, err := os.ReadFile(filepath.Join(s.Dirs["files"], "nested", "content"))
@@ -210,7 +223,7 @@ func TestFullBackupRoundTripAndOfflineReplacement(t *testing.T) {
 		}
 	}
 	list, err := s.List()
-	if err != nil || len(list) != 1 || list[0].Name != info.Name {
+	if err != nil || len(list) != 1 || list[0].Name != info.Name || !list[0].Encrypted {
 		t.Fatalf("saved archive list = %+v, %v", list, err)
 	}
 }
@@ -261,7 +274,7 @@ func TestRejectInvalidArchivesWithoutModifyingData(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			data := archive(t, []*tar.Header{h}, nil)
-			if err := s.Stage(context.Background(), bytes.NewReader(data)); !errors.Is(err, ErrInvalid) {
+			if err := s.Stage(context.Background(), bytes.NewReader(data), testPassphrase); !errors.Is(err, ErrInvalid) {
 				t.Fatalf("accepted archive: %v", err)
 			}
 		})
@@ -284,7 +297,7 @@ func TestRejectInvalidArchivesWithoutModifyingData(t *testing.T) {
 		}, nil),
 		"missing manifest": archive(t, []*tar.Header{{Name: "files", Typeflag: tar.TypeDir}}, nil),
 	}
-	info, err := s.Create(context.Background())
+	info, err := s.Create(context.Background(), testPassphrase)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +309,7 @@ func TestRejectInvalidArchivesWithoutModifyingData(t *testing.T) {
 	cases["trailing junk"] = append(append([]byte{}, valid...), []byte("junk")...)
 	for name, data := range cases {
 		t.Run(name, func(t *testing.T) {
-			if err := s.Stage(context.Background(), bytes.NewReader(data)); !errors.Is(err, ErrInvalid) {
+			if err := s.Stage(context.Background(), bytes.NewReader(data), testPassphrase); !errors.Is(err, ErrInvalid) {
 				t.Fatalf("accepted archive: %v", err)
 			}
 		})
@@ -341,7 +354,7 @@ func TestPlainTarCaseAliasesAreRejectedBeforeDatabaseValidation(t *testing.T) {
 		{Name: "files/Sub/a", Typeflag: tar.TypeReg},
 		{Name: "files/sub/b", Typeflag: tar.TypeReg},
 	}, nil)
-	err := s.Stage(context.Background(), bytes.NewReader(data))
+	err := s.Stage(context.Background(), bytes.NewReader(data), "")
 	if !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "case-colliding paths") {
 		t.Fatalf("case alias was not rejected by path validation: %v", err)
 	}

@@ -132,6 +132,20 @@ async function databaseRows(page: Page, store: string): Promise<Array<Record<str
 	}), store);
 }
 
+async function clearStore(page: Page, store: string): Promise<void> {
+	await page.evaluate((name) => new Promise<void>((resolve, reject) => {
+		const request = indexedDB.open('pandalibrary-offline');
+		request.onerror = () => reject(request.error);
+		request.onsuccess = () => {
+			const database = request.result;
+			const transaction = database.transaction(name, 'readwrite');
+			transaction.objectStore(name).clear();
+			transaction.oncomplete = () => { database.close(); resolve(); };
+			transaction.onabort = () => { database.close(); reject(transaction.error); };
+		};
+	}), store);
+}
+
 async function queueFixture(page: Page, mutation: Mutation, status: 'pending' | 'stale') {
 	await page.evaluate(({ mutation, status }) => new Promise<void>((resolve, reject) => {
 		const opening = indexedDB.open('pandalibrary-offline');
@@ -305,15 +319,26 @@ for (const status of [403, 404]) {
 	});
 }
 
-test('a denied online file is revalidated and evicted rather than served from an HTTP cache', async ({ page }) => {
+test('a downloaded copy is preferred online even when the file endpoint would deny it', async ({ page }) => {
 	const state = await setup(page);
 	await download(page);
 	state.fileDenial = 403;
 	await page.goto('/read/21/31');
-	// The denied download is dropped instead of being served from the HTTP cache.
+	await expect(page.locator('.reader-pdf-text').first()).toContainText('First PDF page text');
+	await expect(page.getByRole('alert').filter({ hasText: /reader request failed|could not be opened/i })).toHaveCount(0);
+	expect(await databaseRows(page, 'files')).toHaveLength(1);
+	expect(await databaseRows(page, 'books')).toHaveLength(1);
+});
+
+test('a file denial evicts cached book metadata when no downloaded file remains', async ({ page }) => {
+	const state = await setup(page);
+	await download(page);
+	expect(await databaseRows(page, 'files')).toHaveLength(1);
+	await clearStore(page, 'files');
+	state.fileDenial = 403;
+	await page.goto('/read/21/31');
 	await expect(page.getByRole('alert').filter({ hasText: /reader request failed|could not be opened/i }).first()).toBeVisible();
-	await expect.poll(async () => (await databaseRows(page, 'files')).length).toBe(0);
-	expect(await databaseRows(page, 'books')).toEqual([]);
+	await expect.poll(async () => (await databaseRows(page, 'books')).length).toBe(0);
 	await expect(page.getByText('First PDF page text')).toHaveCount(0);
 });
 

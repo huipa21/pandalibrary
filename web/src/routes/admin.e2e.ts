@@ -149,14 +149,17 @@ test('Users searches all pages and exposes selection-aware actions above numbere
 	await expect(page.getByRole('toolbar')).toHaveCount(0);
 });
 
-test('creates a server backup and stages a confirmed replacement restore', async ({ page }) => {
+test('creates an encrypted server backup and stages a confirmed replacement restore', async ({ page }) => {
 	await authenticate(page);
-	const backup = { name: 'pandalibrary-test.tar.gz', size_bytes: 1048576, created_at: stamp };
+	const passphrase = 'correct horse battery staple';
+	const backup = { name: 'pandalibrary-test.tar.gz.age', size_bytes: 1048576, created_at: stamp, encrypted: true };
 	let created = false;
 	let pending = false;
+	let createBody: unknown;
 	let restoreBody: unknown;
 	await page.route('**/api/v1/admin/backups', (route) => {
 		if (route.request().method() === 'POST') {
+			createBody = route.request().postDataJSON();
 			created = true;
 			return route.fulfill({ status: 201, json: { backup } });
 		}
@@ -170,25 +173,35 @@ test('creates a server backup and stages a confirmed replacement restore', async
 	await page.goto('/admin/backup');
 	await expect(page.getByText('No backups saved on this server.')).toBeVisible();
 	await page.getByRole('button', { name: 'Create backup', exact: true }).click();
-	await expect(page.getByText(`Backup saved on the server: ${backup.name}`)).toBeVisible();
+	const createDialog = page.getByRole('dialog', { name: 'Create encrypted backup' });
+	await createDialog.getByLabel('Backup passphrase').fill(passphrase);
+	await createDialog.getByLabel('Confirm passphrase').fill(passphrase);
+	await createDialog.getByRole('button', { name: 'Create encrypted backup' }).click();
+	await expect(page.getByText(`Encrypted backup saved on the server: ${backup.name}`)).toBeVisible();
+	expect(createBody).toEqual({ passphrase });
 	const row = page.getByRole('row').filter({ hasText: backup.name });
 	await expect(row.getByRole('cell', { name: '1.00 MiB' })).toBeVisible();
 	await expect(row.getByRole('link', { name: `Download ${backup.name}` })).toHaveAttribute('href', `/api/v1/admin/backups/${backup.name}`);
-	await confirmInApp(page, () => row.getByRole('button', { name: `Restore ${backup.name}` }).click(), false);
+	await row.getByRole('button', { name: `Restore ${backup.name}` }).click();
+	const restoreDialog = page.getByRole('dialog', { name: 'Restore backup' });
+	await restoreDialog.getByRole('button', { name: 'Cancel' }).click();
 	expect(restoreBody).toBeUndefined();
-	await confirmInApp(page, () => row.getByRole('button', { name: `Restore ${backup.name}` }).click());
+	await row.getByRole('button', { name: `Restore ${backup.name}` }).click();
+	await restoreDialog.getByLabel('Backup passphrase').fill(passphrase);
+	await restoreDialog.getByRole('button', { name: 'Restore backup' }).click();
 	await expect(page.getByText('Restore is staged. Restart the PandaLibrary server to apply it. Data has not been replaced yet.')).toBeVisible();
-	expect(restoreBody).toEqual({ name: backup.name, confirm: true });
+	expect(restoreBody).toEqual({ name: backup.name, confirm: true, passphrase });
 	await expect(page.getByRole('button', { name: 'Create backup', exact: true })).toBeDisabled();
 	await page.reload();
 	await expect(page.getByText('Restore is staged. Restart the PandaLibrary server to apply it. Data has not been replaced yet.')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Upload and restore', exact: true })).toBeDisabled();
 });
 
-test('uploads a backup for restore and reports invalid archives without staging', async ({ page }) => {
+test('uploads an encrypted backup for restore and reports invalid archives without staging', async ({ page }) => {
 	await authenticate(page);
 	await page.route('**/api/v1/admin/backups', (route) =>
 		route.fulfill({ json: { backups: [], restore_pending: false } }));
+	const passphrase = 'correct horse battery staple';
 	let multipart = '';
 	await page.route('**/api/v1/admin/backups/restore', (route) => {
 		multipart = route.request().postData() ?? '';
@@ -196,14 +209,18 @@ test('uploads a backup for restore and reports invalid archives without staging'
 	});
 	await page.goto('/admin/backup');
 	await page.getByRole('button', { name: 'Upload and restore', exact: true }).click();
-	await expect(page.getByText('Choose a non-empty PandaLibrary .tar.gz backup file.')).toBeVisible();
-	await page.getByLabel('Backup archive (.tar.gz)').setInputFiles({
-		name: 'saved.tar.gz', mimeType: 'application/gzip', buffer: Buffer.from('not a real archive')
+	await expect(page.getByText('Choose a non-empty PandaLibrary .tar.gz.age or .tar.gz backup file.')).toBeVisible();
+	await page.getByLabel('Backup archive (.tar.gz.age or legacy .tar.gz)').setInputFiles({
+		name: 'saved.tar.gz.age', mimeType: 'application/octet-stream', buffer: Buffer.from('not a real archive')
 	});
-	await confirmInApp(page, () => page.getByRole('button', { name: 'Upload and restore', exact: true }).click());
+	await page.getByRole('button', { name: 'Upload and restore', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Restore backup' });
+	await dialog.getByLabel('Backup passphrase').fill(passphrase);
+	await dialog.getByRole('button', { name: 'Restore backup' }).click();
 	await expect(page.getByRole('alert')).toContainText('This backup is invalid, damaged, incompatible, or cannot be restored safely.');
-	expect(multipart).toContain('name="file"; filename="saved.tar.gz"');
+	expect(multipart).toContain('name="file"; filename="saved.tar.gz.age"');
 	expect(multipart).toContain('name="confirm"\r\n\r\ntrue');
+	expect(multipart).toContain('name="passphrase"\r\n\r\n' + passphrase);
 	await expect(page.getByRole('button', { name: 'Create backup', exact: true })).toBeEnabled();
 	await expect(page.getByText('Restore is staged.', { exact: false })).toHaveCount(0);
 });

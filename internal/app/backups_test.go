@@ -32,7 +32,8 @@ func TestStartupAppliesRestoreOnlyAfterPreviousApplicationStops(t *testing.T) {
 		first.close()
 		t.Fatal(err)
 	}
-	snapshot, err := service.Create(ctx)
+	const passphrase = "correct horse battery staple"
+	snapshot, err := service.Create(ctx, passphrase)
 	if err != nil {
 		first.close()
 		t.Fatal(err)
@@ -42,7 +43,7 @@ func TestStartupAppliesRestoreOnlyAfterPreviousApplicationStops(t *testing.T) {
 		first.close()
 		t.Fatal(err)
 	}
-	err = service.Stage(ctx, file)
+	err = service.Stage(ctx, file, passphrase)
 	file.Close()
 	if err != nil {
 		first.close()

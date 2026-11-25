@@ -190,6 +190,29 @@ func runUserWithPrompt(args []string, stdout, stderr io.Writer, prompt passwordP
 	return err
 }
 
+func readPassphraseFile(name string) (string, error) {
+	file, err := os.Open(name)
+	if err != nil {
+		return "", fmt.Errorf("read passphrase file: %w", err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, backup.MaxPassphraseBytes+3))
+	if err != nil {
+		return "", fmt.Errorf("read passphrase file: %w", err)
+	}
+	if len(data) > backup.MaxPassphraseBytes+2 {
+		return "", errors.New("passphrase file is too large")
+	}
+	passphrase := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r")
+	if passphrase == "" {
+		return "", errors.New("passphrase file is empty")
+	}
+	if len(passphrase) > backup.MaxPassphraseBytes {
+		return "", errors.New("passphrase file is too large")
+	}
+	return passphrase, nil
+}
+
 func readPasswordFromTerminal(prompt string) (string, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return "", errors.New("secure password input requires an interactive terminal")
@@ -308,11 +331,16 @@ func databasePath() string {
 	return filepath.Join(dataDir, "pandalibrary.db")
 }
 
-func runRestore(args []string, stdout, stderr io.Writer) (returnErr error) {
+func runRestore(args []string, stdout, stderr io.Writer) error {
+	return runRestoreWithPrompt(args, stdout, stderr, readPasswordFromTerminal)
+}
+
+func runRestoreWithPrompt(args []string, stdout, stderr io.Writer, prompt passwordPrompt) (returnErr error) {
 	flags := flag.NewFlagSet("restore", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	filename := flags.String("file", "", "full-data .tar.gz archive")
+	filename := flags.String("file", "", "full-data .tar.gz.age archive, or legacy .tar.gz archive")
 	dataDir := flags.String("data-dir", filepath.Dir(databasePath()), "target data directory")
+	passphraseFile := flags.String("passphrase-file", "", "read the backup passphrase from this file")
 	confirm := flags.Bool("confirm", false, "confirm replacement of all app data on next startup")
 	if err := flags.Parse(args); errors.Is(err, flag.ErrHelp) {
 		return nil
@@ -320,7 +348,23 @@ func runRestore(args []string, stdout, stderr io.Writer) (returnErr error) {
 		return err
 	}
 	if *filename == "" || !*confirm || flags.NArg() != 0 {
-		return errors.New("usage: pandalibrary restore --file <archive.tar.gz> --data-dir <directory> --confirm (server must be stopped)")
+		return errors.New("usage: pandalibrary restore --file <archive.tar.gz.age> --data-dir <directory> --confirm [--passphrase-file <file>] (server must be stopped)")
+	}
+	encrypted, err := backup.IsEncryptedFile(*filename)
+	if err != nil {
+		return err
+	}
+	var passphrase string
+	if *passphraseFile != "" {
+		passphrase, err = readPassphraseFile(*passphraseFile)
+		if err != nil {
+			return err
+		}
+	} else if encrypted {
+		passphrase, err = prompt("Backup passphrase")
+		if err != nil {
+			return err
+		}
 	}
 	cfg, err := config.Parse([]string{"--data-dir", *dataDir}, stderr)
 	if err != nil {
@@ -340,7 +384,7 @@ func runRestore(args []string, stdout, stderr io.Writer) (returnErr error) {
 		return err
 	}
 	defer func() { returnErr = errors.Join(returnErr, file.Close()) }()
-	if err := service.Stage(context.Background(), file); err != nil {
+	if err := service.Stage(context.Background(), file, passphrase); err != nil {
 		return err
 	}
 	_, err = fmt.Fprintln(stdout, "Restore validated and staged. Restart required: start PandaLibrary with the same data/drop/bookheap configuration to apply it.")

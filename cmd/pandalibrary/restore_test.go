@@ -98,11 +98,16 @@ func TestRestoreCommandStagesOfflineAndRequiresConfirmation(t *testing.T) {
 		databases.Close()
 		t.Fatal(err)
 	}
-	info, createErr := service.Create(ctx)
+	const passphrase = "correct horse battery staple"
+	passphraseFile := filepath.Join(t.TempDir(), "passphrase.txt")
+	if err := os.WriteFile(passphraseFile, []byte(passphrase+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, createErr := service.Create(ctx, passphrase)
 	if err := errors.Join(createErr, databases.Close()); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"restore", "--file", filepath.Join(dir, "backups", info.Name), "--data-dir", dir}
+	args := []string{"restore", "--file", filepath.Join(dir, "backups", info.Name), "--data-dir", dir, "--passphrase-file", passphraseFile}
 	var stdout, stderr bytes.Buffer
 	if err := run(args, &stdout, &stderr); err == nil {
 		t.Fatal("restore accepted without confirmation")

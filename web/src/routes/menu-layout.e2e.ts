@@ -196,6 +196,7 @@ for (const theme of ['light', 'dark'] as const) {
 			await expect(page).toHaveURL(/status=ready/);
 
 			await page.goto('/notes');
+			await expect(main.getByRole('search', { name: 'Annotations search' })).toBeVisible();
 			const type = main.getByRole('combobox', { name: 'Annotation type' });
 			const search = main.getByRole('searchbox', { name: 'Search annotations', exact: true });
 			await expectGreenFocus(type);

@@ -52,6 +52,8 @@ func (h *backupHTTP) failure(w http.ResponseWriter, r *http.Request, err error) 
 		WriteProblem(w, h.logger, http.StatusRequestEntityTooLarge, "The backup exceeds the request size limit.")
 	case errors.Is(err, backup.ErrPending):
 		WriteProblem(w, h.logger, http.StatusConflict, "A restore is already staged. Restart the server to apply it.")
+	case errors.Is(err, backup.ErrPassphrase):
+		WriteProblem(w, h.logger, http.StatusBadRequest, "Backup passphrase is missing, too short, or incorrect.")
 	case errors.Is(err, backup.ErrInvalid):
 		h.logger.Warn("backup validation failed", "request_id", RequestID(r), "error", err)
 		WriteProblem(w, h.logger, http.StatusBadRequest, "Invalid, damaged, oversized, or incompatible backup archive.")
@@ -82,8 +84,20 @@ func (h *backupHTTP) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *backupHTTP) create(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	info, err := h.service.Create(ctx)
+	var body struct {
+		Passphrase string `json:"passphrase"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 4097))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "Supply a backup passphrase.")
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "Expected one JSON object.")
+		return
+	}
+	info, err := h.service.Create(r.Context(), body.Passphrase)
 	if err != nil {
 		h.failure(w, r, err)
 		return
@@ -108,7 +122,11 @@ func (h *backupHTTP) download(w http.ResponseWriter, r *http.Request) {
 		h.failure(w, r, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/gzip")
+	contentType := "application/gzip"
+	if strings.HasSuffix(name, ".age") {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	http.ServeContent(w, r, name, stat.ModTime(), file)
@@ -121,23 +139,26 @@ func (h *backupHTTP) restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input io.Reader
+	var passphrase string
 	var closeInput func()
 	switch kind {
 	case "application/json":
 		var body struct {
-			Name    string `json:"name"`
-			Confirm bool   `json:"confirm"`
+			Name       string `json:"name"`
+			Confirm    bool   `json:"confirm"`
+			Passphrase string `json:"passphrase"`
 		}
 		decoder := json.NewDecoder(io.LimitReader(r.Body, 4097))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&body); err != nil || !body.Confirm || body.Name == "" {
-			WriteProblem(w, h.logger, http.StatusBadRequest, "Supply {\"name\":\"full-…tar.gz\",\"confirm\":true}.")
+			WriteProblem(w, h.logger, http.StatusBadRequest, "Supply {\"name\":\"full-…tar.gz.age\",\"confirm\":true,\"passphrase\":\"…\"}.")
 			return
 		}
 		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 			WriteProblem(w, h.logger, http.StatusBadRequest, "Expected one JSON object.")
 			return
 		}
+		passphrase = body.Passphrase
 		file, err := h.service.Open(body.Name)
 		if err != nil {
 			h.failure(w, r, err)
@@ -151,7 +172,7 @@ func (h *backupHTTP) restore(w http.ResponseWriter, r *http.Request) {
 		}
 	case "multipart/form-data":
 		// Stream parts: ParseMultipartForm could spool private archives into the
-		// host's temporary directory. Confirmation must precede the file.
+		// host's temporary directory. Confirmation and passphrase precede the file.
 		reader, err := r.MultipartReader()
 		if err != nil {
 			WriteProblem(w, h.logger, http.StatusBadRequest, "Invalid multipart upload.")
@@ -168,7 +189,24 @@ func (h *backupHTTP) restore(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		part, err := reader.NextPart()
-		if err != nil || part.FormName() != "file" || part.FileName() == "" {
+		if err != nil {
+			WriteProblem(w, h.logger, http.StatusBadRequest, "Expected a passphrase or file part.")
+			return
+		}
+		if part.FormName() == "passphrase" {
+			value, readErr := io.ReadAll(io.LimitReader(part, backup.MaxPassphraseBytes+1))
+			if readErr != nil || len(value) > backup.MaxPassphraseBytes {
+				WriteProblem(w, h.logger, http.StatusBadRequest, "Backup passphrase is too large.")
+				return
+			}
+			passphrase = string(value)
+			part, err = reader.NextPart()
+			if err != nil {
+				WriteProblem(w, h.logger, http.StatusBadRequest, "Expected a file part.")
+				return
+			}
+		}
+		if part.FormName() != "file" || part.FileName() == "" {
 			WriteProblem(w, h.logger, http.StatusBadRequest, "Expected a file part.")
 			return
 		}
@@ -183,7 +221,7 @@ func (h *backupHTTP) restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer closeInput()
-	if err := h.service.Stage(r.Context(), input); err != nil {
+	if err := h.service.Stage(r.Context(), input, passphrase); err != nil {
 		h.failure(w, r, err)
 		return
 	}

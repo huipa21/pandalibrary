@@ -142,10 +142,14 @@ administrator setup plan.
 
 Persist `/data` across container replacement. The application stores the SQLite database,
 content-addressed book files, covers and annotation images, import drop folder, Bookheap folder, and backups
-there. The admin full-data backup API creates server-saved `.tar.gz` archives with a
+there. The admin full-data backup API creates server-saved encrypted `.tar.gz.age` archives with a
 consistent SQLite snapshot and all managed media, Bookheap, drop and import-staging
 files, including configured external folders. Download an off-site copy: archives
-contain private data and credentials and are not encrypted or automatically pruned.
+contain private data and credentials. Each new archive is encrypted with a
+passphrase supplied at creation, which is not stored by the server; without it
+the archive cannot be recovered. Keep the passphrase separate and store
+downloaded archives securely.
+Archives are not automatically pruned. Legacy `.tar.gz` archives remain restorable.
 The separate automatic maintenance job retains seven database-only backups.
 
 A bind mount such as `./data:/data` can be used instead of a named volume.
@@ -158,10 +162,13 @@ server is running.
 
 Full-data restore validates and stages an uploaded or server-saved archive; **restart
 is required**, and the next startup applies it before opening SQLite or starting workers.
-An offline alternative is `pandalibrary restore --data-dir /data --file full-backup.tar.gz
---confirm`, followed by normal startup with the same storage configuration. Existing
-backups are preserved. See [administration: backups](docs/user/administration.md#backups)
-for the exact API, limits, lifecycle, disk-space requirements and failure recovery.
+Encrypted archives require their passphrase. An offline alternative is
+`pandalibrary restore --data-dir /data --file full-backup.tar.gz.age
+--passphrase-file /secure/backup-passphrase --confirm`, or omit `--passphrase-file`
+to be prompted, followed by normal startup with the same storage configuration.
+Legacy `.tar.gz` archives can be restored without a passphrase. Existing backups are
+preserved. See [administration: backups](docs/user/administration.md#backups) for the
+exact API, limits, lifecycle, disk-space requirements and failure recovery.
 Version-1 archives require a binary with the same database schema. Never start an older
 binary against a database already upgraded by a newer release. Pre-migration
 database-only backups remain the separate migration rollback path.

@@ -60,7 +60,7 @@ func (s *Service) ApplyPending(ctx context.Context) (returnErr error) {
 		return err
 	}
 	defer func() { returnErr = errors.Join(returnErr, os.RemoveAll(work)) }()
-	if err := s.validate(ctx, pending, filepath.Join(work, "data")); err != nil {
+	if err := s.validate(ctx, pending, filepath.Join(work, "data"), ""); err != nil {
 		return fmt.Errorf("pending restore rejected; live data unchanged: %w", err)
 	}
 	j := journal{}

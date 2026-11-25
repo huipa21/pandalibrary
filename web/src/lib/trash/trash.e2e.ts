@@ -75,7 +75,9 @@ test('Trash restores mixed selections and permanently deletes a single remaining
 	await page.getByRole('button', { name: 'Toggle multi-select' }).click();
 	await page.getByRole('checkbox', { name: 'Select Deleted book', exact: true }).check();
 	await page.getByRole('checkbox', { name: 'Select Deleted annotation', exact: true }).check();
-	await page.getByRole('button', { name: 'Restore selected', exact: true }).click();
+	await confirmInApp(page, () =>
+		page.getByRole('button', { name: 'Restore selected', exact: true }).click()
+	);
 	await expect(page.getByTestId('trash-row')).toHaveCount(1);
 	expect(state.actions[0]).toEqual({ method: 'POST', items: [
 		{ id: '1', type: 'book' }, { id: 'note:1', type: 'annotation' }
@@ -91,7 +93,9 @@ test('Trash restores individually and confirms permanent group deletion with vis
 	const first = page.getByTestId('trash-row').filter({ hasText: 'Deleted book' });
 	await expect(first.getByRole('button', { name: 'Restore', exact: true }).locator('[data-icon="undo"]')).toBeVisible();
 	await expect(first.getByRole('button', { name: 'Delete permanently', exact: true }).locator('[data-icon="trash"]')).toBeVisible();
-	await first.getByRole('button', { name: 'Restore', exact: true }).click();
+	await confirmInApp(page, () =>
+		first.getByRole('button', { name: 'Restore', exact: true }).click()
+	);
 	await expect(page.getByTestId('trash-row')).toHaveCount(2);
 	expect(state.actions[0]).toEqual({ method: 'POST', items: [{ id: '1', type: 'book' }] });
 	await page.getByRole('button', { name: 'Toggle multi-select' }).click();
@@ -154,7 +158,9 @@ test('Trash explains review restore conflicts without losing the selected review
 	await page.getByRole('button', { name: 'Toggle multi-select' }).click();
 	const checkbox = page.getByRole('checkbox', { name: 'Select Old review', exact: true });
 	await checkbox.check();
-	await page.getByRole('button', { name: 'Restore selected', exact: true }).click();
+	await confirmInApp(page, () =>
+		page.getByRole('button', { name: 'Restore selected', exact: true }).click()
+	);
 	await expect(page.getByRole('alert')).toContainText('A newer review already exists for this book.');
 	await expect(page.getByRole('alert')).toContainText('permanently delete the old review from Trash');
 	await expect(checkbox).toBeChecked();
@@ -162,7 +168,9 @@ test('Trash explains review restore conflicts without losing the selected review
 	await expect(page.getByTestId('trash-row')).toHaveCount(1);
 	expect(state.actions[0]).toEqual({ method: 'POST', items: [{ id: 'review:42', type: 'annotation' }] });
 	state.errorDetail = 'parent highlight is deleted';
-	await page.getByRole('alert').getByRole('button', { name: 'Try again' }).click();
+	await confirmInApp(page, () =>
+		page.getByRole('alert').getByRole('button', { name: 'Try again' }).click()
+	);
 	await expect(page.getByRole('alert')).toContainText('The action failed');
 	await expect(page.getByRole('alert')).not.toContainText('A newer review');
 	await expect(checkbox).toBeChecked();
