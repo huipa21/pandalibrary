@@ -53,6 +53,10 @@ type calendar struct {
 }
 
 func parseCalendar(from, to, timezone string) (calendar, error) {
+	return parseCalendarSpan(from, to, timezone, maxDays)
+}
+
+func parseCalendarSpan(from, to, timezone string, max int) (calendar, error) {
 	invalid := func(detail string) (calendar, error) {
 		return calendar{}, fmt.Errorf("%w: %s", ErrInvalid, detail)
 	}
@@ -65,8 +69,8 @@ func parseCalendar(from, to, timezone string) (calendar, error) {
 		return invalid("to must be a YYYY-MM-DD date")
 	}
 	// UTC is used only for counting calendar labels, never local-day durations.
-	if last.Before(first) || last.Sub(first) >= maxDays*24*time.Hour {
-		return invalid("the inclusive range must contain 1 to 366 calendar days")
+	if last.Before(first) || last.Sub(first) >= time.Duration(max)*24*time.Hour {
+		return invalid(fmt.Sprintf("the inclusive range must contain 1 to %d calendar days", max))
 	}
 	location, err := LoadTimezone(timezone)
 	if err != nil {

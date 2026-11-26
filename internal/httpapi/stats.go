@@ -105,16 +105,26 @@ func (h *statsHTTP) history(w http.ResponseWriter, r *http.Request) {
 			valid = false
 		}
 	}
-	year, yearErr := strconv.Atoi(values.Get("year"))
+	all := values.Get("year") == "all"
+	year := 0
+	var yearErr error
+	if !all {
+		year, yearErr = strconv.Atoi(values.Get("year"))
+	}
 	limit, limitErr := strconv.Atoi(values.Get("limit"))
-	if !valid || yearErr != nil || limitErr != nil || values.Get("timezone") == "" ||
-		strconv.Itoa(year) != values.Get("year") || strconv.Itoa(limit) != values.Get("limit") {
-		WriteProblem(w, h.logger, http.StatusBadRequest, "Exactly one year, timezone, and limit, and at most one cursor are required.")
+	yearValid := all || (yearErr == nil && strconv.Itoa(year) == values.Get("year"))
+	if !valid || !yearValid || limitErr != nil || values.Get("timezone") == "" ||
+		strconv.Itoa(limit) != values.Get("limit") {
+		WriteProblem(w, h.logger, http.StatusBadRequest, "Exactly one year (YYYY or all), timezone, and limit, and at most one cursor are required.")
 		return
 	}
-	result, err := h.service.History(r.Context(), stats.Viewer{
-		UserID: user.ID, IsAdmin: user.Role == "admin",
-	}, year, values.Get("timezone"), limit, values.Get("cursor"))
+	viewer := stats.Viewer{UserID: user.ID, IsAdmin: user.Role == "admin"}
+	var result stats.HistoryResponse
+	if all {
+		result, err = h.service.HistoryAll(r.Context(), viewer, values.Get("timezone"), limit, values.Get("cursor"))
+	} else {
+		result, err = h.service.History(r.Context(), viewer, year, values.Get("timezone"), limit, values.Get("cursor"))
+	}
 	if err != nil {
 		if errors.Is(err, stats.ErrInvalid) {
 			WriteProblem(w, h.logger, http.StatusBadRequest, strings.TrimPrefix(err.Error(), "invalid stats request: "))

@@ -20,13 +20,24 @@ export interface HistoryMonth {
 	session_count: number;
 }
 
+export interface HistoryYear {
+	year: number;
+	books: number;
+	active_seconds: number;
+	session_count: number;
+}
+
+export type HistoryYearSelection = number | 'all';
+
 export interface HistorySummary {
 	books: number;
 	active_seconds: number;
 	session_count: number;
 	active_days: number;
-	/** All twelve calendar months, including months without activity. */
+	/** All twelve calendar months for a single year; empty for the all-history scope. */
 	months: HistoryMonth[];
+	/** Every year from the first visible history year through the current year; all-history scope only. */
+	years?: HistoryYear[];
 	records: {
 		busiest_day: { date: string; active_seconds: number; session_count: number } | null;
 		longest_session_seconds: number;
@@ -43,7 +54,7 @@ export interface HistoryPage {
 }
 
 export interface HistoryCache {
-	load(year: number, timeZone: string, cursor?: string | null, signal?: AbortSignal): Promise<HistoryPage>;
+	load(year: HistoryYearSelection, timeZone: string, cursor?: string | null, signal?: AbortSignal): Promise<HistoryPage>;
 	clear(): void;
 }
 
@@ -187,7 +198,9 @@ export function createHistoryCache(userId: number): HistoryCache {
 			if (!request) {
 				const controller = new AbortController();
 				const version = generation;
-				const params = new URLSearchParams({ year: String(year), timezone: timeZone, limit: '50' });
+				const params = new URLSearchParams({
+					year: year === 'all' ? 'all' : String(year), timezone: timeZone, limit: '50'
+				});
 				if (cursor !== null) params.set('cursor', cursor);
 				const next: PendingPage = {
 					controller,

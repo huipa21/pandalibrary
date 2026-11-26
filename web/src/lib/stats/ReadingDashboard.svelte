@@ -78,7 +78,7 @@
 		<header class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3">
 			<h2 class="text-base font-semibold text-slate-900">{title}</h2>
 			<div class="flex items-center gap-2">
-				<YearSelect {year} onchange={(value) => selectYear(track, value)} />
+				<YearSelect {year} onchange={(value) => { if (value !== 'all') selectYear(track, value); }} />
 				{#if track === 'weekdays' || track === 'hours'}
 					{@const habitTrack = track}
 					<label class="sr-only" for={`${habitTrack}-month`}>{m['stats.reading.month']()}</label>

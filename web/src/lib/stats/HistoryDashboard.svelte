@@ -10,14 +10,14 @@
 	import { browserTimeZone, formatCalendar, statsErrorKey } from './api.js';
 	import {
 		createHistoryCache, formatHistoryDuration,
-		type HistoryRow, type HistorySummary
+		type HistoryRow, type HistorySummary, type HistoryYearSelection
 	} from './history.js';
 	import YearSelect from './YearSelect.svelte';
 
 	const timeZone = browserTimeZone();
 	const initialYear = new Date().getFullYear();
-	let year = $state(initialYear);
-	let requestedYear = $state(initialYear);
+	let year = $state<HistoryYearSelection>(initialYear);
+	let requestedYear = $state<HistoryYearSelection>(initialYear);
 	let search = $state('');
 	let rows = $state<HistoryRow[]>([]);
 	let summary = $state<HistorySummary | null>(null);
@@ -45,7 +45,21 @@
 		}
 		return groups;
 	});
-	const peakMonth = $derived(Math.max(1, ...(summary?.months.map((month) => month.active_seconds) ?? [])));
+	const showingAll = $derived(requestedYear === 'all');
+	const chartBuckets = $derived.by(() => {
+		if (showingAll) {
+			return (summary?.years ?? []).filter((item) => item.active_seconds > 0).map((item) => ({
+				key: String(item.year), label: String(item.year), seconds: item.active_seconds
+			}));
+		}
+		return (summary?.months ?? []).map((item) => ({
+			key: item.month, label: monthLabel(item.month), seconds: item.active_seconds
+		}));
+	});
+	const hasChartData = $derived(chartBuckets.some((bucket) => bucket.seconds > 0));
+	// Fixed baselines keep short histories readable: 100 h for years, 10 h for months.
+	const chartScaleSeconds = $derived((showingAll ? 100 : 10) * 60 * 60);
+	const chartMaximum = $derived(Math.max(chartScaleSeconds, ...chartBuckets.map((bucket) => bucket.seconds)));
 
 	$effect(() => {
 		if (query && nextCursor !== null && !loading && !error) void loadMore();
@@ -126,7 +140,24 @@
 	}
 
 	function changeYear() {
-		if (Number.isInteger(year) && year >= 1 && year <= 9998) void reset();
+		if (year === 'all' || (Number.isInteger(year) && year >= 1 && year <= 9998)) void reset();
+	}
+
+	function emptyLabel(): string {
+		return requestedYear === 'all' ? m['history.empty_all']() : m['history.empty']({ year: requestedYear });
+	}
+
+	function endLabel(): string {
+		return requestedYear === 'all' ? m['history.end_all']() : m['history.end']({ year: requestedYear });
+	}
+
+	function summaryTitle(): string {
+		return requestedYear === 'all' ? m['history.all_summary']() : m['history.year_summary']({ year: requestedYear });
+	}
+
+	function chartHours(seconds: number): string {
+		const hours = Number.isFinite(seconds) && seconds > 0 ? seconds / 3600 : 0;
+		return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(hours)}h`;
 	}
 
 	function retry() {
@@ -154,7 +185,7 @@
 				<h1 id="history-heading">{m['organize.history']()}</h1>
 				<label for="history-search" class="sr-only">{m['history.search']()}</label>
 				<input id="history-search" type="search" placeholder={m['history.search']()} bind:value={search} />
-				<YearSelect year={year} label={m['history.year']()} class="history-year"
+				<YearSelect year={year} label={m['history.year']()} class="history-year" allLabel={m['history.all']()}
 					onchange={(value) => { year = value; changeYear(); }} />
 			</header>
 		<div class="waterfall" aria-busy={loading}>
@@ -208,7 +239,7 @@
 			{:else if loading}
 				<p use:showLoadingAfterDelay role="status" class="history-status">{m['stats.loading']()}</p>
 			{:else if summary && rows.length === 0}
-				<p role="status" class="history-status">{m['history.empty']({ year: requestedYear })}</p>
+				<p role="status" class="history-status">{emptyLabel()}</p>
 			{:else if summary && months.length === 0}
 				<p role="status" class="history-status">{m['history.search_empty']()}</p>
 			{/if}
@@ -220,14 +251,14 @@
 					</div>
 				{/key}
 			{:else if rows.length > 0 && !loading && !error}
-				<p class="history-status muted">{m['history.end']({ year: requestedYear })}</p>
+				<p class="history-status muted">{endLabel()}</p>
 			{/if}
 		</div>
 		</section>
 
 		{#if summary}
 			<aside class="year-summary card" aria-labelledby="year-summary-heading">
-				<h2 id="year-summary-heading">{m['history.year_summary']({ year: requestedYear })}</h2>
+				<h2 id="year-summary-heading">{summaryTitle()}</h2>
 				<section>
 					<h3>{m['history.totals']()}</h3>
 					<dl class="total-grid">
@@ -237,19 +268,41 @@
 						<div><dd>{number(summary.active_days)}</dd><dt>{m['stats.summary.active_days']()}</dt></div>
 					</dl>
 				</section>
-				<section>
-					<h3>{m['history.by_month']()}</h3>
-					<div class="month-chart" role="img" aria-label={m['history.month_chart']()}>
-						{#each summary.months as month (month.month)}
-							<div class="chart-column">
-								<div class="chart-track">
-									<div class="chart-bar" style:height={`${month.active_seconds > 0 ? Math.max(3, month.active_seconds / peakMonth * 100) : 0}%`}></div>
-								</div>
-								<span>{monthLabel(month.month)}</span>
+				{#if hasChartData}
+					<section>
+						<h3>{showingAll ? m['history.by_years']() : m['history.by_month']()}</h3>
+						{#if showingAll}
+							<div class="year-chart" role="img" aria-label={m['history.year_chart']()}>
+								{#each chartBuckets as bucket (bucket.key)}
+									<div class="year-chart-row" title={`${bucket.label}: ${formatHistoryDuration(bucket.seconds)}`}>
+										<div class="year-chart-meta">
+											<span class="year-chart-label">{bucket.label}</span>
+											<small class="year-chart-value">{chartHours(bucket.seconds)}</small>
+										</div>
+										<div class="year-chart-track">
+											<div class="year-chart-bar" style:width={`${bucket.seconds / chartMaximum * 100}%`}></div>
+										</div>
+									</div>
+								{/each}
 							</div>
-						{/each}
-					</div>
-				</section>
+						{:else}
+							<div class="month-chart" role="img" aria-label={m['history.month_chart']()}>
+								{#each chartBuckets as bucket (bucket.key)}
+									<div class="chart-column" title={bucket.seconds > 0 ? `${bucket.label}: ${formatHistoryDuration(bucket.seconds)}` : undefined}>
+										<div class="chart-track">
+											{#if bucket.seconds > 0}
+												<div class="chart-bar" style:height={`${bucket.seconds / chartMaximum * 100}%`}>
+													<small class="chart-value">{chartHours(bucket.seconds)}</small>
+												</div>
+											{/if}
+										</div>
+										<span>{bucket.label}</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</section>
+				{/if}
 				<section>
 					<h3>{m['history.records']()}</h3>
 					<dl class="records">
@@ -285,7 +338,7 @@
 	button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--shell-active); outline-offset: 3px; }
 	input { flex: 1; min-width: 8rem; width: 100%; }
 	:global(.history-year) { width: 6rem; margin-left: auto; }
-	.history-layout { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1.25rem; align-items: start; }
+	.history-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
 	.history-container { min-width: 0; overflow: hidden; }
 	.waterfall { min-width: 0; padding: 0 1rem; }
 	.history-month { margin-bottom: 1.5rem; }
@@ -314,17 +367,24 @@
 	.total-grid div { background: var(--shell-surface); padding: .7rem; }
 	.total-grid dt { font-size: .75rem; color: var(--shell-muted); }
 	.total-grid dd { font-size: 1rem; font-weight: 650; }
-	.month-chart { display: flex; gap: .1rem; margin-bottom: 1rem; }
-	.chart-column { flex: 1; min-width: 0; text-align: center; }
-	.chart-track { display: flex; align-items: end; height: 5rem; border-bottom: 1px solid var(--shell-border); }
-	.chart-bar { width: 100%; background: var(--shell-active); border-radius: 2px 2px 0 0; }
-	.chart-column span { font-size: .65rem; color: var(--shell-muted); }
+	.month-chart { display: flex; gap: .1rem; margin-bottom: 1rem; padding-top: 1rem; overflow-x: auto; }
+	.chart-column { flex: 1 1 0; min-width: 1.35rem; text-align: center; }
+	.chart-track { position: relative; display: flex; align-items: end; height: 5rem; border-bottom: 1px solid var(--shell-border); }
+	.chart-bar { position: relative; width: 100%; min-height: 1px; background: var(--shell-active); border-radius: 2px 2px 0 0; }
+	.chart-value { position: absolute; bottom: calc(100% + .15rem); left: 50%; transform: translateX(-50%); color: var(--shell-muted); font-size: .6rem; line-height: 1; white-space: nowrap; }
+	.chart-column > span { font-size: .65rem; color: var(--shell-muted); }
+	.year-chart { display: grid; gap: .65rem; margin-bottom: 1rem; }
+	.year-chart-row { display: grid; gap: .2rem; }
+	.year-chart-meta { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
+	.year-chart-label { color: var(--shell-muted); font-size: .65rem; font-variant-numeric: tabular-nums; }
+	.year-chart-track { height: .55rem; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--shell-border) 70%, transparent); }
+	.year-chart-bar { height: 100%; min-width: 1px; border-radius: inherit; background: var(--shell-active); }
+	.year-chart-value { color: var(--shell-muted); font-size: .6rem; text-align: right; white-space: nowrap; }
 	.records { font-size: .85rem; display: grid; gap: 1rem; }
 	.records dt { color: var(--shell-muted); font-size: .75rem; margin-bottom: .25rem; }
 	.records dd { overflow-wrap: anywhere; }
 	.records strong { display: block; font-size: .75rem; font-weight: 500; margin-top: .15rem; }
 	@media (max-width: 75rem) {
-		.history-layout { grid-template-columns: minmax(0, 1fr) 19rem; }
 		.history-row { grid-template-columns: 3.5rem 2.25rem minmax(0, 1fr) 7rem; gap: .5rem; }
 		.cover-link { width: 2.25rem; }
 		.row-total { padding-left: .5rem; }

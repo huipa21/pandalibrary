@@ -10,10 +10,17 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"pandalibrary/internal/db/sqlc"
 )
 
 //go:embed history.sql
 var historyQuery string
+
+// maxHistoryDays bounds the all-history calendar expansion. Normal reading
+// histories are far smaller; this prevents a corrupt future timestamp from
+// forcing an unbounded date list.
+const maxHistoryDays = 366 * 200
 
 type historyCursor struct {
 	Version  int    `json:"v"`
@@ -46,6 +53,50 @@ func (s *Service) History(ctx context.Context, viewer Viewer, year int, timezone
 	if err != nil {
 		return HistoryResponse{}, err
 	}
+	return s.history(ctx, viewer, year, timezone, limit, cursor, cal)
+}
+
+// HistoryAll returns rows and page-independent summaries for every visible
+// session, oldest year through the current year in the requested timezone.
+func (s *Service) HistoryAll(ctx context.Context, viewer Viewer, timezone string, limit int, cursor string) (HistoryResponse, error) {
+	invalid := func(detail string) (HistoryResponse, error) {
+		return HistoryResponse{}, fmt.Errorf("%w: %s", ErrInvalid, detail)
+	}
+	if viewer.UserID < 1 || limit < 1 || limit > 100 {
+		return invalid("limit must be 1..100 and viewer must be valid")
+	}
+	location, err := LoadTimezone(timezone)
+	if err != nil {
+		return HistoryResponse{}, err
+	}
+	now := time.Now().In(location)
+	var admin int64
+	if viewer.IsAdmin {
+		admin = 1
+	}
+	bounds, err := sqlc.New(s.reader).StatsHistoryBounds(ctx, sqlc.StatsHistoryBoundsParams{
+		EndAt: now.UnixMilli(), UserID: viewer.UserID, IsAdmin: admin,
+	})
+	if err != nil {
+		return HistoryResponse{}, fmt.Errorf("find stats history bounds: %w", err)
+	}
+	first := time.UnixMilli(bounds.StartAt).In(location)
+	if first.After(now) {
+		first = now
+	}
+	cal, err := parseCalendarSpan(
+		fmt.Sprintf("%04d-01-01", first.Year()), now.Format(time.DateOnly), timezone, maxHistoryDays,
+	)
+	if err != nil {
+		return HistoryResponse{}, err
+	}
+	return s.history(ctx, viewer, 0, timezone, limit, cursor, cal)
+}
+
+func (s *Service) history(ctx context.Context, viewer Viewer, year int, timezone string, limit int, cursor string, cal calendar) (HistoryResponse, error) {
+	invalid := func(detail string) (HistoryResponse, error) {
+		return HistoryResponse{}, fmt.Errorf("%w: %s", ErrInvalid, detail)
+	}
 	after := historyCursor{}
 	if cursor != "" {
 		if len(cursor) > 2048 {
@@ -64,7 +115,7 @@ func (s *Service) History(ctx context.Context, viewer Viewer, year int, timezone
 		date, dateErr := time.Parse(time.DateOnly, after.Date)
 		if decoder.Decode(&extra) != io.EOF || after.Version != 1 || after.Year != year ||
 			after.Timezone != timezone || after.UserID != viewer.UserID || after.Admin != viewer.IsAdmin ||
-			dateErr != nil || date.Year() != year || date.Format(time.DateOnly) != after.Date ||
+			dateErr != nil || (year != 0 && date.Year() != year) || date.Format(time.DateOnly) != after.Date ||
 			after.BookID < 1 || after.Cycle < 1 {
 			return invalid("history cursor is invalid or belongs to another request")
 		}
@@ -108,18 +159,26 @@ func (s *Service) History(ctx context.Context, viewer Viewer, year int, timezone
 	if err := json.Unmarshal([]byte(summary), &result.Summary); err != nil {
 		return HistoryResponse{}, fmt.Errorf("decode history summary: %w", err)
 	}
-	months := make([]HistoryMonth, 12)
-	for i := range months {
-		months[i].Month = fmt.Sprintf("%04d-%02d", year, i+1)
-	}
-	for _, month := range result.Summary.Months {
-		parsed, err := time.Parse("2006-01", month.Month)
-		if err != nil || parsed.Year() != year {
-			return HistoryResponse{}, fmt.Errorf("invalid history month %q", month.Month)
+	if year == 0 {
+		result.Summary.Months = []HistoryMonth{}
+		result.Summary.Years = fillHistoryYears(
+			result.Summary.Years, historyCalendarYear(cal.days[0].Date), historyCalendarYear(cal.days[len(cal.days)-1].Date),
+		)
+	} else {
+		result.Summary.Years = nil
+		months := make([]HistoryMonth, 12)
+		for i := range months {
+			months[i].Month = fmt.Sprintf("%04d-%02d", year, i+1)
 		}
-		months[int(parsed.Month())-1] = month
+		for _, month := range result.Summary.Months {
+			parsed, err := time.Parse("2006-01", month.Month)
+			if err != nil || parsed.Year() != year {
+				return HistoryResponse{}, fmt.Errorf("invalid history month %q", month.Month)
+			}
+			months[int(parsed.Month())-1] = month
+		}
+		result.Summary.Months = months
 	}
-	result.Summary.Months = months
 	if len(queryRows) > limit {
 		queryRows = queryRows[:limit]
 		last := queryRows[len(queryRows)-1]
@@ -137,4 +196,26 @@ func (s *Service) History(ctx context.Context, viewer Viewer, year int, timezone
 		result.Items = append(result.Items, row.HistoryRow)
 	}
 	return result, nil
+}
+
+func historyCalendarYear(date string) int {
+	parsed, _ := time.Parse(time.DateOnly, date)
+	return parsed.Year()
+}
+
+func fillHistoryYears(years []HistoryYear, first, last int) []HistoryYear {
+	if last < first {
+		return []HistoryYear{}
+	}
+	byYear := make(map[int]HistoryYear, len(years))
+	for _, year := range years {
+		byYear[year.Year] = year
+	}
+	filled := make([]HistoryYear, 0, last-first+1)
+	for year := first; year <= last; year++ {
+		entry := byYear[year]
+		entry.Year = year
+		filled = append(filled, entry)
+	}
+	return filled
 }

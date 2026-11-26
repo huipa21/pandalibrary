@@ -92,6 +92,16 @@ describe('history page cache', () => {
 		);
 	});
 
+	it('uses the all-history scope in the request URL', async () => {
+		const result = page();
+		const request = vi.spyOn(api, 'request').mockResolvedValue(result);
+		expect(await createHistoryCache(1).load('all', 'UTC')).toEqual(result);
+		expect(request).toHaveBeenCalledExactlyOnceWith(
+			'/stats/history?year=all&timezone=UTC&limit=50',
+			{ method: 'GET', signal: expect.any(AbortSignal), cache: 'no-store' }
+		);
+	});
+
 	it('separates cursor, year and timezone and preserves opaque cursor characters', async () => {
 		const request = vi.spyOn(api, 'request').mockResolvedValue(page());
 		const cache = createHistoryCache(1);

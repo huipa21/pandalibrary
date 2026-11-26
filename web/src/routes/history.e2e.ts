@@ -30,6 +30,18 @@ function summary(selectedYear = year, empty = false): HistorySummary {
 	};
 }
 
+function allSummary(): HistorySummary {
+	return {
+		...summary(year),
+		months: [],
+		years: [
+			{ year: year - 2, books: 0, active_seconds: 0, session_count: 0 },
+			{ year: year - 1, books: 2, active_seconds: 3600, session_count: 2 },
+			{ year, books: 60, active_seconds: 37200, session_count: 120 }
+		]
+	};
+}
+
 async function setup(page: Page) {
 	const state = { requests: [] as string[], failNext: false };
 	await page.route('**/api/v1/**', async (route) => {
@@ -50,7 +62,15 @@ async function setup(page: Page) {
 				state.failNext = false;
 				return route.fulfill({ status: 503, json: { title: 'Temporarily unavailable' } });
 			}
-			const selectedYear = Number(url.searchParams.get('year'));
+			const requestedYear = url.searchParams.get('year');
+			if (requestedYear === 'all') {
+				const response: HistoryPage = {
+					year: 0, timezone: url.searchParams.get('timezone')!, items: [], next_cursor: null,
+					summary: allSummary()
+				};
+				return route.fulfill({ json: response });
+			}
+			const selectedYear = Number(requestedYear);
 			const empty = selectedYear !== year;
 			const more = url.searchParams.has('cursor');
 			const response: HistoryPage = {
@@ -70,6 +90,34 @@ async function setup(page: Page) {
 	return state;
 }
 
+test('all-history years use horizontal rows and omit empty years', async ({ page }) => {
+	await setup(page);
+	await page.goto('/stats/history');
+	await page.getByRole('combobox', { name: 'Year' }).selectOption('all');
+	const panel = page.getByRole('complementary', { name: 'All history summary' });
+	await expect(panel.locator('.year-chart-row')).toHaveCount(2);
+	await expect(panel.locator('.year-chart-label')).toHaveText([String(year - 1), String(year)]);
+	await expect(panel.locator('.year-chart-value')).toHaveText(['1h', '10.3h']);
+	await expect(panel.locator('.chart-column')).toHaveCount(0);
+	const chartSection = panel.locator('section').filter({ hasText: 'By year' });
+	const headingBox = await chartSection.getByRole('heading', { name: 'By year', exact: true }).boundingBox();
+	const labelBox = await chartSection.locator('.year-chart-label').first().boundingBox();
+	const trackBox = await chartSection.locator('.year-chart-track').first().boundingBox();
+	expect(headingBox).not.toBeNull();
+	expect(labelBox).not.toBeNull();
+	expect(trackBox).not.toBeNull();
+	expect(labelBox!.x).toBeCloseTo(headingBox!.x, 0);
+	expect(trackBox!.x).toBeCloseTo(headingBox!.x, 0);
+	const ratios = await panel.locator('.year-chart-row').evaluateAll((rows) => rows.map((row) => {
+		const track = row.querySelector('.year-chart-track')!.getBoundingClientRect();
+		const bar = row.querySelector('.year-chart-bar')!.getBoundingClientRect();
+		return bar.width / track.width;
+	}));
+	expect(ratios[0]).toBeLessThan(0.02);
+	expect(ratios[1]).toBeGreaterThan(0.08);
+	expect(ratios[1]).toBeLessThan(0.15);
+});
+
 test('history groups months, completes split days, and reuses locally cached pages', async ({ page }) => {
 	const state = await setup(page);
 	await page.goto('/stats/history');
@@ -78,6 +126,17 @@ test('history groups months, completes split days, and reuses locally cached pag
 	const panel = page.getByRole('complementary', { name: `${year} Summary` });
 	await expect(panel.getByText('60', { exact: true })).toBeVisible();
 	await expect(panel.getByText('10 h 20 m', { exact: true })).toBeVisible();
+	await expect(panel.locator('.chart-column')).toHaveCount(12);
+	await expect(panel.locator('.chart-bar')).toHaveCount(2);
+	await expect(panel.locator('.chart-value')).toHaveText(['2h', '8.3h']);
+	await expect(panel.locator('.chart-column').first().locator('.chart-value')).toHaveCount(0);
+	const monthRatio = await panel.locator('.chart-column').nth(10).evaluate((column) => {
+		const track = column.querySelector('.chart-track')!.getBoundingClientRect();
+		const bar = column.querySelector('.chart-bar')!.getBoundingClientRect();
+		return bar.height / track.height;
+	});
+	expect(monthRatio).toBeGreaterThan(0.75);
+	expect(monthRatio).toBeLessThan(0.9);
 	await expect(page.getByText('Day total', { exact: true })).toHaveCount(0);
 	await expect(page.getByRole('heading', { name: `Nov ${year}`, exact: true })).toHaveCount(1);
 	await expect(page.getByText('52 books · 104 sessions · 8 h 20 m')).toBeVisible();

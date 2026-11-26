@@ -89,6 +89,13 @@ CAST(json_object(
     'months', json((SELECT json_group_array(json_object(
         'month', month, 'books', books, 'active_seconds', active_seconds, 'session_count', session_count
     )) FROM monthly)),
+    'years', json((SELECT json_group_array(json_object(
+        'year', year, 'books', books, 'active_seconds', active_seconds, 'session_count', session_count
+    )) FROM (
+        SELECT CAST(SUBSTR(date, 1, 4) AS INTEGER) AS year, COUNT(DISTINCT book_id) AS books,
+               SUM(active_seconds) AS active_seconds, COUNT(*) AS session_count
+        FROM visible_sessions GROUP BY year ORDER BY year
+    ))),
     'records', json_object(
         'busiest_day', json((SELECT json_object(
             'date', date, 'active_seconds', active_seconds, 'session_count', session_count

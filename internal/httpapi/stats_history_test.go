@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"pandalibrary/internal/auth"
 	"pandalibrary/internal/stats"
@@ -76,6 +77,25 @@ func TestStatsHistoryHTTPContractAndAuthentication(t *testing.T) {
 		first.Items[0].Date <= second.Items[0].Date || first.Summary.SessionCount != 2 ||
 		first.Summary.ActiveSeconds != 180 || !reflect.DeepEqual(first.Summary, second.Summary) {
 		t.Fatalf("pages = %+v / %+v", first, second)
+	}
+}
+
+func TestStatsHistoryHTTPAllScope(t *testing.T) {
+	f := newStatsHTTPFixture(t)
+	response := authRequest(t, f.router, http.MethodGet,
+		"/api/v1/stats/history?year=all&timezone=UTC&limit=1", nil, f.cookie)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("all history = %d %s", response.Code, response.Body.String())
+	}
+	var got stats.HistoryResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	current := time.Now().UTC().Year()
+	if got.Year != 0 || len(got.Items) != 1 || got.Summary.SessionCount != 1 ||
+		len(got.Summary.Months) != 0 || len(got.Summary.Years) == 0 ||
+		got.Summary.Years[len(got.Summary.Years)-1].Year != current {
+		t.Fatalf("all history = %+v", got)
 	}
 }
 

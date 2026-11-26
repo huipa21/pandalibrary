@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHistoryLocalDays(t *testing.T) {
@@ -326,5 +327,44 @@ func TestHistoryValidationEmptyAndCursorBinding(t *testing.T) {
 	cancel()
 	if _, err := f.service.History(ctx, viewer, 2026, "UTC", 1, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled request: %v", err)
+	}
+}
+
+func TestHistoryAllYearsSummaryAndPagination(t *testing.T) {
+	f := newStatsFixture(t)
+	current := time.Now().UTC().Year()
+	first := current - 3
+	f.session(t, 2, 101, instant(t, fmt.Sprintf("%d-06-01T12:00:00Z", first)), 60)
+	f.session(t, 2, 104, instant(t, fmt.Sprintf("%d-01-01T00:00:00Z", current)), 180)
+
+	got, err := f.service.HistoryAll(context.Background(), Viewer{UserID: 2}, "UTC", 1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Year != 0 || len(got.Items) != 1 || got.NextCursor == nil ||
+		len(got.Summary.Months) != 0 || len(got.Summary.Years) != current-first+1 ||
+		got.Summary.Books != 2 || got.Summary.ActiveSeconds != 240 ||
+		got.Summary.SessionCount != 2 || got.Summary.ActiveDays != 2 {
+		t.Fatalf("all history = %+v", got)
+	}
+	if got.Summary.Years[0] != (HistoryYear{Year: first, Books: 1, ActiveSeconds: 60, SessionCount: 1}) ||
+		got.Summary.Years[len(got.Summary.Years)-1] != (HistoryYear{Year: current, Books: 1, ActiveSeconds: 180, SessionCount: 1}) {
+		t.Fatalf("year buckets = %+v", got.Summary.Years)
+	}
+	for i, year := range got.Summary.Years {
+		if year.Year != first+i {
+			t.Fatalf("year %d = %+v", i, year)
+		}
+		if i > 0 && i < len(got.Summary.Years)-1 && year != (HistoryYear{Year: first + i}) {
+			t.Fatalf("empty year %d = %+v", i, year)
+		}
+	}
+
+	second, err := f.service.HistoryAll(context.Background(), Viewer{UserID: 2}, "UTC", 10, *got.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Items) != 1 || second.NextCursor != nil || !reflect.DeepEqual(second.Summary, got.Summary) {
+		t.Fatalf("second all-history page = %+v", second)
 	}
 }

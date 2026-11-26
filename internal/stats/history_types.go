@@ -1,7 +1,8 @@
 package stats
 
-// HistoryResponse is a local-calendar year of reading, with a bounded page of
-// date/book/cycle rows and page-independent aggregates.
+// HistoryResponse is a local-calendar slice of reading, with a bounded page of
+// date/book/cycle rows and page-independent aggregates. Year is zero for the
+// all-history scope.
 type HistoryResponse struct {
 	Year       int            `json:"year"`
 	Timezone   string         `json:"timezone"`
@@ -31,6 +32,7 @@ type HistorySummary struct {
 	SessionCount  int64          `json:"session_count"`
 	ActiveDays    int64          `json:"active_days"`
 	Months        []HistoryMonth `json:"months"`
+	Years         []HistoryYear  `json:"years,omitempty"`
 	Records       HistoryRecords `json:"records"`
 }
 
@@ -39,6 +41,14 @@ type HistoryMonth struct {
 	Books         int64  `json:"books"`
 	ActiveSeconds int64  `json:"active_seconds"`
 	SessionCount  int64  `json:"session_count"`
+}
+
+// HistoryYear is the all-history summary bucket for one calendar year.
+type HistoryYear struct {
+	Year          int   `json:"year"`
+	Books         int64 `json:"books"`
+	ActiveSeconds int64 `json:"active_seconds"`
+	SessionCount  int64 `json:"session_count"`
 }
 
 type HistoryRecords struct {
