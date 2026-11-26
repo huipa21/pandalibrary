@@ -249,25 +249,57 @@ func (q *Queries) ImportFinish(ctx context.Context, arg ImportFinishParams) erro
 }
 
 const importHistory = `-- name: ImportHistory :many
-SELECT id, source, library_id, user_id, original_name, sha256, status, error, book_id, duplicate_of_book_id, created_at, finished_at FROM import_jobs
-WHERE (CAST(?1 AS INTEGER) = 0 OR id < ?1)
-ORDER BY id DESC LIMIT ?2
+SELECT j.id, j.source, j.library_id, j.user_id, j.original_name, j.sha256,
+    j.status, j.error, j.book_id, j.duplicate_of_book_id, j.created_at, j.finished_at,
+    u.username AS uploaded_by,
+    b.title AS book_title,
+    CASE WHEN b.deleted_at IS NOT NULL THEN 1 ELSE 0 END AS book_deleted
+FROM import_jobs j
+LEFT JOIN users u ON u.id = j.user_id
+LEFT JOIN books b ON b.id = j.book_id
+WHERE (CAST(?1 AS INTEGER) = 0 OR j.id < ?1)
+  AND (CAST(?2 AS TEXT) = ''
+    OR instr(lower(COALESCE(b.title, j.original_name)), lower(?2)) > 0
+    OR instr(lower(j.original_name), lower(?2)) > 0
+    OR instr(lower(COALESCE(u.username, '')), lower(?2)) > 0
+    OR instr(lower(j.status), lower(?2)) > 0
+    OR instr(CAST(j.id AS TEXT), ?2) > 0)
+ORDER BY j.id DESC LIMIT ?3
 `
 
 type ImportHistoryParams struct {
 	BeforeID  int64
+	Search    string
 	PageLimit int64
 }
 
-func (q *Queries) ImportHistory(ctx context.Context, arg ImportHistoryParams) ([]ImportJob, error) {
-	rows, err := q.db.QueryContext(ctx, importHistory, arg.BeforeID, arg.PageLimit)
+type ImportHistoryRow struct {
+	ID                int64
+	Source            string
+	LibraryID         int64
+	UserID            sql.NullInt64
+	OriginalName      string
+	Sha256            sql.NullString
+	Status            string
+	Error             sql.NullString
+	BookID            sql.NullInt64
+	DuplicateOfBookID sql.NullInt64
+	CreatedAt         int64
+	FinishedAt        sql.NullInt64
+	UploadedBy        sql.NullString
+	BookTitle         sql.NullString
+	BookDeleted       int64
+}
+
+func (q *Queries) ImportHistory(ctx context.Context, arg ImportHistoryParams) ([]ImportHistoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, importHistory, arg.BeforeID, arg.Search, arg.PageLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ImportJob{}
+	items := []ImportHistoryRow{}
 	for rows.Next() {
-		var i ImportJob
+		var i ImportHistoryRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Source,
@@ -281,6 +313,9 @@ func (q *Queries) ImportHistory(ctx context.Context, arg ImportHistoryParams) ([
 			&i.DuplicateOfBookID,
 			&i.CreatedAt,
 			&i.FinishedAt,
+			&i.UploadedBy,
+			&i.BookTitle,
+			&i.BookDeleted,
 		); err != nil {
 			return nil, err
 		}

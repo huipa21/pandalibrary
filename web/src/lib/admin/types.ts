@@ -52,11 +52,14 @@ export interface ImportJob {
 	readonly source: string;
 	readonly library_id: number;
 	readonly user_id: number | null;
+	readonly uploaded_by: string | null;
 	readonly original_name: string;
 	readonly sha256: string | null;
 	readonly status: string;
 	readonly error: string | null;
 	readonly book_id: number | null;
+	readonly book_title: string | null;
+	readonly book_deleted: boolean;
 	readonly duplicate_of_book_id: number | null;
 	readonly created_at: string;
 	readonly finished_at: string | null;

@@ -79,9 +79,10 @@ func (q *Queries) ShelfAutomaticBookCount(ctx context.Context, arg ShelfAutomati
 }
 
 const shelfAutomaticBooks = `-- name: ShelfAutomaticBooks :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total, b.deleted_at FROM books b
 CROSS JOIN (SELECT CAST(?1 AS TEXT) AS sort_mode) browse
-WHERE (CAST(?2 AS INTEGER) = 0 OR b.library_id = ?2)
+WHERE b.deleted_at IS NULL
+AND (CAST(?2 AS INTEGER) = 0 OR b.library_id = ?2)
 AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?3
@@ -221,6 +222,7 @@ func (q *Queries) ShelfAutomaticBooks(ctx context.Context, arg ShelfAutomaticBoo
 			&i.AgeRating,
 			&i.ContentRating,
 			&i.SeriesTotal,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -399,9 +401,10 @@ func (q *Queries) ShelfUnshelvedBookCount(ctx context.Context, arg ShelfUnshelve
 }
 
 const shelfUnshelvedBooks = `-- name: ShelfUnshelvedBooks :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total, b.deleted_at FROM books b
 CROSS JOIN (SELECT CAST(?1 AS TEXT) AS sort_mode) browse
-WHERE (CAST(?2 AS INTEGER) = 0 OR b.library_id = ?2)
+WHERE b.deleted_at IS NULL
+AND (CAST(?2 AS INTEGER) = 0 OR b.library_id = ?2)
 AND (CAST(?3 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?3 OR (b.visibility = 'library' AND (CAST(?4 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?3
@@ -507,6 +510,7 @@ func (q *Queries) ShelfUnshelvedBooks(ctx context.Context, arg ShelfUnshelvedBoo
 			&i.AgeRating,
 			&i.ContentRating,
 			&i.SeriesTotal,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}

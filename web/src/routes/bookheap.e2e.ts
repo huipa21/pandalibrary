@@ -320,11 +320,9 @@ test('items selected across pages are assigned to a library and shelf and leave 
 	await page.goto('/search?q=BH5%20Alpha');
 	await expect(page.getByRole('link', { name: 'BH5 Alpha', exact: true }).first()).toBeVisible();
 	await page.goto('/admin/imports');
-	const history = page.getByRole('listitem').filter({
-		has: page.getByRole('heading', { name: 'BH5 Alpha.epub' })
-	});
-	await expect(history).toContainText('Bookheap');
-	await expect(history).toContainText('BH5 Library');
+	const history = page.getByRole('row').filter({ hasText: 'BH5 Alpha' });
+	await expect(history).toContainText('admin');
+	await expect(history.getByRole('link', { name: 'BH5 Alpha', exact: true })).toHaveAttribute('href', /^\/books\/\d+$/);
 });
 
 test('bulk Delete removes an invalid item and its file', async ({ page }) => {

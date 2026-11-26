@@ -4,9 +4,9 @@ import { uploadBookFile, waitForImport } from './files-api.js';
 
 function job(status: string): ImportJob {
 	return {
-		id: 7, source: 'upload', library_id: 1, user_id: 1, original_name: 'b.pdf', sha256: null, status,
-		error: null, book_id: status === 'imported' ? 21 : null, duplicate_of_book_id: null,
-		created_at: '2026-11-14T00:00:00Z', finished_at: null
+		id: 7, source: 'upload', library_id: 1, user_id: 1, uploaded_by: 'admin', original_name: 'b.pdf', sha256: null, status,
+		error: null, book_id: status === 'imported' ? 21 : null, book_title: status === 'imported' ? 'Book' : null,
+		book_deleted: false, duplicate_of_book_id: null, created_at: '2026-11-14T00:00:00Z', finished_at: null
 	};
 }
 

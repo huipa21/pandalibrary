@@ -256,7 +256,7 @@ func TestImportAtomicMetadataCoverAndConcurrentDuplicate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, err := f.service.History(context.Background(), admin, 0, 3)
+	page, err := f.service.History(context.Background(), admin, 0, 3, "")
 	if err != nil || len(page.Items) != 3 || page.NextCursor == nil {
 		t.Fatalf("history: %+v %v", page, err)
 	}

@@ -35,7 +35,7 @@ func ImportMount(service *importer.Service, catalogService *catalog.Service, aut
 }
 
 func (h *importHTTP) history(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
-	values, ok := h.catalog.query(w, r, "limit", "cursor")
+	values, ok := h.catalog.query(w, r, "limit", "cursor", "q")
 	if !ok {
 		return
 	}
@@ -55,7 +55,7 @@ func (h *importHTTP) history(w http.ResponseWriter, r *http.Request, viewer cata
 			return
 		}
 	}
-	page, err := h.service.History(r.Context(), viewer, before, options.Limit)
+	page, err := h.service.History(r.Context(), viewer, before, options.Limit, values.Get("q"))
 	if err != nil {
 		h.writeError(w, r, err)
 		return

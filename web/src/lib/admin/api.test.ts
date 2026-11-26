@@ -50,11 +50,14 @@ const job: ImportJob = {
 	source: 'upload',
 	library_id: 1,
 	user_id: 9,
+	uploaded_by: 'admin',
 	original_name: 'Book.epub',
 	sha256: null,
 	status: 'pending',
 	error: null,
 	book_id: null,
+	book_title: null,
+	book_deleted: false,
 	duplicate_of_book_id: null,
 	created_at: '2026-11-03T00:00:00Z',
 	finished_at: null
@@ -79,6 +82,7 @@ describe('admin paths', () => {
 		expect(params.get('limit')).toBe('100');
 		expect(buildHiddenBooksPath(5).startsWith('/admin/users/5/hidden-books?')).toBe(true);
 		expect(buildImportsPath({ cursor: '40' })).toBe('/imports?limit=50&cursor=40');
+		expect(buildImportsPath({ cursor: '40', q: ' Dune ' })).toBe('/imports?limit=50&cursor=40&q=Dune');
 	});
 });
 
@@ -160,8 +164,8 @@ describe('library and access requests', () => {
 
 	it('lists imports newest first with the server cursor', async () => {
 		const request = vi.spyOn(api, 'request').mockResolvedValue({ items: [job], next_cursor: null });
-		await listImports({ cursor: '12' });
-		expect(request.mock.calls[0][0]).toBe('/imports?limit=50&cursor=12');
+		await listImports({ cursor: '12', q: 'Dune' });
+		expect(request.mock.calls[0][0]).toBe('/imports?limit=50&cursor=12&q=Dune');
 	});
 });
 

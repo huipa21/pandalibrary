@@ -71,11 +71,14 @@ type Job struct {
 	Source            string     `json:"source"`
 	LibraryID         int64      `json:"library_id"`
 	UserID            *int64     `json:"user_id"`
+	UploadedBy        *string    `json:"uploaded_by"`
 	OriginalName      string     `json:"original_name"`
 	SHA256            *string    `json:"sha256"`
 	Status            string     `json:"status"`
 	Error             *string    `json:"error"`
 	BookID            *int64     `json:"book_id"`
+	BookTitle         *string    `json:"book_title"`
+	BookDeleted       bool       `json:"book_deleted"`
 	DuplicateOfBookID *int64     `json:"duplicate_of_book_id"`
 	CreatedAt         time.Time  `json:"created_at"`
 	FinishedAt        *time.Time `json:"finished_at"`
@@ -192,15 +195,18 @@ func (s *Service) enqueue(ctx context.Context, source string, libraryID, userID 
 	return s.enqueueWith(ctx, source, libraryID, userID, name, input, nil)
 }
 
-func (s *Service) History(ctx context.Context, viewer catalog.Viewer, before int64, limit int) (catalog.Page[Job], error) {
+func (s *Service) History(ctx context.Context, viewer catalog.Viewer, before int64, limit int, search string) (catalog.Page[Job], error) {
 	page := catalog.Page[Job]{Items: []Job{}}
 	if !viewer.IsAdmin || viewer.UserID < 1 {
 		return page, catalog.ErrForbidden
 	}
-	if before < 0 || limit < 1 || limit > 100 {
+	search = strings.TrimSpace(search)
+	if before < 0 || limit < 1 || limit > 100 || len(search) > 256 || !utf8.ValidString(search) {
 		return page, catalog.ErrInvalid
 	}
-	rows, err := sqlc.New(s.options.Reader).ImportHistory(ctx, sqlc.ImportHistoryParams{BeforeID: before, PageLimit: int64(limit + 1)})
+	rows, err := sqlc.New(s.options.Reader).ImportHistory(ctx, sqlc.ImportHistoryParams{
+		BeforeID: before, Search: search, PageLimit: int64(limit + 1),
+	})
 	if err != nil {
 		return page, err
 	}
@@ -210,13 +216,25 @@ func (s *Service) History(ctx context.Context, viewer catalog.Viewer, before int
 		rows = rows[:limit]
 	}
 	for _, row := range rows {
-		job := jobDTO(row)
-		for _, id := range []**int64{&job.BookID, &job.DuplicateOfBookID} {
-			if *id == nil {
-				continue
+		job := historyDTO(row)
+		// A purged book clears import_jobs.book_id through ON DELETE SET NULL. Imported
+		// jobs can only lose their book that way, so keep the row visibly deleted.
+		if job.Status == "imported" && job.BookID == nil {
+			job.BookDeleted = true
+		}
+		if job.BookID != nil {
+			if err := s.options.Catalog.CheckVisible(ctx, viewer, *job.BookID); errors.Is(err, catalog.ErrNotFound) {
+				job.BookID = nil
+				if !job.BookDeleted {
+					job.BookTitle = nil
+				}
+			} else if err != nil {
+				return page, err
 			}
-			if err := s.options.Catalog.CheckVisible(ctx, viewer, **id); errors.Is(err, catalog.ErrNotFound) {
-				*id = nil
+		}
+		if job.DuplicateOfBookID != nil {
+			if err := s.options.Catalog.CheckVisible(ctx, viewer, *job.DuplicateOfBookID); errors.Is(err, catalog.ErrNotFound) {
+				job.DuplicateOfBookID = nil
 			} else if err != nil {
 				return page, err
 			}
@@ -370,6 +388,15 @@ func jobDTO(row sqlc.ImportJob) Job {
 		Error: pointer(row.Error.String, row.Error.Valid), BookID: pointer(row.BookID.Int64, row.BookID.Valid),
 		DuplicateOfBookID: pointer(row.DuplicateOfBookID.Int64, row.DuplicateOfBookID.Valid), CreatedAt: time.UnixMilli(row.CreatedAt).UTC(),
 		FinishedAt: pointer(time.UnixMilli(row.FinishedAt.Int64).UTC(), row.FinishedAt.Valid)}
+}
+
+func historyDTO(row sqlc.ImportHistoryRow) Job {
+	return Job{ID: row.ID, Source: row.Source, LibraryID: row.LibraryID, UserID: pointer(row.UserID.Int64, row.UserID.Valid),
+		UploadedBy: pointer(row.UploadedBy.String, row.UploadedBy.Valid), OriginalName: row.OriginalName,
+		SHA256: pointer(row.Sha256.String, row.Sha256.Valid), Status: row.Status, Error: pointer(row.Error.String, row.Error.Valid),
+		BookID: pointer(row.BookID.Int64, row.BookID.Valid), BookTitle: pointer(row.BookTitle.String, row.BookTitle.Valid),
+		BookDeleted: row.BookDeleted != 0, DuplicateOfBookID: pointer(row.DuplicateOfBookID.Int64, row.DuplicateOfBookID.Valid),
+		CreatedAt: time.UnixMilli(row.CreatedAt).UTC(), FinishedAt: pointer(time.UnixMilli(row.FinishedAt.Int64).UTC(), row.FinishedAt.Valid)}
 }
 
 func (s *Service) safeError(err error) string {

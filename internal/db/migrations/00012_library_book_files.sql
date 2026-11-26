@@ -27,10 +27,24 @@ CREATE INDEX book_files_book_id ON book_files (book_id);
 CREATE INDEX book_files_sha256 ON book_files (sha256);
 CREATE INDEX book_files_koreader_md5 ON book_files (koreader_md5) WHERE koreader_md5 IS NOT NULL;
 
-UPDATE reading_progress SET book_file_id = s.book_file_id FROM saved_file_progress s WHERE reading_progress.user_id = s.user_id AND reading_progress.book_id = s.book_id;
-UPDATE highlights SET book_file_id = s.book_file_id FROM saved_file_highlights s WHERE highlights.seq = s.seq;
-UPDATE bookmarks SET book_file_id = s.book_file_id FROM saved_file_bookmarks s WHERE bookmarks.seq = s.seq;
-UPDATE page_annotations SET book_file_id = s.book_file_id FROM saved_file_annotations s WHERE page_annotations.seq = s.seq;
+UPDATE reading_progress
+SET book_file_id = (
+    SELECT s.book_file_id FROM saved_file_progress s
+    WHERE s.user_id = reading_progress.user_id AND s.book_id = reading_progress.book_id
+)
+WHERE EXISTS (
+    SELECT 1 FROM saved_file_progress s
+    WHERE s.user_id = reading_progress.user_id AND s.book_id = reading_progress.book_id
+);
+UPDATE highlights
+SET book_file_id = (SELECT s.book_file_id FROM saved_file_highlights s WHERE s.seq = highlights.seq)
+WHERE EXISTS (SELECT 1 FROM saved_file_highlights s WHERE s.seq = highlights.seq);
+UPDATE bookmarks
+SET book_file_id = (SELECT s.book_file_id FROM saved_file_bookmarks s WHERE s.seq = bookmarks.seq)
+WHERE EXISTS (SELECT 1 FROM saved_file_bookmarks s WHERE s.seq = bookmarks.seq);
+UPDATE page_annotations
+SET book_file_id = (SELECT s.book_file_id FROM saved_file_annotations s WHERE s.seq = page_annotations.seq)
+WHERE EXISTS (SELECT 1 FROM saved_file_annotations s WHERE s.seq = page_annotations.seq);
 DROP TABLE saved_file_progress;
 DROP TABLE saved_file_highlights;
 DROP TABLE saved_file_bookmarks;
@@ -62,10 +76,24 @@ ALTER TABLE book_files_v11 RENAME TO book_files;
 CREATE INDEX book_files_book_id ON book_files (book_id);
 CREATE INDEX book_files_koreader_md5 ON book_files (koreader_md5) WHERE koreader_md5 IS NOT NULL;
 
-UPDATE reading_progress SET book_file_id = s.book_file_id FROM saved_file_progress s WHERE reading_progress.user_id = s.user_id AND reading_progress.book_id = s.book_id;
-UPDATE highlights SET book_file_id = s.book_file_id FROM saved_file_highlights s WHERE highlights.seq = s.seq;
-UPDATE bookmarks SET book_file_id = s.book_file_id FROM saved_file_bookmarks s WHERE bookmarks.seq = s.seq;
-UPDATE page_annotations SET book_file_id = s.book_file_id FROM saved_file_annotations s WHERE page_annotations.seq = s.seq;
+UPDATE reading_progress
+SET book_file_id = (
+    SELECT s.book_file_id FROM saved_file_progress s
+    WHERE s.user_id = reading_progress.user_id AND s.book_id = reading_progress.book_id
+)
+WHERE EXISTS (
+    SELECT 1 FROM saved_file_progress s
+    WHERE s.user_id = reading_progress.user_id AND s.book_id = reading_progress.book_id
+);
+UPDATE highlights
+SET book_file_id = (SELECT s.book_file_id FROM saved_file_highlights s WHERE s.seq = highlights.seq)
+WHERE EXISTS (SELECT 1 FROM saved_file_highlights s WHERE s.seq = highlights.seq);
+UPDATE bookmarks
+SET book_file_id = (SELECT s.book_file_id FROM saved_file_bookmarks s WHERE s.seq = bookmarks.seq)
+WHERE EXISTS (SELECT 1 FROM saved_file_bookmarks s WHERE s.seq = bookmarks.seq);
+UPDATE page_annotations
+SET book_file_id = (SELECT s.book_file_id FROM saved_file_annotations s WHERE s.seq = page_annotations.seq)
+WHERE EXISTS (SELECT 1 FROM saved_file_annotations s WHERE s.seq = page_annotations.seq);
 DROP TABLE saved_file_progress;
 DROP TABLE saved_file_highlights;
 DROP TABLE saved_file_bookmarks;

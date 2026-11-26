@@ -30,7 +30,7 @@ func (q *Queries) AdminDeleteUser(ctx context.Context, id int64) error {
 }
 
 const adminListUsers = `-- name: AdminListUsers :many
-SELECT id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at FROM users
+SELECT id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at, email FROM users
 WHERE (CAST(?1 AS INTEGER) = 0
    OR username > ?2 COLLATE NOCASE
    OR (username = ?2 COLLATE NOCASE AND id > ?1))
@@ -70,13 +70,13 @@ func (q *Queries) AdminListUsers(ctx context.Context, arg AdminListUsersParams) 
 			&i.ID,
 			&i.Username,
 			&i.DisplayName,
-			&i.Email,
 			&i.PasswordHash,
 			&i.Role,
 			&i.Locale,
 			&i.Disabled,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Email,
 		); err != nil {
 			return nil, err
 		}
@@ -104,7 +104,7 @@ const adminUpdateUser = `-- name: AdminUpdateUser :one
 UPDATE users
 SET username = ?, display_name = ?, email = ?, role = ?, locale = ?, disabled = ?, updated_at = ?
 WHERE id = ?
-RETURNING id, username, display_name, email, password_hash, role, locale, disabled, created_at, updated_at
+RETURNING id, username, display_name, password_hash, role, locale, disabled, created_at, updated_at, email
 `
 
 type AdminUpdateUserParams struct {
@@ -134,13 +134,13 @@ func (q *Queries) AdminUpdateUser(ctx context.Context, arg AdminUpdateUserParams
 		&i.ID,
 		&i.Username,
 		&i.DisplayName,
-		&i.Email,
 		&i.PasswordHash,
 		&i.Role,
 		&i.Locale,
 		&i.Disabled,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Email,
 	)
 	return i, err
 }

@@ -238,7 +238,7 @@ func TestAssignImportsBooksOntoShelves(t *testing.T) {
 	if jobs := f.count(t, `SELECT count(*) FROM import_jobs WHERE source = 'bookheap' AND status = 'imported' AND user_id = 1`); jobs != 3 {
 		t.Fatalf("imported bookheap jobs = %d", jobs)
 	}
-	history, err := f.importer.History(ctx, admin, 0, 10)
+	history, err := f.importer.History(ctx, admin, 0, 10, "")
 	if err != nil || len(history.Items) != 3 || history.Items[0].Source != ImportSource {
 		t.Fatalf("history = %+v, %v", history, err)
 	}

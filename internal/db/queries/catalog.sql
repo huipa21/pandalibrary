@@ -116,8 +116,9 @@ ON CONFLICT (user_id, book_id) DO NOTHING;
 DELETE FROM book_hidden WHERE user_id = ? AND book_id = ?;
 
 -- name: CatalogGetBook :one
-SELECT b.* FROM active_books b
-WHERE b.id = sqlc.arg(book_id)
+SELECT b.* FROM books b
+WHERE b.deleted_at IS NULL
+AND b.id = sqlc.arg(book_id)
 AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
@@ -127,8 +128,9 @@ AND NOT EXISTS (
 );
 
 -- name: CatalogListBooksByTitle :many
-SELECT b.* FROM active_books b
-WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+SELECT b.* FROM books b
+WHERE b.deleted_at IS NULL
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
 )))))
@@ -150,8 +152,9 @@ ORDER BY b.sort_title, b.id
 LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: CatalogListBooksByAdded :many
-SELECT b.* FROM active_books b
-WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+SELECT b.* FROM books b
+WHERE b.deleted_at IS NULL
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
 )))))
@@ -173,8 +176,9 @@ ORDER BY b.created_at DESC, b.id DESC
 LIMIT CAST(sqlc.arg(page_size) AS INTEGER);
 
 -- name: CatalogListBooksBySeries :many
-SELECT b.* FROM active_books b
-WHERE (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
+SELECT b.* FROM books b
+WHERE b.deleted_at IS NULL
+AND (CAST(sqlc.arg(user_id) AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = sqlc.arg(user_id) OR (b.visibility = 'library' AND (CAST(sqlc.arg(is_admin) AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = sqlc.arg(user_id)
 )))))

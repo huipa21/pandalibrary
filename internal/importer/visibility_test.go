@@ -80,7 +80,7 @@ func TestPrivateDuplicatePreservesSharingAndRedactsHistory(t *testing.T) {
 	if duplicate.Status != "duplicate" {
 		t.Fatalf("duplicate=%+v", duplicate)
 	}
-	history, err := f.service.History(ctx, other, 0, 50)
+	history, err := f.service.History(ctx, other, 0, 50, "")
 	if err != nil {
 		t.Fatal(err)
 	}

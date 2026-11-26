@@ -188,13 +188,94 @@ func TestImportHTTPAcceptedHistoryAndAttachment(t *testing.T) {
 	if history.Code != 200 || !strings.Contains(history.Body.String(), `"next_cursor":"`) {
 		t.Fatalf("history %d %s", history.Code, history.Body.String())
 	}
-	for _, target := range []string{"/api/v1/imports?limit=101", "/api/v1/imports?cursor=-1", "/api/v1/imports?limit=1&limit=2", "/api/v1/imports?unknown=1"} {
+	for _, target := range []string{"/api/v1/imports?limit=101", "/api/v1/imports?cursor=-1", "/api/v1/imports?limit=1&limit=2", "/api/v1/imports?unknown=1", "/api/v1/imports?q=", "/api/v1/imports?q=one&q=two"} {
 		if response := f.request(http.MethodGet, target, nil, f.admin, nil); response.Code != 400 {
 			t.Errorf("%s: %d", target, response.Code)
 		}
 	}
 	if response := f.request(http.MethodGet, "/api/v1/imports", nil, f.reader, nil); response.Code != 403 {
 		t.Fatal(response.Code)
+	}
+}
+
+func TestImportHistorySearchBookStateAndUploader(t *testing.T) {
+	f, _, _ := importFixture(t, 1<<20)
+	for _, statement := range []string{
+		`INSERT INTO import_jobs (id, source, library_id, user_id, original_name, status, book_id, created_at, finished_at) VALUES
+			(1, 'upload', 10, 1, 'visible.epub', 'imported', 101, 1000, 1100),
+			(2, 'upload', 10, 1, 'deleted.epub', 'imported', 102, 2000, 2100),
+			(3, 'upload', 10, 2, 'reader.epub', 'failed', NULL, 3000, NULL),
+			(4, 'upload', 10, 1, 'secret.epub', 'imported', 103, 4000, 4100),
+			(5, 'upload', 10, 1, 'purged.epub', 'imported', NULL, 5000, 5100)`,
+		`UPDATE books SET deleted_at = 2200 WHERE id = 102`,
+	} {
+		if _, err := f.db.Writer.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	type historyItem struct {
+		BookID      *int64  `json:"book_id"`
+		BookTitle   *string `json:"book_title"`
+		BookDeleted bool    `json:"book_deleted"`
+		UploadedBy  *string `json:"uploaded_by"`
+	}
+	type historyPage struct {
+		Items []historyItem `json:"items"`
+	}
+	fetch := func(search string) historyPage {
+		t.Helper()
+		response := f.request(http.MethodGet, "/api/v1/imports?limit=50&q="+search, nil, f.admin, nil)
+		if response.Code != http.StatusOK {
+			t.Fatalf("search %q: %d %s", search, response.Code, response.Body.String())
+		}
+		var page historyPage
+		if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		return page
+	}
+
+	visible := fetch("visible")
+	if len(visible.Items) != 1 || visible.Items[0].BookID == nil || *visible.Items[0].BookID != 101 ||
+		visible.Items[0].BookTitle == nil || *visible.Items[0].BookTitle != "Visible" || visible.Items[0].BookDeleted ||
+		visible.Items[0].UploadedBy == nil || *visible.Items[0].UploadedBy != "admin" {
+		t.Fatalf("visible book: %+v", visible)
+	}
+
+	deleted := fetch("deleted")
+	if len(deleted.Items) != 1 || deleted.Items[0].BookID != nil || deleted.Items[0].BookTitle == nil ||
+		*deleted.Items[0].BookTitle != "Hidden" || !deleted.Items[0].BookDeleted ||
+		deleted.Items[0].UploadedBy == nil || *deleted.Items[0].UploadedBy != "admin" {
+		t.Fatalf("deleted book: %+v", deleted)
+	}
+
+	purged := fetch("purged")
+	if len(purged.Items) != 1 || purged.Items[0].BookID != nil || purged.Items[0].BookTitle != nil ||
+		!purged.Items[0].BookDeleted {
+		t.Fatalf("purged book: %+v", purged)
+	}
+
+	reader := fetch("reader")
+	if len(reader.Items) != 1 || reader.Items[0].UploadedBy == nil || *reader.Items[0].UploadedBy != "reader" {
+		t.Fatalf("uploader search: %+v", reader)
+	}
+
+	if byID := fetch("3"); len(byID.Items) != 1 {
+		t.Fatalf("job ID search: %+v", byID)
+	}
+
+	secret := fetch("secret")
+	if len(secret.Items) != 1 || secret.Items[0].BookID != nil || secret.Items[0].BookTitle != nil || secret.Items[0].BookDeleted {
+		t.Fatalf("hidden book leaked metadata: %+v", secret)
+	}
+
+	if none := fetch("absent"); len(none.Items) != 0 {
+		t.Fatalf("unexpected matches: %+v", none)
+	}
+	long := f.request(http.MethodGet, "/api/v1/imports?q="+strings.Repeat("x", 257), nil, f.admin, nil)
+	if long.Code != http.StatusBadRequest {
+		t.Fatalf("long search: %d %s", long.Code, long.Body.String())
 	}
 }
 

@@ -14,9 +14,22 @@ RETURNING *;
 SELECT * FROM import_jobs WHERE id = ?;
 
 -- name: ImportHistory :many
-SELECT * FROM import_jobs
-WHERE (CAST(sqlc.arg(before_id) AS INTEGER) = 0 OR id < sqlc.arg(before_id))
-ORDER BY id DESC LIMIT sqlc.arg(page_limit);
+SELECT j.id, j.source, j.library_id, j.user_id, j.original_name, j.sha256,
+    j.status, j.error, j.book_id, j.duplicate_of_book_id, j.created_at, j.finished_at,
+    u.username AS uploaded_by,
+    b.title AS book_title,
+    CASE WHEN b.deleted_at IS NOT NULL THEN 1 ELSE 0 END AS book_deleted
+FROM import_jobs j
+LEFT JOIN users u ON u.id = j.user_id
+LEFT JOIN books b ON b.id = j.book_id
+WHERE (CAST(sqlc.arg(before_id) AS INTEGER) = 0 OR j.id < sqlc.arg(before_id))
+  AND (CAST(sqlc.arg(search) AS TEXT) = ''
+    OR instr(lower(COALESCE(b.title, j.original_name)), lower(sqlc.arg(search))) > 0
+    OR instr(lower(j.original_name), lower(sqlc.arg(search))) > 0
+    OR instr(lower(COALESCE(u.username, '')), lower(sqlc.arg(search))) > 0
+    OR instr(lower(j.status), lower(sqlc.arg(search))) > 0
+    OR instr(CAST(j.id AS TEXT), sqlc.arg(search)) > 0)
+ORDER BY j.id DESC LIMIT sqlc.arg(page_limit);
 
 -- name: ImportFinish :exec
 UPDATE import_jobs SET status = ?, error = ?, book_id = ?, duplicate_of_book_id = ?, finished_at = ? WHERE id = ?;

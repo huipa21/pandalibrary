@@ -4,6 +4,8 @@ import { isMain, linkerFlags, parseOptions, projectRoot, resolveProvenance, runC
 
 function main() {
 	const { output, release } = parseOptions(process.argv.slice(2), 'binary');
+	// The Go binary embeds web/build, so a Go-only rebuild serves stale UI.
+	runChecked('pnpm', ['--dir', 'web', 'build']);
 	const stamp = resolveProvenance(projectRoot, release);
 	const hostEnv = { ...process.env, CGO_ENABLED: '0' };
 	delete hostEnv.GOOS;

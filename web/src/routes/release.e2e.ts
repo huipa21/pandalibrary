@@ -35,35 +35,38 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 	await page.goto(`/library/${ids}`);
 	await expect(page.getByRole('heading', { name: 'Release Library' })).toBeVisible();
 
-	await page.goto('/admin/imports');
-	await page.getByLabel('Library').selectOption({ label: 'Release Library' });
-	await page.getByLabel('Book file').setInputFiles({
+	await page.getByRole('banner').getByRole('button', { name: 'Upload', exact: true }).click();
+	const uploadDialog = page.getByRole('dialog', { name: 'Upload books' });
+	await expect(uploadDialog).toBeVisible();
+	await expect(uploadDialog.locator('#bh3-library')).toBeEnabled();
+	await uploadDialog.locator('#bh3-library').selectOption({ label: 'Release Library' });
+	await uploadDialog.getByTestId('bh3-file-input').setInputFiles({
 		name: 'Release Fixture.epub',
 		mimeType: 'application/epub+zip',
 		buffer: epubFixture()
 	});
-	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
-	await expect(page.getByText(/Upload accepted as job #/)).toBeVisible();
-	const imported = await expect
-		.poll(async () => page.evaluate(async () => {
-			const response = await fetch('/api/v1/imports?limit=50');
-			if (!response.ok) throw new Error(`import history request failed: ${response.status}`);
-			const payload = await response.json() as {
-				items: Array<{ book_id: number | null; status: string; error: string | null }>;
-			};
-			const job = payload.items[0];
-			if (job.status === 'failed') throw new Error(`import failed: ${job.error}`);
-			return job;
-		}), { timeout: 30_000 })
-		.toMatchObject({ status: 'imported' })
-		.then(() => page.evaluate(async () => {
-			const response = await fetch('/api/v1/imports?limit=50');
-			const payload = await response.json() as {
-				items: Array<{ book_id: number | null; status: string; error: string | null }>;
-			};
-			return payload.items[0];
-		}));
-	expect(imported.book_id).toBeTruthy();
+	await uploadDialog.getByRole('button', { name: 'Upload', exact: true }).click();
+	await expect(uploadDialog.getByTestId('bh3-result')).toHaveText(/1 uploaded, 0 duplicate, 0 failed/, { timeout: 30_000 });
+	await expect.poll(async () => page.evaluate(async () => {
+		const response = await fetch('/api/v1/imports?limit=50');
+		if (!response.ok) throw new Error(`import history request failed: ${response.status}`);
+		const payload = await response.json() as {
+			items: Array<{ original_name: string; book_id: number | null; status: string; error: string | null }>;
+		};
+		const job = payload.items.find((item) => item.original_name === 'Release Fixture.epub');
+		if (!job) throw new Error('Release Fixture import job was not created.');
+		if (job.status === 'failed') throw new Error(`import failed: ${job.error}`);
+		return job.status;
+	}), { timeout: 30_000 }).toBe('imported');
+	const imported = await page.evaluate(async () => {
+		const response = await fetch('/api/v1/imports?limit=50');
+		const payload = await response.json() as {
+			items: Array<{ original_name: string; book_id: number | null; status: string; error: string | null }>;
+		};
+		return payload.items.find((item) => item.original_name === 'Release Fixture.epub') ?? null;
+	});
+	if (!imported?.book_id) throw new Error('Release Fixture import did not produce a book.');
+	const bookID = imported.book_id;
 
 	await page.goto('/search?q=Fixture%20Book');
 	await expect(page.getByRole('link', { name: 'Fixture Book', exact: true })).toBeVisible();
@@ -74,9 +77,9 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 			book: { files: Array<{ id: number }> };
 		};
 		return payload.book.files[0]?.id;
-	}, imported.book_id);
+	}, bookID);
 	expect(fileID).toBeDefined();
-	await page.goto(`/read/${imported.book_id}/${fileID}`);
+	await page.goto(`/read/${bookID}/${fileID}`);
 	await expect(page.getByRole('heading', { name: 'Fixture Book' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Next page' })).toBeEnabled();
 	const frame = await bookFrame(page);
@@ -108,7 +111,7 @@ test('real server setup, admin library creation, and login', async ({ page }) =>
 			progress: unknown;
 		};
 		return { highlights: state.highlights.length, notes: state.notes.length, progress: Boolean(state.progress) };
-	}, imported.book_id)).toMatchObject({ highlights: 1, notes: 1, progress: true });
+	}, bookID)).toMatchObject({ highlights: 1, notes: 1, progress: true });
 
 	await page.goto('/notes');
 	const notesSearch = page.getByRole('searchbox', { name: 'Search annotations', exact: true });

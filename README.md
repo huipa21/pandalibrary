@@ -259,19 +259,19 @@ go install github.com/go-task/task/v3/cmd/task@v3.54.0
 go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
 go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
 pnpm --dir web install --frozen-lockfile
-pnpm --dir web build
 task build
 task lint
 task test
 pnpm --dir web check
 pnpm --dir web test
-pnpm --dir web build
 ```
 
 Run the app locally with `./pandalibrary serve --data-dir ./data --listen 127.0.0.1:8080`;
-on Windows use `.\pandalibrary.exe`. After building the web assets,
-`go build ./cmd/pandalibrary`, `task build`, and `go run ./cmd/pandalibrary serve`
-also report the checkout's commit provenance automatically. Go builds use embedded
+on Windows use `.\pandalibrary.exe`. `task build` rebuilds the web assets before
+compiling the Go binary; a bare `go build ./cmd/pandalibrary` embeds whatever is
+currently in `web/build`, so rebuild the frontend first after UI edits. `task build`
+and `go run ./cmd/pandalibrary serve` also report the checkout's commit provenance
+automatically. Go builds use embedded
 VCS metadata; an unstamped `go run` resolves Git only in its source checkout.
 Installed and container binaries never require Git at runtime. Start the frontend
 with `pnpm --dir web dev`; its development server proxies `/api`, `/opds`, and

@@ -8,6 +8,31 @@ import (
 	"database/sql"
 )
 
+type ActiveBook struct {
+	ID            int64
+	LibraryID     int64
+	Title         string
+	SortTitle     string
+	Subtitle      sql.NullString
+	Description   sql.NullString
+	Language      sql.NullString
+	Publisher     sql.NullString
+	PublishedDate sql.NullString
+	PageCount     sql.NullInt64
+	SeriesID      sql.NullInt64
+	SeriesIndex   sql.NullFloat64
+	CoverSha256   sql.NullString
+	CoverSource   sql.NullString
+	AddedBy       sql.NullInt64
+	CreatedAt     int64
+	UpdatedAt     int64
+	OwnerID       sql.NullInt64
+	Visibility    string
+	AgeRating     sql.NullInt64
+	ContentRating sql.NullString
+	SeriesTotal   sql.NullInt64
+}
+
 type AnnotationAsset struct {
 	UserID    int64
 	Sha256    string
@@ -58,6 +83,7 @@ type Book struct {
 	AgeRating     sql.NullInt64
 	ContentRating sql.NullString
 	SeriesTotal   sql.NullInt64
+	DeletedAt     sql.NullInt64
 }
 
 type BookAuthor struct {
@@ -184,6 +210,18 @@ type BooksFt struct {
 	Description string
 }
 
+type DictionaryProvider struct {
+	ID        int64
+	Kind      string
+	Name      string
+	BaseUrl   sql.NullString
+	ApiKey    sql.NullString
+	Enabled   int64
+	Priority  int64
+	CreatedAt int64
+	UpdatedAt int64
+}
+
 type Highlight struct {
 	Seq        int64
 	ID         string
@@ -200,6 +238,7 @@ type Highlight struct {
 	DeletedAt  sql.NullInt64
 	Rev        int64
 	Style      string
+	Purged     int64
 }
 
 type HighlightsFt struct {
@@ -278,6 +317,7 @@ type Note struct {
 	UpdatedAt   int64
 	DeletedAt   sql.NullInt64
 	Rev         int64
+	Purged      int64
 }
 
 type NotesFt struct {
@@ -302,6 +342,7 @@ type PageAnnotation struct {
 	UpdatedAt   int64
 	DeletedAt   sql.NullInt64
 	Rev         int64
+	Purged      int64
 }
 
 type ReadingCycle struct {
@@ -401,17 +442,35 @@ type Tag struct {
 	CreatedAt int64
 }
 
+type TrashHighlightNote struct {
+	HighlightID string
+	NoteID      string
+	DeletedRev  int64
+}
+
+type TrashReview struct {
+	ID         int64
+	OriginalID int64
+	BookID     int64
+	UserID     int64
+	DeletedBy  sql.NullInt64
+	Body       string
+	CreatedAt  int64
+	UpdatedAt  int64
+	DeletedAt  int64
+}
+
 type User struct {
 	ID           int64
 	Username     string
 	DisplayName  string
-	Email        string
 	PasswordHash string
 	Role         string
 	Locale       string
 	Disabled     int64
 	CreatedAt    int64
 	UpdatedAt    int64
+	Email        string
 }
 
 type UserBook struct {
@@ -432,4 +491,34 @@ type UserSetting struct {
 	Value     string
 	UpdatedAt int64
 	Rev       int64
+}
+
+type Wordbook struct {
+	ID               int64
+	UserID           int64
+	Name             string
+	IsDefault        int64
+	Archived         int64
+	CreatedAt        string
+	UpdatedAt        string
+	Description      string
+	CoverImage       string
+	DeletedAt        sql.NullInt64
+	Language         string
+	MeaningLanguage  string
+	MeaningLanguages string
+	CoverColor       string
+}
+
+type WordbookEntry struct {
+	ID                int64
+	WordbookID        int64
+	Kind              string
+	Text              string
+	Definition        string
+	Note              string
+	DictionaryEntries string
+	Source            string
+	CreatedAt         string
+	UpdatedAt         string
 }

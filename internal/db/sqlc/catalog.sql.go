@@ -183,8 +183,7 @@ func (q *Queries) CatalogBookFile(ctx context.Context, arg CatalogBookFileParams
 
 const catalogBookFiles = `-- name: CatalogBookFiles :many
 SELECT f.id, f.book_id, f.sha256, f.format, f.size_bytes, f.original_filename, f.koreader_md5, f.created_at, f.is_default, f.deleted_at FROM book_files f JOIN active_books b ON b.id = f.book_id
-WHERE b.id = ?1
-AND f.deleted_at IS NULL
+WHERE b.id = ?1 AND f.deleted_at IS NULL
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?2
@@ -637,8 +636,9 @@ func (q *Queries) CatalogGetAuthor(ctx context.Context, arg CatalogGetAuthorPara
 }
 
 const catalogGetBook = `-- name: CatalogGetBook :one
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
-WHERE b.id = ?1
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total, b.deleted_at FROM books b
+WHERE b.deleted_at IS NULL
+AND b.id = ?1
 AND (CAST(?2 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?2 OR (b.visibility = 'library' AND (CAST(?3 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?2
@@ -680,6 +680,7 @@ func (q *Queries) CatalogGetBook(ctx context.Context, arg CatalogGetBookParams) 
 		&i.AgeRating,
 		&i.ContentRating,
 		&i.SeriesTotal,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -1090,8 +1091,9 @@ func (q *Queries) CatalogListAuthors(ctx context.Context, arg CatalogListAuthors
 }
 
 const catalogListBooksByAdded = `-- name: CatalogListBooksByAdded :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
-WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total, b.deleted_at FROM books b
+WHERE b.deleted_at IS NULL
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
 )))))
@@ -1167,6 +1169,7 @@ func (q *Queries) CatalogListBooksByAdded(ctx context.Context, arg CatalogListBo
 			&i.AgeRating,
 			&i.ContentRating,
 			&i.SeriesTotal,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1182,8 +1185,9 @@ func (q *Queries) CatalogListBooksByAdded(ctx context.Context, arg CatalogListBo
 }
 
 const catalogListBooksBySeries = `-- name: CatalogListBooksBySeries :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
-WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total, b.deleted_at FROM books b
+WHERE b.deleted_at IS NULL
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
 )))))
@@ -1266,6 +1270,7 @@ func (q *Queries) CatalogListBooksBySeries(ctx context.Context, arg CatalogListB
 			&i.AgeRating,
 			&i.ContentRating,
 			&i.SeriesTotal,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1281,8 +1286,9 @@ func (q *Queries) CatalogListBooksBySeries(ctx context.Context, arg CatalogListB
 }
 
 const catalogListBooksByTitle = `-- name: CatalogListBooksByTitle :many
-SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total FROM active_books b
-WHERE (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
+SELECT b.id, b.library_id, b.title, b.sort_title, b.subtitle, b.description, b.language, b.publisher, b.published_date, b.page_count, b.series_id, b.series_index, b.cover_sha256, b.cover_source, b.added_by, b.created_at, b.updated_at, b.owner_id, b.visibility, b.age_rating, b.content_rating, b.series_total, b.deleted_at FROM books b
+WHERE b.deleted_at IS NULL
+AND (CAST(?1 AS INTEGER) > 0 AND (b.visibility = 'public' OR b.owner_id = ?1 OR (b.visibility = 'library' AND (CAST(?2 AS INTEGER) = 1 OR EXISTS (
     SELECT 1 FROM library_access la
     WHERE la.library_id = b.library_id AND la.user_id = ?1
 )))))
@@ -1358,6 +1364,7 @@ func (q *Queries) CatalogListBooksByTitle(ctx context.Context, arg CatalogListBo
 			&i.AgeRating,
 			&i.ContentRating,
 			&i.SeriesTotal,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}

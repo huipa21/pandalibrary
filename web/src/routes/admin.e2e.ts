@@ -346,70 +346,75 @@ test('hides and unhides a book for a user', async ({ page }) => {
 	await expect(page.getByRole('cell', { name: '30', exact: true })).toHaveCount(0);
 });
 
-test('uploads a book and polls import history until it finishes', async ({ page }) => {
+test('shows compact import history, search, deleted titles, and live status updates', async ({ page }) => {
 	await authenticate(page);
 	await page.clock.install();
-	await page.route('**/api/v1/admin/libraries?*', (route) =>
-		route.fulfill({ json: { items: [library(1, 'Main', 'main'), library(2, 'Comics', 'comics')], next_cursor: null } })
-	);
 	const older = {
-		id: 4, source: 'drop_folder', library_id: 2, user_id: null, original_name: 'old.cbz', sha256: 'x', status: 'failed',
-		error: 'could not read [drop]/old.cbz', book_id: null, duplicate_of_book_id: null, created_at: stamp, finished_at: stamp
+		id: 4, source: 'drop_folder', library_id: 2, user_id: null, uploaded_by: null, original_name: 'old.cbz', sha256: 'x',
+		status: 'failed', error: 'could not read [drop]/old.cbz', book_id: null, book_title: null, book_deleted: false,
+		duplicate_of_book_id: null, created_at: stamp, finished_at: stamp
+	};
+	const removed = {
+		id: 3, source: 'upload', library_id: 1, user_id: 1, uploaded_by: 'admin', original_name: 'removed.epub', sha256: null,
+		status: 'imported', error: null, book_id: null, book_title: 'Removed Book', book_deleted: true,
+		duplicate_of_book_id: null, created_at: stamp, finished_at: stamp
 	};
 	const pending = {
-		id: 5, source: 'upload', library_id: 1, user_id: 1, original_name: 'Dune.epub', sha256: null, status: 'pending',
-		error: null, book_id: null, duplicate_of_book_id: null, created_at: stamp, finished_at: null
+		id: 5, source: 'upload', library_id: 1, user_id: 1, uploaded_by: 'admin', original_name: 'Dune.epub', sha256: null,
+		status: 'pending', error: null, book_id: null, book_title: null, book_deleted: false,
+		duplicate_of_book_id: null, created_at: stamp, finished_at: null
 	};
-	let uploaded = false;
-	let polls = 0;
-	let multipart = '';
-	await page.route('**/api/v1/uploads', async (route) => {
-		multipart = route.request().postData() ?? '';
-		if (multipart.includes('huge.epub')) return problem(route, 413);
-		uploaded = true;
-		return route.fulfill({ status: 202, json: { job: pending } });
-	});
+	let calls = 0;
+	let lastSearch = '';
 	await page.route('**/api/v1/imports?*', (route) => {
-		if (!uploaded) return route.fulfill({ json: { items: [older], next_cursor: null } });
-		polls += 1;
-		const current = polls >= 2 ? { ...pending, status: 'imported', book_id: 77, finished_at: stamp } : { ...pending, status: 'processing' };
-		return route.fulfill({ json: { items: [current, older], next_cursor: null } });
+		const search = new URL(route.request().url()).searchParams.get('q') ?? '';
+		lastSearch = search;
+		if (search === 'Removed') return route.fulfill({ json: { items: [removed], next_cursor: null } });
+		if (search === 'nothing') return route.fulfill({ json: { items: [], next_cursor: null } });
+		calls += 1;
+		const current = calls >= 2
+			? { ...pending, status: 'imported', book_id: 77, book_title: 'Dune', finished_at: stamp }
+			: pending;
+		return route.fulfill({ json: { items: [removed, current, older], next_cursor: null } });
 	});
 
 	await page.goto('/admin/imports');
-	await expect(page.getByLabel('Book visibility')).toHaveValue('public');
-	await page.getByLabel('Book visibility').selectOption('private');
-	await expect(page.getByText('could not read [drop]/old.cbz')).toBeVisible();
-	await expect(page.getByText('Drop folder')).toBeVisible();
+	await expect(page.getByLabel('Book file')).toHaveCount(0);
+	await expect(page.getByLabel('Library', { exact: true })).toHaveCount(0);
+	await expect(page.getByRole('searchbox', { name: 'Search uploads' })).toBeVisible();
+	for (const name of ['Name', 'Job', 'By', 'Status', 'Uploaded']) {
+		await expect(page.getByRole('columnheader', { name, exact: true })).toBeVisible();
+	}
+	await expect(page.getByText('Drop folder')).toHaveCount(0);
+	await expect(page.getByText('could not read [drop]/old.cbz')).toHaveCount(0);
 
-	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
-	await expect(page.getByText('Choose a library.')).toBeVisible();
-	await expect(page.getByText('Choose a file to upload.')).toBeVisible();
+	const jobRow = page.getByRole('row').filter({ hasText: '#5' });
+	await expect(jobRow).toContainText('Dune.epub');
+	await expect(jobRow).toContainText('admin');
+	await expect(jobRow.getByText('Waiting')).toBeVisible();
 
-	await page.getByRole('main').getByLabel('Library', { exact: true }).selectOption({ label: 'Main' });
-	await page.getByLabel('Book file').setInputFiles({ name: 'huge.epub', mimeType: 'application/epub+zip', buffer: Buffer.from('big') });
-	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
-	await expect(page.getByText('This file is larger than the server allows.')).toBeVisible();
-	await expect(page.getByLabel('Book visibility')).toHaveValue('private');
-
-	await page.getByLabel('Book file').setInputFiles({ name: 'Dune.epub', mimeType: 'application/epub+zip', buffer: Buffer.from('epub') });
-	await page.getByRole('main').getByRole('button', { name: 'Upload', exact: true }).click();
-	await expect(page.getByText('Upload accepted as job #5 (Dune.epub): Waiting.')).toBeVisible();
-	expect(multipart).toContain('name="library_id"');
-	expect(multipart).toContain('name="file"; filename="Dune.epub"');
-	expect(multipart).toContain('name="visibility"\r\n\r\nprivate');
-	const item = page.getByRole('listitem').filter({ hasText: 'Dune.epub' });
-	await expect(item.getByText('Waiting')).toBeVisible();
-	await expect(page.getByText('Some uploads are still processing')).toBeVisible();
+	const removedRow = page.getByRole('row').filter({ hasText: 'Removed Book' });
+	await expect(removedRow.locator('span.line-through')).toHaveClass(/text-red-700/);
+	await expect(removedRow.getByRole('link')).toHaveCount(0);
 
 	await page.clock.runFor(3100);
-	await expect(item.getByText('Processing')).toBeVisible();
-	await page.clock.runFor(3100);
-	await expect(item.getByText('Uploaded')).toBeVisible();
-	await expect(item.getByRole('link', { name: 'Open book #77' })).toHaveAttribute('href', '/books/77');
-	await expect(page.getByText('Some uploads are still processing')).toHaveCount(0);
+	await expect(jobRow.getByText('Uploaded')).toBeVisible();
+	await expect(jobRow.getByRole('link', { name: 'Dune', exact: true })).toHaveAttribute('href', '/books/77');
 	await page.clock.runFor(30_000);
-	expect(polls).toBe(2);
+	expect(calls).toBe(2);
+
+	const main = page.getByRole('main');
+	const search = main.getByRole('search');
+	await search.getByRole('searchbox', { name: 'Search uploads' }).fill('Removed');
+	await search.getByRole('button', { name: 'Search uploads' }).click();
+	await expect.poll(() => lastSearch).toBe('Removed');
+	await expect(page.getByRole('row')).toHaveCount(2);
+	await expect(page.getByText('Removed Book')).toBeVisible();
+	await expect(page.getByText('Dune')).toHaveCount(0);
+
+	await search.getByRole('searchbox', { name: 'Search uploads' }).fill('nothing');
+	await search.getByRole('button', { name: 'Search uploads' }).click();
+	await expect(page.getByText('No uploads match your search.')).toBeVisible();
 });
 
 test('edits metadata providers without exposing tokens', async ({ page }) => {

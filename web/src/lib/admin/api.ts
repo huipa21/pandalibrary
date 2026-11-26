@@ -24,6 +24,7 @@ import type {
 type RequestOptions = PageOptions & { signal?: AbortSignal };
 export type UserSearchCategory = 'all' | 'username' | 'display_name' | 'role' | 'locale';
 type UserRequestOptions = RequestOptions & { q?: string; category?: UserSearchCategory };
+type ImportRequestOptions = RequestOptions & { q?: string };
 
 export function buildAdminUsersPath(options: UserRequestOptions = {}): string {
 	const path = buildPagePath('/admin/users', options);
@@ -45,8 +46,11 @@ export function buildHiddenBooksPath(userID: number, options: PageOptions = {}):
 	return buildPagePath(`/admin/users/${userID}/hidden-books`, options);
 }
 
-export function buildImportsPath(options: PageOptions = {}): string {
-	return buildPagePath('/imports', options);
+export function buildImportsPath(options: ImportRequestOptions = {}): string {
+	const path = buildPagePath('/imports', options);
+	const params = new URLSearchParams();
+	if (options.q?.trim()) params.set('q', options.q.trim());
+	return params.size ? `${path}&${params}` : path;
 }
 
 export async function listAdminUsers(options: UserRequestOptions = {}): Promise<Page<User>> {
@@ -162,7 +166,7 @@ export async function unhideBook(userID: number, bookID: number): Promise<void> 
 	await api.request<{ hidden: boolean }>(`/admin/users/${userID}/hidden-books/${bookID}`, { method: 'DELETE' });
 }
 
-export async function listImports(options: RequestOptions = {}): Promise<Page<ImportJob>> {
+export async function listImports(options: ImportRequestOptions = {}): Promise<Page<ImportJob>> {
 	return api.request(buildImportsPath(options), { signal: options.signal });
 }
 
