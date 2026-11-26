@@ -15,6 +15,8 @@ import type {
 	MaintenanceJob,
 	MaintenanceRun,
 	Page,
+	ProviderCreate,
+	ProviderList,
 	ProviderPatch,
 	ProviderSettings,
 	User,
@@ -205,8 +207,23 @@ export async function uploadBook(libraryID: number, file: File, { fetcher = fetc
 	return ((await response.json()) as { job: ImportJob }).job;
 }
 
-export async function listProviders(signal?: AbortSignal): Promise<ProviderSettings[]> {
-	return (await api.request<{ providers: ProviderSettings[] }>('/admin/metadata/providers', { signal })).providers;
+export async function listProviders(signal?: AbortSignal): Promise<ProviderList> {
+	const list = await api.request<Partial<ProviderList>>('/admin/metadata/providers', { signal });
+	return { providers: list?.providers ?? [], catalog: list?.catalog ?? [] };
+}
+
+export async function createProvider(input: ProviderCreate): Promise<ProviderSettings> {
+	const body: { [key: string]: JsonValue } = { provider: input.provider, enabled: input.enabled };
+	if (input.priority !== undefined) body.priority = input.priority;
+	if (input.base_url !== undefined) body.base_url = input.base_url;
+	if (input.api_token !== undefined) body.api_token = input.api_token;
+	return (
+		await api.request<{ provider: ProviderSettings }>('/admin/metadata/providers', { method: 'POST', body })
+	).provider;
+}
+
+export async function deleteProvider(provider: string): Promise<void> {
+	await api.request(`/admin/metadata/providers/${encodeURIComponent(provider)}`, { method: 'DELETE' });
 }
 
 export async function updateProvider(provider: string, patch: ProviderPatch): Promise<ProviderSettings> {

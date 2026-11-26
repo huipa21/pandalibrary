@@ -75,6 +75,27 @@ export interface ProviderSettings {
 	readonly updated_at: string;
 }
 
+/** A builtin provider administrators can add back after removing it. */
+export interface ProviderCatalogEntry {
+	readonly provider: string;
+	readonly default_priority: number;
+}
+
+/** Adds a builtin provider; omitted fields start from the builtin defaults. */
+export interface ProviderCreate {
+	provider: string;
+	enabled: boolean;
+	priority?: number;
+	base_url?: string | null;
+	api_token?: string | null;
+}
+
+/** Provider settings plus the addable builtin catalog. */
+export interface ProviderList {
+	readonly providers: ProviderSettings[];
+	readonly catalog: ProviderCatalogEntry[];
+}
+
 /** Omitted fields are preserved; `api_token: null` removes the token and `base_url: null` restores the default. */
 export interface ProviderPatch {
 	enabled?: boolean;

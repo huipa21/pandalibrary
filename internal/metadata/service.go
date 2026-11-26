@@ -138,6 +138,164 @@ func (s *Service) ListProviders(ctx context.Context, viewer catalog.Viewer) ([]P
 	return result, nil
 }
 
+// builtinProviders lists every supported provider in default priority order.
+// Keep these defaults in sync with the metadata_providers migrations.
+var builtinProviders = []ProviderCatalogEntry{
+	{Provider: "amazon", DefaultPriority: 5},
+	{Provider: "openlibrary", DefaultPriority: 10},
+	{Provider: "goodreads", DefaultPriority: 15},
+	{Provider: "googlebooks", DefaultPriority: 20},
+	{Provider: "neodb", DefaultPriority: 30},
+	{Provider: "hardcover", DefaultPriority: 40},
+	{Provider: "crossref", DefaultPriority: 50},
+	{Provider: "openbd", DefaultPriority: 60},
+	{Provider: "douban", DefaultPriority: 70},
+}
+
+// BuiltinProviders returns the addable provider catalog so clients can offer it after a removal.
+func BuiltinProviders() []ProviderCatalogEntry {
+	return slices.Clone(builtinProviders)
+}
+
+func builtinPriority(name string) (int64, bool) {
+	for _, entry := range builtinProviders {
+		if entry.Provider == name {
+			return entry.DefaultPriority, true
+		}
+	}
+	return 0, false
+}
+
+// applyProviderPatch validates and applies one settings change to row.
+func applyProviderPatch(name string, row *sqlc.MetadataProvider, patch ProviderPatch) error {
+	if patch.Enabled.Set {
+		if patch.Enabled.Value == nil {
+			return ErrInvalid
+		}
+		row.Enabled = 0
+		if *patch.Enabled.Value {
+			row.Enabled = 1
+		}
+	}
+	if patch.Priority.Set {
+		if patch.Priority.Value == nil || *patch.Priority.Value < 0 || *patch.Priority.Value > 10000 {
+			return ErrInvalid
+		}
+		row.Priority = *patch.Priority.Value
+	}
+	if patch.APIToken.Set {
+		row.ApiToken = sql.NullString{}
+		if patch.APIToken.Value != nil {
+			token := strings.TrimSpace(*patch.APIToken.Value)
+			if token == "" || len(token) > 8192 || strings.ContainsAny(token, "\r\n\t\x00") || !utf8.ValidString(token) || !providerUsesToken(name) {
+				return ErrInvalid
+			}
+			row.ApiToken = sql.NullString{String: token, Valid: true}
+		}
+	}
+	if patch.BaseURL.Set {
+		row.BaseUrl = sql.NullString{}
+		if patch.BaseURL.Value != nil {
+			row.BaseUrl = sql.NullString{String: strings.TrimSpace(*patch.BaseURL.Value), Valid: true}
+		}
+	}
+	if row.Enabled != 0 && (name == "neodb" || name == "hardcover") && !row.ApiToken.Valid {
+		return ErrInvalid
+	}
+	var base *string
+	if row.BaseUrl.Valid {
+		base = &row.BaseUrl.String
+	}
+	u, err := parseBase(name, base)
+	if err != nil {
+		return ErrInvalid
+	}
+	if base != nil {
+		row.BaseUrl.String = u.String()
+	}
+	return nil
+}
+
+// CreateProvider adds a builtin provider back with its default priority.
+func (s *Service) CreateProvider(ctx context.Context, viewer catalog.Viewer, input ProviderCreate) (ProviderSettings, error) {
+	if err := admin(viewer); err != nil {
+		return ProviderSettings{}, err
+	}
+	defaultPriority, ok := builtinPriority(input.Provider)
+	if !ok {
+		return ProviderSettings{}, ErrInvalid
+	}
+	if err := waitForLock(ctx, s.config.TryLock); err != nil {
+		return ProviderSettings{}, err
+	}
+	defer s.config.Unlock()
+	var result ProviderSettings
+	err := db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+		q := sqlc.New(tx)
+		if _, err := q.MetadataGetProvider(ctx, input.Provider); err == nil {
+			return ErrExists
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("check provider settings: %w", err)
+		}
+		row := sqlc.MetadataProvider{Provider: input.Provider, Priority: defaultPriority}
+		enabled := input.Enabled
+		patch := ProviderPatch{Enabled: catalog.Optional[bool]{Set: true, Value: &enabled}}
+		if input.Priority != nil {
+			patch.Priority = catalog.Optional[int64]{Set: true, Value: input.Priority}
+		}
+		if input.BaseURL != nil {
+			patch.BaseURL = catalog.Optional[string]{Set: true, Value: input.BaseURL}
+		}
+		if input.APIToken != nil {
+			patch.APIToken = catalog.Optional[string]{Set: true, Value: input.APIToken}
+		}
+		if err := applyProviderPatch(input.Provider, &row, patch); err != nil {
+			return err
+		}
+		row.UpdatedAt = s.now().UnixMilli()
+		if err := q.MetadataInsertProvider(ctx, sqlc.MetadataInsertProviderParams{
+			Provider: row.Provider, Enabled: row.Enabled, ApiToken: row.ApiToken,
+			BaseUrl: row.BaseUrl, Priority: row.Priority, UpdatedAt: row.UpdatedAt,
+		}); err != nil {
+			return fmt.Errorf("add provider settings: %w", err)
+		}
+		if err := q.MetadataClearProviderCache(ctx, input.Provider); err != nil {
+			return fmt.Errorf("invalidate provider cache: %w", err)
+		}
+		result = settings(row)
+		return nil
+	})
+	return result, err
+}
+
+// DeleteProvider removes a provider from the configuration; builtin providers can be added again.
+func (s *Service) DeleteProvider(ctx context.Context, viewer catalog.Viewer, name string) error {
+	if err := admin(viewer); err != nil {
+		return err
+	}
+	if _, ok := providerOrigins[name]; !ok {
+		return ErrNotFound
+	}
+	if err := waitForLock(ctx, s.config.TryLock); err != nil {
+		return err
+	}
+	defer s.config.Unlock()
+	return db.WithTx(ctx, s.writer, func(tx *sql.Tx) error {
+		q := sqlc.New(tx)
+		removed, err := q.MetadataDeleteProvider(ctx, name)
+		if err != nil {
+			return fmt.Errorf("remove provider settings: %w", err)
+		}
+		if removed == 0 {
+			return ErrNotFound
+		}
+		if err := q.MetadataClearProviderCache(ctx, name); err != nil {
+			return fmt.Errorf("invalidate provider cache: %w", err)
+		}
+		return nil
+	})
+}
+
 // UpdateProvider applies write-only credential changes and invalidates its cache atomically.
 func (s *Service) UpdateProvider(ctx context.Context, viewer catalog.Viewer, name string, patch ProviderPatch) (ProviderSettings, error) {
 	if err := admin(viewer); err != nil {
@@ -160,50 +318,8 @@ func (s *Service) UpdateProvider(ctx context.Context, viewer catalog.Viewer, nam
 		if err != nil {
 			return fmt.Errorf("load provider settings: %w", err)
 		}
-		if patch.Enabled.Set {
-			if patch.Enabled.Value == nil {
-				return ErrInvalid
-			}
-			row.Enabled = 0
-			if *patch.Enabled.Value {
-				row.Enabled = 1
-			}
-		}
-		if patch.Priority.Set {
-			if patch.Priority.Value == nil || *patch.Priority.Value < 0 || *patch.Priority.Value > 10000 {
-				return ErrInvalid
-			}
-			row.Priority = *patch.Priority.Value
-		}
-		if patch.APIToken.Set {
-			row.ApiToken = sql.NullString{}
-			if patch.APIToken.Value != nil {
-				token := strings.TrimSpace(*patch.APIToken.Value)
-				if token == "" || len(token) > 8192 || strings.ContainsAny(token, "\r\n\t\x00") || !utf8.ValidString(token) || !providerUsesToken(name) {
-					return ErrInvalid
-				}
-				row.ApiToken = sql.NullString{String: token, Valid: true}
-			}
-		}
-		if patch.BaseURL.Set {
-			row.BaseUrl = sql.NullString{}
-			if patch.BaseURL.Value != nil {
-				row.BaseUrl = sql.NullString{String: strings.TrimSpace(*patch.BaseURL.Value), Valid: true}
-			}
-		}
-		if row.Enabled != 0 && (name == "neodb" || name == "hardcover") && !row.ApiToken.Valid {
-			return ErrInvalid
-		}
-		var base *string
-		if row.BaseUrl.Valid {
-			base = &row.BaseUrl.String
-		}
-		u, err := parseBase(name, base)
-		if err != nil {
-			return ErrInvalid
-		}
-		if base != nil {
-			row.BaseUrl.String = u.String()
+		if err := applyProviderPatch(name, &row, patch); err != nil {
+			return err
 		}
 		row.UpdatedAt = s.now().UnixMilli()
 		if _, err := q.MetadataUpdateProvider(ctx, sqlc.MetadataUpdateProviderParams{

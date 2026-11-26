@@ -119,8 +119,8 @@ export class MetadataEditorState {
 	/** Loads the enabled providers for the search form; failures fall back to lookup results. */
 	async loadProviders(signal?: AbortSignal) {
 		try {
-			const settings = await listProviders(signal);
-			this.providers = settings.filter((item) => item.enabled)
+			const { providers } = await listProviders(signal);
+			this.providers = providers.filter((item) => item.enabled)
 				.sort((a, b) => a.priority - b.priority).map((item) => item.provider);
 		} catch {
 			// Providers from the next lookup response are used instead.

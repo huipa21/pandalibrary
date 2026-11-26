@@ -9,6 +9,13 @@ UPDATE metadata_providers
 SET enabled = ?, api_token = ?, base_url = ?, priority = ?, updated_at = ?
 WHERE provider = ?;
 
+-- name: MetadataInsertProvider :exec
+INSERT INTO metadata_providers (provider, enabled, api_token, base_url, priority, updated_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+-- name: MetadataDeleteProvider :execrows
+DELETE FROM metadata_providers WHERE provider = ?;
+
 -- name: MetadataGetCache :one
 SELECT * FROM metadata_cache WHERE provider = ? AND request_key = ?;
 

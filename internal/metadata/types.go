@@ -12,6 +12,7 @@ var (
 	ErrInvalid  = errors.New("invalid metadata request")
 	ErrNotFound = errors.New("metadata candidate not found")
 	ErrConflict = errors.New("metadata candidate is no longer available")
+	ErrExists   = errors.New("metadata provider is already configured")
 )
 
 // Provider searches for normalized book records and retrieves a record by reference.
@@ -91,6 +92,22 @@ type ProviderPatch struct {
 	Priority catalog.Optional[int64]  `json:"priority"`
 	BaseURL  catalog.Optional[string] `json:"base_url"`
 	APIToken catalog.Optional[string] `json:"api_token"`
+}
+
+// ProviderCreate adds a builtin provider back to the configuration.
+// Omitted fields start from the builtin defaults: disabled, default priority, no token.
+type ProviderCreate struct {
+	Provider string  `json:"provider"`
+	Enabled  bool    `json:"enabled"`
+	Priority *int64  `json:"priority"`
+	BaseURL  *string `json:"base_url"`
+	APIToken *string `json:"api_token"`
+}
+
+// ProviderCatalogEntry is a builtin provider an administrator can add.
+type ProviderCatalogEntry struct {
+	Provider        string `json:"provider"`
+	DefaultPriority int64  `json:"default_priority"`
 }
 
 // LookupError is a sanitized failure for one provider.

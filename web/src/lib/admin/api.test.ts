@@ -10,9 +10,11 @@ import {
 	clearDictionaryCache,
 	createDictionaryProvider,
 	createLibrary,
+	createProvider,
 	deleteUser,
 	deleteLibrary,
 	deleteDictionaryProvider,
+	deleteProvider,
 	grantLibraryAccess,
 	listDictionaryProviders,
 	hideBook,
@@ -223,9 +225,29 @@ describe('provider and maintenance requests', () => {
 		expect(request.mock.lastCall?.[1]).toEqual({ method: 'PATCH', body: { api_token: 'secret' } });
 	});
 
-	it('unwraps provider and maintenance envelopes', async () => {
-		const request = vi.spyOn(api, 'request').mockResolvedValueOnce({ providers: [{ provider: 'neodb' }] });
-		await expect(listProviders()).resolves.toEqual([{ provider: 'neodb' }]);
+	it('creates and removes providers and unwraps the catalog envelope', async () => {
+		const request = vi.spyOn(api, 'request').mockResolvedValue({ provider: {} });
+		await createProvider({ provider: 'douban', enabled: false, priority: 70 });
+		expect(request).toHaveBeenLastCalledWith('/admin/metadata/providers', {
+			method: 'POST',
+			body: { provider: 'douban', enabled: false, priority: 70 }
+		});
+		await createProvider({ provider: 'neodb', enabled: true, api_token: 'secret' });
+		expect(request.mock.lastCall?.[1]).toEqual({
+			method: 'POST',
+			body: { provider: 'neodb', enabled: true, api_token: 'secret' }
+		});
+		await deleteProvider('douban');
+		expect(request).toHaveBeenLastCalledWith('/admin/metadata/providers/douban', { method: 'DELETE' });
+
+		request.mockResolvedValueOnce({
+			providers: [{ provider: 'neodb' }],
+			catalog: [{ provider: 'douban', default_priority: 70 }]
+		});
+		await expect(listProviders()).resolves.toEqual({
+			providers: [{ provider: 'neodb' }],
+			catalog: [{ provider: 'douban', default_priority: 70 }]
+		});
 		request.mockResolvedValueOnce({ jobs: [{ name: 'backup' }] });
 		await expect(listMaintenanceJobs()).resolves.toEqual([{ name: 'backup' }]);
 		request.mockResolvedValueOnce({ run: { id: 'r1', status: 'accepted' } });

@@ -5,6 +5,7 @@ import type {
 	DictionaryProviderPatch,
 	Library,
 	LibraryPatch,
+	ProviderCreate,
 	ProviderPatch,
 	ProviderSettings,
 	User,
@@ -222,6 +223,50 @@ export function providerCapabilities(provider: string): ProviderCapabilities {
 }
 
 export type TokenMode = 'keep' | 'replace' | 'remove';
+
+/** Editable fields of the "Add provider" dialog; the server defaults unset values. */
+export interface ProviderCreateDraft {
+	enabled: boolean;
+	priority: string;
+	baseURL: string;
+	token: string;
+}
+
+export function providerCreateDraft(defaultPriority: number): ProviderCreateDraft {
+	return { enabled: false, priority: String(defaultPriority), baseURL: '', token: '' };
+}
+
+export type ProviderCreateResult =
+	| { readonly ok: true; readonly input: ProviderCreate }
+	| { readonly ok: false; readonly field: 'priority' | 'base_url' | 'token' | 'enabled' | 'form'; readonly error: ProviderFieldError };
+
+/** Builds the create payload for a builtin provider selected in the add dialog. */
+export function buildProviderCreate(provider: string, draft: ProviderCreateDraft): ProviderCreateResult {
+	const capabilities = providerCapabilities(provider);
+	const priorityText = String(draft.priority).trim();
+	if (!/^\d{1,5}$/.test(priorityText) || Number(priorityText) > MAX_PROVIDER_PRIORITY) {
+		return { ok: false, field: 'priority', error: 'priority_invalid' };
+	}
+	const input: ProviderCreate = { provider, enabled: draft.enabled, priority: Number(priorityText) };
+	if (capabilities.baseURL) {
+		const baseURL = draft.baseURL.trim();
+		if (baseURL !== '') {
+			if (!validBaseURL(baseURL)) return { ok: false, field: 'base_url', error: 'base_url_invalid' };
+			input.base_url = baseURL;
+		}
+	}
+	if (capabilities.token !== 'none' && draft.token !== '') {
+		const token = draft.token.trim();
+		if (!token || encoder.encode(token).length > MAX_PROVIDER_TOKEN_BYTES || /[\r\n\t\u0000]/.test(token)) {
+			return { ok: false, field: 'token', error: 'token_invalid' };
+		}
+		input.api_token = token;
+	}
+	if (input.enabled && capabilities.token === 'required' && !input.api_token) {
+		return { ok: false, field: 'enabled', error: 'enable_requires_token' };
+	}
+	return { ok: true, input };
+}
 
 export interface ProviderDraft {
 	enabled: boolean;
@@ -480,6 +525,8 @@ export type AdminAction =
 	| 'upload'
 	| 'load_libraries'
 	| 'save_provider'
+	| 'create_provider'
+	| 'delete_provider'
 	| 'run_job'
 	| 'create'
 	| 'update'
@@ -514,6 +561,8 @@ export function adminErrorKey(error: unknown, action: AdminAction): string {
 				case 'upload':
 					return 'admin.error.upload_library_missing';
 				case 'save_provider':
+				case 'create_provider':
+				case 'delete_provider':
 					return 'admin.error.provider_unknown';
 				case 'run_job':
 					return 'admin.error.job_unsupported';
@@ -525,6 +574,7 @@ export function adminErrorKey(error: unknown, action: AdminAction): string {
 					return 'admin.error.not_found';
 			}
 		case 409:
+			if (action === 'create_provider') return 'admin.providers.error.exists';
 			if (action === 'test_dictionary') return 'admin.dictionaries.error.missing_config';
 			if (action === 'save_library') return 'admin.error.library_conflict';
 			if (action === 'delete_library') return 'admin.error.library_delete_conflict';
@@ -543,6 +593,7 @@ export function adminErrorKey(error: unknown, action: AdminAction): string {
 				case 'upload':
 					return 'admin.error.upload_invalid';
 				case 'save_provider':
+				case 'create_provider':
 					return 'admin.error.provider_invalid';
 				case 'save_dictionary':
 					return 'admin.dictionaries.error.invalid';
@@ -553,7 +604,7 @@ export function adminErrorKey(error: unknown, action: AdminAction): string {
 			return action === 'upload' ? 'admin.error.upload_too_large' : 'admin.error.invalid';
 		case 502:
 			if (action === 'test_dictionary') return 'admin.dictionaries.error.unreachable';
-			return action === 'save_provider' ? 'admin.error.provider_failed' : 'admin.error.api';
+			return action === 'save_provider' || action === 'create_provider' ? 'admin.error.provider_failed' : 'admin.error.api';
 		case 503:
 			if (action === 'upload') return 'admin.error.importer_stopped';
 			if (action === 'run_job') return 'admin.error.maintenance_stopped';

@@ -6,6 +6,7 @@ import {
 	adminErrorKey,
 	buildDictionaryProviderInput,
 	buildDictionaryProviderPatch,
+	buildProviderCreate,
 	buildProviderPatch,
 	dictionaryFieldErrorKey,
 	dictionaryProviderDraft,
@@ -13,6 +14,7 @@ import {
 	libraryFieldErrorKey,
 	libraryPatch,
 	parsePositiveID,
+	providerCreateDraft,
 	providerDraft,
 	providerFieldErrorKey,
 	suggestSlug,
@@ -149,6 +151,40 @@ describe('provider patches', () => {
 	});
 });
 
+describe('provider creation', () => {
+	it('builds an add payload with the catalog default priority', () => {
+		const draft = providerCreateDraft(70);
+		expect(buildProviderCreate('douban', draft)).toEqual({
+			ok: true,
+			input: { provider: 'douban', enabled: false, priority: 70 }
+		});
+	});
+
+	it('validates priority, tokens, and enabling a credentialed provider', () => {
+		const draft = providerCreateDraft(30);
+		expect(buildProviderCreate('neodb', { ...draft, priority: '10001' })).toMatchObject({ field: 'priority', error: 'priority_invalid' });
+		expect(buildProviderCreate('neodb', { ...draft, enabled: true })).toMatchObject({ field: 'enabled', error: 'enable_requires_token' });
+		expect(buildProviderCreate('neodb', { ...draft, enabled: true, token: ' secret ' })).toEqual({
+			ok: true,
+			input: { provider: 'neodb', enabled: true, priority: 30, api_token: 'secret' }
+		});
+		expect(buildProviderCreate('neodb', { ...draft, token: 'a\tb' })).toMatchObject({ field: 'token', error: 'token_invalid' });
+		expect(buildProviderCreate('openlibrary', { ...draft, token: 'ignored' })).toEqual({
+			ok: true,
+			input: { provider: 'openlibrary', enabled: false, priority: 30 }
+		});
+	});
+
+	it('only sends a base URL for providers that support one', () => {
+		const draft = providerCreateDraft(30);
+		expect(buildProviderCreate('neodb', { ...draft, baseURL: 'https://neodb.example' })).toEqual({
+			ok: true,
+			input: { provider: 'neodb', enabled: false, priority: 30, base_url: 'https://neodb.example' }
+		});
+		expect(buildProviderCreate('neodb', { ...draft, baseURL: 'https://neodb.example/api' })).toMatchObject({ field: 'base_url' });
+	});
+});
+
 describe('dictionary provider forms', () => {
 	const preset: DictionaryProvider = {
 		id: 1,
@@ -242,6 +278,8 @@ describe('admin error keys', () => {
 			'upload',
 			'load_libraries',
 			'save_provider',
+			'create_provider',
+			'delete_provider',
 			'save_dictionary',
 			'test_dictionary',
 			'delete_dictionary',

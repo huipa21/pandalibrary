@@ -53,7 +53,9 @@ func TestMetadataAdminRoutesRedactionVisibilityAndSelections(t *testing.T) {
 		path   string
 	}{
 		{http.MethodGet, "/api/v1/admin/metadata/providers"},
+		{http.MethodPost, "/api/v1/admin/metadata/providers"},
 		{http.MethodPatch, "/api/v1/admin/metadata/providers/neodb"},
+		{http.MethodDelete, "/api/v1/admin/metadata/providers/neodb"},
 		{http.MethodPost, base + "candidates"},
 		{http.MethodPost, base + "apply"},
 		{http.MethodPost, base + "cover"},
@@ -69,8 +71,9 @@ func TestMetadataAdminRoutesRedactionVisibilityAndSelections(t *testing.T) {
 		t.Fatalf("provider update = %d %s", configured.Code, configured.Body.String())
 	}
 	list := authRequest(t, router, http.MethodGet, "/api/v1/admin/metadata/providers", nil, fixture.admin)
-	if list.Code != http.StatusOK || strings.Contains(list.Body.String(), secret) || strings.Contains(logs.String(), secret) {
-		t.Fatal("provider configuration disclosed a credential")
+	if list.Code != http.StatusOK || strings.Contains(list.Body.String(), secret) || strings.Contains(logs.String(), secret) ||
+		!strings.Contains(list.Body.String(), `"catalog"`) {
+		t.Fatal("provider configuration is not redacted or omits the builtin catalog")
 	}
 	for _, body := range []any{
 		map[string]any{"base_url": "https://user:password@neodb.social"},
@@ -78,6 +81,24 @@ func TestMetadataAdminRoutesRedactionVisibilityAndSelections(t *testing.T) {
 		map[string]any{"unknown": true},
 	} {
 		requireProblem(t, authRequest(t, router, http.MethodPatch, "/api/v1/admin/metadata/providers/neodb", body, fixture.admin), http.StatusBadRequest)
+	}
+	duplicate := authRequest(t, router, http.MethodPost, "/api/v1/admin/metadata/providers",
+		map[string]any{"provider": "openlibrary"}, fixture.admin)
+	requireProblem(t, duplicate, http.StatusConflict)
+	requireProblem(t, authRequest(t, router, http.MethodPost, "/api/v1/admin/metadata/providers",
+		map[string]any{"provider": "unknown"}, fixture.admin), http.StatusBadRequest)
+	removed := authRequest(t, router, http.MethodDelete, "/api/v1/admin/metadata/providers/douban", nil, fixture.admin)
+	if removed.Code != http.StatusOK {
+		t.Fatalf("remove provider = %d %s", removed.Code, removed.Body.String())
+	}
+	requireProblem(t, authRequest(t, router, http.MethodDelete, "/api/v1/admin/metadata/providers/douban", nil, fixture.admin), http.StatusNotFound)
+	requireProblem(t, authRequest(t, router, http.MethodPost, "/api/v1/admin/metadata/providers",
+		map[string]any{"provider": "douban", "priority": 10001}, fixture.admin), http.StatusBadRequest)
+	added := authRequest(t, router, http.MethodPost, "/api/v1/admin/metadata/providers",
+		map[string]any{"provider": "douban", "priority": 25}, fixture.admin)
+	if added.Code != http.StatusCreated || !strings.Contains(added.Body.String(), `"priority":25`) ||
+		strings.Contains(added.Body.String(), "api_token") {
+		t.Fatalf("add provider = %d %s", added.Code, added.Body.String())
 	}
 	for _, path := range []string{
 		"/api/v1/books/103/metadata/candidates", "/api/v1/books/999/metadata/candidates",

@@ -26,7 +26,9 @@ func MetadataMount(service *metadata.Service, authentication *auth.Service, logg
 			admin.Use(SessionMiddleware(authentication, logger))
 			admin.Use(RequireRole("admin", logger))
 			admin.Get("/api/v1/admin/metadata/providers", h.common.withViewer(h.list))
+			admin.With(cookieProtection).Post("/api/v1/admin/metadata/providers", h.common.withViewer(h.create))
 			admin.With(cookieProtection).Patch("/api/v1/admin/metadata/providers/{provider}", h.common.withViewer(h.update))
+			admin.With(cookieProtection).Delete("/api/v1/admin/metadata/providers/{provider}", h.common.withViewer(h.remove))
 			admin.With(cookieProtection).Post("/api/v1/books/{id}/metadata/candidates", h.common.withViewer(h.lookup))
 			admin.With(cookieProtection).Post("/api/v1/books/{id}/metadata/apply", h.common.withViewer(h.apply))
 			admin.With(cookieProtection).Post("/api/v1/books/{id}/metadata/cover", h.common.withViewer(h.cover))
@@ -40,7 +42,29 @@ func (h *metadataHTTP) list(w http.ResponseWriter, r *http.Request, viewer catal
 		h.writeError(w, r, err)
 		return
 	}
-	h.common.writeJSON(w, http.StatusOK, map[string]any{"providers": result})
+	// The builtin catalog lets administrators add a provider back after removing it.
+	h.common.writeJSON(w, http.StatusOK, map[string]any{"providers": result, "catalog": metadata.BuiltinProviders()})
+}
+
+func (h *metadataHTTP) create(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	var input metadata.ProviderCreate
+	if !h.common.decodeJSON(w, r, &input) {
+		return
+	}
+	result, err := h.service.CreateProvider(r.Context(), viewer, input)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.common.writeJSON(w, http.StatusCreated, map[string]metadata.ProviderSettings{"provider": result})
+}
+
+func (h *metadataHTTP) remove(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
+	if err := h.service.DeleteProvider(r.Context(), viewer, chi.URLParam(r, "provider")); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.common.writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 func (h *metadataHTTP) update(w http.ResponseWriter, r *http.Request, viewer catalog.Viewer) {
@@ -127,6 +151,8 @@ func (h *metadataHTTP) writeError(w http.ResponseWriter, r *http.Request, err er
 		WriteProblem(w, h.common.logger, http.StatusBadRequest, "The metadata request or provider cover is invalid.")
 	case errors.Is(err, metadata.ErrNotFound):
 		WriteProblem(w, h.common.logger, http.StatusNotFound, "")
+	case errors.Is(err, metadata.ErrExists):
+		WriteProblem(w, h.common.logger, http.StatusConflict, "This metadata provider is already configured.")
 	case errors.Is(err, metadata.ErrConflict):
 		WriteProblem(w, h.common.logger, http.StatusConflict, "The candidate expired or changed. Look up candidates again.")
 	case errors.Is(err, covers.ErrImageTooLarge):

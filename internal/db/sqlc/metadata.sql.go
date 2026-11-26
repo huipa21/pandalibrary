@@ -19,6 +19,18 @@ func (q *Queries) MetadataClearProviderCache(ctx context.Context, provider strin
 	return err
 }
 
+const metadataDeleteProvider = `-- name: MetadataDeleteProvider :execrows
+DELETE FROM metadata_providers WHERE provider = ?
+`
+
+func (q *Queries) MetadataDeleteProvider(ctx context.Context, provider string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, metadataDeleteProvider, provider)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const metadataGetCache = `-- name: MetadataGetCache :one
 SELECT provider, request_key, status, schema_version, response, fetched_at, expires_at FROM metadata_cache WHERE provider = ? AND request_key = ?
 `
@@ -59,6 +71,32 @@ func (q *Queries) MetadataGetProvider(ctx context.Context, provider string) (Met
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const metadataInsertProvider = `-- name: MetadataInsertProvider :exec
+INSERT INTO metadata_providers (provider, enabled, api_token, base_url, priority, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+`
+
+type MetadataInsertProviderParams struct {
+	Provider  string
+	Enabled   int64
+	ApiToken  sql.NullString
+	BaseUrl   sql.NullString
+	Priority  int64
+	UpdatedAt int64
+}
+
+func (q *Queries) MetadataInsertProvider(ctx context.Context, arg MetadataInsertProviderParams) error {
+	_, err := q.db.ExecContext(ctx, metadataInsertProvider,
+		arg.Provider,
+		arg.Enabled,
+		arg.ApiToken,
+		arg.BaseUrl,
+		arg.Priority,
+		arg.UpdatedAt,
+	)
+	return err
 }
 
 const metadataListProviders = `-- name: MetadataListProviders :many

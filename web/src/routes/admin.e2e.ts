@@ -1,4 +1,4 @@
-import { confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
+import { autoConfirmInApp, confirmInApp } from '#lib/shell/confirmation.e2e-helper.js';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 async function authenticate(page: Page, role = 'admin', locale = 'en') {
@@ -417,15 +417,46 @@ test('shows compact import history, search, deleted titles, and live status upda
 	await expect(page.getByText('No uploads match your search.')).toBeVisible();
 });
 
-test('edits metadata providers without exposing tokens', async ({ page }) => {
+test('adds, edits and removes metadata providers', async ({ page }) => {
+	await autoConfirmInApp(page);
 	await authenticate(page);
 	let neodb = { provider: 'neodb', enabled: true, priority: 20, base_url: null as string | null, has_token: true, updated_at: stamp };
-	const openlibrary = { provider: 'openlibrary', enabled: true, priority: 10, base_url: null, has_token: false, updated_at: stamp };
+	let providers = [
+		neodb,
+		{ provider: 'openlibrary', enabled: true, priority: 10, base_url: null as string | null, has_token: false, updated_at: stamp }
+	];
+	const catalog = [
+		{ provider: 'neodb', default_priority: 30 },
+		{ provider: 'openlibrary', default_priority: 10 },
+		{ provider: 'douban', default_priority: 70 }
+	];
 	const patches: unknown[] = [];
+	const creates: unknown[] = [];
+	const deletes: string[] = [];
 	await page.route('**/api/v1/admin/metadata/providers**', async (route) => {
 		const request = route.request();
-		if (request.method() === 'GET') return route.fulfill({ json: { providers: [neodb, openlibrary] } });
+		const url = new URL(request.url());
+		if (request.method() === 'GET') return route.fulfill({ json: { providers, catalog } });
+		if (request.method() === 'DELETE') {
+			const name = url.pathname.split('/').pop() as string;
+			deletes.push(name);
+			providers = providers.filter((item) => item.provider !== name);
+			return route.fulfill({ json: { deleted: true } });
+		}
 		const body = request.postDataJSON() as Record<string, unknown>;
+		if (request.method() === 'POST') {
+			creates.push(body);
+			const created = {
+				provider: body.provider as string,
+				enabled: Boolean(body.enabled),
+				priority: body.priority as number,
+				base_url: null as string | null,
+				has_token: false,
+				updated_at: stamp
+			};
+			providers = [...providers, created];
+			return route.fulfill({ status: 201, json: { provider: created } });
+		}
 		patches.push(body);
 		if (body.base_url === 'https://bad.example') return problem(route, 400);
 		neodb = {
@@ -435,47 +466,44 @@ test('edits metadata providers without exposing tokens', async ({ page }) => {
 			...(body.base_url !== undefined ? { base_url: body.base_url as string | null } : {}),
 			...(body.api_token !== undefined ? { has_token: body.api_token !== null } : {})
 		};
+		providers = providers.map((item) => (item.provider === 'neodb' ? neodb : item));
 		return route.fulfill({ json: { provider: neodb } });
 	});
 
 	await page.goto('/admin/providers');
-	const form = page.getByRole('form', { name: 'NeoDB' });
-	await expect(form.getByText('Token stored')).toBeVisible();
-	await expect(page.getByRole('form', { name: 'Open Library' }).getByRole('radio')).toHaveCount(0);
+	const neodbRow = page.getByRole('button', { name: /NeoDB/ });
+	await expect(neodbRow).toContainText('Token stored');
 
-	await form.getByLabel('Priority').fill('5');
-	await form.getByRole('button', { name: 'Save' }).click();
-	await expect(form.getByText('Saved NeoDB.')).toBeVisible();
+	await neodbRow.click();
+	const dialog = page.getByRole('dialog');
+	await expect(dialog.getByRole('heading', { name: 'Edit NeoDB' })).toBeVisible();
+	await dialog.getByLabel('Priority').fill('5');
+	await dialog.getByRole('button', { name: 'Save' }).click();
+	await expect(page.getByText('Saved NeoDB.')).toBeVisible();
 	expect(patches.at(-1)).toEqual({ priority: 5 });
 
-	await form.getByLabel('Server address').fill('https://bad.example');
-	await form.getByRole('button', { name: 'Save' }).click();
-	await expect(form.getByText('The server rejected these provider settings.')).toBeVisible();
-	await expect(form.getByLabel('Server address')).toHaveValue('https://bad.example');
-	await form.getByRole('button', { name: 'Discard changes' }).click();
+	await neodbRow.click();
+	await dialog.getByLabel('Server address').fill('https://bad.example');
+	await dialog.getByRole('button', { name: 'Save' }).click();
+	await expect(dialog.getByText('The server rejected these provider settings.')).toBeVisible();
+	await dialog.getByRole('button', { name: 'Cancel' }).click();
+	await expect(dialog).toHaveCount(0);
 
-	await form.getByLabel('Remove the stored token').check();
-	await form.getByRole('button', { name: 'Save' }).click();
-	await expect(form.getByText('Set a token before enabling this provider.')).toBeVisible();
-	await form.getByLabel('Enabled', { exact: true }).uncheck();
-	await form.getByRole('button', { name: 'Save' }).click();
-	const confirmation = page.locator('#app-confirmation');
-	await expect(confirmation).toContainText('Remove the stored token for NeoDB?');
-	await confirmation.locator('button').last().click();
-	await expect(confirmation).toContainText('Disable NeoDB? Books will no longer get details from it.');
-	await confirmation.locator('button').last().click();
-	await expect(form.getByText('Saved NeoDB.')).toBeVisible();
-	expect(patches.at(-1)).toEqual({ api_token: null, enabled: false });
-	await expect(form.getByLabel('No token')).toBeChecked();
+	await page.getByRole('button', { name: 'Add provider' }).click();
+	await expect(dialog.getByRole('heading', { name: 'Add metadata provider' })).toBeVisible();
+	await dialog.getByLabel('Provider').selectOption('douban');
+	await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+	await expect(page.getByText('Added Douban.')).toBeVisible();
+	expect(creates.at(-1)).toEqual({ provider: 'douban', enabled: false, priority: 70 });
 
-	await form.getByLabel('Set a token').check();
-	await form.getByLabel('New token').fill('secret-token');
-	await form.getByLabel('Enabled', { exact: true }).check();
-	await form.getByRole('button', { name: 'Save' }).click();
-	await expect(form.getByText('Saved NeoDB.')).toBeVisible();
-	expect(patches.at(-1)).toEqual({ api_token: 'secret-token', enabled: true });
-	await expect(form.getByLabel('New token')).toHaveCount(0);
-	await expect(page.getByText('secret-token')).toHaveCount(0);
+	const doubanRow = page.getByRole('button', { name: /Douban/ });
+	await expect(doubanRow).toBeVisible();
+	await doubanRow.click();
+	await dialog.getByRole('button', { name: 'Remove provider' }).click();
+	await expect(page.getByText('Removed Douban. You can add it back later.')).toBeVisible();
+	expect(deletes.at(-1)).toBe('douban');
+	await expect(doubanRow).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Add provider' })).toBeEnabled();
 });
 
 test('runs maintenance jobs and handles a job that is already running', async ({ page }) => {
